@@ -132,6 +132,15 @@ public final class MainWindow extends JFrame {
      * them all down. Without the registry the main window can exit while five
      * charts stay on screen, orphaned.</p>
      */
+    /**
+     * True while the remembered charts are being reopened.
+     *
+     * <p>Opening a chart remembers what is open. During a restore that would
+     * rewrite the list being read from, one chart shorter than it should be --
+     * and the restore would bring back only the first.</p>
+     */
+    private transient boolean restoring;
+
     private final transient java.util.Map<String, ChartHolder> charts =
             new java.util.LinkedHashMap<>();
 
@@ -217,9 +226,10 @@ public final class MainWindow extends JFrame {
      * series and let the numbering happen again -- otherwise a restart leaves
      * "(2)" with no "(1)" beside it.</p>
      */
-    private void rememberCharts() {
-        if (leaving) {
-            // Closing the application closes every chart, and each close would
+    void rememberCharts() {
+        if (leaving || restoring) {
+            // Two reasons, both of them a list being rewritten while it is
+            // being read. Closing the application closes every chart, and each close would
             // rewrite this list one chart shorter until it was empty. The list
             // was already written the moment before; the closing itself must
             // not touch it. Without this the feature saves nothing and looks
@@ -255,8 +265,15 @@ public final class MainWindow extends JFrame {
      * the menus in it says "open something" more clearly than a chart of
      * whatever the application decided to guess.</p>
      */
-    private void restoreCharts() {
+    void restoreCharts() {
         Settings workspace = Settings.workspace();
+
+        // The WHOLE list, read before a single chart is opened. Opening one
+        // remembers what is open, and remembering erases and rewrites these
+        // very keys -- so reading them as it went, the loop destroyed the entry
+        // it was about to reach. Two charts came back as one, which is exactly
+        // how it was reported.
+        List<String[]> wanted = new java.util.ArrayList<>();
 
         for (String key : workspace.keysStartingWith("chart.open.")) {
             if (!key.endsWith(".series")) {
@@ -264,24 +281,37 @@ public final class MainWindow extends JFrame {
             }
 
             String series = workspace.get(key, null);
-            String period = workspace.get(key.replace(".series", ".period"), null);
 
             if (series == null || series.isBlank()) {
                 continue;
             }
 
-            String title = open(series);
+            wanted.add(new String[]{series,
+                    workspace.get(key.replace(".series", ".period"), null)});
+        }
 
-            PeriodCatalog.Choice choice = PeriodCatalog.byCode(period);
+        restoring = true;
 
-            if (choice != null) {
-                ChartHolder holder = charts.get(title);
+        try {
+            for (String[] each : wanted) {
+                String title = open(each[0]);
+                PeriodCatalog.Choice choice = PeriodCatalog.byCode(each[1]);
 
-                if (holder != null) {
-                    holder.canvas().setPeriod(choice.aggregation(), choice.title(), choice.code());
+                if (choice != null) {
+                    ChartHolder holder = charts.get(title);
+
+                    if (holder != null) {
+                        holder.canvas().setPeriod(choice.aggregation(),
+                                choice.title(), choice.code());
+                    }
                 }
             }
+        } finally {
+            restoring = false;
         }
+
+        // Written once, at the end, rather than once per chart opened.
+        rememberCharts();
     }
 
     /**

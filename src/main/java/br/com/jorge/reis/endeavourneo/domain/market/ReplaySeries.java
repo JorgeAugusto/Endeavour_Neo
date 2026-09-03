@@ -53,7 +53,7 @@ public final class ReplaySeries implements PriceSeries {
      */
     private final int origin;
 
-    private final SyntheticTicks ticks;
+    private final TickPath ticks;
 
     /** How much market time one source bar covers. */
     private final long barMillis;
@@ -80,7 +80,7 @@ public final class ReplaySeries implements PriceSeries {
      * @param completed how many bars have already finished
      * @param ticks how a bar is broken into prices, or null to jump bar by bar
      */
-    public ReplaySeries(PriceSeries day, int completed, SyntheticTicks ticks) {
+    public ReplaySeries(PriceSeries day, int completed, TickPath ticks) {
         this(day, 0, completed, ticks);
     }
 
@@ -90,7 +90,7 @@ public final class ReplaySeries implements PriceSeries {
      * @param completed how many bars have finished, counted from the start
      * @param ticks how a bar is broken into prices, or null to jump bar by bar
      */
-    public ReplaySeries(PriceSeries day, int origin, int completed, SyntheticTicks ticks) {
+    public ReplaySeries(PriceSeries day, int origin, int completed, TickPath ticks) {
         this.day = day == null ? PriceSeries.empty() : day;
         this.ticks = ticks;
         this.origin = Math.max(0, Math.min(origin, this.day.size()));

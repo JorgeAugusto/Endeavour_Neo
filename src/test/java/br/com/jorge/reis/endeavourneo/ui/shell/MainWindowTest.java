@@ -19,6 +19,7 @@ package br.com.jorge.reis.endeavourneo.ui.shell;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
@@ -184,6 +185,38 @@ class MainWindowTest {
 
         assertEquals(500, cell.width, "four windows should make two columns");
         assertEquals(300, cell.height, "four windows should make two rows");
+    }
+
+    @Test
+    @DisplayName("every chart open at closing time comes back, not just the first")
+    void everyChartComesBack() throws Exception {
+        // Reported from use: two charts open, close the application, and it
+        // reopens with one. The cause is a loop eating its own list --
+        // restoring walks the remembered keys, and opening each chart rewrites
+        // those very keys with only what is open so far. By the second turn of
+        // the loop the entry it was about to read is gone.
+        onEdt(window -> {
+            try {
+                String first = window.open("winn-1m");
+                String second = window.open("winn-1m");
+
+                assertEquals(2, window.openCharts().size(), "two charts did not open");
+                assertNotEquals(first, second, "the second chart took the first one's name");
+
+                window.rememberCharts();
+                window.closeCharts();
+
+                assertEquals(0, window.openCharts().size());
+
+                window.restoreCharts();
+
+                assertEquals(2, window.openCharts().size(),
+                        "restoring brought back " + window.openCharts()
+                                + " instead of both charts");
+            } finally {
+                window.closeCharts();
+            }
+        });
     }
 
     private static void onEdt(Consumer<MainWindow> test) throws Exception {

@@ -53,7 +53,7 @@ import java.util.Random;
  * mixes in the bar's index. Scrubbing backwards and forwards over the same
  * minute has to redraw the same minute.</p>
  */
-public final class SyntheticTicks {
+public final class SyntheticTicks implements TickPath {
 
     private static final int FLOOR = 6;
 
@@ -86,6 +86,7 @@ public final class SyntheticTicks {
      * @return the prices inside that bar, the first being its open and the last
      *         its close
      */
+    @Override
     public double[] pathFor(PriceSeries series, int index) {
         double open = series.openAt(index);
         double high = series.highAt(index);
