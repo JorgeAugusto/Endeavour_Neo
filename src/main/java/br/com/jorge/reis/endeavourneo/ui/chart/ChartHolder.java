@@ -90,6 +90,9 @@ public final class ChartHolder {
      */
     private final OverlayLegend legend = new OverlayLegend(canvas);
 
+    /** The layout tabs, below the time axis. Built on first use. */
+    private LayoutBar layoutBar;
+
     private final JDesktopPane desktop;
 
     private final Window owner;
@@ -122,6 +125,23 @@ public final class ChartHolder {
         return canvas;
     }
 
+    /**
+     * @return the layout bar, built on first use
+     *
+     * <p>It captures the chart's indicators into the selected layout on every
+     * change. Adding an indicator and then having to find a save button is how
+     * work gets lost.</p>
+     */
+    private LayoutBar layouts() {
+        if (layoutBar == null) {
+            layoutBar = new LayoutBar(canvas, key);
+
+            canvas.onOverlaysChanged(layoutBar::capture);
+        }
+
+        return layoutBar;
+    }
+
     public boolean isFloating() {
         return floating != null;
     }
@@ -152,6 +172,7 @@ public final class ChartHolder {
         docked.setJMenuBar(buildMenuBar());
         docked.getContentPane().add(legend, BorderLayout.NORTH);
         docked.getContentPane().add(canvas, BorderLayout.CENTER);
+        docked.getContentPane().add(layouts(), BorderLayout.SOUTH);
         boolean firstInside = countInside() == 0;
         boolean remembered = PREFS.getInt(key + ".width", -1) > 0;
 
@@ -208,6 +229,7 @@ public final class ChartHolder {
         floating.setJMenuBar(buildMenuBar());
         floating.getContentPane().add(legend, BorderLayout.NORTH);
         floating.getContentPane().add(canvas, BorderLayout.CENTER);
+        floating.getContentPane().add(layouts(), BorderLayout.SOUTH);
         floating.setSize(restoredSize());
         floating.setLocation(restoredLocation());
 
@@ -255,6 +277,10 @@ public final class ChartHolder {
     }
 
     public void close() {
+        if (layoutBar != null) {
+            layoutBar.capture();
+        }
+
         store();
         detachFromDocked();
         detachFromFloating();
@@ -280,6 +306,7 @@ public final class ChartHolder {
 
         content.remove(legend);
         content.remove(canvas);
+        content.remove(layouts());
         docked.dispose();
         docked = null;
     }
@@ -293,6 +320,7 @@ public final class ChartHolder {
 
         floating.getContentPane().remove(legend);
         floating.getContentPane().remove(canvas);
+        floating.getContentPane().remove(layouts());
         floating.dispose();
         floating = null;
     }

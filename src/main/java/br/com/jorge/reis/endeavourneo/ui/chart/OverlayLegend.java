@@ -296,6 +296,7 @@ public final class OverlayLegend extends JComponent {
                 case 0 -> {
                     overlay.setVisible(!overlay.isVisible());
                     canvas.repaint();
+                    canvas.overlaysChanged();
                 }
                 case 1 -> edit(overlay);
                 default -> {

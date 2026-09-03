@@ -18,6 +18,19 @@
 #
 # Skipping is legitimate for work in progress on your own branch. It is not
 # legitimate on master.
+#
+# FINDING THE TOOLS
+#
+# A hook that only works when Maven and a JDK are on the PATH is a hook that
+# does not run, and one that does not run is worse than none: it is believed
+# in. On a machine where the IDE carries its own JDK and Maven -- which is the
+# normal case on Windows -- neither is on the PATH, and the honest answer is to
+# go and look for them rather than to give up.
+#
+# To pin them by hand instead, write .githooks/env (not versioned):
+#
+#     JAVA_HOME="/c/some/jdk"
+#     MVN="/c/some/maven/bin/mvn"
 
 set -e
 
@@ -28,20 +41,75 @@ if ! git diff --cached --name-only | grep -qE '^src/.*\.(java|properties)$'; the
     exit 0
 fi
 
-MVN="./mvnw"
-
-if [ ! -x "$MVN" ]; then
-    MVN="mvn"
+if [ -f .githooks/env ]; then
+    . ./.githooks/env
 fi
 
-if ! command -v "$MVN" >/dev/null 2>&1 && [ ! -x "$MVN" ]; then
-    echo "pre-commit: neither ./mvnw nor mvn found; use --no-verify"
+# ----------------------------------------------------------------- the JDK
+
+# The release the project compiles against. Anything older cannot build it, so
+# there is no point picking it up.
+NEEDED=$(sed -n 's/.*<maven\.compiler\.release>\([0-9]*\)<.*/\1/p' pom.xml | head -1)
+NEEDED=${NEEDED:-17}
+
+usable() {
+    [ -x "$1/bin/javac" ] || return 1
+
+    have=$("$1/bin/javac" -version 2>&1 | sed -n 's/javac \([0-9]*\).*/\1/p')
+
+    [ -n "$have" ] && [ "$have" -ge "$NEEDED" ]
+}
+
+if [ -z "$JAVA_HOME" ] || ! usable "$JAVA_HOME"; then
+    JAVA_HOME=""
+
+    # The JetBrains runtimes first: on a machine with no JDK installed system
+    # wide, they are usually the only ones present, and they are complete.
+    for candidate in \
+        "$LOCALAPPDATA/JetBrains"/*/jbr \
+        "$HOME/AppData/Local/JetBrains"/*/jbr \
+        "/c/Program Files/Eclipse Adoptium"/jdk* \
+        "/c/Program Files/Java"/jdk*; do
+
+        if usable "$candidate"; then
+            JAVA_HOME="$candidate"
+        fi
+    done
+fi
+
+if [ -z "$JAVA_HOME" ]; then
+    echo "pre-commit: no JDK $NEEDED or newer found; see .githooks/pre-commit"
     exit 1
 fi
 
-echo "pre-commit: running the suite..."
+export JAVA_HOME
 
-if ! "$MVN" -q test; then
+# -------------------------------------------------------------- and Maven
+
+if [ -z "$MVN" ]; then
+    if [ -x ./mvnw ]; then
+        MVN=./mvnw
+    elif command -v mvn >/dev/null 2>&1; then
+        MVN=mvn
+    else
+        # Where the Maven wrapper unpacks what it downloads. The IDE puts it
+        # there and then uses it without ever touching the PATH.
+        for candidate in "$HOME"/.m2/wrapper/dists/*/*/*/bin/mvn; do
+            if [ -x "$candidate" ]; then
+                MVN="$candidate"
+            fi
+        done
+    fi
+fi
+
+if [ -z "$MVN" ]; then
+    echo "pre-commit: no Maven found; see .githooks/pre-commit"
+    exit 1
+fi
+
+echo "pre-commit: running the suite with $(basename "$JAVA_HOME") ..."
+
+if ! "$MVN" -q -o test; then
     echo
     echo "pre-commit: commit blocked -- the suite is failing"
     exit 1

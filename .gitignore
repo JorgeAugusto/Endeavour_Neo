@@ -70,3 +70,6 @@ grafico.properties
 rede-tela.properties
 sinais-tela.properties
 adaptativo-tela.properties
+
+# machine-local paths for the hook
+.githooks/env

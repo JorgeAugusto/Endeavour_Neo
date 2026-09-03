@@ -166,6 +166,8 @@ public final class ChartCanvas extends JComponent {
     /** The overlays drawn on the price, in the order they were added. */
     private final transient java.util.List<Overlay> overlays = new java.util.ArrayList<>();
 
+    private transient Runnable onOverlaysChanged = () -> { };
+
     private int firstBar;
 
     private int visibleBars = DEFAULT_VISIBLE_BARS;
@@ -343,6 +345,41 @@ public final class ChartCanvas extends JComponent {
 
     /** @param newSeries the data to draw; showing the most recent bars */
     /**
+     * Replaces every overlay at once, WITHOUT reporting a change.
+     *
+     * <p>Silent on purpose: this is a layout being applied, and telling the
+     * layout bar about it would have it capture back what it has just written.</p>
+     *
+     * @param replacements the new set; calculated here
+     */
+    public void setOverlays(java.util.List<Overlay> replacements) {
+        overlays.clear();
+
+        for (Overlay overlay : replacements) {
+            overlay.calculate(series);
+            overlays.add(overlay);
+        }
+
+        repaint();
+    }
+
+    /** @param listener told whenever the overlays or their state change */
+    public void onOverlaysChanged(Runnable listener) {
+        this.onOverlaysChanged = listener == null ? () -> { } : listener;
+    }
+
+    /**
+     * Reports that the overlays changed.
+     *
+     * <p>Public because the legend toggles visibility on the overlay object
+     * itself, where the canvas cannot see it. Having the legend say so is
+     * honest; polling the overlays on every paint to detect it would not be.</p>
+     */
+    public void overlaysChanged() {
+        onOverlaysChanged.run();
+    }
+
+    /**
      * Swaps one overlay for another IN PLACE.
      *
      * <p>In place, keeping the position, because the legend is read top to
@@ -364,12 +401,14 @@ public final class ChartCanvas extends JComponent {
         overlays.set(at, replacement);
 
         repaint();
+        overlaysChanged();
     }
 
     /** Removes an overlay and redraws without it. */
     public void removeOverlay(Overlay overlay) {
         if (overlays.remove(overlay)) {
             repaint();
+            overlaysChanged();
         }
     }
 
@@ -383,6 +422,7 @@ public final class ChartCanvas extends JComponent {
         overlays.add(overlay);
 
         repaint();
+        overlaysChanged();
     }
 
     /** @return the overlays, for the legend and the show/hide toggles */
