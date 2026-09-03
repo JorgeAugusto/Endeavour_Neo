@@ -195,10 +195,47 @@ public final class Renko implements Aggregation {
         return label();
     }
 
+    /**
+     * Where a renko stood when its source ran out.
+     *
+     * <p>Handed to the next {@link #applyFrom} so a renko can be built one
+     * session at a time and still be one renko. Without it, each day would
+     * start its ruler at its own opening price and the bricks would not line up
+     * across the night -- which is not what the chart shows, and not what the
+     * reference product shows either.</p>
+     *
+     * @param anchor the level the last brick closed at
+     * @param direction which way the last brick went; zero before the first
+     * @param sinceLow how far price ran down since that brick
+     * @param sinceHigh how far price ran up since that brick
+     * @param pending volume accumulated and not yet given to a brick
+     */
+    public record Carry(double anchor, int direction,
+                        double sinceLow, double sinceHigh, double pending) { }
+
+    /**
+     * @param bricks what was laid
+     * @param carry where the renko stands now
+     */
+    public record Continued(PriceSeries bricks, Carry carry) { }
+
     @Override
     public PriceSeries apply(PriceSeries source) {
+        return applyFrom(source, null).bricks();
+    }
+
+    /**
+     * @param from where a previous stretch left the renko, or null to begin
+     * @return the bricks this source laid, and where the renko now stands
+     *
+     * <p>Splitting a source in two and running this over each half gives the
+     * same bricks as running it over the whole. That is the property the
+     * session-by-session build rests on, and it is a test.</p>
+     */
+    public Continued applyFrom(PriceSeries source, Carry from) {
         if (source == null || source.size() == 0) {
-            return PriceSeries.empty();
+            return new Continued(PriceSeries.empty(),
+                    from == null ? new Carry(0, 0, 0, 0, 0) : from);
         }
 
         List<double[]> bricks = new ArrayList<>();
@@ -213,15 +250,15 @@ public final class Renko implements Aggregation {
         // every brick was measured from a shifting origin. Instrumented: the
         // same bar, the same high and the same low, and the completed bricks
         // going from four to two because the close had moved eighteen points.
-        double anchor = source.openAt(0);
-        int direction = 0;
-        double pending = 0.0;
+        double anchor = from == null ? source.openAt(0) : from.anchor();
+        int direction = from == null ? 0 : from.direction();
+        double pending = from == null ? 0.0 : from.pending();
         boolean anyVolume = false;
 
         // How far price ran the other way since the last brick. It becomes the
         // tail of whichever brick finally goes through.
-        double sinceLow = anchor;
-        double sinceHigh = anchor;
+        double sinceLow = from == null ? anchor : from.sinceLow();
+        double sinceHigh = from == null ? anchor : from.sinceHigh();
 
         for (int i = 0; i < source.size(); i++) {
             double volume = source.volumeAt(i);
@@ -342,7 +379,11 @@ public final class Renko implements Aggregation {
             stamps.add(source.timeAt(source.size() - 1));
         }
 
-        return assemble(bricks, stamps, anyVolume);
+        // The carry is taken from the state, not from the bricks: the forming
+        // brick appended just above is provisional and must not become the
+        // starting point of the next stretch.
+        return new Continued(assemble(bricks, stamps, anyVolume),
+                new Carry(anchor, direction, sinceLow, sinceHigh, pending));
     }
 
     /**

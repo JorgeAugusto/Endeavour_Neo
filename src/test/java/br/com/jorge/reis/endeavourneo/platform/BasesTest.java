@@ -111,6 +111,29 @@ class BasesTest {
     }
 
     @Test
+    @DisplayName("a retired base is not offered, and its file is left alone")
+    void aRetiredBaseIsHiddenNotDeleted(@TempDir Path folder) throws IOException {
+        // win-1m is the WIN adjusted by ratio: in it a point was worth R$ 0,20
+        // in 2026 and R$ 0,12 in 2022, so the older years came out inflated by
+        // up to 67%. Offering it beside the raw ones is how a measurement gets
+        // taken on the wrong base by accident.
+        base(folder, "winn-1m", 136_000);
+        base(folder, "win-1m", 130_000);
+        Bases.useFolder(folder);
+
+        assertEquals(List.of("winn-1m"), Bases.names(),
+                "the retired base was offered in the listing");
+
+        assertTrue(Files.isRegularFile(folder.resolve("win-1m.bin")),
+                "the file was deleted; it was only meant to be hidden");
+
+        // Asked for by name it still opens, so a workspace that remembers it is
+        // not silently handed a different instrument.
+        assertTrue(Bases.has("win-1m"));
+        assertEquals(130_000.0, Bases.open("win-1m").orElseThrow().closeAt(0), 1e-9);
+    }
+
+    @Test
     @DisplayName("the default is the search base when it is there")
     void theDefaultIsTheSearchBase(@TempDir Path folder) throws IOException {
         base(folder, "btcusdt-1m", 60_000);

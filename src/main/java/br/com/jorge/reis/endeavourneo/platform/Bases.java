@@ -25,8 +25,10 @@ import java.lang.ref.SoftReference;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
@@ -70,6 +72,25 @@ public final class Bases {
      * either program shows the same prices.</p>
      */
     private static final String DEFAULT = "winn-1m";
+
+    private static final String RETIRED_KEY = "data.retired";
+
+    /**
+     * Bases that are on the disk and are not offered.
+     *
+     * <p>{@code win-1m} is the WIN adjusted by ratio, and it is retired for a
+     * reason worth writing down: in it a point was worth R$ 0,20 in 2026 and
+     * R$ 0,12 in 2022, so the adjustment inflated the older years by up to 67%.
+     * In the raw series a point is worth R$ 0,20 always, and that constant is
+     * what every measurement here depends on.</p>
+     *
+     * <p><b>Hidden, not deleted.</b> The file stays where it is: a base that
+     * disappears from the disk is one somebody re-imports a year later without
+     * knowing why it went. And hidden from the LISTING only — asked for by
+     * name it still opens, so a workspace that remembers it is not silently
+     * given a different instrument.</p>
+     */
+    private static final String RETIRED_BY_DEFAULT = "win-1m";
 
     private static final Map<String, SoftReference<PriceSeries>> LOADED =
             new ConcurrentHashMap<>();
@@ -185,6 +206,27 @@ public final class Bases {
         return namesIn(folder());
     }
 
+    /** @return the names not offered, which the reader may change */
+    public static Set<String> retired() {
+        String saved = Settings.settings().get(RETIRED_KEY, RETIRED_BY_DEFAULT);
+        Set<String> names = new LinkedHashSet<>();
+
+        for (String each : saved.split(",")) {
+            String name = each.trim();
+
+            if (!name.isEmpty()) {
+                names.add(name);
+            }
+        }
+
+        return names;
+    }
+
+    /** @param names the bases to stop offering; the files are untouched */
+    public static void setRetired(Set<String> names) {
+        Settings.settings().put(RETIRED_KEY, String.join(",", names));
+    }
+
     /** @return the bases in that folder, by name, sorted */
     public static List<String> namesIn(Path folder) {
         if (!Files.isDirectory(folder)) {
@@ -200,6 +242,7 @@ public final class Bases {
 
                         return name.substring(0, name.length() - SUFFIX.length());
                     })
+                    .filter(name -> !retired().contains(name))
                     .sorted()
                     .toList();
         } catch (IOException e) {
