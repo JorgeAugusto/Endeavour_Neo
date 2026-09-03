@@ -561,6 +561,27 @@ public final class ChartCanvas extends JComponent {
         }
     }
 
+    /**
+     * The series got longer; fold it again and stay looking at the end.
+     *
+     * <p>Separate from {@link #setSeries} because that one re-frames the chart,
+     * and re-framing on every replay tick would throw away the reader's zoom
+     * several times a second. Here the window keeps its width and slides to the
+     * right, which is what watching a market do something looks like.</p>
+     */
+    public void seriesGrew() {
+        this.series = period.apply(base);
+
+        for (Overlay overlay : overlays) {
+            overlay.calculate(this.series);
+        }
+
+        this.visibleBars = Math.max(1, Math.min(visibleBars, Math.max(1, this.series.size())));
+        this.firstBar = Math.max(0, this.series.size() - visibleBars);
+
+        repaint();
+    }
+
     private void refold() {
         this.series = period.apply(base);
 

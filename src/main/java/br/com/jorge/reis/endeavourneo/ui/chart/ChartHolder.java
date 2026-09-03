@@ -17,6 +17,7 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.chart;
 
+import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
 import br.com.jorge.reis.endeavourneo.platform.Messages;
 import br.com.jorge.reis.endeavourneo.ui.chart.style.CandleStyle;
 import br.com.jorge.reis.endeavourneo.ui.chart.style.LineStyle;
@@ -141,6 +142,12 @@ public final class ChartHolder {
 
     private JToolBar toolBar;
 
+    /** What the title says after the period while a replay is feeding this chart. */
+    private String replayLabel;
+
+    /** Undoes the subscription when another replay arrives, or the window closes. */
+    private transient Runnable detachReplay = () -> { };
+
     /** Which drawing style the buttons should show as chosen. */
     private String styleChoice = "candle";
 
@@ -196,6 +203,27 @@ public final class ChartHolder {
     }
 
     /**
+     * Feeds this chart from a replay instead of from stored history.
+     *
+     * @param label what to show in the title
+     * @param live a series that grows as the session plays
+     * @param detach called when this chart stops following that session
+     *
+     * <p>A second drop replaces the first, and unsubscribes from it: without
+     * that, a chart dropped on twice would be redrawn by two clocks and would
+     * flicker between two days.</p>
+     */
+    public void attachReplay(String label, PriceSeries live, Runnable detach) {
+        detachReplay.run();
+
+        this.replayLabel = label;
+        this.detachReplay = detach == null ? () -> { } : detach;
+
+        canvas.setSeries(live);
+        retitle();
+    }
+
+    /**
      * The title, with how far the price is from the last session's close.
      *
      * <p>Beside the instrument's name because that is where a quote screen puts
@@ -205,6 +233,15 @@ public final class ChartHolder {
      * is nothing to compare against, and a "0,00%" would be a claim.</p>
      */
     private String title() {
+        if (replayLabel != null) {
+            // The change against the previous close is dropped while replaying:
+            // there IS no previous close in a session played on its own, and a
+            // percentage measured against the first bar of the day would look
+            // like the real thing and not be it.
+            return name + "  " + canvas.period().label()
+                    + "   " + Messages.get("replay.inTitle", replayLabel);
+        }
+
         // The period in the title as well as inside the chart: the title is what
         // is readable when the window is behind two others.
         String scale = "  " + canvas.period().label();
@@ -381,6 +418,8 @@ public final class ChartHolder {
     }
 
     public void close() {
+        detachReplay.run();
+
         if (layoutBar != null) {
             layoutBar.capture();
         }

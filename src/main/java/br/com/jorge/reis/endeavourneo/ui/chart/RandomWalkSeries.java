@@ -54,6 +54,20 @@ public final class RandomWalkSeries implements PriceSeries {
      * @param start the starting price
      */
     public RandomWalkSeries(int bars, double start) {
+        this(bars, start, System.currentTimeMillis() - bars * 60_000L, 20_260_902L);
+    }
+
+    /**
+     * @param bars how many minutes to make up
+     * @param start the price to start from
+     * @param firstBar the instant of the first bar
+     * @param seed what makes this series this series
+     *
+     * <p>The seed is a parameter and not a constant because a replay has to
+     * repeat: the same day must play back the same way every time, or comparing
+     * two decisions made on it is comparing two different markets.</p>
+     */
+    public RandomWalkSeries(int bars, double start, long firstBar, long seed) {
         this.times = new long[bars];
         this.opens = new double[bars];
         this.highs = new double[bars];
@@ -61,7 +75,7 @@ public final class RandomWalkSeries implements PriceSeries {
         this.closes = new double[bars];
         this.volumes = new double[bars];
 
-        Random random = new Random(20_260_902L);
+        Random random = new Random(seed);
 
         double price = start;
         // Measured against the real thing: a WIN minute moves some tens of
@@ -69,7 +83,7 @@ public final class RandomWalkSeries implements PriceSeries {
         // one per cent. The first version used 0,2% -- ten times too much -- and
         // it only showed when renko turned 2.000 bars into 26.000 bricks.
         double volatility = start * 0.00025;
-        long time = System.currentTimeMillis() - bars * 60_000L;
+        long time = firstBar;
 
         for (int i = 0; i < bars; i++) {
             // Volatility that drifts rather than staying constant: real series

@@ -203,6 +203,9 @@ public final class MainWindow extends JFrame {
         // Synthetic bars for now. Replaced the moment a real series is wired in
         // -- see RandomWalkSeries.
         holder.canvas().setSeries(new RandomWalkSeries(2_000, 135_000.0));
+
+        // Every chart accepts a replay dropped on it, from the moment it opens.
+        br.com.jorge.reis.endeavourneo.ui.replay.ReplayDrop.enable(holder);
         holder.canvas().addOverlay(
                 new br.com.jorge.reis.endeavourneo.ui.chart.overlay.MovingAverages(17, 55, 200));
 
@@ -395,6 +398,8 @@ public final class MainWindow extends JFrame {
         view.add(item("action.clearConsole", KeyEvent.VK_L, console::clear));
         view.add(item("action.resetLayout", 0, this::defaultLayout));
         view.addSeparator();
+        view.add(item("action.replay", 0, this::openReplay));
+        view.addSeparator();
         view.add(item("action.tileCharts", 0, this::tileCharts));
         view.add(item("action.dockCharts", 0, this::dockCharts));
         view.add(item("action.closeCharts", 0, this::closeCharts));
@@ -471,6 +476,25 @@ public final class MainWindow extends JFrame {
      * one switch they need. Adding a settings page means writing a {@link
      * SettingsPage} and adding it to the list below.</p>
      */
+    /**
+     * Opens the replay transport, or brings it back to the front.
+     *
+     * <p>One window and not one per chart: a session is dragged onto as many
+     * charts as wanted, and they all run off the same clock. Two transports
+     * would be two clocks, and the charts would disagree about what time it is.</p>
+     */
+    /** The transport, built on first use and kept: one clock for every chart. */
+    private transient br.com.jorge.reis.endeavourneo.ui.replay.ReplayWindow replay;
+
+    private void openReplay() {
+        if (replay == null) {
+            replay = new br.com.jorge.reis.endeavourneo.ui.replay.ReplayWindow(this);
+        }
+
+        replay.setVisible(true);
+        replay.toFront();
+    }
+
     private void openPreferences() {
         SettingsDialog.show(this, List.of(
                 new GeneralPage(),
