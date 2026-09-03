@@ -90,6 +90,9 @@ public final class ReplaySession {
 
     private static final DateTimeFormatter CLOCK = DateTimeFormatter.ofPattern("HH:mm:ss");
 
+    private static final DateTimeFormatter DAY_AND_CLOCK =
+            DateTimeFormatter.ofPattern("dd/MM HH:mm:ss");
+
     /** The trading day this stands in for, until a real loader exists. */
     private static final LocalTime OPEN = LocalTime.of(9, 0);
 
@@ -98,6 +101,8 @@ public final class ReplaySession {
     private final String instrument;
 
     private final LocalDate date;
+
+    private final LocalDate until;
 
     private final ReplaySeries live;
 
@@ -111,18 +116,31 @@ public final class ReplaySession {
      * @param instrument what is being replayed
      * @param date the session
      */
+    /** How many sessions may be played in one go, so a typo cannot ask for a decade. */
+    public static final int MOST_SESSIONS = 250;
+
     public ReplaySession(String instrument, LocalDate date) {
         this(instrument, date, ReplayPreferences.historyDays());
     }
 
+    public ReplaySession(String instrument, LocalDate date, int historyDays) {
+        this(instrument, date, date, historyDays);
+    }
+
     /**
      * @param instrument what is being replayed
-     * @param date the session to play
-     * @param historyDays how many sessions before it to show already drawn
+     * @param date the first session to play
+     * @param until the last session to play, inclusive
+     * @param historyDays how many sessions before the first to show already drawn
+     *
+     * <p>A range and not a day: watching one session tells you what that session
+     * did, and a week tells you whether the thing you saw happens. Weekends are
+     * skipped, so "Monday to Monday" is six sessions and not eight.</p>
      */
-    public ReplaySession(String instrument, LocalDate date, int historyDays) {
+    public ReplaySession(String instrument, LocalDate date, LocalDate until, int historyDays) {
         this.instrument = instrument;
         this.date = date;
+        this.until = until == null || until.isBefore(date) ? date : until;
         // The days before, already drawn, so the chart does not open on an empty
         // screen -- and so the first decision of the session is taken with the
         // same context the reader would have had that morning.
@@ -136,7 +154,19 @@ public final class ReplaySession {
             before += session.size();
         }
 
-        parts.add(dayOf(date));
+        int playable = 0;
+
+        for (LocalDate day : sessionsIn(date, this.until)) {
+            parts.add(dayOf(day));
+            playable++;
+        }
+
+        if (playable == 0) {
+            // A range holding no session at all -- a single Saturday, say. The
+            // day asked for is played anyway: refusing would leave the reader
+            // with an empty transport and no reason given.
+            parts.add(dayOf(date));
+        }
 
         // Broken into prices so bars are watched forming rather than appearing
         // whole. Seeded by the date, like the day itself: the same session has
@@ -181,6 +211,30 @@ public final class ReplaySession {
         return days;
     }
 
+    /**
+     * @return the trading days from one date to another, inclusive
+     *
+     * <p>Capped, so a mistyped year asks for two hundred and fifty sessions
+     * rather than sixty thousand. Weekends are skipped rather than generated and
+     * hidden: an empty Saturday in the middle would put a boundary in the
+     * concatenation that no bar lands on.</p>
+     */
+    private static List<LocalDate> sessionsIn(LocalDate from, LocalDate to) {
+        List<LocalDate> days = new ArrayList<>();
+
+        for (LocalDate walking = from;
+                !walking.isAfter(to) && days.size() < MOST_SESSIONS;
+                walking = walking.plusDays(1)) {
+
+            if (walking.getDayOfWeek() != java.time.DayOfWeek.SATURDAY
+                    && walking.getDayOfWeek() != java.time.DayOfWeek.SUNDAY) {
+                days.add(walking);
+            }
+        }
+
+        return days;
+    }
+
     private static PriceSeries dayOf(LocalDate day) {
         long first = day.atTime(OPEN).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
 
@@ -193,6 +247,20 @@ public final class ReplaySession {
 
     public LocalDate date() {
         return date;
+    }
+
+    public LocalDate until() {
+        return until;
+    }
+
+    /** @return true when more than one session is being played */
+    public boolean isRange() {
+        return !until.equals(date);
+    }
+
+    /** @return the range as the chart title writes it */
+    public String rangeText() {
+        return isRange() ? date + " a " + until : date.toString();
     }
 
     /** @return the series to hand a chart; it grows as the clock runs */
@@ -267,15 +335,28 @@ public final class ReplaySession {
         return live.progress();
     }
 
-    /** @return the session clock, as the reader would have seen it that day */
+    /**
+     * @return the session clock, as the reader would have seen it at the time
+     *
+     * <p>The date comes along only when more than one session is being played.
+     * On a single day it would be the same six characters all the way through,
+     * taking room from the one part that moves.</p>
+     */
     public String clockText() {
-        return LocalTime.ofInstant(Instant.ofEpochMilli(live.clock()), ZoneId.systemDefault())
-                .format(CLOCK);
+        java.time.ZonedDateTime at =
+                Instant.ofEpochMilli(live.clock()).atZone(ZoneId.systemDefault());
+
+        return isRange() ? at.format(DAY_AND_CLOCK) : at.toLocalTime().format(CLOCK);
     }
 
-    /** @return when the session ends, so the transport can show where it is going */
+    /** @return where the replay is going, so the transport shows the far end */
     public String endText() {
-        return OPEN.plusMinutes(MINUTES - 1L).format(DateTimeFormatter.ofPattern("HH:mm"));
+        if (!isRange()) {
+            return OPEN.plusMinutes(MINUTES - 1L).format(DateTimeFormatter.ofPattern("HH:mm"));
+        }
+
+        return until.format(DateTimeFormatter.ofPattern("dd/MM"))
+                + " " + OPEN.plusMinutes(MINUTES - 1L).format(DateTimeFormatter.ofPattern("HH:mm"));
     }
 
     public void stop() {

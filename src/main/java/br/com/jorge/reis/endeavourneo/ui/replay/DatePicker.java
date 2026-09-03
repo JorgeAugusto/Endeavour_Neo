@@ -71,6 +71,8 @@ public final class DatePicker extends JPanel {
 
     private transient YearMonth showing;
 
+    private transient Runnable onChange = () -> { };
+
     public DatePicker(LocalDate initial) {
         super(new BorderLayout(2, 0));
 
@@ -95,6 +97,29 @@ public final class DatePicker extends JPanel {
 
     public void setDate(LocalDate date) {
         field.setText(date.format(TYPED));
+    }
+
+    /** @param listener told whenever the date changes, typed or picked */
+    public void onChange(Runnable listener) {
+        this.onChange = listener == null ? () -> { } : listener;
+
+        field.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+
+            @Override
+            public void insertUpdate(javax.swing.event.DocumentEvent e) {
+                onChange.run();
+            }
+
+            @Override
+            public void removeUpdate(javax.swing.event.DocumentEvent e) {
+                onChange.run();
+            }
+
+            @Override
+            public void changedUpdate(javax.swing.event.DocumentEvent e) {
+                onChange.run();
+            }
+        });
     }
 
     public JTextField field() {

@@ -29,6 +29,8 @@ public final class ReplayPreferences {
 
     private static final String HISTORY = "historyDays";
 
+    private static final String WINDOW = "windowDays";
+
     /**
      * Sessions loaded before the one being played.
      *
@@ -43,6 +45,19 @@ public final class ReplayPreferences {
     /** More than this and the chart is folding a quarter of a million bars per frame. */
     public static final int MAX_HISTORY = 250;
 
+    /**
+     * How many days a single replay may span.
+     *
+     * <p>Ten. A replay is watched, and watching is the slow way to look at a
+     * market: ten sessions at sixty times real time is an hour and a half of
+     * sitting there. Wanting more than that is usually wanting a backtest, which
+     * is a different tool and reads years in seconds.</p>
+     */
+    public static final int DEFAULT_WINDOW = 10;
+
+    /** The ceiling on the ceiling, so a typo in preferences cannot ask for a decade. */
+    public static final int MAX_WINDOW = 250;
+
     private ReplayPreferences() {
         throw new AssertionError("Utility class must not be instantiated");
     }
@@ -56,14 +71,23 @@ public final class ReplayPreferences {
      * history, and a daily bar could not be taken apart again.</p>
      */
     public static int historyDays() {
-        return clamp(PREFS.getInt(HISTORY, DEFAULT_HISTORY));
+        return clamp(PREFS.getInt(HISTORY, DEFAULT_HISTORY), MAX_HISTORY);
     }
 
     public static void setHistoryDays(int days) {
-        PREFS.putInt(HISTORY, clamp(days));
+        PREFS.putInt(HISTORY, clamp(days, MAX_HISTORY));
     }
 
-    private static int clamp(int days) {
-        return Math.max(0, Math.min(days, MAX_HISTORY));
+    /** @return the longest stretch a single replay may cover, in days */
+    public static int windowDays() {
+        return Math.max(1, clamp(PREFS.getInt(WINDOW, DEFAULT_WINDOW), MAX_WINDOW));
+    }
+
+    public static void setWindowDays(int days) {
+        PREFS.putInt(WINDOW, Math.max(1, clamp(days, MAX_WINDOW)));
+    }
+
+    private static int clamp(int days, int ceiling) {
+        return Math.max(0, Math.min(days, ceiling));
     }
 }

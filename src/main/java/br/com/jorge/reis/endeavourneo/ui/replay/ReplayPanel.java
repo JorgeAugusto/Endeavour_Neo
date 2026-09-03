@@ -53,6 +53,8 @@ public final class ReplayPanel extends JPanel {
 
     private final DatePicker date = new DatePicker(LocalDate.now().minusDays(1));
 
+    private final DatePicker until = new DatePicker(LocalDate.now().minusDays(1));
+
     private final JLabel chip = new JLabel();
 
     private final JLabel clock = new JLabel("--:--:--");
@@ -103,6 +105,21 @@ public final class ReplayPanel extends JPanel {
         speed.setSelectedItem(1);
         speed.addActionListener(e -> withSession(s -> s.setSpeed((Integer) speed.getSelectedItem())));
 
+        // The end follows the start rather than waiting to be refused: moving
+        // the start past the end is somebody choosing a later day, not somebody
+        // asking for a backwards range.
+        Runnable settle = () -> {
+            LocalDate corrected = keepInWindow(date.date(), until.date(),
+                    ReplayPreferences.windowDays());
+
+            if (corrected != null && !corrected.equals(until.date())) {
+                until.setDate(corrected);
+            }
+        };
+
+        date.onChange(settle);
+        until.onChange(settle);
+
         scrubber.addChangeListener(e -> {
             if (!adjusting && session != null) {
                 session.seekFraction(scrubber.getValue() / 1000.0);
@@ -143,7 +160,9 @@ public final class ReplayPanel extends JPanel {
         left.setLayout(new BoxLayout(left, BoxLayout.Y_AXIS));
         left.add(labelled(Messages.get("replay.instrument"), chip));
         left.add(Box.createVerticalStrut(6));
-        left.add(labelled(Messages.get("replay.date"), date));
+        left.add(labelled(Messages.get("replay.from"), date));
+        left.add(Box.createVerticalStrut(6));
+        left.add(labelled(Messages.get("replay.to"), until));
         left.add(Box.createVerticalStrut(8));
 
         request.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -216,8 +235,49 @@ public final class ReplayPanel extends JPanel {
 
     // ------------------------------------------------------------ the actions
 
+    /**
+     * @param maxDays how long the window may be, counting both ends
+     * @return the end date, brought into range
+     *
+     * <p>Two corrections in one place, because they are the same question asked
+     * from either side: an end BEFORE the start is moved up to it, and an end
+     * too far AFTER is pulled back to the limit. Neither is refused -- both are
+     * somebody dragging a date, not somebody asking for something impossible,
+     * and a field that quietly settles where it may be is kinder than a dialog
+     * saying no.</p>
+     *
+     * <p>Null when either is unreadable: somebody is still typing, and moving a
+     * field under a cursor is worse than leaving it alone for a moment.</p>
+     */
+    static LocalDate keepInWindow(LocalDate from, LocalDate to, int maxDays) {
+        if (from == null || to == null) {
+            return null;
+        }
+
+        if (to.isBefore(from)) {
+            return from;
+        }
+
+        LocalDate furthest = from.plusDays(Math.max(1, maxDays) - 1L);
+
+        return to.isAfter(furthest) ? furthest : to;
+    }
+
     private void requestDay() {
         LocalDate day = date.date();
+        LocalDate last = until.date();
+
+        if (day != null && last != null && last.isBefore(day)) {
+            // Said where the mistake is rather than in a dialog. A range that
+            // ends before it starts is a typo, not an error worth a window.
+            until.field().setToolTipText(Messages.get("replay.badRange"));
+            until.field().setBackground(new java.awt.Color(255, 235, 230));
+
+            return;
+        }
+
+        until.field().setBackground(javax.swing.UIManager.getColor("TextField.background"));
+        until.field().setToolTipText(null);
 
         if (day == null) {
             // Said in place rather than in a dialog: the field is right there,
@@ -236,7 +296,8 @@ public final class ReplayPanel extends JPanel {
             session.stop();
         }
 
-        session = new ReplaySession("WINFUT", day);
+        session = new ReplaySession("WINFUT", day, last == null ? day : last,
+                ReplayPreferences.historyDays());
 
         session.watch(refresh);
         refresh();

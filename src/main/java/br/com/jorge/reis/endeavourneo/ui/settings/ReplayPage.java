@@ -41,6 +41,9 @@ public final class ReplayPage implements SettingsPage {
     private final JSpinner days = new JSpinner(new SpinnerNumberModel(
             ReplayPreferences.DEFAULT_HISTORY, 0, ReplayPreferences.MAX_HISTORY, 5));
 
+    private final JSpinner window = new JSpinner(new SpinnerNumberModel(
+            ReplayPreferences.DEFAULT_WINDOW, 1, ReplayPreferences.MAX_WINDOW, 1));
+
     public ReplayPage() {
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
 
@@ -57,8 +60,23 @@ public final class ReplayPage implements SettingsPage {
         hint.setBorder(BorderFactory.createEmptyBorder(4, 4, 8, 0));
         hint.setEnabled(false);
 
+        JPanel windowRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+
+        windowRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+        windowRow.add(new JLabel(Messages.get("settings.replay.window")));
+        windowRow.add(window);
+        windowRow.add(new JLabel(Messages.get("settings.replay.windowDays")));
+
+        JLabel windowHint = new JLabel(Messages.get("settings.replay.window.hint"));
+
+        windowHint.setAlignmentX(Component.LEFT_ALIGNMENT);
+        windowHint.setBorder(BorderFactory.createEmptyBorder(4, 4, 8, 0));
+        windowHint.setEnabled(false);
+
         panel.add(row);
         panel.add(hint);
+        panel.add(windowRow);
+        panel.add(windowHint);
         panel.add(Box.createVerticalGlue());
     }
 
@@ -75,10 +93,12 @@ public final class ReplayPage implements SettingsPage {
     @Override
     public void load() {
         days.setValue(ReplayPreferences.historyDays());
+        window.setValue(ReplayPreferences.windowDays());
     }
 
     @Override
     public void apply() {
         ReplayPreferences.setHistoryDays((Integer) days.getValue());
+        ReplayPreferences.setWindowDays((Integer) window.getValue());
     }
 }
