@@ -152,6 +152,13 @@ public final class ChartCanvas extends JComponent {
 
     private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("dd/MM");
 
+    /** The top row on a chart whose bars are days or longer. */
+    private static final DateTimeFormatter DAY_OF_MONTH = DateTimeFormatter.ofPattern("dd");
+
+    /** The band below it, then. */
+    private static final DateTimeFormatter MONTH =
+            DateTimeFormatter.ofPattern("MMM/yy", java.util.Locale.getDefault());
+
     /**
      * The cursor's time tag carries the DATE as well as the clock.
      *
@@ -1323,6 +1330,8 @@ public final class ChartCanvas extends JComponent {
         long previousStep = Long.MIN_VALUE;
         ZonedDateTime previousTime = null;
 
+        boolean byDays = axisSpeaksInDays(viewport);
+
         for (int i = viewport.firstBar(); i < viewport.lastBar() && i < series.size(); i++) {
             ZonedDateTime time = Instant.ofEpochMilli(series.timeAt(i)).atZone(zone);
             long bucket = series.timeAt(i) / (step * 60_000L);
@@ -1339,7 +1348,7 @@ public final class ChartCanvas extends JComponent {
             }
 
             int x = (int) Math.round(viewport.x(i));
-            String text = time.format(CLOCK);
+            String text = time.format(byDays ? DAY_OF_MONTH : CLOCK);
             int width = metrics.stringWidth(text);
 
             // Skip a label that would touch the previous one. Drawing both and
@@ -1399,12 +1408,23 @@ public final class ChartCanvas extends JComponent {
         int limit = Math.min(viewport.lastBar(), series.size());
         int spanStart = viewport.firstBar();
 
+        // One level up from whatever the row above is saying: days under hours,
+        // months under days. A band repeating what the row already says is a
+        // band that costs height and gives nothing.
+        boolean byMonths = axisSpeaksInDays(viewport);
+
         java.time.LocalDate current = null;
 
         for (int i = viewport.firstBar(); i <= limit; i++) {
-            java.time.LocalDate day = i < limit
-                    ? Instant.ofEpochMilli(series.timeAt(i)).atZone(zone).toLocalDate()
-                    : null;
+            java.time.LocalDate day = null;
+
+            if (i < limit) {
+                day = Instant.ofEpochMilli(series.timeAt(i)).atZone(zone).toLocalDate();
+
+                if (byMonths) {
+                    day = day.withDayOfMonth(1);
+                }
+            }
 
             if (current == null) {
                 current = day;
@@ -1416,7 +1436,7 @@ public final class ChartCanvas extends JComponent {
                 continue;
             }
 
-            drawDay(g, metrics, viewport, current, spanStart, i, top);
+            drawDay(g, metrics, viewport, current, spanStart, i, top, byMonths);
 
             if (i < limit) {
                 java.awt.Stroke was = g.getStroke();
@@ -1434,12 +1454,41 @@ public final class ChartCanvas extends JComponent {
         }
     }
 
+    /**
+     * @return whether the axis should speak in days rather than in hours
+     *
+     * <p>Decided from what is ON SCREEN, not from the chosen period. A daily
+     * chart is the obvious case, but a one-minute chart zoomed out to three
+     * months wants dates too, and a renko has no fixed bar length to ask
+     * about.</p>
+     *
+     * <p>The defect this fixes was reported from a daily chart: every bar being
+     * a new day, the top row wrote a clock label for each of them -- a row of
+     * 09:00, 09:03, 09:02, which is the minute the session happened to open and
+     * says nothing -- while the band below, one narrow day per bar, had no room
+     * for a single label and came out blank.</p>
+     */
+    boolean axisSpeaksInDaysFor(Viewport viewport) {
+        return axisSpeaksInDays(viewport);
+    }
+
+    private boolean axisSpeaksInDays(Viewport viewport) {
+        int first = viewport.firstBar();
+        int last = Math.min(viewport.lastBar(), series.size()) - 1;
+
+        if (series == null || last <= first) {
+            return false;
+        }
+
+        return series.timeAt(last) - series.timeAt(first) > 2 * 24 * 60 * 60_000L;
+    }
+
     private void drawDay(Graphics2D g, FontMetrics metrics, Viewport viewport,
-                         java.time.LocalDate day, int from, int to, int top) {
+                         java.time.LocalDate day, int from, int to, int top, boolean asMonth) {
         double left = viewport.x(from) - viewport.barWidth() / 2;
         double right = viewport.x(to - 1) + viewport.barWidth() / 2;
 
-        String text = day.format(DAY);
+        String text = day.format(asMonth ? MONTH : DAY);
         int width = metrics.stringWidth(text);
 
         // A span too narrow for its own label is left blank. Drawing it anyway
