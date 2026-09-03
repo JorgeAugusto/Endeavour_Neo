@@ -227,6 +227,14 @@ public final class MovingAverageDialog extends JDialog {
 
         panel.add(ownPeriod, across);
 
+        // The text goes on BEFORE the field is laid out. It was set afterwards,
+        // and field() freezes the height it measures: an empty button measures
+        // almost nothing, so the control came out a flat sliver with its label
+        // spilling out of it.
+        ownPeriod.setSelected(periodCode != null);
+        interpolate.setSelected(average.isInterpolated());
+        refreshPeriod();
+
         field(panel, 2, Messages.get("overlay.ma.scale"), periodButton);
 
         group(panel, 3, Messages.get("overlay.ma.painting"));
@@ -241,8 +249,6 @@ public final class MovingAverageDialog extends JDialog {
 
         panel.add(interpolate, last);
 
-        ownPeriod.setSelected(periodCode != null);
-        interpolate.setSelected(average.isInterpolated());
         ownPeriod.addActionListener(e -> refreshPeriod());
 
         periodButton.addActionListener(e -> {
@@ -254,8 +260,6 @@ public final class MovingAverageDialog extends JDialog {
                 refreshPeriod();
             }
         });
-
-        refreshPeriod();
 
         return panel;
     }
@@ -327,7 +331,14 @@ public final class MovingAverageDialog extends JDialog {
         at.anchor = GridBagConstraints.WEST;
         at.insets = new Insets(3, 0, 3, 0);
 
-        editor.setPreferredSize(new Dimension(150, editor.getPreferredSize().height));
+        // Never shorter than a text field would be. A component measured before
+        // it has any content reports a height of almost nothing, and freezing
+        // that is how a control ends up as a sliver -- which is exactly what
+        // happened to the period button.
+        int floor = new javax.swing.JTextField("X").getPreferredSize().height;
+
+        editor.setPreferredSize(new Dimension(150,
+                Math.max(editor.getPreferredSize().height, floor)));
         panel.add(editor, at);
     }
 
