@@ -92,7 +92,7 @@ public final class PeriodCatalog {
         // be more direct and would stop matching what the reader types.
         choices.add(new Choice(number + "R",
                 number + " ticks (renko " + trim(number * TICK) + " pts)",
-                Renko.of(number * TICK)));
+                Renko.of(number * TICK).withForming(true)));
 
         if (number <= 60) {
             choices.add(new Choice(number + "D",
@@ -115,7 +115,7 @@ public final class PeriodCatalog {
         for (int ticks : new int[]{2, 3, 4, 5, 6}) {
             choices.add(new Choice(ticks + "R",
                     ticks + " ticks (renko " + trim(ticks * TICK) + " pts)",
-                    Renko.of(ticks * TICK)));
+                    Renko.of(ticks * TICK).withForming(true)));
         }
 
         return choices;

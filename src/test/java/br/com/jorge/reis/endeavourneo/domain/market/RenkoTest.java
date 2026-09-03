@@ -251,11 +251,51 @@ class RenkoTest {
     }
 
     @Test
+    @DisplayName("the brick being built is off unless asked for")
+    void formingIsOptOut() {
+        // Off by default because a partial brick is NOT a brick: it grows,
+        // shrinks and can vanish, and a backtest counting bricks must not
+        // count it as one. The chart asks for it; measurement does not.
+        PriceSeries measured = Renko.of(10).apply(closes(100, 110, 113));
+        PriceSeries drawn = Renko.of(10).withForming(true).apply(closes(100, 110, 113));
+
+        assertEquals(1, measured.size());
+        assertEquals(2, drawn.size(), "the brick under construction was not drawn");
+
+        // And the completed brick is the same one either way.
+        assertEquals(measured.closeAt(0), drawn.closeAt(0));
+    }
+
+    @Test
+    @DisplayName("the brick being built runs from the last level to the price now")
+    void formingRunsFromTheAnchor() {
+        // This is the only thing on a renko chart that moves. Without it,
+        // nothing changes between one brick and the next and a replay looks
+        // frozen -- measured at 0,5% of frames against a candle chart's 1,7%.
+        PriceSeries drawn = Renko.of(10).withForming(true).apply(closes(100, 110, 116));
+
+        assertEquals(110.0, drawn.openAt(1), "it must start where the last brick ended");
+        assertEquals(116.0, drawn.closeAt(1), "it must end at the price right now");
+    }
+
+    @Test
+    @DisplayName("price back on the level leaves nothing under construction")
+    void nothingToBuildIsNotDrawn() {
+        // A partial brick of no height would be a line on the chart meaning
+        // nothing, appearing and vanishing as price crossed the level.
+        assertEquals(1, Renko.of(10).withForming(true).apply(closes(100, 110)).size());
+    }
+
+    @Test
     @DisplayName("tails are on unless asked otherwise, and the switch says which")
     void tailsAreOnByDefault() {
         assertTrue(Renko.of(10).hasWicks());
         assertTrue(new Renko(10, 2).hasWicks());
         assertTrue(Renko.of(10).withWicks(false).hasWicks() == false);
+
+        // The two switches are independent: changing one must not clear the other.
+        assertTrue(Renko.of(10).withForming(true).withWicks(false).hasForming());
+        assertTrue(Renko.of(10).withWicks(false).withForming(true).hasWicks() == false);
         assertEquals("10 renko", Renko.of(10).label());
         assertEquals("10 renko sem calda", Renko.of(10).withWicks(false).label());
     }
