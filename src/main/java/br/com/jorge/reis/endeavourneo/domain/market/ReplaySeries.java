@@ -18,81 +18,203 @@
 package br.com.jorge.reis.endeavourneo.domain.market;
 
 /**
- * A day, revealed one bar at a time.
+ * A day, arriving one price at a time.
  *
  * <p>The whole day is already in memory — it happened years ago — and this
  * decides how much of it exists <b>as far as anything reading it can tell</b>.
- * A chart drawing this series sees a market that is still going on, because
- * {@link #size()} answers with the bars revealed so far and nothing else is
- * reachable.</p>
+ * A chart drawing this series sees a market that is still going on.</p>
  *
- * <p><b>That unreachability is the point, and it is why this is a series and not
- * a counter the chart consults.</b> If the future were merely "not drawn", every
- * indicator, every measurement and every strategy would still be able to read
- * it, and the first accidental look would be silent. Here a bar that has not
- * arrived yet is out of bounds, the way a bar tomorrow is out of bounds.</p>
+ * <p><b>The last bar is unfinished, and moves.</b> Its open is fixed the moment
+ * it starts; its high, low and close change with every price that arrives, the
+ * way the last candle on a live screen does. Revealing whole bars instead would
+ * make a one-minute chart jump once a minute and show nothing in between, which
+ * is not what watching a market looks like.</p>
+ *
+ * <p><b>What has not arrived cannot be read</b>, and that is the point. If the
+ * future were merely "not drawn", every indicator, measurement and strategy
+ * could still reach it, and the first accidental look would be silent. Here it
+ * is out of bounds, the way a bar tomorrow is out of bounds.</p>
  *
  * <p>Not thread-safe, and does not need to be: the clock that advances it and
- * the chart that reads it both live on the interface thread. Making it
- * synchronised would put a lock on the paint path for no benefit.</p>
+ * the chart that reads it are both on the interface thread.</p>
  */
 public final class ReplaySeries implements PriceSeries {
 
+    private static final long DEFAULT_BAR_MILLIS = 60_000L;
+
     private final PriceSeries day;
 
-    private int revealed;
+    private final SyntheticTicks ticks;
+
+    /** How much market time one source bar covers. */
+    private final long barMillis;
+
+    /** Bars that have finished forming. */
+    private int completed;
+
+    /** The prices inside the bar being formed, or null when none is. */
+    private double[] path;
+
+    private int cursor;
+
+    private double high;
+
+    private double low;
+
+    private double close;
+
+    /** Market time asked for and not yet spent, so slow speeds still advance. */
+    private long owed;
 
     /**
      * @param day the whole session
-     * @param revealed how many bars have arrived; clamped into the day
+     * @param completed how many bars have already finished
+     * @param ticks how a bar is broken into prices, or null to jump bar by bar
      */
-    public ReplaySeries(PriceSeries day, int revealed) {
+    public ReplaySeries(PriceSeries day, int completed, SyntheticTicks ticks) {
         this.day = day == null ? PriceSeries.empty() : day;
-        this.revealed = clamp(revealed);
+        this.ticks = ticks;
+        this.completed = clamp(completed);
+        this.barMillis = measureBar(this.day);
+    }
+
+    public ReplaySeries(PriceSeries day, int completed) {
+        this(day, completed, null);
     }
 
     /** @param day the whole session, with nothing revealed yet */
     public static ReplaySeries of(PriceSeries day) {
-        return new ReplaySeries(day, 0);
+        return new ReplaySeries(day, 0, null);
     }
 
-    /** @return how many bars the day holds in total, revealed or not */
+    /**
+     * @return how long one bar lasts, read off the data
+     *
+     * <p>From the first two bars rather than asked for: the series knows its own
+     * spacing, and a caller passing the wrong number would make the replay run
+     * at the wrong speed with nothing to show it.</p>
+     */
+    private static long measureBar(PriceSeries day) {
+        if (day.size() < 2) {
+            return DEFAULT_BAR_MILLIS;
+        }
+
+        long gap = day.timeAt(1) - day.timeAt(0);
+
+        return gap > 0 ? gap : DEFAULT_BAR_MILLIS;
+    }
+
     public int total() {
         return day.size();
     }
 
     public int revealed() {
-        return revealed;
+        return size();
     }
 
-    /** @return true once the whole session has been played out */
     public boolean finished() {
-        return revealed >= day.size();
+        return completed >= day.size() && path == null;
     }
+
+    // ------------------------------------------------------------- the clock
 
     /**
-     * @param bars how many more to reveal
-     * @return how many were ACTUALLY revealed, which is fewer at the end
+     * Lets that much market time pass.
      *
-     * <p>The count matters to the caller: a clock that keeps ticking after the
-     * close would leave the play button lit on a session that ended.</p>
+     * @param millis market time, not wall time — the transport scales it
+     *
+     * <p>What is left over is remembered rather than dropped. At one times
+     * speed a frame is forty milliseconds and a price arrives every few seconds;
+     * discarding the remainder would mean nothing ever arrived at all.</p>
+     */
+    public void advanceMarketTime(long millis) {
+        if (ticks == null) {
+            // No tick generator: fall back to whole bars, which is what the
+            // chart got before this existed.
+            advance((int) Math.max(0, millis / barMillis));
+
+            return;
+        }
+
+        owed += Math.max(0L, millis);
+
+        while (owed > 0) {
+            if (path == null && !startForming()) {
+                owed = 0;
+
+                return;
+            }
+
+            long perPrice = Math.max(1L, barMillis / path.length);
+
+            if (owed < perPrice) {
+                return;
+            }
+
+            owed -= perPrice;
+
+            step();
+        }
+    }
+
+    private boolean startForming() {
+        if (completed >= day.size()) {
+            return false;
+        }
+
+        path = ticks.pathFor(day, completed);
+        cursor = 0;
+        high = path[0];
+        low = path[0];
+        close = path[0];
+
+        return true;
+    }
+
+    private void step() {
+        cursor++;
+
+        if (cursor >= path.length) {
+            // The bar is done; it becomes history exactly as it is stored, so
+            // nothing invented survives into the finished chart.
+            completed++;
+            path = null;
+
+            return;
+        }
+
+        double price = path[cursor];
+
+        high = Math.max(high, price);
+        low = Math.min(low, price);
+        close = price;
+    }
+
+    // -------------------------------------------------------- the transport
+
+    /**
+     * @param bars how many more whole bars to reveal
+     * @return how many were actually revealed, which is fewer at the close
      */
     public int advance(int bars) {
-        int before = revealed;
+        int before = size();
 
-        revealed = clamp(revealed + Math.max(0, bars));
+        // Any half-formed bar is dropped: a step is a jump to a bar boundary,
+        // and leaving a partial one behind would make the count disagree with
+        // what is drawn.
+        path = null;
+        owed = 0;
+        completed = clamp(before + Math.max(0, bars));
 
-        return revealed - before;
+        return size() - before;
     }
 
-    /** @param bar where to jump to, for dragging the scrubber */
     public void seek(int bar) {
-        revealed = clamp(bar);
+        path = null;
+        owed = 0;
+        completed = clamp(bar);
     }
 
-    /**
-     * @param fraction 0 for the open, 1 for the close
-     */
     public void seekFraction(double fraction) {
         if (!Double.isFinite(fraction)) {
             return;
@@ -107,10 +229,10 @@ public final class ReplaySeries implements PriceSeries {
             return 0L;
         }
 
-        // The last revealed bar, or the first bar's time before anything has
-        // arrived -- so the clock reads the session's opening time rather than
-        // 1970 while the reader is still deciding whether to press play.
-        return revealed == 0 ? day.timeAt(0) : day.timeAt(revealed - 1);
+        // Before anything arrives, the session's opening time -- not 1970, which
+        // is what a bare zero would render as while the reader decides whether
+        // to press play.
+        return size() == 0 ? day.timeAt(0) : day.timeAt(size() - 1);
     }
 
     private int clamp(int bar) {
@@ -121,7 +243,7 @@ public final class ReplaySeries implements PriceSeries {
 
     @Override
     public int size() {
-        return revealed;
+        return completed + (path == null ? 0 : 1);
     }
 
     @Override
@@ -131,40 +253,55 @@ public final class ReplaySeries implements PriceSeries {
 
     @Override
     public double openAt(int index) {
+        // The open of the bar being formed is fixed the moment it starts, and it
+        // is the stored open: only the other three move.
         return day.openAt(check(index));
     }
 
     @Override
     public double highAt(int index) {
-        return day.highAt(check(index));
+        return forming(index) ? high : day.highAt(check(index));
     }
 
     @Override
     public double lowAt(int index) {
-        return day.lowAt(check(index));
+        return forming(index) ? low : day.lowAt(check(index));
     }
 
     @Override
     public double closeAt(int index) {
-        return day.closeAt(check(index));
+        return forming(index) ? close : day.closeAt(check(index));
     }
 
     @Override
     public double volumeAt(int index) {
-        return day.volumeAt(check(index));
+        if (!forming(index)) {
+            return day.volumeAt(check(index));
+        }
+
+        // The share of the bar's volume that has arrived so far. As made up as
+        // the prices are, and consistent with them: a bar half formed shows
+        // half its trading.
+        double whole = day.volumeAt(completed);
+
+        return Double.isFinite(whole) ? whole * cursor / (double) path.length : Double.NaN;
+    }
+
+    private boolean forming(int index) {
+        return path != null && check(index) == completed;
     }
 
     /**
      * @throws IndexOutOfBoundsException saying the bar has not happened yet
      *
-     * <p>Worth its own message. "Index 300 out of bounds for length 42" sends
-     * the reader looking for a bug in the chart; "bar 300 has not happened yet"
-     * says what it is — something read ahead of the clock.</p>
+     * <p>Worth its own message. "Index 300 out of bounds for length 42" sends the
+     * reader hunting for a bug in the chart; "bar 300 has not happened yet" names
+     * what it is — something read ahead of the clock.</p>
      */
     private int check(int index) {
-        if (index < 0 || index >= revealed) {
+        if (index < 0 || index >= size()) {
             throw new IndexOutOfBoundsException(
-                    "bar " + index + " has not happened yet: " + revealed + " of "
+                    "bar " + index + " has not happened yet: " + size() + " of "
                             + day.size() + " so far");
         }
 

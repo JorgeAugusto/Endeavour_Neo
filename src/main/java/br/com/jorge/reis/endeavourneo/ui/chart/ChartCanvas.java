@@ -200,6 +200,16 @@ public final class ChartCanvas extends JComponent {
 
     private int firstBar;
 
+    /**
+     * Empty bars kept to the right of the last one.
+     *
+     * <p>Chosen by dragging the chart past its own end, and then <b>kept</b> as
+     * bars arrive. Without it the newest candle is pinned against the right
+     * edge, which is where the eye is and where there is no room to see it
+     * form.</p>
+     */
+    private int rightMargin;
+
     private int visibleBars = DEFAULT_VISIBLE_BARS;
 
     private transient Point cursor;
@@ -577,7 +587,7 @@ public final class ChartCanvas extends JComponent {
         }
 
         this.visibleBars = Math.max(1, Math.min(visibleBars, Math.max(1, this.series.size())));
-        this.firstBar = Math.max(0, this.series.size() - visibleBars);
+        this.firstBar = clampFirstBar(this.series.size() - visibleBars + rightMargin);
 
         repaint();
     }
@@ -667,9 +677,23 @@ public final class ChartCanvas extends JComponent {
                 JUMP_SIZE, JUMP_SIZE);
     }
 
-    /** Scrolls back to the newest bars. */
+    /**
+     * @return where the leftmost visible bar may be
+     *
+     * <p>Past the end by up to half a screen, which is what makes room on the
+     * right. More than that and the price would be off the edge; less and there
+     * is no room to watch a bar form.</p>
+     */
+    private int clampFirstBar(int candidate) {
+        int air = Math.max(1, visibleBars / 2);
+        int furthest = Math.max(0, series.size() - visibleBars + air);
+
+        return Math.max(0, Math.min(candidate, furthest));
+    }
+
+    /** Scrolls back to the newest bars, keeping whatever air was left on the right. */
     public void goToEnd() {
-        firstBar = Math.max(0, series.size() - visibleBars);
+        firstBar = clampFirstBar(series.size() - visibleBars + rightMargin);
 
         repaint();
     }
@@ -1579,7 +1603,14 @@ public final class ChartCanvas extends JComponent {
         }
 
         private int clampFirstBar(int candidate) {
-            return Math.max(0, Math.min(candidate, Math.max(0, series.size() - visibleBars)));
+            int clamped = ChartCanvas.this.clampFirstBar(candidate);
+
+            // Remember how much air the reader left, so it survives the next
+            // bar arriving. Zero while scrolled back into history: air is only
+            // air when it is past the end.
+            rightMargin = Math.max(0, clamped + visibleBars - Math.max(1, series.size()));
+
+            return clamped;
         }
     }
 }

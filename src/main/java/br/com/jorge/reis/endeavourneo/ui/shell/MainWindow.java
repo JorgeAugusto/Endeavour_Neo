@@ -398,11 +398,12 @@ public final class MainWindow extends JFrame {
         view.add(item("action.clearConsole", KeyEvent.VK_L, console::clear));
         view.add(item("action.resetLayout", 0, this::defaultLayout));
         view.addSeparator();
-        view.add(item("action.replay", 0, this::openReplay));
-        view.addSeparator();
         view.add(item("action.tileCharts", 0, this::tileCharts));
         view.add(item("action.dockCharts", 0, this::dockCharts));
         view.add(item("action.closeCharts", 0, this::closeCharts));
+
+        JMenu tools = menu("menu.tools");
+        tools.add(item("action.replay", 0, this::openReplay));
 
         JMenu run = menu("menu.run");
         run.add(item("action.sampleJob", 0, this::runSampleJob));
@@ -410,6 +411,7 @@ public final class MainWindow extends JFrame {
 
         bar.add(file);
         bar.add(view);
+        bar.add(tools);
         bar.add(run);
         bar.add(buildWindowMenu());
 

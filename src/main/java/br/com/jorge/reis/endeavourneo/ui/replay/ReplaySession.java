@@ -19,6 +19,7 @@ package br.com.jorge.reis.endeavourneo.ui.replay;
 
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
 import br.com.jorge.reis.endeavourneo.domain.market.ReplaySeries;
+import br.com.jorge.reis.endeavourneo.domain.market.SyntheticTicks;
 import br.com.jorge.reis.endeavourneo.ui.chart.RandomWalkSeries;
 
 import java.time.Instant;
@@ -38,14 +39,35 @@ import javax.swing.Timer;
  * background thread here would buy nothing (advancing a counter is free) and
  * would put every chart's paint path in reach of another thread.</p>
  *
- * <p><b>Speed is bars per second, not a multiplier.</b> "16×" means nothing
- * without knowing the scale; "16 barras por segundo" is the same sentence at
- * every timeframe.</p>
+ * <p><b>Speed is a multiple of real time.</b> At 1× a one-minute bar takes one
+ * minute, because that is what everyone means by a replay. See {@link #SPEEDS}
+ * for why the first version got this wrong.</p>
  */
 public final class ReplaySession {
 
-    /** How many bars a second the transport can run at. */
-    public static final int[] SPEEDS = {1, 2, 4, 8, 16, 32};
+    /**
+     * How much faster than the market the transport can run.
+     *
+     * <p><b>A multiple of real time, not bars per second.</b> The first version
+     * counted bars, on the argument that "16x" says nothing without knowing the
+     * scale. That was wrong about what anybody expects: at 1x a one-minute bar
+     * has to take one minute, and it takes one minute at every scale. Bars per
+     * second was unambiguous and matched nobody's idea of a replay.</p>
+     */
+    public static final int[] SPEEDS = {1, 2, 5, 10, 30, 60, 300};
+
+    /**
+     * How often the clock ticks, in milliseconds of wall time.
+     *
+     * <p>Fixed, and the SPEED decides how much market time each frame carries.
+     * Tying the timer to the speed instead would make a slow replay stutter and
+     * a fast one fire hundreds of times a second for no more movement on
+     * screen.</p>
+     */
+    private static final int FRAME = 40;
+
+    /** The smallest step the instrument moves in; goes with the base one day. */
+    private static final double TICK = 5.0;
 
     private static final DateTimeFormatter CLOCK = DateTimeFormatter.ofPattern("HH:mm:ss");
 
@@ -64,7 +86,7 @@ public final class ReplaySession {
 
     private final Timer timer;
 
-    private int speed = 4;
+    private int speed = 1;
 
     /**
      * @param instrument what is being replayed
@@ -73,9 +95,13 @@ public final class ReplaySession {
     public ReplaySession(String instrument, LocalDate date) {
         this.instrument = instrument;
         this.date = date;
-        this.live = ReplaySeries.of(dayOf(date));
+        // Broken into prices so bars are watched forming rather than appearing
+        // whole. Seeded by the date, like the day itself: the same session has
+        // to replay the same way, wiggles included.
+        this.live = new ReplaySeries(dayOf(date), 0,
+                new SyntheticTicks(TICK, date.toEpochDay()));
 
-        this.timer = new Timer(1000 / speed, e -> tick());
+        this.timer = new Timer(FRAME, e -> tick());
         this.timer.setCoalesce(true);
     }
 
@@ -114,10 +140,10 @@ public final class ReplaySession {
         return speed;
     }
 
-    public void setSpeed(int barsPerSecond) {
-        this.speed = Math.max(1, barsPerSecond);
+    /** @param multiple how many times faster than the market to run */
+    public void setSpeed(int multiple) {
+        this.speed = Math.max(1, multiple);
 
-        timer.setDelay(1000 / this.speed);
         announce();
     }
 
@@ -190,7 +216,9 @@ public final class ReplaySession {
     }
 
     private void tick() {
-        if (live.advance(1) == 0) {
+        live.advanceMarketTime((long) FRAME * speed);
+
+        if (live.finished()) {
             // The day is over. Stopping here rather than letting the timer run
             // on an unchanging series keeps the play button honest.
             timer.stop();

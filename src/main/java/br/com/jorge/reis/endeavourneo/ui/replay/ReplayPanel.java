@@ -27,8 +27,6 @@ import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridLayout;
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
@@ -37,7 +35,6 @@ import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JSlider;
-import javax.swing.JTextField;
 import javax.swing.SwingConstants;
 import javax.swing.TransferHandler;
 
@@ -54,9 +51,7 @@ public final class ReplayPanel extends JPanel {
 
     private static final long serialVersionUID = 1L;
 
-    private static final DateTimeFormatter TYPED = DateTimeFormatter.ofPattern("dd/MM/yyyy");
-
-    private final JTextField date = new JTextField(10);
+    private final DatePicker date = new DatePicker(LocalDate.now().minusDays(1));
 
     private final JLabel chip = new JLabel();
 
@@ -90,8 +85,6 @@ public final class ReplayPanel extends JPanel {
         add(top(), BorderLayout.NORTH);
         add(transport(), BorderLayout.CENTER);
 
-        date.setText(LocalDate.now().minusDays(1).format(TYPED));
-
         request.addActionListener(e -> requestDay());
         play.addActionListener(e -> withSession(ReplaySession::toggle));
         back.addActionListener(e -> withSession(s -> {
@@ -107,7 +100,7 @@ public final class ReplayPanel extends JPanel {
             speed.addItem(each);
         }
 
-        speed.setSelectedItem(4);
+        speed.setSelectedItem(1);
         speed.addActionListener(e -> withSession(s -> s.setSpeed((Integer) speed.getSelectedItem())));
 
         scrubber.addChangeListener(e -> {
@@ -224,21 +217,19 @@ public final class ReplayPanel extends JPanel {
     // ------------------------------------------------------------ the actions
 
     private void requestDay() {
-        LocalDate day;
+        LocalDate day = date.date();
 
-        try {
-            day = LocalDate.parse(date.getText().trim(), TYPED);
-        } catch (DateTimeParseException e) {
+        if (day == null) {
             // Said in place rather than in a dialog: the field is right there,
             // and a dialog to report a typo in a date is a dialog too many.
-            date.setToolTipText(Messages.get("replay.badDate"));
-            date.setBackground(new java.awt.Color(255, 235, 230));
+            date.field().setToolTipText(Messages.get("replay.badDate"));
+            date.field().setBackground(new java.awt.Color(255, 235, 230));
 
             return;
         }
 
-        date.setBackground(javax.swing.UIManager.getColor("TextField.background"));
-        date.setToolTipText(null);
+        date.field().setBackground(javax.swing.UIManager.getColor("TextField.background"));
+        date.field().setToolTipText(null);
 
         if (session != null) {
             session.forget(refresh);

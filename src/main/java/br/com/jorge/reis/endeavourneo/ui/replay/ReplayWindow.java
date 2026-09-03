@@ -34,6 +34,12 @@ import javax.swing.JFrame;
  * <p>It is hidden rather than disposed when closed, so the session survives:
  * closing the transport by mistake in the middle of a replay would otherwise
  * throw away the day and the position in it.</p>
+ *
+ * <p><b>Above everything, and not resizable.</b> It is a transport, not a view:
+ * there is nothing inside it that more room would show more of, and a maximised
+ * one would cover the charts it exists to drive. Fixed size is also what takes
+ * the maximise button away — Swing offers no way to remove that button on its
+ * own.</p>
  */
 public final class ReplayWindow extends JFrame {
 
@@ -47,6 +53,7 @@ public final class ReplayWindow extends JFrame {
         setAlwaysOnTop(true);
 
         pack();
+        setResizable(false);
         setMinimumSize(new Dimension(Math.max(360, getWidth()), getHeight()));
 
         // Beside the main window rather than over it: the charts are where the
