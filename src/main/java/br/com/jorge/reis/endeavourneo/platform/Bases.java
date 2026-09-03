@@ -25,6 +25,7 @@ import java.lang.ref.SoftReference;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -163,10 +164,11 @@ public final class Bases {
     /**
      * Points at a folder without remembering it.
      *
-     * <p>Package-visible for the tests, which must not write into the settings
-     * of whoever runs the suite.</p>
+     * <p>Apart from {@link #setFolder}, which decides and persists. This one is
+     * for looking: a settings page previewing another folder, and the tests,
+     * which must not write into the settings of whoever runs the suite.</p>
      */
-    static void useFolder(Path folder) {
+    public static void useFolderForTest(Path folder) {
         Bases.folder = folder;
 
         LOADED.clear();
@@ -204,6 +206,97 @@ public final class Bases {
     /** @return the bases in the current folder, by name, sorted */
     public static List<String> names() {
         return namesIn(folder());
+    }
+
+    private static final String ROLES_KEY = "data.roles";
+
+    /**
+     * What each base is FOR, which is the thing that changes a decision.
+     *
+     * <p>Not derivable from the file: two bases of the same instrument, the
+     * same scale and the same format can have opposite roles. {@code winn} is
+     * where every hypothesis was mined, so no number from it proves anything on
+     * its own; {@code winfut} covers the years those hypotheses never saw, and
+     * is what decides. Opening the wrong one by accident is the expensive
+     * mistake this label exists to prevent.</p>
+     *
+     * <p>A setting, so the roles move as the work does — the merged base is
+     * about to be cut into segments, and the roles will follow them.</p>
+     */
+    private static final String ROLES_BY_DEFAULT =
+            "winn-1m=search,winfut-1m=test,winfull-1m=merged";
+
+    /** @return the role of each base, by name; a base may have none */
+    public static Map<String, String> roles() {
+        Map<String, String> roles = new LinkedHashMap<>();
+
+        for (String each : Settings.settings().get(ROLES_KEY, ROLES_BY_DEFAULT).split(",")) {
+            int equals = each.indexOf('=');
+
+            if (equals > 0) {
+                roles.put(each.substring(0, equals).trim(), each.substring(equals + 1).trim());
+            }
+        }
+
+        return roles;
+    }
+
+    /** @return the role of that base, or null when it has none */
+    public static String roleOf(String name) {
+        return roles().get(name);
+    }
+
+    private static final String GROUPS_KEY = "data.groups";
+
+    /**
+     * Which market each base belongs to.
+     *
+     * <p><b>Not derivable from the name,</b> and the first version of this
+     * tried: it took the text up to the first dash, which makes {@code winn},
+     * {@code winfut} and {@code winfull} three different markets when they are
+     * three exports of one. The test caught it. So it is stated, and a base
+     * nobody stated falls back to that prefix — which is right for a name like
+     * {@code ouro-1m} and harmless for anything else.</p>
+     */
+    private static final String GROUPS_BY_DEFAULT =
+            "winn-1m=win,winfut-1m=win,winfull-1m=win,win-1m=win,"
+                    + "btcusdt-1m=btcusdt,btcusdt-1m-1y=btcusdt";
+
+    /** @return which market each base belongs to, by name */
+    public static Map<String, String> groups() {
+        Map<String, String> groups = new LinkedHashMap<>();
+
+        for (String each : Settings.settings().get(GROUPS_KEY, GROUPS_BY_DEFAULT).split(",")) {
+            int equals = each.indexOf('=');
+
+            if (equals > 0) {
+                groups.put(each.substring(0, equals).trim(), each.substring(equals + 1).trim());
+            }
+        }
+
+        return groups;
+    }
+
+    /**
+     * @return the market a base belongs to
+     *
+     * <p>What lets the tree put the exports of one market together instead of
+     * listing five files flat.</p>
+     */
+    public static String groupOf(String name) {
+        if (name == null) {
+            return "";
+        }
+
+        String stated = groups().get(name);
+
+        if (stated != null) {
+            return stated;
+        }
+
+        int dash = name.indexOf('-');
+
+        return dash > 0 ? name.substring(0, dash) : name;
     }
 
     /** @return the names not offered, which the reader may change */

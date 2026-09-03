@@ -79,6 +79,25 @@ public final class Messages {
     }
 
     /**
+     * @param key the key in the bundle
+     * @param fallback what to show when the bundle has no such key
+     * @return the text, or the fallback
+     *
+     * <p>For text built from DATA rather than from the interface. A missing
+     * interface label showing as {@code !key!} is right — it is a defect and
+     * has to be seen. A base the reader added yesterday having no translated
+     * group name is not a defect, and shouting about it would make the tree
+     * unreadable for a file that is perfectly fine.</p>
+     */
+    public static String orElse(String key, String fallback) {
+        try {
+            return bundle.getString(key);
+        } catch (MissingResourceException e) {
+            return fallback;
+        }
+    }
+
+    /**
      * @param key the base key; the mnemonic is read from {@code key + ".mnemonic"}
      * @return the key code for the underlined letter, or 0 when unset
      */

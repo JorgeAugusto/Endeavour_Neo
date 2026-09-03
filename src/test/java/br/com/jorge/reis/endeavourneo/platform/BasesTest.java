@@ -45,7 +45,7 @@ class BasesTest {
 
     @AfterEach
     void stopPointingAtTheTemporaryFolder() {
-        Bases.useFolder(null);
+        Bases.useFolderForTest(null);
         Bases.forget();
     }
 
@@ -76,7 +76,7 @@ class BasesTest {
         Files.write(folder.resolve("broken.bin"), "not a base either, but named like one"
                 .getBytes(StandardCharsets.UTF_8));
 
-        Bases.useFolder(folder);
+        Bases.useFolderForTest(folder);
 
         assertEquals(List.of("winfut-1m", "winn-1m"), Bases.names(),
                 "a file that is not a base must not be offered as one");
@@ -88,7 +88,7 @@ class BasesTest {
         // Several windows on one instrument is the ordinary case, and reading
         // thirty megabytes for each of them is not.
         base(folder, "winn-1m", 136_000);
-        Bases.useFolder(folder);
+        Bases.useFolderForTest(folder);
 
         PriceSeries first = Bases.open("winn-1m").orElseThrow();
         PriceSeries again = Bases.open("winn-1m").orElseThrow();
@@ -101,7 +101,7 @@ class BasesTest {
     @DisplayName("asking for a base that is not there is an answer, not a failure")
     void anAbsentBaseIsEmpty(@TempDir Path folder) throws IOException {
         base(folder, "winn-1m", 136_000);
-        Bases.useFolder(folder);
+        Bases.useFolderForTest(folder);
 
         Optional<PriceSeries> missing = Bases.open("does-not-exist");
 
@@ -119,7 +119,7 @@ class BasesTest {
         // taken on the wrong base by accident.
         base(folder, "winn-1m", 136_000);
         base(folder, "win-1m", 130_000);
-        Bases.useFolder(folder);
+        Bases.useFolderForTest(folder);
 
         assertEquals(List.of("winn-1m"), Bases.names(),
                 "the retired base was offered in the listing");
@@ -138,7 +138,7 @@ class BasesTest {
     void theDefaultIsTheSearchBase(@TempDir Path folder) throws IOException {
         base(folder, "btcusdt-1m", 60_000);
         base(folder, "winn-1m", 136_000);
-        Bases.useFolder(folder);
+        Bases.useFolderForTest(folder);
 
         assertEquals("winn-1m", Bases.defaultName(),
                 "the same default the other program uses, so both show the same prices");
@@ -147,7 +147,7 @@ class BasesTest {
     @Test
     @DisplayName("with no base at all, the default still names something")
     void theDefaultSurvivesAnEmptyFolder(@TempDir Path folder) {
-        Bases.useFolder(folder);
+        Bases.useFolderForTest(folder);
 
         assertTrue(Bases.names().isEmpty());
         assertEquals("winn-1m", Bases.defaultName());
