@@ -51,8 +51,15 @@ class OverlayCatalogTest {
             assertNotNull(overlay, kind.nameKey() + " built nothing");
             assertEquals(kind.defaults(), overlay.parameters(),
                     kind.nameKey() + " ignored the parameters it was given");
-            assertEquals(kind.defaults().size(), overlay.colours().size(),
-                    kind.nameKey() + " has a colour count that does not match its lines");
+            // One colour per LINE, which is what the canvas walks: it draws
+            // colours().size() polylines and reads that many values out of
+            // valueAt. The first version of this compared against the number of
+            // PARAMETERS, which was the same number only for as long as every
+            // indicator here was a single line with a single period. Bollinger
+            // bands take one parameter and draw three lines, and the old
+            // assertion called that a defect.
+            assertEquals(overlay.colours().size(), overlay.valueAt(0).length,
+                    kind.nameKey() + " draws a line it has no colour for, or the reverse");
         }
     }
 

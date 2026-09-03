@@ -64,7 +64,13 @@ public final class OverlayCatalog {
 
     private static final List<Kind> KINDS = List.of(
             new Kind("overlay.movingAverage", List.of(9), 1, 2_000,
-                    br.com.jorge.reis.endeavourneo.ui.chart.overlay.MovingAverage::new));
+                    br.com.jorge.reis.endeavourneo.ui.chart.overlay.MovingAverage::new),
+            // Period only. The deviation is a setting of the dialog, not a
+            // parameter in the legend's sense -- it can be 2,5, which does not
+            // survive a list of integers, and the reference product titles the
+            // indicator "[20]" for the same reason.
+            new Kind("overlay.bollinger", List.of(20), 1, 2_000,
+                    br.com.jorge.reis.endeavourneo.ui.chart.overlay.BollingerBands::new));
 
     private OverlayCatalog() {
         throw new AssertionError("Utility class must not be instantiated");

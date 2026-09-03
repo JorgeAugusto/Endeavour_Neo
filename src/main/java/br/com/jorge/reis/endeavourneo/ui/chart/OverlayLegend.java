@@ -441,6 +441,21 @@ public final class OverlayLegend extends JComponent {
                 return;
             }
 
+            // The bands have more still: two deviations, a middle line with its
+            // own pen, and a shading between them.
+            if (overlay instanceof br.com.jorge.reis.endeavourneo.ui.chart.overlay
+                    .BollingerBands bands) {
+
+                if (BollingerBandsDialog.edit(owner, bands) != null) {
+                    bands.calculate(canvas.series());
+
+                    canvas.repaint();
+                    canvas.overlaysChanged();
+                }
+
+                return;
+            }
+
             Overlay replacement = InsertOverlayDialog.edit(owner, overlay);
 
             if (replacement != null) {

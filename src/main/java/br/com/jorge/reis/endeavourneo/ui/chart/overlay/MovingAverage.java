@@ -346,84 +346,21 @@ public final class MovingAverage implements Overlay {
 
         computeOver(coarse, slow);
 
-        int closed = -1;
-
-        for (int i = 0; i < values.length; i++) {
-            // Advance while the NEXT coarse bar has already begun -- which is
-            // what makes the one before it closed.
-            while (closed + 1 < coarse.size() - 1
-                    && coarse.timeAt(closed + 2) <= series.timeAt(i)) {
-                closed++;
-            }
-
-            if (closed < 0 && coarse.size() > 1 && coarse.timeAt(1) <= series.timeAt(i)) {
-                closed = 0;
-            }
-
-            values[i] = closed < 0 ? Double.NaN : slow[closed];
-        }
+        // The rule itself lives in OwnScale, and in one place only: a second
+        // copy of "the last CLOSED coarse bar" is a second chance to write the
+        // version that reads the future.
+        OwnScale.map(series, coarse, slow, values);
 
         if (interpolate) {
-            smooth(series, coarse, slow);
+            OwnScale.smooth(series, coarse, slow, values);
         }
     }
 
-    /**
-     * Draws a slope between the closed coarse points instead of a staircase.
-     *
-     * <p>Only between points that have both closed. Sloping towards the coarse
-     * bar still forming would put tomorrow's number into today's line, which is
-     * the very thing the mapping above exists to avoid.</p>
-     */
-    private void smooth(PriceSeries series, PriceSeries coarse, double[] slow) {
-        for (int i = 0; i < values.length; i++) {
-            int closed = indexOfClosed(series, coarse, i);
 
-            if (closed < 1 || !Double.isFinite(slow[closed]) || !Double.isFinite(slow[closed - 1])) {
-                continue;
-            }
-
-            long from = coarse.timeAt(closed);
-            long to = closed + 1 < coarse.size() ? coarse.timeAt(closed + 1) : from;
-            long span = to - from;
-
-            if (span <= 0) {
-                continue;
-            }
-
-            double along = Math.max(0.0, Math.min(1.0, (series.timeAt(i) - from) / (double) span));
-
-            values[i] = slow[closed - 1] + (slow[closed] - slow[closed - 1]) * along;
-        }
-    }
-
-    /** @return the last coarse bar closed by the time that bar opened, or -1 */
-    private static int indexOfClosed(PriceSeries series, PriceSeries coarse, int bar) {
-        long when = series.timeAt(bar);
-        int low = 0;
-        int high = coarse.size() - 1;
-        int found = -1;
-
-        while (low <= high) {
-            int middle = (low + high) >>> 1;
-
-            if (middle + 1 < coarse.size() && coarse.timeAt(middle + 1) <= when) {
-                found = middle;
-                low = middle + 1;
-            } else {
-                high = middle - 1;
-            }
-        }
-
-        return found;
-    }
 
     /** @return the aggregation named by {@link #ownPeriod}, or null when unknown */
     private br.com.jorge.reis.endeavourneo.domain.market.Aggregation scaleOf() {
-        br.com.jorge.reis.endeavourneo.ui.chart.PeriodCatalog.Choice choice =
-                br.com.jorge.reis.endeavourneo.ui.chart.PeriodCatalog.byCode(ownPeriod);
-
-        return choice == null ? null : choice.aggregation();
+        return OwnScale.of(ownPeriod);
     }
 
     private double priceAt(PriceSeries series, int bar) {

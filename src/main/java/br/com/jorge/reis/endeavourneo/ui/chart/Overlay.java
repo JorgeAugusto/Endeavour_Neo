@@ -87,6 +87,25 @@ public interface Overlay {
      * appearance says nothing. One and a bit pixels, solid, rounded -- what
      * every line here was before any of them could be configured.</p>
      */
+    /**
+     * Paints anything that is an AREA rather than a line, under the lines.
+     *
+     * <p>Empty by default, because almost every indicator here IS its lines and
+     * the canvas draws those from {@link #valueAt}. Bollinger bands are the
+     * exception: the shading between the two bands cannot be said as a
+     * polyline, and letting the indicator paint it is smaller than teaching the
+     * canvas about a kind of indicator it otherwise knows nothing about.</p>
+     *
+     * <p>Under, not over: whatever this paints is a background for the lines,
+     * and painting it afterwards would hide them.</p>
+     *
+     * @param from the first visible bar
+     * @param to one past the last visible bar
+     */
+    default void paintUnder(java.awt.Graphics2D g, Viewport viewport, int from, int to) {
+        // Nothing. An indicator that is only lines has no area to paint.
+    }
+
     default java.awt.Stroke stroke() {
         return new java.awt.BasicStroke(1.4f, java.awt.BasicStroke.CAP_ROUND,
                 java.awt.BasicStroke.JOIN_ROUND);

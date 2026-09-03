@@ -1,0 +1,289 @@
+/*
+ * Endeavour Neo -- a desktop application shell in Swing.
+ * Copyright (C) 2026  Jorge Reis
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, see <https://www.gnu.org/licenses/>.
+ */
+package br.com.jorge.reis.endeavourneo.ui.chart.overlay;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
+
+import java.awt.Color;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+/**
+ * The bands, checked against numbers worked out by hand.
+ */
+@DisplayName("Bollinger bands")
+class BollingerBandsTest {
+
+    private static final ZoneId ZONE = ZoneId.systemDefault();
+
+    /** A series whose closes are the numbers given, one minute apart. */
+    private static PriceSeries closes(double... values) {
+        return new PriceSeries() {
+
+            @Override
+            public int size() {
+                return values.length;
+            }
+
+            @Override
+            public long timeAt(int index) {
+                return LocalDateTime.of(2026, 9, 2, 9, 0).plusMinutes(index)
+                        .atZone(ZONE).toInstant().toEpochMilli();
+            }
+
+            @Override
+            public double openAt(int index) {
+                return values[index];
+            }
+
+            @Override
+            public double highAt(int index) {
+                return values[index];
+            }
+
+            @Override
+            public double lowAt(int index) {
+                return values[index];
+            }
+
+            @Override
+            public double closeAt(int index) {
+                return values[index];
+            }
+        };
+    }
+
+    @Test
+    @DisplayName("the bands sit a whole number of deviations from the middle")
+    void theBandsAreWhereTheArithmeticSays() {
+        // Four closes: 2, 4, 4, 6. Mean 4. Deviations -2, 0, 0, 2, so the
+        // squares are 4, 0, 0, 4 and the POPULATION deviation is sqrt(8/4) =
+        // sqrt(2). Chosen so the answer is a number that can be checked by
+        // hand, and so that the sample deviation -- sqrt(8/3) = 1,633 -- is
+        // clearly different from it.
+        BollingerBands bands = new BollingerBands(4);
+
+        bands.calculate(closes(2, 4, 4, 6));
+
+        double[] row = bands.valueAt(3);
+        double expected = Math.sqrt(2.0);
+
+        assertEquals(4.0, row[1], 1e-9, "the middle is not the mean of the window");
+        assertEquals(4.0 + 2 * expected, row[0], 1e-9);
+        assertEquals(4.0 - 2 * expected, row[2], 1e-9);
+
+        // And not the sample deviation, which is the other convention.
+        assertFalse(Math.abs(row[0] - (4.0 + 2 * Math.sqrt(8.0 / 3.0))) < 1e-9,
+                "the bands were built from the sample deviation, not the population one");
+    }
+
+    @Test
+    @DisplayName("the two deviations are separate settings")
+    void eachSideHasItsOwnWidth() {
+        BollingerBands bands = new BollingerBands(4);
+
+        bands.setUpperDeviations(2);
+        bands.setLowerDeviations(1);
+        bands.calculate(closes(2, 4, 4, 6));
+
+        double[] row = bands.valueAt(3);
+        double expected = Math.sqrt(2.0);
+
+        assertEquals(4.0 + 2 * expected, row[0], 1e-9);
+        assertEquals(4.0 - 1 * expected, row[2], 1e-9,
+                "the lower band ignored its own setting and used the upper one");
+    }
+
+    @Test
+    @DisplayName("nothing is drawn until the window is full")
+    void noPartialBands() {
+        // A partial window is at its widest on the left edge, which is exactly
+        // where it would be read as a real burst of volatility.
+        BollingerBands bands = new BollingerBands(4);
+
+        bands.calculate(closes(2, 4, 4, 6));
+
+        for (int bar = 0; bar < 3; bar++) {
+            double[] row = bands.valueAt(bar);
+
+            assertTrue(Double.isNaN(row[0]) && Double.isNaN(row[2]),
+                    "bar " + bar + " drew a band over a window that was not full yet");
+        }
+    }
+
+    @Test
+    @DisplayName("the middle band is exactly the moving average of the same settings")
+    void theMiddleIsTheAverage() {
+        // Both are on the chart, and a middle that is nearly the average is
+        // worse than one that is obviously not: the reader sees two lines where
+        // there should be one and cannot tell which is wrong.
+        PriceSeries series = closes(10, 12, 11, 15, 14, 13, 17, 16);
+
+        BollingerBands bands = new BollingerBands(4);
+        MovingAverage average = new MovingAverage(4);
+
+        bands.setKind(MovingAverage.Kind.EXPONENTIAL);
+        average.setKind(MovingAverage.Kind.EXPONENTIAL);
+
+        bands.calculate(series);
+        average.calculate(series);
+
+        for (int bar = 0; bar < series.size(); bar++) {
+            double mine = bands.valueAt(bar)[1];
+            double theirs = average.valueAt(bar)[0];
+
+            if (Double.isFinite(theirs) && bar >= 3) {
+                assertEquals(theirs, mine, 1e-9, "the middle drifted from the average at " + bar);
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("hiding the middle leaves the bands alone")
+    void hidingTheMiddleKeepsTheBands() {
+        BollingerBands bands = new BollingerBands(4);
+
+        bands.calculate(closes(2, 4, 4, 6));
+
+        double[] shown = bands.valueAt(3);
+
+        bands.setMiddleShown(false);
+
+        double[] hidden = bands.valueAt(3);
+
+        assertTrue(Double.isNaN(hidden[1]), "the middle is still drawn");
+        assertEquals(shown[0], hidden[0], 1e-9, "hiding the middle moved the upper band");
+        assertEquals(shown[2], hidden[2], 1e-9, "hiding the middle moved the lower band");
+    }
+
+    @Test
+    @DisplayName("on its own scale, no band knows anything the market had not said")
+    void ownScaleDoesNotReadTheFuture() {
+        // The trap this project already paid for once: the obvious mapping
+        // takes the coarse bar CONTAINING each bar, and that bar is partly the
+        // future. Said here as a property over rising prices -- an upper band
+        // built from a five-minute bar that has not closed would sit above
+        // anything the market had reached.
+        double[] rising = new double[30];
+
+        for (int i = 0; i < rising.length; i++) {
+            rising[i] = 100 + i;
+        }
+
+        PriceSeries series = closes(rising);
+        BollingerBands bands = new BollingerBands(3);
+
+        bands.setOwnPeriod("5m");
+        bands.setInterpolated(false);
+        bands.calculate(series);
+
+        for (int bar = 0; bar < series.size(); bar++) {
+            double middle = bands.valueAt(bar)[1];
+
+            if (Double.isFinite(middle)) {
+                assertTrue(middle <= series.closeAt(bar),
+                        "bar " + bar + " drew a middle of " + middle
+                                + ", which the market had not reached");
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("every setting survives being written down and read back")
+    void settingsAreRemembered() {
+        BollingerBands set = new BollingerBands(20);
+
+        set.setUpperDeviations(2.5);
+        set.setLowerDeviations(1.5);
+        set.setMiddleShown(false);
+        set.setKind(MovingAverage.Kind.WEIGHTED);
+        set.setSource(MovingAverage.Source.TYPICAL);
+        set.setLine(MovingAverage.Line.DASHED);
+        set.setThickness(3);
+        set.setColour(new Color(0x123456));
+        set.setMiddleLine(MovingAverage.Line.DOTTED);
+        set.setMiddleThickness(2);
+        set.setMiddleColour(new Color(0x654321));
+        set.setFilled(true);
+        set.setFillColour(new Color(0xABCDEF));
+        set.setOpacity(35);
+        set.setOwnPeriod("15m");
+        set.setInterpolated(false);
+
+        BollingerBands read = new BollingerBands(20);
+
+        read.applyAppearance(set.appearance());
+
+        assertEquals(2.5, read.upperDeviations(), 1e-9);
+        assertEquals(1.5, read.lowerDeviations(), 1e-9);
+        assertFalse(read.isMiddleShown());
+        assertEquals(MovingAverage.Kind.WEIGHTED, read.kind());
+        assertEquals(MovingAverage.Source.TYPICAL, read.source());
+        assertEquals(MovingAverage.Line.DASHED, read.line());
+        assertEquals(3, read.thickness());
+        assertEquals(new Color(0x123456), read.chosenColour());
+        assertEquals(MovingAverage.Line.DOTTED, read.middleLine());
+        assertEquals(2, read.middleThickness());
+        assertEquals(new Color(0x654321), read.chosenMiddleColour());
+        assertTrue(read.isFilled());
+        assertEquals(new Color(0xABCDEF), read.chosenFillColour());
+        assertEquals(35, read.opacity());
+        assertEquals("15m", read.ownPeriod());
+        assertFalse(read.isInterpolated());
+    }
+
+    @Test
+    @DisplayName("a layout from an older version keeps the settings it never had")
+    void anOlderLayoutIsNotDestroyed() {
+        // The reason the format is by name and not by position: a file written
+        // before a setting existed must leave that setting at its default, not
+        // shift every other one along by a field.
+        BollingerBands bands = new BollingerBands(20);
+
+        bands.setOpacity(35);
+        bands.applyAppearance("kind=ARITHMETIC;upper=3.0");
+
+        assertEquals(3.0, bands.upperDeviations(), 1e-9);
+        assertEquals(35, bands.opacity(), "a setting absent from the file was reset");
+        assertEquals(2.0, bands.lowerDeviations(), 1e-9);
+    }
+
+    @Test
+    @DisplayName("a deviation that would turn the bands inside out is refused")
+    void anImpossibleDeviationIsClamped() {
+        // Not reachable from the dialog, and entirely reachable from a
+        // hand-edited layout: negative would put the upper band under the lower
+        // one, and NaN would erase both with no message at all.
+        BollingerBands bands = new BollingerBands(4);
+
+        bands.setUpperDeviations(-1);
+        bands.setLowerDeviations(Double.NaN);
+        bands.calculate(closes(2, 4, 4, 6));
+
+        double[] row = bands.valueAt(3);
+
+        assertTrue(row[0] >= row[1], "the upper band went below the middle");
+        assertTrue(Double.isFinite(row[2]), "the lower band became NaN and vanished");
+    }
+}

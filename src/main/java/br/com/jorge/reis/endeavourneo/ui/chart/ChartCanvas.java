@@ -1169,6 +1169,9 @@ public final class ChartCanvas extends JComponent {
                 continue;
             }
 
+            // Areas first, so the lines land on top of whatever they shade.
+            overlay.paintUnder(g, viewport, from, to);
+
             // Each indicator draws with its OWN stroke: thickness and dash are
             // settings now, and a single stroke set for all of them would make
             // every one of those settings do nothing.
