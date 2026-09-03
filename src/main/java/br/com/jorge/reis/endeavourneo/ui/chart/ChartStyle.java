@@ -17,6 +17,8 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.chart;
 
+import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
+
 import java.awt.Graphics2D;
 
 /**

@@ -17,6 +17,8 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.chart;
 
+import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;

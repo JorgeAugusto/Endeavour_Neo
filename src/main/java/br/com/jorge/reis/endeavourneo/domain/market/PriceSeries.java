@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU General Public License along
  * with this program; if not, see <https://www.gnu.org/licenses/>.
  */
-package br.com.jorge.reis.endeavourneo.ui.chart;
+package br.com.jorge.reis.endeavourneo.domain.market;
 
 /**
  * The only thing the chart needs to know about price data.

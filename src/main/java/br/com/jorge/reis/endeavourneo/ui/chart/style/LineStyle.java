@@ -17,9 +17,10 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.chart.style;
 
+import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
+
 import br.com.jorge.reis.endeavourneo.ui.chart.ChartColors;
 import br.com.jorge.reis.endeavourneo.ui.chart.ChartStyle;
-import br.com.jorge.reis.endeavourneo.ui.chart.PriceSeries;
 import br.com.jorge.reis.endeavourneo.ui.chart.Viewport;
 
 import java.awt.BasicStroke;

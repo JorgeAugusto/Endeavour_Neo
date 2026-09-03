@@ -17,8 +17,9 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.chart.overlay;
 
+import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
+
 import br.com.jorge.reis.endeavourneo.ui.chart.Overlay;
-import br.com.jorge.reis.endeavourneo.ui.chart.PriceSeries;
 
 import java.awt.Color;
 import java.util.ArrayList;

@@ -45,6 +45,12 @@ import org.junit.jupiter.api.Test;
  * the compiled file. Reading the {@code .java} also catches an import that is
  * not used yet, which is exactly when a warning is most useful.</p>
  *
+ * <p><b>Two inner layers, with different rules.</b> {@code platform} must not
+ * know the interface. {@code domain} must not know the interface <i>or Swing or
+ * AWT</i> — it is where the backtest engine will live, and an engine that cannot
+ * run without a display cannot be run overnight from a script, which is the
+ * whole reason for keeping it separate.</p>
+ *
  * <p><b>The composition root is exempt, and only it.</b> {@code Main} exists to
  * wire the layers together, so it necessarily touches all of them. Every other
  * class in {@code app} is a platform service and must stay clean. Once the
@@ -56,22 +62,58 @@ class LayerBoundaryTest {
 
     private static final Path SOURCES = Path.of("src", "main", "java");
 
-    private static final String INNER = "br/com/jorge/reis/endeavourneo/platform";
+    private static final String PLATFORM = "br/com/jorge/reis/endeavourneo/platform";
 
-    /** What the inner layer must not import, and why each one is listed. */
+    private static final String DOMAIN = "br/com/jorge/reis/endeavourneo/domain";
+
+    /** What no inner class may import, whichever inner layer it is in. */
     private static final String[] FORBIDDEN = {
             "br.com.jorge.reis.endeavourneo.ui",     // any window, panel or dialog
     };
 
+    /**
+     * What the domain may not import on top of that.
+     *
+     * <p>Swing and AWT and not only our own packages: a domain class importing
+     * {@code java.awt.Color} to describe an indicator compiles, works, and
+     * quietly makes the engine need a display. Java draws no line here, so the
+     * line is drawn here.</p>
+     */
+    private static final String[] FORBIDDEN_IN_DOMAIN = {
+            "javax.swing",
+            "java.awt",
+    };
+
     @Test
-    @DisplayName("no platform class imports the user interface")
-    void platformDoesNotImportUserInterface() throws IOException {
+    @DisplayName("no inner class imports the user interface")
+    void innerLayersDoNotImportUserInterface() throws IOException {
+        List<String> violations = scan(LayerBoundaryTest::isInnerLayer, FORBIDDEN);
+
+        assertTrue(violations.isEmpty(),
+                "an inner class now depends on the user interface, which means it can no "
+                        + "longer be used without a screen:\n    "
+                        + String.join("\n    ", violations));
+    }
+
+    @Test
+    @DisplayName("no domain class imports Swing or AWT")
+    void domainDoesNotImportToolkit() throws IOException {
+        List<String> violations = scan(LayerBoundaryTest::isDomain, FORBIDDEN_IN_DOMAIN);
+
+        assertTrue(violations.isEmpty(),
+                "a domain class now needs a graphics toolkit, so the engine can no longer "
+                        + "run headless overnight:\n    "
+                        + String.join("\n    ", violations));
+    }
+
+    private static List<String> scan(java.util.function.Predicate<Path> where,
+                                     String[] forbidden) throws IOException {
         assumeTrue(Files.isDirectory(SOURCES), "not running from the project root");
 
         List<String> violations = new ArrayList<>();
 
         try (Stream<Path> files = Files.walk(SOURCES)) {
-            for (Path file : files.filter(LayerBoundaryTest::isInnerLayer).toList()) {
+            for (Path file : files.filter(where).toList()) {
                 for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
                     String trimmed = line.strip();
 
@@ -79,8 +121,8 @@ class LayerBoundaryTest {
                         continue;
                     }
 
-                    for (String forbidden : FORBIDDEN) {
-                        if (trimmed.contains(forbidden)) {
+                    for (String banned : forbidden) {
+                        if (trimmed.contains(banned)) {
                             violations.add(SOURCES.relativize(file) + "\n        " + trimmed);
                         }
                     }
@@ -88,10 +130,7 @@ class LayerBoundaryTest {
             }
         }
 
-        assertTrue(violations.isEmpty(),
-                "a platform class now depends on the user interface, which means it can no "
-                        + "longer be used without a screen:\n    "
-                        + String.join("\n    ", violations));
+        return violations;
     }
 
     @Test
@@ -110,11 +149,28 @@ class LayerBoundaryTest {
                     "expected the platform classes and found " + found
                             + "; the scan path is probably wrong");
         }
+
+        try (Stream<Path> files = Files.walk(SOURCES)) {
+            assertTrue(files.filter(LayerBoundaryTest::isDomain).count() >= 1,
+                    "no domain class was scanned; the rule above asserted over nothing");
+        }
     }
 
     private static boolean isInnerLayer(Path file) {
+        return isPlatform(file) || isDomain(file);
+    }
+
+    private static boolean isPlatform(Path file) {
+        return in(file, PLATFORM);
+    }
+
+    private static boolean isDomain(Path file) {
+        return in(file, DOMAIN);
+    }
+
+    private static boolean in(Path file, String layer) {
         String path = file.toString().replace('\\', '/');
 
-        return path.endsWith(".java") && path.contains(INNER);
+        return path.endsWith(".java") && path.contains(layer);
     }
 }
