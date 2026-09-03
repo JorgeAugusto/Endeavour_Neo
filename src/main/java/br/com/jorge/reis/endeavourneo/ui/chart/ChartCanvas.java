@@ -586,6 +586,30 @@ public final class ChartCanvas extends JComponent {
     }
 
     /**
+     * @param show whether renko bricks carry the tail of the move against them
+     *
+     * <p>Does nothing unless the chart is on renko: nothing else has a tail to
+     * show. The button is disabled rather than hidden in that case, so it does
+     * not appear and vanish as the period changes.</p>
+     */
+    public void setWicks(boolean show) {
+        if (period instanceof br.com.jorge.reis.endeavourneo.domain.market.Renko renko) {
+            setPeriod(renko.withWicks(show));
+        }
+    }
+
+    /** @return whether the tails are on, or false when this is not renko */
+    public boolean hasWicks() {
+        return period instanceof br.com.jorge.reis.endeavourneo.domain.market.Renko renko
+                && renko.hasWicks();
+    }
+
+    /** @return whether the chart is on renko at all */
+    public boolean isRenko() {
+        return period instanceof br.com.jorge.reis.endeavourneo.domain.market.Renko;
+    }
+
+    /**
      * Opens the period window, and applies whatever comes back.
      *
      * @param owner the window it should sit over

@@ -123,13 +123,92 @@ class RenkoTest {
         assertEquals(3, bricks.size(), "a one-brick rule turns on every crossing");
     }
 
+    /** Bars given as {open, high, low, close}, one per minute. */
+    private static PriceSeries ohlc(double[]... bars) {
+        return new PriceSeries() {
+
+            @Override
+            public int size() {
+                return bars.length;
+            }
+
+            @Override
+            public long timeAt(int index) {
+                return 1_756_000_000_000L + index * 60_000L;
+            }
+
+            @Override
+            public double openAt(int index) {
+                return bars[index][0];
+            }
+
+            @Override
+            public double highAt(int index) {
+                return bars[index][1];
+            }
+
+            @Override
+            public double lowAt(int index) {
+                return bars[index][2];
+            }
+
+            @Override
+            public double closeAt(int index) {
+                return bars[index][3];
+            }
+        };
+    }
+
     @Test
-    @DisplayName("a brick has no wick: its top and bottom are its own levels")
-    void bricksHaveNoWicks() {
+    @DisplayName("a brick with nothing fought against it has no tail")
+    void noExcursionMeansNoTail() {
         PriceSeries bricks = Renko.of(10).apply(closes(100, 110));
 
         assertEquals(110.0, bricks.highAt(0));
-        assertEquals(100.0, bricks.lowAt(0));
+        assertEquals(100.0, bricks.lowAt(0), "a tail appeared where price never went");
+    }
+
+    @Test
+    @DisplayName("the tail shows how far price went the other way first")
+    void tailShowsTheFightBeforeTheBreak() {
+        // Price dips to 85 before going through 110. The brick still runs
+        // 100 to 110; the tail says the move was fought for fifteen points.
+        PriceSeries bricks = Renko.of(10).apply(ohlc(
+                new double[]{100, 100, 85, 90},
+                new double[]{90, 112, 90, 112}));
+
+        assertTrue(bricks.size() >= 1, "no brick was laid at all");
+
+        double lowestTail = bricks.lowAt(0);
+
+        assertTrue(lowestTail <= 85.0,
+                "the brick forgot the fifteen points price went the other way: " + lowestTail);
+    }
+
+    @Test
+    @DisplayName("turning the tails off leaves the bricks bare")
+    void tailsCanBeTurnedOff() {
+        PriceSeries[] bars = {ohlc(
+                new double[]{100, 100, 85, 90},
+                new double[]{90, 112, 90, 112})};
+
+        PriceSeries bare = new Renko(10, 2, false).apply(bars[0]);
+
+        for (int i = 0; i < bare.size(); i++) {
+            assertEquals(Math.min(bare.openAt(i), bare.closeAt(i)), bare.lowAt(i), 1e-9,
+                    "a bare brick must be exactly its own two levels");
+            assertEquals(Math.max(bare.openAt(i), bare.closeAt(i)), bare.highAt(i), 1e-9);
+        }
+    }
+
+    @Test
+    @DisplayName("tails are on unless asked otherwise, and the switch says which")
+    void tailsAreOnByDefault() {
+        assertTrue(Renko.of(10).hasWicks());
+        assertTrue(new Renko(10, 2).hasWicks());
+        assertTrue(Renko.of(10).withWicks(false).hasWicks() == false);
+        assertEquals("10 renko", Renko.of(10).label());
+        assertEquals("10 renko sem calda", Renko.of(10).withWicks(false).label());
     }
 
     @Test

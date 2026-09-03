@@ -131,6 +131,20 @@ public final class Icons {
         });
     }
 
+    /** A brick with a tail: the renko wick toggle. */
+    public static Icon wick(int size) {
+        return new Painted(size, (g, w, h, colour) -> {
+            g.setColor(colour);
+
+            int mid = w / 2;
+
+            // The tail below and the body above, so the icon reads as the thing
+            // the button turns on rather than as a generic candle.
+            g.drawLine(mid, h - 2, mid, h - 6);
+            g.fillRect(mid - 4, 3, 8, h - 9);
+        });
+    }
+
     public static Icon tile(int size) {
         return new Painted(size, (g, w, h, colour) -> {
             g.setColor(colour);

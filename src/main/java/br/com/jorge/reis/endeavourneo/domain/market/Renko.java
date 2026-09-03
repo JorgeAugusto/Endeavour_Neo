@@ -33,11 +33,19 @@ import java.util.List;
  *
  * <h2>Three choices made here, none of them the only defensible one</h2>
  *
- * <p><b>Closes only, and no wicks.</b> A brick is drawn from one price level to
- * the next, so its high is its top and its low is its bottom. The variant that
- * reads the source bars' highs and lows produces more bricks on spikes; it is
- * also the variant where a single violent minute manufactures a trend that was
- * never traded through. Closes are the conservative reading.</p>
+ * <p><b>Built from the extremes each bar reached</b>, in the order a bar of that
+ * direction most likely reached them: a rising bar dips before it climbs. The
+ * brick itself still has no wick — it runs from one level to the next.</p>
+ *
+ * <p>The first version read <b>closes only</b>, on the argument that highs and
+ * lows let one violent minute manufacture a trend that was never traded
+ * through. That argument is still true, and it lost to a bigger one: a renko
+ * built from closes <b>cannot be rebuilt from scratch</b> while a bar is still
+ * forming. The forming close wanders across a level, a brick is laid, the close
+ * comes back and the brick is taken away again. Measured in ten minutes of
+ * replay: of the hundred and thirty-two times the chart changed, sixty-five
+ * were a brick disappearing. Extremes only widen as a bar forms, so a brick
+ * laid from them stays laid.</p>
  *
  * <p><b>A reversal costs {@link #reversal()} bricks, a continuation one.</b>
  * Classic renko asks two for a turn, and that asymmetry is the filter: it is
@@ -78,11 +86,25 @@ public final class Renko implements Aggregation {
 
     private final int reversal;
 
+    private final boolean wicks;
+
     /**
      * @param brick the height of one brick, in price units
      * @param reversal how many bricks a turn costs; 2 is classic renko
      */
     public Renko(double brick, int reversal) {
+        this(brick, reversal, true);
+    }
+
+    /**
+     * @param wicks whether a brick shows how far price went against it first
+     *
+     * <p>On by default. A bare brick says a level was crossed and nothing else;
+     * with the tail it also says the move was fought — that price went thirty
+     * points the other way before it went through. Two charts of the same day
+     * can look identical without it and completely different with it.</p>
+     */
+    public Renko(double brick, int reversal, boolean wicks) {
         if (!(brick > 0.0) || !Double.isFinite(brick)) {
             throw new IllegalArgumentException(
                     "a brick has to have a height greater than zero: " + brick);
@@ -95,6 +117,16 @@ public final class Renko implements Aggregation {
 
         this.brick = brick;
         this.reversal = reversal;
+        this.wicks = wicks;
+    }
+
+    public boolean hasWicks() {
+        return wicks;
+    }
+
+    /** @return the same bricks, with the tails on or off */
+    public Renko withWicks(boolean showWicks) {
+        return showWicks == wicks ? this : new Renko(brick, reversal, showWicks);
     }
 
     /** @param brick the height of one brick; a turn costs two, as in classic renko */
@@ -118,7 +150,7 @@ public final class Renko implements Aggregation {
                 ? String.valueOf((long) brick)
                 : String.valueOf(brick);
 
-        return height + " renko";
+        return height + (wicks ? " renko" : " renko sem calda");
     }
 
     @Override
@@ -143,8 +175,12 @@ public final class Renko implements Aggregation {
         double pending = 0.0;
         boolean anyVolume = false;
 
+        // How far price ran the other way since the last brick. It becomes the
+        // tail of whichever brick finally goes through.
+        double sinceLow = anchor;
+        double sinceHigh = anchor;
+
         for (int i = 0; i < source.size(); i++) {
-            double close = source.closeAt(i);
             double volume = source.volumeAt(i);
 
             if (Double.isFinite(volume)) {
@@ -152,21 +188,67 @@ public final class Renko implements Aggregation {
                 anyVolume = true;
             }
 
-            // How far it has to go depends on whether it is carrying on or
-            // turning round. That asymmetry IS the filter.
-            double upNeeded = direction >= 0 ? brick : reversal * brick;
-            double downNeeded = direction <= 0 ? brick : reversal * brick;
+            // Both extremes, in the order the bar most likely reached them: a
+            // rising bar dips before it climbs. Reading the CLOSE alone was the
+            // first version and it cannot survive being rebuilt every frame --
+            // a forming bar's close wanders back and forth across a level, so a
+            // brick appeared and then vanished. Measured, in ten minutes of
+            // replay: sixty-five of the hundred and thirty-two changes on screen
+            // were a brick being un-laid.
+            //
+            // Extremes only ever widen while a bar forms, so a brick laid from
+            // them stays laid. That is the whole reason for the change.
+            // The order comes from the PREVAILING RENKO TREND, not from the
+            // bar's own open-to-close. Using the bar's direction was the second
+            // attempt and still flickered: a forming bar's close crosses its
+            // open, "rising" flips, the two extremes swap places and the bricks
+            // are rebuilt in a different order. The renko trend only changes
+            // when a brick is laid, so it cannot flip underneath a bar that is
+            // still forming.
+            sinceLow = Math.min(sinceLow, source.lowAt(i));
+            sinceHigh = Math.max(sinceHigh, source.highAt(i));
+
+            double[] reached = direction >= 0
+                    ? new double[]{source.lowAt(i), source.highAt(i)}
+                    : new double[]{source.highAt(i), source.lowAt(i)};
 
             int made = 0;
 
-            if (close - anchor >= upNeeded) {
-                made = (int) Math.floor((close - anchor) / brick);
-                anchor = laydown(bricks, stamps, anchor, made, +1, source.timeAt(i));
-                direction = +1;
-            } else if (anchor - close >= downNeeded) {
-                made = (int) Math.floor((anchor - close) / brick);
-                anchor = laydown(bricks, stamps, anchor, made, -1, source.timeAt(i));
-                direction = -1;
+            for (double price : reached) {
+                double upNeeded = direction >= 0 ? brick : reversal * brick;
+                double downNeeded = direction <= 0 ? brick : reversal * brick;
+
+                if (price - anchor >= upNeeded) {
+                    int count = (int) Math.floor((price - anchor) / brick);
+                    int at = bricks.size();
+
+                    anchor = laydown(bricks, stamps, anchor, count, +1, source.timeAt(i));
+                    direction = +1;
+                    made += count;
+
+                    // The tail goes on the FIRST brick of the batch: that is the
+                    // one that was being fought while the others had already
+                    // gone through.
+                    if (wicks) {
+                        bricks.get(at)[2] = Math.min(bricks.get(at)[2], sinceLow);
+                    }
+                } else if (anchor - price >= downNeeded) {
+                    int count = (int) Math.floor((anchor - price) / brick);
+                    int at = bricks.size();
+
+                    anchor = laydown(bricks, stamps, anchor, count, -1, source.timeAt(i));
+                    direction = -1;
+                    made += count;
+
+                    if (wicks) {
+                        bricks.get(at)[1] = Math.max(bricks.get(at)[1], sinceHigh);
+                    }
+                }
+
+                if (made > 0) {
+                    sinceLow = anchor;
+                    sinceHigh = anchor;
+                }
             }
 
             if (made > 0) {

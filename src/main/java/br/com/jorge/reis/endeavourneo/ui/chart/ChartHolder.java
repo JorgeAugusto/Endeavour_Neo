@@ -506,6 +506,17 @@ public final class ChartHolder {
                 () -> new LineStyle()));
 
         bar.addSeparator();
+
+        JToggleButton wicks = new JToggleButton(Icons.wick(15));
+
+        wicks.setToolTipText(Messages.get("chart.renkoWicks"));
+        wicks.setFocusable(false);
+        wicks.setSelected(canvas.hasWicks());
+        wicks.setEnabled(canvas.isRenko());
+        wicks.addActionListener(e -> canvas.setWicks(wicks.isSelected()));
+
+        bar.add(wicks);
+        bar.addSeparator();
         bar.add(button("chart.resetScale", Icons.fitVertical(15), canvas::resetStretch));
         bar.addSeparator();
 
