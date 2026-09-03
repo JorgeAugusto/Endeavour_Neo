@@ -60,16 +60,29 @@ class MainWindowTest {
         // The titles have to differ: two windows both called winn-1m cannot be
         // told apart in the Window menu, and their stored geometry would
         // collide, so moving one would move the other on the next launch.
+        // The names asked for are NOT the names asserted. A name that is not a
+        // base on this machine opens the default one and is titled after it, so
+        // writing the expected titles out by hand made this test pass or fail
+        // according to which files happened to be in the reader's data folder
+        // -- which it did, the day the folder came to hold one base instead of
+        // three. What the test is actually about is that four opens give four
+        // charts with four distinct titles.
         onEdt(window -> {
             try {
-                window.open("winn-1m");
-                window.open("winn-1m");
-                window.open("winfut-1m");
-                window.open("winn-1m");
+                List<String> opened = List.of(
+                        window.open("winn-1m"),
+                        window.open("winn-1m"),
+                        window.open("winfut-1m"),
+                        window.open("winn-1m"));
 
-                assertEquals(List.of("winn-1m", "winn-1m (2)", "winfut-1m", "winn-1m (3)"),
-                        window.openCharts(),
+                assertEquals(4, window.openCharts().size(),
                         "opening the same series again did not produce a second chart");
+                assertEquals(opened, window.openCharts(),
+                        "the charts are not the ones that were opened, or not in that order");
+                assertEquals(4, opened.stream().distinct().count(),
+                        "two windows share a title: they cannot be told apart in the Window "
+                                + "menu, and their stored geometry would collide -- moving one "
+                                + "would move the other on the next launch");
             } finally {
                 window.closeCharts();
             }

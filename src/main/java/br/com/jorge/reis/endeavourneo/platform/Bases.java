@@ -179,23 +179,19 @@ public final class Bases {
     /**
      * @return the places to look, in order
      *
-     * <p>The sibling project is on the list because that is where the files
-     * are: the first Endeavour wrote them and still reads them. Naming it here
-     * is not a dependency on that project, it is a reasonable first guess that
-     * the reader can change.</p>
+     * <p><b>The sibling project is deliberately not on this list any more.</b>
+     * It was, while the data lived there and this program was reading someone
+     * else's folder. Since 03/09/2026 this project has its own {@code data},
+     * and leaving the old path as a fallback would mean that a missing folder
+     * here silently opens the uncut base over there — eight years instead of
+     * six, with the months that have no afternoon. A base that is not found
+     * must say so, not be replaced by a different one.</p>
      */
     private static List<Path> candidates() {
         Path here = Path.of(System.getProperty("user.dir", "."));
         List<Path> places = new ArrayList<>();
 
         places.add(here.resolve("data"));
-
-        Path parent = here.getParent();
-
-        if (parent != null) {
-            places.add(parent.resolve("endeavour").resolve("data"));
-        }
-
         places.add(Path.of(System.getProperty("user.home", "."), ".endeavourneo", "data"));
 
         return places;
