@@ -32,11 +32,13 @@ public final class ReplayPreferences {
     /**
      * Sessions loaded before the one being played.
      *
-     * <p>Enough to fill a chart at any scale worth watching: a hundred sessions
-     * of minutes is fifty-odd thousand bars, which is eleven thousand at five
-     * minutes and still a full screen at an hour.</p>
+     * <p>Thirty. A hundred was the first guess and it is more than the eye ever
+     * uses: thirty sessions of minutes is around seventeen thousand bars, which
+     * is still three thousand at five minutes and a month and a half of screen
+     * at an hour — past anything a replay is looking back at. The rest was
+     * folded again on every frame for nobody.</p>
      */
-    public static final int DEFAULT_HISTORY = 100;
+    public static final int DEFAULT_HISTORY = 30;
 
     /** More than this and the chart is folding a quarter of a million bars per frame. */
     public static final int MAX_HISTORY = 250;
