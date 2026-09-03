@@ -1,3 +1,20 @@
+/*
+ * Endeavour Neo -- a desktop application shell in Swing.
+ * Copyright (C) 2026  Jorge Reis
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, see <https://www.gnu.org/licenses/>.
+ */
 package br.com.jorge.reis.endeavourneo.ui.shell;
 
 
@@ -9,6 +26,10 @@ import java.awt.event.KeyEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import br.com.jorge.reis.endeavourneo.platform.JobService;
+import br.com.jorge.reis.endeavourneo.ui.chart.ChartCanvas;
+import br.com.jorge.reis.endeavourneo.ui.chart.RandomWalkSeries;
+import br.com.jorge.reis.endeavourneo.ui.chart.style.CandleStyle;
+import br.com.jorge.reis.endeavourneo.ui.chart.style.LineStyle;
 import br.com.jorge.reis.endeavourneo.platform.Messages;
 import br.com.jorge.reis.endeavourneo.ui.settings.AppearancePage;
 import br.com.jorge.reis.endeavourneo.ui.settings.SettingsDialog;
@@ -149,12 +170,17 @@ public final class MainWindow extends JFrame {
             }
         }
 
-        JPanel blank = new JPanel(new BorderLayout());
-        blank.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
-        blank.add(new JLabel(name), BorderLayout.NORTH);
+        // Every tab is a chart for now, on synthetic bars. Replaced the moment
+        // a real series is wired in -- see RandomWalkSeries.
+        ChartCanvas canvas = new ChartCanvas();
 
-        editors.addTab(name, blank);
-        editors.setSelectedComponent(blank);
+        canvas.setSeries(new RandomWalkSeries(2_000, 135_000.0));
+
+        JPanel holder = new JPanel(new BorderLayout());
+        holder.add(canvas, BorderLayout.CENTER);
+
+        editors.addTab(name, holder);
+        editors.setSelectedComponent(holder);
 
         console.write(Messages.get("console.opened", name));
         status.say(name);
@@ -187,6 +213,9 @@ public final class MainWindow extends JFrame {
         JMenu view = menu("menu.view");
         view.add(item("action.clearConsole", KeyEvent.VK_L, console::clear));
         view.add(item("action.resetLayout", 0, this::defaultLayout));
+        view.addSeparator();
+        view.add(item("chart.style.candle", 0, () -> applyStyle(new CandleStyle())));
+        view.add(item("chart.style.line", 0, () -> applyStyle(new LineStyle())));
 
         JMenu run = menu("menu.run");
         run.add(item("action.sampleJob", 0, this::runSampleJob));
@@ -251,6 +280,23 @@ public final class MainWindow extends JFrame {
             console.write(Messages.get("job.failed", String.valueOf(error)));
             status.say(Messages.get("job.failed", error.getClass().getSimpleName()));
         });
+    }
+
+    /**
+     * Switches the drawing style of the chart in front.
+     *
+     * <p>Only the visible one: a style is a per-chart choice, the way it is in
+     * every terminal. Changing all of them at once would be a preference, and
+     * this is not one.</p>
+     */
+    private void applyStyle(br.com.jorge.reis.endeavourneo.ui.chart.ChartStyle style) {
+        java.awt.Component tab = editors.getSelectedComponent();
+
+        if (tab instanceof JPanel panel && panel.getComponentCount() > 0
+                && panel.getComponent(0) instanceof ChartCanvas canvas) {
+            canvas.setStyle(style);
+            status.say(Messages.get(style.nameKey()));
+        }
     }
 
     private JToolBar buildToolBar() {
