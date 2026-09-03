@@ -79,6 +79,7 @@ public enum Timeframe implements Aggregation {
         this.minutes = minutes;
     }
 
+    @Override
     public String label() {
         return label;
     }

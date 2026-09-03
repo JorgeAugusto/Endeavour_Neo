@@ -54,6 +54,17 @@ public interface Aggregation {
      */
     PriceSeries apply(PriceSeries source);
 
+    /**
+     * @return how this scale is named, in a window title and in the period list
+     *
+     * <p>A default and not a second abstract method, so the interface stays
+     * usable as a lambda -- an aggregation written inline for one measurement
+     * has nothing to call itself.</p>
+     */
+    default String label() {
+        return toString();
+    }
+
     /** @return an aggregation that changes nothing, for "the scale it is stored in" */
     static Aggregation none() {
         return source -> source == null ? PriceSeries.empty() : source;
