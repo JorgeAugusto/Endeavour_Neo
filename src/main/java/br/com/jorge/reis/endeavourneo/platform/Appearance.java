@@ -59,6 +59,14 @@ public final class Appearance {
      * @return what was actually installed, so the console and status bar can say
      */
     public static String install(Theme theme) {
+        // Before anything: drop whatever palette a previous theme registered.
+        // registerCustomDefaultsSource is a permanent, global registration --
+        // nothing about installing a different look and feel undoes it. Without
+        // this, selecting night once turned plain dark into night for the rest
+        // of the session, which is measurable and was measured: dark came back
+        // with night's own background, text and amber accent.
+        forgetPalettes();
+
         if (theme.getThemePackage() != null
                 && !registerPalette(theme.getThemePackage(), theme.getLookAndFeelClass())) {
             // Without the palette the theme would come out identical to plain
@@ -100,6 +108,29 @@ public final class Appearance {
      *
      * @return whether it worked; false when FlatLaf or the file is absent
      */
+    /**
+     * Unregisters every palette any theme may have registered.
+     *
+     * <p>All of them, not just the one being left: the theme being installed
+     * knows what it wants, and it does not know what was there before. Asking
+     * FlatLaf to forget a package it never had is harmless.</p>
+     */
+    private static void forgetPalettes() {
+        try {
+            Class<?> flatLaf = Class.forName(FLATLAF);
+            Method forget = flatLaf.getMethod("unregisterCustomDefaultsSource", String.class);
+
+            for (Theme other : Theme.values()) {
+                if (other.getThemePackage() != null) {
+                    forget.invoke(null, other.getThemePackage());
+                }
+            }
+        } catch (ReflectiveOperationException e) {
+            // No FlatLaf, or a version without the method: then no palette was
+            // registered either, and there is nothing to undo.
+        }
+    }
+
     private static boolean registerPalette(String resourcePackage, String lookAndFeelClass) {
         // FlatLaf looks for a .properties named after the LOOK AND FEEL CLASS.
         // If the file is not there it does not complain: it just uses the
