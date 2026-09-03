@@ -38,6 +38,8 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
+import br.com.jorge.reis.endeavourneo.platform.Messages;
+
 import javax.swing.JComponent;
 
 /**
@@ -208,12 +210,82 @@ public final class ChartCanvas extends JComponent {
         addMouseMotionListener(mouse);
         addMouseWheelListener(mouse);
 
+        installContextMenu();
         installControlToggle();
 
         // Set at construction, not on the first mouse move: until the pointer
         // moves, the canvas would show the parent's cursor and the mode would be
         // invisible.
         setCursor(java.awt.Cursor.getPredefinedCursor(cursorForMode()));
+    }
+
+    /**
+     * The right-click menu: for now, only the indicators.
+     *
+     * <p>Rebuilt on every click rather than kept: the "remove" list changes with
+     * every insertion and removal, and a menu that is only correct if each of
+     * those paths remembered to update it will eventually be wrong.</p>
+     *
+     * <p>The price under the click is not used yet. It is what the order tickets
+     * will need -- right-clicking a level and sending an order there is one
+     * gesture instead of reading the number off the axis and typing it back.</p>
+     */
+    private void installContextMenu() {
+        addMouseListener(new MouseAdapter() {
+
+            @Override
+            public void mousePressed(MouseEvent e) {
+                maybeShow(e);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                maybeShow(e);
+            }
+
+            private void maybeShow(MouseEvent e) {
+                // isPopupTrigger, not "right button": the gesture differs
+                // between systems, and Swing already knows which one it is.
+                if (e.isPopupTrigger()) {
+                    buildContextMenu().show(ChartCanvas.this, e.getX(), e.getY());
+                }
+            }
+        });
+    }
+
+    private javax.swing.JPopupMenu buildContextMenu() {
+        javax.swing.JPopupMenu menu = new javax.swing.JPopupMenu();
+
+        javax.swing.JMenuItem insert =
+                new javax.swing.JMenuItem(Messages.get("overlay.insertItem"));
+
+        insert.addActionListener(e -> {
+            Overlay overlay = InsertOverlayDialog.ask(
+                    javax.swing.SwingUtilities.getWindowAncestor(this));
+
+            addOverlay(overlay);
+        });
+
+        menu.add(insert);
+
+        javax.swing.JMenu remove = new javax.swing.JMenu(Messages.get("overlay.removeItem"));
+
+        // Disabled rather than hidden when there is nothing to remove. Hidden,
+        // the reader looks for it where it is not; disabled, they see it exists
+        // and infer the condition.
+        remove.setEnabled(!overlays.isEmpty());
+
+        for (Overlay overlay : overlays) {
+            javax.swing.JMenuItem entry = new javax.swing.JMenuItem(
+                    Messages.get(overlay.nameKey()) + " " + overlay.parameters());
+
+            entry.addActionListener(e -> removeOverlay(overlay));
+            remove.add(entry);
+        }
+
+        menu.add(remove);
+
+        return menu;
     }
 
     /**
@@ -270,6 +342,13 @@ public final class ChartCanvas extends JComponent {
     }
 
     /** @param newSeries the data to draw; showing the most recent bars */
+    /** Removes an overlay and redraws without it. */
+    public void removeOverlay(Overlay overlay) {
+        if (overlays.remove(overlay)) {
+            repaint();
+        }
+    }
+
     /** @param overlay something drawn on the price; calculated immediately */
     public void addOverlay(Overlay overlay) {
         if (overlay == null) {

@@ -1,0 +1,171 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 1000" width="1120" height="1000"
+     font-family="Segoe UI, Inter, Helvetica, Arial, sans-serif">
+
+  <title>The Profit chart panel — grouped, collapsible, with tabs</title>
+
+  <defs>
+    <style>
+      .frame  { fill: #ffffff; stroke: #3d3a36; stroke-width: 1.6; }
+      .band   { fill: #efece8; stroke: #a9a49d; stroke-width: 1; }
+      .row    { fill: #ffffff; stroke: #ded9d3; stroke-width: 1; }
+      .chip   { fill: #f4f2ef; stroke: #a9a49d; stroke-width: 1; }
+      .sel    { fill: #dde7f3; stroke: #7c9dc0; stroke-width: 1.3; }
+      .lbl    { font-size: 12px; fill: #33302c; }
+      .off    { font-size: 12px; fill: #a9a49d; }
+      .sec    { font-size: 12px; font-weight: 700; fill: #26231f; }
+      .dim    { font-size: 11px; fill: #7d7770; }
+      .mono   { font-family: Consolas, monospace; font-size: 11px; fill: #55504a; }
+      .head   { font-size: 13px; font-weight: 600; fill: #26231f; }
+      .badge  { fill: #b45309; }
+      .badget { font-size: 11px; font-weight: 700; fill: #ffffff; }
+      .note   { font-size: 11.5px; fill: #b45309; }
+      .rule   { stroke: #ded9d3; stroke-width: 1; }
+    </style>
+  </defs>
+
+  <rect width="1120" height="1000" fill="#fbfbfa"/>
+
+  <text x="24" y="30" class="head" font-size="16">O painel do gráfico</text>
+  <text x="24" y="48" class="dim">Nelogica Profit · painel de contexto do gráfico · mapeado para o Endeavour Neo</text>
+
+  <!-- ══════════════════════════════════════════ o painel -->
+  <rect x="24" y="66" width="330" height="906" rx="3" class="frame"/>
+
+  <!-- cabeçalho -->
+  <rect x="24" y="66" width="330" height="30" class="band"/>
+  <rect x="34" y="74" width="14" height="14" rx="2" class="chip"/>
+  <text x="56" y="86" class="sec">Gráfico</text>
+  <text x="258" y="86" class="dim">Conheça ▶</text>
+
+  <!-- abas -->
+  <rect x="24" y="96" width="330" height="58" fill="#ffffff" stroke="#ded9d3"/>
+  <g>
+    <rect x="32"  y="102" width="60" height="46" rx="3" class="chip"/><text x="62"  y="142" class="lbl" text-anchor="middle">Proprie.</text>
+    <rect x="98"  y="102" width="60" height="46" rx="3" class="sel"/> <text x="128" y="142" class="lbl" text-anchor="middle">Chart</text>
+    <rect x="164" y="102" width="60" height="46" rx="3" class="chip"/><text x="194" y="142" class="lbl" text-anchor="middle">Livro</text>
+    <rect x="230" y="102" width="60" height="46" rx="3" class="chip"/><text x="260" y="142" class="lbl" text-anchor="middle">Indicad.</text>
+    <rect x="288" y="102" width="58" height="46" rx="3" class="chip"/><text x="317" y="142" class="lbl" text-anchor="middle">Ajuda</text>
+  </g>
+
+  <!-- ── seção: Gráfico -->
+  <rect x="24" y="154" width="330" height="24" class="band"/>
+  <text x="36" y="171" class="sec">Gráfico</text><text x="336" y="171" class="dim">˄</text>
+  <g class="lbl">
+    <text x="48" y="195" class="off">Gráfico lado a lado</text>
+    <text x="48" y="219">Resetar Gráfico</text>
+    <text x="48" y="243">Visibilidade</text><text x="336" y="243" class="dim">›</text>
+    <text x="48" y="267">Adicionar Alarme…</text>
+  </g>
+
+  <!-- ── seção: Negociação -->
+  <rect x="24" y="280" width="330" height="24" class="band"/>
+  <text x="36" y="297" class="sec">Negociação</text><text x="336" y="297" class="dim">˄</text>
+  <g class="lbl">
+    <text x="48" y="321">Cross Order: Desativado</text><text x="336" y="321" class="dim">›</text>
+    <text x="48" y="345">Boleta de Compra</text>       <text x="216" y="345" class="mono">186.950…</text>
+    <text x="48" y="369">Boleta de Compra Stop</text>  <text x="216" y="369" class="mono">186.950…</text>
+    <text x="48" y="393">Boleta de Venda</text>        <text x="216" y="393" class="mono">186.950…</text>
+    <text x="48" y="417">Boleta de Venda Stop</text>   <text x="216" y="417" class="mono">186.950…</text>
+  </g>
+
+  <!-- ── seção: Ferramentas -->
+  <rect x="24" y="430" width="330" height="24" class="band"/>
+  <text x="36" y="447" class="sec">Ferramentas</text><text x="336" y="447" class="dim">˄</text>
+  <g class="lbl">
+    <text x="48" y="471">Trade Pad</text>
+    <text x="48" y="495">Livro Visual</text>
+    <text x="48" y="519">Volume Profile</text>
+    <text x="48" y="543">Volume Financeiro</text>
+    <text x="48" y="567">Motion Tracker</text>
+  </g>
+
+  <!-- ── seção: Indicadores -->
+  <rect x="24" y="580" width="330" height="24" class="band"/>
+  <text x="36" y="597" class="sec">Indicadores</text><text x="336" y="597" class="dim">˄</text>
+  <g class="lbl">
+    <text x="48" y="621">Inserir indicador de preço</text>
+    <text x="48" y="645">Inserir indicador…</text>
+    <text x="48" y="669">Remover indicador</text><text x="336" y="669" class="dim">›</text>
+    <text x="48" y="693">Inserir regra de coloração…</text>
+    <text x="48" y="717" class="off">Inserir estratégia de execução…</text>
+    <text x="48" y="741">Aplicar regra de coloração no fundo</text><text x="336" y="741" class="dim">›</text>
+  </g>
+
+  <!-- ── seção: Estudos -->
+  <rect x="24" y="754" width="330" height="24" class="band"/>
+  <text x="36" y="771" class="sec">Estudos</text><text x="336" y="771" class="dim">˄</text>
+  <g class="lbl">
+    <text x="48" y="795">Barra de estudos</text>
+    <rect x="30" y="808" width="12" height="12" rx="2" class="sel"/>
+    <text x="48" y="819">Exibir estudos</text>
+    <text x="48" y="843" class="off">Travar todos os estudos</text>
+    <text x="48" y="867">Exclusão de estudos</text><text x="336" y="867" class="dim">›</text>
+  </g>
+
+  <!-- ── seções recolhidas -->
+  <rect x="24" y="880" width="330" height="24" class="band"/>
+  <text x="36" y="897" class="sec">Exportar</text><text x="336" y="897" class="dim">˅</text>
+  <rect x="24" y="904" width="330" height="24" class="band"/>
+  <text x="36" y="921" class="sec">Janelas</text><text x="336" y="921" class="dim">˅</text>
+  <rect x="24" y="928" width="330" height="24" class="band"/>
+  <text x="36" y="945" class="sec">Outros</text><text x="336" y="945" class="dim">˅</text>
+
+  <!-- ══════════════════════════════════════════ anotações -->
+  <g>
+    <line x1="356" y1="125" x2="410" y2="125" class="rule"/>
+    <circle cx="418" cy="125" r="9" class="badge"/><text x="418" y="129" class="badget" text-anchor="middle">1</text>
+    <text x="434" y="122" class="sec">Cinco abas, não cinco itens</text>
+    <text x="434" y="140" class="lbl">O painel troca de conteúdo inteiro. Não é menu de contexto:</text>
+    <text x="434" y="156" class="lbl">é uma janela de propriedades que abre no clique direito.</text>
+
+    <line x1="356" y1="211" x2="410" y2="211" class="rule"/>
+    <circle cx="418" cy="211" r="9" class="badge"/><text x="418" y="215" class="badget" text-anchor="middle">2</text>
+    <text x="434" y="208" class="sec">Seções recolhíveis, com estado</text>
+    <text x="434" y="226" class="lbl">Oito seções, ~30 itens. Lista plana seria ilegível — e as três</text>
+    <text x="434" y="242" class="lbl">últimas nascem fechadas, ou seja o estado é lembrado.</text>
+
+    <line x1="356" y1="357" x2="410" y2="357" class="rule"/>
+    <circle cx="418" cy="357" r="9" class="badge"/><text x="418" y="361" class="badget" text-anchor="middle">3</text>
+    <text x="434" y="354" class="sec">O preço vem do clique</text>
+    <text x="434" y="372" class="lbl">"Boleta de Compra Stop 186.950" já vem preenchida com o</text>
+    <text x="434" y="388" class="lbl">preço sob o cursor. Clicar num nível e mandar ordem ali é</text>
+    <text x="434" y="404" class="lbl">um gesto só, em vez de ler o número e redigitá-lo.</text>
+    <text x="434" y="426" class="note">é o detalhe mais copiável da tela toda</text>
+
+    <line x1="356" y1="519" x2="410" y2="519" class="rule"/>
+    <circle cx="418" cy="519" r="9" class="badge"/><text x="418" y="523" class="badget" text-anchor="middle">4</text>
+    <text x="434" y="516" class="sec">Ferramentas de fluxo, não de preço</text>
+    <text x="434" y="534" class="lbl">Volume Profile, Volume Financeiro, Livro Visual e Motion</text>
+    <text x="434" y="550" class="lbl">Tracker leem AGRESSÃO e LIVRO — dado que a nossa base</text>
+    <text x="434" y="566" class="lbl">de OHLCV não tem. Fora de alcance, não fora de escopo.</text>
+
+    <line x1="356" y1="705" x2="410" y2="705" class="rule"/>
+    <circle cx="418" cy="705" r="9" class="badge"/><text x="418" y="709" class="badget" text-anchor="middle">5</text>
+    <text x="434" y="702" class="sec">Desabilitado, e não escondido</text>
+    <text x="434" y="720" class="lbl">Três itens aparecem cinzentos em vez de sumir. Some, e o</text>
+    <text x="434" y="736" class="lbl">leitor procura onde não está; cinzento, ele vê que existe e</text>
+    <text x="434" y="752" class="lbl">deduz que falta uma condição.</text>
+
+    <line x1="356" y1="819" x2="410" y2="819" class="rule"/>
+    <circle cx="418" cy="819" r="9" class="badge"/><text x="418" y="823" class="badget" text-anchor="middle">6</text>
+    <text x="434" y="816" class="sec">Estudo é desenho do usuário</text>
+    <text x="434" y="834" class="lbl">Linha de tendência, retângulo, Fibonacci — o que VOCÊ</text>
+    <text x="434" y="850" class="lbl">desenha, distinto de indicador, que é o que se CALCULA.</text>
+    <text x="434" y="866" class="lbl">Duas camadas separadas, com menus separados.</text>
+  </g>
+
+  <!-- ══════════════════════════════════════════ o que cabe no MVP -->
+  <line x1="434" y1="900" x2="1096" y2="900" class="rule"/>
+  <text x="434" y="922" class="sec">Onde cada seção cai para nós</text>
+
+  <g class="lbl">
+    <text x="434" y="944">Gráfico</text>       <text x="580" y="944" class="note">cabe — resetar e visibilidade já existem em parte</text>
+    <text x="434" y="962">Negociação</text>    <text x="580" y="962" class="note">cabe no simulador, com o preço vindo do clique</text>
+    <text x="434" y="980">Indicadores</text>   <text x="580" y="980" class="note">cabe — inserir e remover, sobre o contrato Overlay</text>
+  </g>
+  <g class="lbl">
+    <text x="800" y="944">Estudos</text>       <text x="880" y="944" class="note">cabe, camada de desenho</text>
+    <text x="800" y="962">Ferramentas</text>   <text x="880" y="962" class="dim">exige agressão e livro</text>
+    <text x="800" y="980">Exportar</text>      <text x="880" y="980" class="note">cabe, e é barato</text>
+  </g>
+</svg>
