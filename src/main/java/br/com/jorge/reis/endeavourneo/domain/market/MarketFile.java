@@ -139,6 +139,60 @@ public final class MarketFile {
         }
     }
 
+    /**
+     * Writes a series in the format the first Endeavour reads.
+     *
+     * @param minutes the scale each bar covers, as the header declares it
+     *
+     * <p>Here so a base built from two others can be saved and read back by
+     * both programs. Nothing else in this application writes a base: the raw
+     * exports are produced elsewhere and this only ever reads them.</p>
+     */
+    public static void write(Path file, PriceSeries series, int minutes) throws IOException {
+        Files.createDirectories(file.toAbsolutePath().getParent());
+
+        try (FileChannel channel = FileChannel.open(file, StandardOpenOption.CREATE,
+                StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING)) {
+
+            ByteBuffer head = ByteBuffer.allocate(HEADER_BYTES).order(ByteOrder.BIG_ENDIAN);
+
+            head.put(MAGIC);
+            head.putInt(VERSION);
+            head.putInt(minutes);
+            head.putLong(series.size());
+            head.flip();
+
+            drain(channel, head);
+
+            ByteBuffer buffer = ByteBuffer.allocate(CHUNK * RECORD_BYTES)
+                    .order(ByteOrder.BIG_ENDIAN);
+
+            for (int i = 0; i < series.size(); i++) {
+                if (buffer.remaining() < RECORD_BYTES) {
+                    buffer.flip();
+                    drain(channel, buffer);
+                    buffer.clear();
+                }
+
+                buffer.putLong(series.timeAt(i));
+                buffer.putDouble(series.openAt(i));
+                buffer.putDouble(series.highAt(i));
+                buffer.putDouble(series.lowAt(i));
+                buffer.putDouble(series.closeAt(i));
+                buffer.putDouble(series.volumeAt(i));
+            }
+
+            buffer.flip();
+            drain(channel, buffer);
+        }
+    }
+
+    private static void drain(FileChannel channel, ByteBuffer buffer) throws IOException {
+        while (buffer.hasRemaining()) {
+            channel.write(buffer);
+        }
+    }
+
     /** @return whether the file is one of ours, without reading the bars */
     public static boolean isSeries(Path file) {
         if (!Files.isRegularFile(file)) {
