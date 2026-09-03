@@ -145,6 +145,16 @@ public final class ChartCanvas extends JComponent {
 
     private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("dd/MM");
 
+    /**
+     * The dotted line between one period and the next.
+     *
+     * <p>Short dashes with an equal gap: long dashes read as a drawing the
+     * reader made, and a one-pixel dot disappears against a candle.</p>
+     */
+    private static final java.awt.Stroke BOUNDARY = new java.awt.BasicStroke(
+            1.0f, java.awt.BasicStroke.CAP_BUTT, java.awt.BasicStroke.JOIN_MITER,
+            1.0f, new float[]{2.0f, 3.0f}, 0.0f);
+
     /** Diameter of the button that jumps back to the newest bars. */
     private static final int JUMP_SIZE = 26;
 
@@ -1136,8 +1146,21 @@ public final class ChartCanvas extends JComponent {
 
             last = x + width / 2;
 
-            g.setColor(newDay ? ChartColors.foreground() : ChartColors.grid());
+            // The boundary between one period and the next is DOTTED, and the
+            // ordinary grid line solid. Both being solid made the separator
+            // just a darker line among many; dotted, it reads as a division
+            // rather than as another division of the same scale.
+            java.awt.Stroke was = g.getStroke();
+
+            if (newDay) {
+                g.setColor(ChartColors.foreground());
+                g.setStroke(BOUNDARY);
+            } else {
+                g.setColor(ChartColors.grid());
+            }
+
             g.drawLine(x, 0, x, top);
+            g.setStroke(was);
 
             g.setColor(ChartColors.foreground());
             g.drawString(text, x - width / 2, top + metrics.getAscent() + 3);
@@ -1181,10 +1204,14 @@ public final class ChartCanvas extends JComponent {
             drawDay(g, metrics, viewport, current, spanStart, i, top);
 
             if (i < limit) {
+                java.awt.Stroke was = g.getStroke();
+
                 g.setColor(ChartColors.foreground());
+                g.setStroke(BOUNDARY);
                 g.drawLine((int) Math.round(viewport.x(i) - viewport.barWidth() / 2), top,
                         (int) Math.round(viewport.x(i) - viewport.barWidth() / 2),
                         top + DAY_HEIGHT);
+                g.setStroke(was);
             }
 
             spanStart = i;
