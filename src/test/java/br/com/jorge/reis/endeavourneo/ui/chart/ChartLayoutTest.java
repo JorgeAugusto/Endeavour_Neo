@@ -35,8 +35,8 @@ class ChartLayoutTest {
         // back what was there yesterday. Parameters and the eye included -- a
         // hidden indicator that comes back visible is a change nobody made.
         List<ChartLayout.Entry> entries = List.of(
-                new ChartLayout.Entry("overlay.ema", List.of(17, 55, 200), true),
-                new ChartLayout.Entry("overlay.ema", List.of(9), false));
+                new ChartLayout.Entry("overlay.movingAverage", List.of(17), true),
+                new ChartLayout.Entry("overlay.movingAverage", List.of(9), false));
 
         List<ChartLayout.Entry> back = ChartLayouts.parse(ChartLayouts.format(entries));
 
@@ -49,10 +49,10 @@ class ChartLayoutTest {
         // The file is not written by hand, so a bad line means something went
         // wrong elsewhere. Refusing the whole layout over one line would lose
         // the other five, which is a worse answer than losing the one.
-        String text = "overlay.ema|17,55|true\n"
+        String text = "overlay.movingAverage|17,55|true\n"
                 + "garbage\n"
-                + "overlay.ema|abc|true\n"
-                + "overlay.ema|9|false";
+                + "overlay.movingAverage|abc|true\n"
+                + "overlay.movingAverage|9|false";
 
         List<ChartLayout.Entry> entries = ChartLayouts.parse(text);
 
@@ -68,7 +68,7 @@ class ChartLayoutTest {
         // been removed. It must not stop the chart from opening.
         ChartLayout layout = new ChartLayout("old", List.of(
                 new ChartLayout.Entry("overlay.thatWentAway", List.of(5), true),
-                new ChartLayout.Entry("overlay.ema", List.of(20), true)));
+                new ChartLayout.Entry("overlay.movingAverage", List.of(20), true)));
 
         List<Overlay> built = layout.build();
 
@@ -80,8 +80,8 @@ class ChartLayoutTest {
     @DisplayName("capturing a chart and rebuilding it gives the same indicators")
     void captureAndRebuild() {
         ChartLayout captured = ChartLayout.of("mine", List.of(
-                built("overlay.ema", 17, 55),
-                hidden("overlay.ema", 200)));
+                built("overlay.movingAverage", 17, 55),
+                hidden("overlay.movingAverage", 200)));
 
         List<Overlay> rebuilt = captured.build();
 

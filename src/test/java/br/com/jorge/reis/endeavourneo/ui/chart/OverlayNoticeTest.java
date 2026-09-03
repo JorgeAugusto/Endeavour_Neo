@@ -17,9 +17,10 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.chart;
 
+import br.com.jorge.reis.endeavourneo.ui.chart.overlay.MovingAverage;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import br.com.jorge.reis.endeavourneo.ui.chart.overlay.MovingAverages;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -59,7 +60,7 @@ class OverlayNoticeTest {
     @Test
     @DisplayName("applying a layout redraws, and is not written back")
     void applyingALayoutIsSilentButVisible() {
-        canvas.setOverlays(List.of(new MovingAverages(9)));
+        canvas.setOverlays(List.of(new MovingAverage(9)));
 
         assertEquals(1, redrawn.get(),
                 "the legend was never told the indicators had been replaced");
@@ -72,7 +73,7 @@ class OverlayNoticeTest {
     void emptyingRedraws() {
         // The case actually seen: switching to a layout with fewer indicators
         // left the departed ones listed until the mouse happened to pass over.
-        canvas.setOverlays(List.of(new MovingAverages(9)));
+        canvas.setOverlays(List.of(new MovingAverage(9)));
         canvas.setOverlays(List.of());
 
         assertEquals(2, redrawn.get(), "an empty layout has to redraw too");
@@ -81,7 +82,7 @@ class OverlayNoticeTest {
     @Test
     @DisplayName("adding an indicator both redraws and is written down")
     void addingDoesBoth() {
-        canvas.addOverlay(new MovingAverages(20));
+        canvas.addOverlay(new MovingAverage(20));
 
         assertEquals(1, redrawn.get());
         assertEquals(1, stored.get(),
@@ -91,7 +92,7 @@ class OverlayNoticeTest {
     @Test
     @DisplayName("removing an indicator both redraws and is written down")
     void removingDoesBoth() {
-        Overlay overlay = new MovingAverages(20);
+        Overlay overlay = new MovingAverage(20);
 
         canvas.addOverlay(overlay);
         canvas.removeOverlay(overlay);
@@ -103,7 +104,7 @@ class OverlayNoticeTest {
     @Test
     @DisplayName("removing something that was never there tells nobody")
     void removingAStrangerIsSilent() {
-        canvas.removeOverlay(new MovingAverages(20));
+        canvas.removeOverlay(new MovingAverage(20));
 
         assertEquals(0, redrawn.get(), "a repaint was asked for over nothing");
         assertEquals(0, stored.get(), "the layout was rewritten over nothing");

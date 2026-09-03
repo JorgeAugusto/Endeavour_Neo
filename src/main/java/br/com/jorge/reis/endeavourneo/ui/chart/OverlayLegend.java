@@ -423,8 +423,25 @@ public final class OverlayLegend extends JComponent {
         }
 
         private void edit(Overlay overlay) {
-            Overlay replacement = InsertOverlayDialog.edit(
-                    SwingUtilities.getWindowAncestor(OverlayLegend.this), overlay);
+            java.awt.Window owner = SwingUtilities.getWindowAncestor(OverlayLegend.this);
+
+            // A moving average has settings of its own -- kind, shift, colour,
+            // dash -- and a dialog of bare spinners cannot express them. Every
+            // other indicator still gets the plain one until it earns better.
+            if (overlay instanceof br.com.jorge.reis.endeavourneo.ui.chart.overlay
+                    .MovingAverage average) {
+
+                if (MovingAverageDialog.edit(owner, average) != null) {
+                    average.calculate(canvas.series());
+
+                    canvas.repaint();
+                    canvas.overlaysChanged();
+                }
+
+                return;
+            }
+
+            Overlay replacement = InsertOverlayDialog.edit(owner, overlay);
 
             if (replacement != null) {
                 canvas.replaceOverlay(overlay, replacement);

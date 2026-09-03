@@ -314,8 +314,13 @@ public final class MainWindow extends JFrame {
 
         // Every chart accepts a replay dropped on it, from the moment it opens.
         br.com.jorge.reis.endeavourneo.ui.replay.ReplayDrop.enable(holder);
-        holder.canvas().addOverlay(
-                new br.com.jorge.reis.endeavourneo.ui.chart.overlay.MovingAverages(17, 55, 200));
+        // Three averages, three indicators. One indicator drawing three lines
+        // meant they shared one set of settings: no colouring one, no hiding
+        // one, no changing one.
+        for (int period : new int[]{17, 55, 200}) {
+            holder.canvas().addOverlay(
+                    new br.com.jorge.reis.endeavourneo.ui.chart.overlay.MovingAverage(period));
+        }
 
         charts.put(title, holder);
         rememberCharts();

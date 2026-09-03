@@ -17,13 +17,14 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.chart;
 
+import br.com.jorge.reis.endeavourneo.ui.chart.overlay.MovingAverage;
+
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import br.com.jorge.reis.endeavourneo.ui.chart.overlay.MovingAverages;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -38,7 +39,7 @@ class OverlayTest {
         // that number is mostly the seed. Plotting it draws a line converging
         // out of nowhere, which reads as signal and is not. NaN says "nothing
         // yet" and the canvas breaks the line instead of inventing one.
-        MovingAverages ema = new MovingAverages(10);
+        MovingAverage ema = new MovingAverage(10);
 
         ema.calculate(flat(30, 100.0));
 
@@ -57,7 +58,7 @@ class OverlayTest {
         // The one case with an answer that can be checked by hand. If this is
         // wrong, the weighting is wrong, and every other value is too -- while
         // still looking plausible on screen.
-        MovingAverages ema = new MovingAverages(5);
+        MovingAverage ema = new MovingAverage(5);
 
         ema.calculate(flat(50, 137.5));
 
@@ -68,16 +69,17 @@ class OverlayTest {
     @Test
     @DisplayName("one value per configured period, in the same order")
     void oneValuePerPeriod() {
-        // The legend pairs values with colours by position. A mismatch here
-        // paints the fast average in the slow one's colour, which is wrong in a
-        // way nobody notices from the code.
-        MovingAverages ema = new MovingAverages(3, 10, 30);
+        // The legend pairs values with colours by position, and one indicator is
+        // now one line. This assertion used to ask for three, from the version
+        // where a single indicator drew several averages -- which is exactly the
+        // design that made them share one set of settings.
+        MovingAverage ema = new MovingAverage(3);
 
         ema.calculate(flat(60, 100.0));
 
-        assertEquals(3, ema.valueAt(59).length, "wrong number of lines");
-        assertEquals(3, ema.colours().size(), "colours do not match the lines");
-        assertEquals(java.util.List.of(3, 10, 30), ema.parameters(),
+        assertEquals(1, ema.valueAt(59).length, "one indicator draws one line");
+        assertEquals(1, ema.colours().size(), "colours do not match the lines");
+        assertEquals(java.util.List.of(3), ema.parameters(),
                 "the parameters shown in the legend are not the ones configured");
     }
 
@@ -87,7 +89,7 @@ class OverlayTest {
         // The legend asks for the hovered bar, and that is -1 when the mouse is
         // off the chart. Throwing there would break painting rather than the
         // overlay.
-        MovingAverages ema = new MovingAverages(5);
+        MovingAverage ema = new MovingAverage(5);
 
         ema.calculate(flat(10, 100.0));
 
@@ -98,7 +100,7 @@ class OverlayTest {
     @Test
     @DisplayName("hiding an overlay leaves it calculated, ready to come back")
     void hidingKeepsTheValues() {
-        MovingAverages ema = new MovingAverages(5);
+        MovingAverage ema = new MovingAverage(5);
 
         ema.calculate(flat(20, 100.0));
 

@@ -159,6 +159,14 @@ public final class ChartLayouts {
             }
 
             text.append('|').append(entry.visible());
+
+            // A fourth field, and older lines have three. Appending rather than
+            // reshaping is what lets a layout written before appearance existed
+            // still load: the parser asks for at least three and reads a fourth
+            // if it is there.
+            if (!entry.appearance().isEmpty()) {
+                text.append('|').append(entry.appearance());
+            }
         }
 
         return text.toString();
@@ -194,8 +202,9 @@ public final class ChartLayouts {
             }
 
             if (!parameters.isEmpty()) {
-                entries.add(new ChartLayout.Entry(fields[0],
-                        List.copyOf(parameters), Boolean.parseBoolean(fields[2])));
+                entries.add(new ChartLayout.Entry(fields[0], List.copyOf(parameters),
+                        Boolean.parseBoolean(fields[2]),
+                        fields.length > 3 ? fields[3] : ""));
             }
         }
 

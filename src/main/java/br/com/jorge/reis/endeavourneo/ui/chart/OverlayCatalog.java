@@ -17,8 +17,9 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.chart;
 
+import br.com.jorge.reis.endeavourneo.ui.chart.overlay.MovingAverage;
+
 import br.com.jorge.reis.endeavourneo.platform.Messages;
-import br.com.jorge.reis.endeavourneo.ui.chart.overlay.MovingAverages;
 
 import java.util.List;
 import java.util.function.Function;
@@ -62,7 +63,8 @@ public final class OverlayCatalog {
     }
 
     private static final List<Kind> KINDS = List.of(
-            new Kind("overlay.ema", List.of(17, 55, 200), 2, 2_000, MovingAverages::new));
+            new Kind("overlay.movingAverage", List.of(9), 1, 2_000,
+                    br.com.jorge.reis.endeavourneo.ui.chart.overlay.MovingAverage::new));
 
     private OverlayCatalog() {
         throw new AssertionError("Utility class must not be instantiated");

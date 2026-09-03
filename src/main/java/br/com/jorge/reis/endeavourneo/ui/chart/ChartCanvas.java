@@ -1150,8 +1150,6 @@ public final class ChartCanvas extends JComponent {
         int from = viewport.firstBar();
         int to = Math.min(viewport.lastBar(), series.size());
 
-        g.setStroke(new BasicStroke(1.4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-
         Object previous = g.getRenderingHint(RenderingHints.KEY_ANTIALIASING);
 
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -1160,6 +1158,11 @@ public final class ChartCanvas extends JComponent {
             if (!overlay.isVisible()) {
                 continue;
             }
+
+            // Each indicator draws with its OWN stroke: thickness and dash are
+            // settings now, and a single stroke set for all of them would make
+            // every one of those settings do nothing.
+            g.setStroke(overlay.stroke());
 
             java.util.List<java.awt.Color> colours = overlay.colours();
             int lines = colours.size();

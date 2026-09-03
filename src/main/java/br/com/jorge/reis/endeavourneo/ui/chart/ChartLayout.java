@@ -47,7 +47,12 @@ public record ChartLayout(String name, List<Entry> entries) {
      * @param parameters its periods
      * @param visible whether the eye is open
      */
-    public record Entry(String kindKey, List<Integer> parameters, boolean visible) {
+    public record Entry(String kindKey, List<Integer> parameters, boolean visible,
+                       String appearance) {
+
+        public Entry(String kindKey, List<Integer> parameters, boolean visible) {
+            this(kindKey, parameters, visible, "");
+        }
 
         /** @return this entry as an overlay, or null when the kind is unknown */
         public Overlay build() {
@@ -64,6 +69,7 @@ public record ChartLayout(String name, List<Entry> entries) {
 
                 Overlay overlay = kind.factory().apply(values);
 
+                overlay.applyAppearance(appearance);
                 overlay.setVisible(visible);
 
                 return overlay;
@@ -90,7 +96,8 @@ public record ChartLayout(String name, List<Entry> entries) {
         List<Entry> entries = new ArrayList<>(overlays.size());
 
         for (Overlay overlay : overlays) {
-            entries.add(new Entry(overlay.nameKey(), overlay.parameters(), overlay.isVisible()));
+            entries.add(new Entry(overlay.nameKey(), overlay.parameters(), overlay.isVisible(),
+                    overlay.appearance()));
         }
 
         return new ChartLayout(name, List.copyOf(entries));

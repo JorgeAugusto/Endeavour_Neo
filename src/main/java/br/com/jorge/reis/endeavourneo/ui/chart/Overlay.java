@@ -79,4 +79,38 @@ public interface Overlay {
     boolean isVisible();
 
     void setVisible(boolean visible);
+
+    /**
+     * @return how the line is drawn: thickness and dash pattern
+     *
+     * <p>A default, so an indicator that has nothing to say about its own
+     * appearance says nothing. One and a bit pixels, solid, rounded -- what
+     * every line here was before any of them could be configured.</p>
+     */
+    default java.awt.Stroke stroke() {
+        return new java.awt.BasicStroke(1.4f, java.awt.BasicStroke.CAP_ROUND,
+                java.awt.BasicStroke.JOIN_ROUND);
+    }
+
+    /**
+     * @return everything about this indicator that is NOT its shape, as one line
+     *
+     * <p>Kept apart from {@link #parameters()} because the two are stored
+     * differently and answer different questions. The parameters are the numbers
+     * that decide what is computed; this is colour, dash and thickness -- what
+     * it looks like once computed. A layout stores both, and an indicator that
+     * came back in the right place wearing the wrong colour would be a layout
+     * that only half worked.</p>
+     *
+     * <p>Empty by default: an indicator with nothing to remember remembers
+     * nothing, and the stored line stays short.</p>
+     */
+    default String appearance() {
+        return "";
+    }
+
+    /** @param text whatever {@link #appearance()} produced, possibly from an older version */
+    default void applyAppearance(String text) {
+        // Nothing to apply.
+    }
 }
