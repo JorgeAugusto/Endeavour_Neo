@@ -20,7 +20,9 @@ package br.com.jorge.reis.endeavourneo.ui.chart;
 import br.com.jorge.reis.endeavourneo.ui.chart.style.CandleStyle;
 
 import java.awt.BasicStroke;
+import java.awt.Cursor;
 import java.awt.Dimension;
+import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Point;
@@ -28,6 +30,9 @@ import java.awt.Rectangle;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseWheelEvent;
+import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
+import java.util.Locale;
 import javax.swing.JComponent;
 
 /**
@@ -39,6 +44,7 @@ import javax.swing.JComponent;
  *   background   the theme's surface
  *   grid         horizontal price lines, recessive
  *   style        the price itself -- see {@link ChartStyle}
+ *   axis         the prices, in a strip reserved on the right
  *   crosshair    where the mouse is
  * </pre>
  *
@@ -67,6 +73,24 @@ public final class ChartCanvas extends JComponent {
     private static final double MINIMUM_STRETCH = 0.1;
 
     private static final double MAXIMUM_STRETCH = 20.0;
+
+    /**
+     * Width of the price strip on the right, in pixels.
+     *
+     * <p>Reserved rather than overlaid: the plot stops before it, so no candle
+     * is ever drawn underneath. An axis painted on top of the data hides the
+     * most recent bars, which are the ones being watched.</p>
+     */
+    private static final int AXIS_WIDTH = 62;
+
+    /**
+     * How much a pixel of vertical drag changes the scale.
+     *
+     * <p>Multiplicative, so the feel is the same whether the factor is at 0,2 or
+     * at 8 -- a fixed step per pixel would crawl at one end and jump at the
+     * other.</p>
+     */
+    private static final double DRAG_SENSITIVITY = 0.006;
 
     private transient PriceSeries series = PriceSeries.empty();
 
@@ -132,8 +156,33 @@ public final class ChartCanvas extends JComponent {
     }
 
     private Viewport viewport() {
-        return Viewport.of(series, new Rectangle(0, 0, getWidth(), getHeight()),
-                firstBar, visibleBars, stretch);
+        return Viewport.of(series, plotBounds(), firstBar, visibleBars, stretch);
+    }
+
+    /** @return the drawing area, which stops before the price strip */
+    private Rectangle plotBounds() {
+        return new Rectangle(0, 0, Math.max(1, getWidth() - AXIS_WIDTH), getHeight());
+    }
+
+    /** @param x a horizontal pixel
+     *  @return whether it falls in the price strip */
+    private boolean onAxis(int x) {
+        return x >= getWidth() - AXIS_WIDTH;
+    }
+
+    /**
+     * @param current the factor now
+     * @param deltaY how far the mouse moved down since the drag started
+     * @return the new factor, clamped
+     *
+     * <p>Dragging UP stretches. It matches the gesture: pulling the axis taller
+     * makes the chart taller. Separate from the mouse handling so the arithmetic
+     * can be tested without a window.</p>
+     */
+    static double stretchForDrag(double current, int deltaY) {
+        double scaled = current * Math.exp(-deltaY * DRAG_SENSITIVITY);
+
+        return Math.max(MINIMUM_STRETCH, Math.min(scaled, MAXIMUM_STRETCH));
     }
 
     /** @return the manual vertical factor; 1 is automatic */
@@ -164,6 +213,7 @@ public final class ChartCanvas extends JComponent {
 
             paintGrid(g, viewport);
             style.paint(g, series, viewport);
+            paintAxis(g, viewport);
             paintCrosshair(g, viewport);
         } finally {
             g.dispose();
@@ -178,9 +228,7 @@ public final class ChartCanvas extends JComponent {
      * produces the numbers a reader expects to see on an axis.</p>
      */
     private void paintGrid(Graphics2D g, Viewport viewport) {
-        double span = viewport.highestPrice() - viewport.lowestPrice();
-        double target = span * GRID_SPACING / Math.max(1, getHeight());
-        double step = niceStep(target);
+        double step = gridStep(viewport);
 
         g.setColor(ChartColors.grid());
         g.setStroke(new BasicStroke(1.0f));
@@ -190,10 +238,73 @@ public final class ChartCanvas extends JComponent {
         while (price <= viewport.highestPrice()) {
             int y = (int) Math.round(viewport.y(price));
 
-            g.drawLine(0, y, getWidth(), y);
+            g.drawLine(0, y, getWidth() - AXIS_WIDTH, y);
 
             price += step;
         }
+    }
+
+    /**
+     * The prices, down the reserved strip.
+     *
+     * <p>Same steps as the grid, so every line has its number and no number
+     * floats without a line. Computing them twice from the same rule would
+     * eventually drift apart when one of the two is edited.</p>
+     */
+    private void paintAxis(Graphics2D g, Viewport viewport) {
+        int left = getWidth() - AXIS_WIDTH;
+        double step = gridStep(viewport);
+
+        g.setColor(ChartColors.background());
+        g.fillRect(left, 0, AXIS_WIDTH, getHeight());
+
+        g.setColor(ChartColors.grid());
+        g.drawLine(left, 0, left, getHeight());
+
+        g.setColor(ChartColors.foreground());
+        g.setFont(getFont().deriveFont(11f));
+
+        FontMetrics metrics = g.getFontMetrics();
+        DecimalFormat format = formatFor(step);
+        double price = Math.ceil(viewport.lowestPrice() / step) * step;
+
+        while (price <= viewport.highestPrice()) {
+            String text = format.format(price);
+            int y = (int) Math.round(viewport.y(price));
+
+            g.drawString(text, getWidth() - 6 - metrics.stringWidth(text),
+                    y + metrics.getAscent() / 2 - 1);
+
+            price += step;
+        }
+    }
+
+    /**
+     * @param step the distance between grid lines
+     * @return a format with just enough decimals for that step
+     *
+     * <p>A step of 500 needs none; a step of 0,05 needs two. Fixing the decimals
+     * would either print 177.600,00 on an index or round a currency pair to
+     * uselessness.</p>
+     */
+    private static DecimalFormat formatFor(double step) {
+        int decimals = step >= 1.0 ? 0 : (int) Math.min(6, Math.ceil(-Math.log10(step)));
+
+        StringBuilder pattern = new StringBuilder("#,##0");
+
+        if (decimals > 0) {
+            pattern.append('.');
+            pattern.append("0".repeat(decimals));
+        }
+
+        return new DecimalFormat(pattern.toString(),
+                DecimalFormatSymbols.getInstance(Locale.getDefault()));
+    }
+
+    private double gridStep(Viewport viewport) {
+        double span = viewport.highestPrice() - viewport.lowestPrice();
+
+        return niceStep(span * GRID_SPACING / Math.max(1, getHeight()));
     }
 
     /** @return the closest 1, 2 or 5 times a power of ten at or above {@code target} */
@@ -238,7 +349,7 @@ public final class ChartCanvas extends JComponent {
                 1.0f, new float[]{3.0f, 3.0f}, 0.0f));
 
         g.drawLine(x, 0, x, getHeight());
-        g.drawLine(0, cursor.y, getWidth(), cursor.y);
+        g.drawLine(0, cursor.y, getWidth() - AXIS_WIDTH, cursor.y);
     }
 
     /** Wheel zooms around the cursor; dragging pans. */
@@ -248,9 +359,19 @@ public final class ChartCanvas extends JComponent {
 
         private int grabbedFirstBar;
 
+        /** Where a scale drag started, and the factor it started from. */
+        private int scalingFrom = -1;
+
+        private double scalingBase;
+
         @Override
         public void mouseMoved(MouseEvent e) {
             cursor = e.getPoint();
+
+            // The cursor is the only thing that says the strip is interactive.
+            // Without it the area reads as decoration and nobody discovers it.
+            setCursor(Cursor.getPredefinedCursor(
+                    onAxis(e.getX()) ? Cursor.N_RESIZE_CURSOR : Cursor.DEFAULT_CURSOR));
 
             repaint();
         }
@@ -264,19 +385,46 @@ public final class ChartCanvas extends JComponent {
 
         @Override
         public void mousePressed(MouseEvent e) {
+            if (onAxis(e.getX())) {
+                // A drag that starts on the strip scales and never pans, even
+                // when it wanders over the plot. Deciding by where the mouse IS
+                // rather than where the drag BEGAN would switch behaviour
+                // mid-gesture.
+                scalingFrom = e.getY();
+                scalingBase = stretch;
+                grabbedAt = -1;
+
+                return;
+            }
+
+            scalingFrom = -1;
             grabbedAt = e.getX();
             grabbedFirstBar = firstBar;
         }
 
         @Override
+        public void mouseReleased(MouseEvent e) {
+            scalingFrom = -1;
+            grabbedAt = -1;
+        }
+
+        @Override
         public void mouseDragged(MouseEvent e) {
+            if (scalingFrom >= 0) {
+                stretch = stretchForDrag(scalingBase, e.getY() - scalingFrom);
+
+                repaint();
+
+                return;
+            }
+
             if (grabbedAt < 0 || series.size() == 0) {
                 return;
             }
 
             // Panning moves by BARS, not pixels: at four pixels per bar a
             // ten-pixel drag must move two bars and a half, not ten.
-            double perBar = (double) getWidth() / visibleBars;
+            double perBar = (double) plotBounds().width / visibleBars;
             int moved = (int) Math.round((grabbedAt - e.getX()) / perBar);
 
             firstBar = clampFirstBar(grabbedFirstBar + moved);
