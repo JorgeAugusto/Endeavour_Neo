@@ -66,6 +66,35 @@ public final class ChartHolder {
     private static final Preferences PREFS = Preferences.userRoot()
             .node("br/com/jorge/reis/endeavourneo/charts");
 
+    /**
+     * The shape of what is stored here.
+     *
+     * <p>Raised when a stored value stops meaning what it used to. Version 2:
+     * before it, the size written for a maximised chart was the desktop's size,
+     * so every chart reopened merely large and never maximised. Those entries
+     * cannot be told apart from a chart the reader deliberately made that big,
+     * so they are dropped rather than interpreted -- one lost window size, once,
+     * against a wrong one for ever.</p>
+     */
+    private static final int SCHEMA = 2;
+
+    private static final String SCHEMA_KEY = "schema";
+
+    static {
+        if (PREFS.getInt(SCHEMA_KEY, 0) < SCHEMA) {
+            try {
+                for (String stale : PREFS.keys()) {
+                    PREFS.remove(stale);
+                }
+            } catch (java.util.prefs.BackingStoreException e) {
+                // Nothing to do and nothing worth saying: the worst outcome is
+                // that charts open at the size they opened at yesterday.
+            }
+
+            PREFS.putInt(SCHEMA_KEY, SCHEMA);
+        }
+    }
+
     private static final int DEFAULT_WIDTH = 900;
 
     private static final int DEFAULT_HEIGHT = 560;
@@ -88,7 +117,7 @@ public final class ChartHolder {
      * recreated on every dock and undock would lose which overlays the reader
      * had hidden.</p>
      */
-    private final OverlayLegend legend = new OverlayLegend(canvas);
+    private final OverlayLegend legend;
 
     /** The layout tabs, below the time axis. Built on first use. */
     private LayoutBar layoutBar;
@@ -112,6 +141,7 @@ public final class ChartHolder {
     public ChartHolder(String name, JDesktopPane desktop, Window owner, Runnable onClosed) {
         this.name = name;
         this.key = name.replaceAll("[^A-Za-z0-9]+", "_");
+        this.legend = new OverlayLegend(canvas, this.key);
         this.desktop = desktop;
         this.owner = owner;
         this.onClosed = onClosed == null ? () -> { } : onClosed;
@@ -175,6 +205,7 @@ public final class ChartHolder {
         docked.getContentPane().add(layouts(), BorderLayout.SOUTH);
         boolean firstInside = countInside() == 0;
         boolean remembered = PREFS.getInt(key + ".width", -1) > 0;
+        boolean wasMaximised = PREFS.getBoolean(key + ".maximised", false);
 
         if (remembered) {
             docked.setSize(restoredSize());
@@ -196,7 +227,7 @@ public final class ChartHolder {
         desktop.add(docked);
         docked.setVisible(true);
 
-        if (firstInside && !remembered) {
+        if (opensMaximised(firstInside, remembered, wasMaximised)) {
             try {
                 // Maximised rather than merely sized to fill: maximised, it
                 // follows the desktop when the main window is resized, and the
@@ -508,9 +539,65 @@ public final class ChartHolder {
      * <p>Coordinates inside a desktop pane and coordinates on a screen are
      * different things. Storing one and restoring the other is how a chart ends
      * up in the top-left corner of the monitor after being undocked.</p>
+     *
+     * <p><b>Maximised is a state, not a size.</b> The bounds of a maximised frame
+     * are the desktop's bounds, and storing them turns the state into yesterday's
+     * measurements: the chart reopens the size the window happened to be last
+     * night, no longer maximised, and no longer following the window when it is
+     * resized. So the flag is stored, and the size stored alongside it is the one
+     * the frame had BEFORE being maximised -- the size the restore button gives
+     * back.</p>
      */
     private void storeDockedBounds() {
-        PREFS.putInt(key + ".width", docked.getWidth());
-        PREFS.putInt(key + ".height", docked.getHeight());
+        boolean maximised = docked.isMaximum();
+        Dimension size = sizeToRemember(maximised, docked.getNormalBounds(), docked.getBounds());
+
+        PREFS.putBoolean(key + ".maximised", maximised);
+
+        if (size != null) {
+            PREFS.putInt(key + ".width", size.width);
+            PREFS.putInt(key + ".height", size.height);
+        }
+    }
+
+    /**
+     * Which size to write down for a docked chart.
+     *
+     * @param maximised whether the frame is maximised right now
+     * @param normal the bounds the restore button would give back
+     * @param current the bounds the frame occupies
+     * @return the size to remember, or null when neither is usable
+     *
+     * <p>Maximised, the current bounds are the desktop's -- writing them stores
+     * last night's window as though the reader had chosen it. The normal bounds
+     * are the answer, except when the frame was maximised before ever having a
+     * size of its own: then they are empty, and a zero written here would reopen
+     * a chart no pixels across that the restore button could not undo. Nothing
+     * written is better than that; the birth size takes over.</p>
+     */
+    static Dimension sizeToRemember(boolean maximised, Rectangle normal, Rectangle current) {
+        Rectangle chosen = maximised ? normal : current;
+
+        return usable(chosen) ? new Dimension(chosen.width, chosen.height) : null;
+    }
+
+    /**
+     * Whether a chart opens maximised.
+     *
+     * @param firstInside whether it is the only chart in the desktop
+     * @param remembered whether a size was stored for it
+     * @param wasMaximised whether it was maximised when last closed
+     *
+     * <p>Two independent reasons, and the remembered one wins over the count:
+     * a chart the reader maximised comes back maximised even with five others
+     * around it, because that is what was asked for. The lone-chart rule only
+     * fills a first, empty desktop.</p>
+     */
+    static boolean opensMaximised(boolean firstInside, boolean remembered, boolean wasMaximised) {
+        return wasMaximised || (firstInside && !remembered);
+    }
+
+    private static boolean usable(Rectangle bounds) {
+        return bounds != null && bounds.width > 40 && bounds.height > 40;
     }
 }
