@@ -152,8 +152,16 @@ public final class ChartHolder {
         docked.setJMenuBar(buildMenuBar());
         docked.getContentPane().add(legend, BorderLayout.NORTH);
         docked.getContentPane().add(canvas, BorderLayout.CENTER);
-        docked.setSize(restoredSize());
-        docked.setLocation(cascadeInside());
+        boolean firstInside = countInside() == 0;
+        boolean remembered = PREFS.getInt(key + ".width", -1) > 0;
+
+        if (remembered) {
+            docked.setSize(restoredSize());
+            docked.setLocation(cascadeInside());
+        } else {
+            docked.setSize(birthSize(firstInside));
+            docked.setLocation(firstInside ? new java.awt.Point(0, 0) : cascadeInside());
+        }
 
         docked.addInternalFrameListener(new InternalFrameAdapter() {
 
@@ -166,6 +174,18 @@ public final class ChartHolder {
 
         desktop.add(docked);
         docked.setVisible(true);
+
+        if (firstInside && !remembered) {
+            try {
+                // Maximised rather than merely sized to fill: maximised, it
+                // follows the desktop when the main window is resized, and the
+                // frame offers the restore button. Sizing it to the current
+                // bounds would leave a chart the size of yesterday's window.
+                docked.setMaximum(true);
+            } catch (PropertyVetoException e) {
+                docked.setSize(desktop.getWidth(), desktop.getHeight());
+            }
+        }
 
         PREFS.putBoolean(key + ".floating", false);
 
@@ -343,6 +363,54 @@ public final class ChartHolder {
     }
 
     // -------------------------------------------------------------- geometry
+
+    /**
+     * @return how many charts are already docked and on screen
+     *
+     * <p>Counted at the moment of docking rather than kept as a field: charts
+     * close from several paths, and a counter that any one of them forgot to
+     * decrement would size every later window wrongly, quietly.</p>
+     */
+    private int countInside() {
+        int inside = 0;
+
+        for (JInternalFrame frame : desktop.getAllFrames()) {
+            if (frame.isVisible()) {
+                inside++;
+            }
+        }
+
+        return inside;
+    }
+
+    /**
+     * @param firstInside whether this is the only chart in the desktop
+     * @return the size a chart is born with, having none remembered
+     *
+     * <p>Alone it fills the window: one chart in a corner of an empty desktop
+     * wastes the screen and reads as unfinished. With others already there it
+     * takes a <b>quarter of the area</b> — half the width by half the height —
+     * so it is large enough to read and small enough that arriving does not bury
+     * what was being watched.</p>
+     *
+     * <p>Only when nothing is remembered. A chart that was resized and reopened
+     * keeps the size it was given, which is the whole point of remembering
+     * it.</p>
+     */
+    private Dimension birthSize(boolean firstInside) {
+        int width = desktop.getWidth();
+        int height = desktop.getHeight();
+
+        // The desktop has no size before the window is laid out. Falling back to
+        // the fixed default is better than a chart one pixel across.
+        if (width < 40 || height < 40) {
+            return new Dimension(DEFAULT_WIDTH, DEFAULT_HEIGHT);
+        }
+
+        return firstInside
+                ? new Dimension(width, height)
+                : new Dimension(width / 2, height / 2);
+    }
 
     private Dimension restoredSize() {
         return new Dimension(PREFS.getInt(key + ".width", DEFAULT_WIDTH),
