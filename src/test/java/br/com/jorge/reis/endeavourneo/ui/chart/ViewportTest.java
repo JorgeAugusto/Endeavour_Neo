@@ -232,4 +232,45 @@ class ViewportTest {
             return closes[index];
         }
     }
+    @Test
+    @DisplayName("sliding moves the price window without changing its size")
+    void slidingKeepsTheSpan() {
+        // The vertical twin of panning: the reader puts the chart where they
+        // want it. Changing the span here instead would be a zoom, which is the
+        // mistake the horizontal side already made once.
+        PriceSeries series = new Fake(new double[]{100, 110, 90, 105});
+
+        Viewport still = Viewport.of(series, AREA, 0, 4, 1.0, 0.0);
+        Viewport slid = Viewport.of(series, AREA, 0, 4, 1.0, 0.25);
+
+        double span = still.highestPrice() - still.lowestPrice();
+
+        assertEquals(span, slid.highestPrice() - slid.lowestPrice(), 1e-9,
+                "sliding resized the window, so it was a zoom and not a move");
+        assertEquals(still.lowestPrice() + span * 0.25, slid.lowestPrice(), 1e-9);
+    }
+
+    @Test
+    @DisplayName("a positive slide draws the bars lower, following the hand")
+    void slidingFollowsTheHand() {
+        // Dragging downwards has to take the content down with it. Any other
+        // direction feels wrong within one gesture.
+        PriceSeries series = new Fake(new double[]{100, 110, 90, 105});
+
+        double stillY = Viewport.of(series, AREA, 0, 4, 1.0, 0.0).y(100.0);
+        double slidY = Viewport.of(series, AREA, 0, 4, 1.0, 0.25).y(100.0);
+
+        assertTrue(slidY > stillY, "the price moved up the screen instead of down");
+    }
+
+    @Test
+    @DisplayName("a nonsense slide is ignored rather than obeyed")
+    void slidingIgnoresNonsense() {
+        PriceSeries series = new Fake(new double[]{100, 110, 90, 105});
+
+        Viewport still = Viewport.of(series, AREA, 0, 4, 1.0, 0.0);
+
+        assertEquals(still.lowestPrice(),
+                Viewport.of(series, AREA, 0, 4, 1.0, Double.NaN).lowestPrice(), 1e-9);
+    }
 }

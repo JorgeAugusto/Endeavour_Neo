@@ -81,6 +81,25 @@ public final class ChartCanvas extends JComponent {
     private static final int GRID_SPACING = 56;
 
     /** Flatter than this and the candles are a line; taller and they leave the screen. */
+    /**
+     * How far past the last bar the window may go, as a share of its width.
+     *
+     * <p>Three quarters. Half was not enough to feel like control: with a bar
+     * forming at the right edge there was nowhere comfortable to put it.</p>
+     */
+    private static final double AIR_RIGHT = 0.75;
+
+    /** How far the price window may slide, up or down, as a share of its span. */
+    private static final double AIR_VERTICAL = 0.5;
+
+    /**
+     * Space kept to the right of the newest bar when a chart opens.
+     *
+     * <p>Ten per cent, and not zero: a chart whose last candle touches the frame
+     * looks cut off, and the very first thing anybody does is drag it left.</p>
+     */
+    private static final double BIRTH_MARGIN = 0.10;
+
     private static final double MINIMUM_STRETCH = 0.1;
 
     private static final double MAXIMUM_STRETCH = 20.0;
@@ -224,6 +243,15 @@ public final class ChartCanvas extends JComponent {
      * no reason the reader can name.</p>
      */
     private double stretch = 1.0;
+
+    /**
+     * How far the price window is slid, as a share of its own span.
+     *
+     * <p>The vertical twin of {@link #rightMargin}: it is what makes the chart
+     * something the reader puts where they want it, rather than something that
+     * decides for them where it sits.</p>
+     */
+    private double priceOffset;
 
     /**
      * Kept in step with {@link RulerMode}, which owns it for the whole
@@ -602,7 +630,12 @@ public final class ChartCanvas extends JComponent {
             overlay.calculate(this.series);
         }
         this.visibleBars = Math.min(DEFAULT_VISIBLE_BARS, Math.max(1, this.series.size()));
-        this.firstBar = Math.max(0, this.series.size() - visibleBars);
+
+        // A fresh series opens with air on the right, not glued to the frame: a
+        // chart whose last candle touches the edge looks cut off, and the first
+        // thing anybody does is drag it left.
+        this.rightMargin = birthMargin();
+        this.firstBar = clampFirstBar(this.series.size() - visibleBars + rightMargin);
 
         repaint();
         onSeriesChanged.run();
@@ -630,7 +663,7 @@ public final class ChartCanvas extends JComponent {
     }
 
     private Viewport viewport() {
-        return Viewport.of(series, plotBounds(), firstBar, visibleBars, stretch);
+        return Viewport.of(series, plotBounds(), firstBar, visibleBars, stretch, priceOffset);
     }
 
     /** @return how much the bottom strips take together */
@@ -685,7 +718,7 @@ public final class ChartCanvas extends JComponent {
      * is no room to watch a bar form.</p>
      */
     private int clampFirstBar(int candidate) {
-        int air = Math.max(1, visibleBars / 2);
+        int air = Math.max(1, (int) Math.round(visibleBars * AIR_RIGHT));
         int furthest = Math.max(0, series.size() - visibleBars + air);
 
         return Math.max(0, Math.min(candidate, furthest));
@@ -829,10 +862,37 @@ public final class ChartCanvas extends JComponent {
     }
 
     /** Back to the automatic vertical scale. */
+    /** Back to the automatic vertical scale, centred, with no slide. */
     public void resetStretch() {
         stretch = 1.0;
+        priceOffset = 0.0;
 
         repaint();
+    }
+
+    /**
+     * Puts the chart back where it opens: newest bars, automatic scale, and the
+     * ten per cent of air on the right.
+     */
+    public void centreChart() {
+        stretch = 1.0;
+        priceOffset = 0.0;
+        rightMargin = birthMargin();
+        firstBar = clampFirstBar(series.size() - visibleBars + rightMargin);
+
+        repaint();
+    }
+
+    private int birthMargin() {
+        return Math.max(1, (int) Math.round(visibleBars * BIRTH_MARGIN));
+    }
+
+    private double clampOffset(double candidate) {
+        if (!Double.isFinite(candidate)) {
+            return 0.0;
+        }
+
+        return Math.max(-AIR_VERTICAL, Math.min(candidate, AIR_VERTICAL));
     }
 
     @Override
@@ -1413,6 +1473,10 @@ public final class ChartCanvas extends JComponent {
 
         private int grabbedFirstBar;
 
+        private int grabbedY = -1;
+
+        private double grabbedOffset;
+
         /** Where a scale drag started, and the factor it started from. */
         private int scalingFrom = -1;
 
@@ -1510,6 +1574,19 @@ public final class ChartCanvas extends JComponent {
             scalingFrom = -1;
             grabbedAt = e.getX();
             grabbedFirstBar = firstBar;
+            grabbedY = e.getY();
+            grabbedOffset = priceOffset;
+        }
+
+        @Override
+        public void mouseClicked(MouseEvent e) {
+            // Two clicks on the plot put everything back: scale, slide and
+            // position. It is the way out of any arrangement the reader has got
+            // themselves into, and it needs no button and no menu.
+            if (e.getClickCount() == 2 && !onAxis(e.getX()) && !onTimeAxis(e.getY())
+                    && (jumpBounds() == null || !jumpBounds().contains(e.getPoint()))) {
+                centreChart();
+            }
         }
 
         @Override
@@ -1566,6 +1643,13 @@ public final class ChartCanvas extends JComponent {
             int moved = (int) Math.round((grabbedAt - e.getX()) / perBar);
 
             firstBar = clampFirstBar(grabbedFirstBar + moved);
+
+            // Dragging down slides the price window up, which draws the bars
+            // lower: the content follows the hand, which is the only direction
+            // that ever feels right.
+            int height = Math.max(1, plotBounds().height);
+
+            priceOffset = clampOffset(grabbedOffset + (e.getY() - grabbedY) / (double) height);
             cursor = e.getPoint();
 
             repaint();

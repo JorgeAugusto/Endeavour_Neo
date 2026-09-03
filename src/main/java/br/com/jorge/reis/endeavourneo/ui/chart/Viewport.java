@@ -94,6 +94,22 @@ public final class Viewport {
      */
     public static Viewport of(PriceSeries series, Rectangle bounds, int firstBar, int barCount,
                               double stretch) {
+        return of(series, bounds, firstBar, barCount, stretch, 0.0);
+    }
+
+    /**
+     * @param offset how far to slide the price window, as a share of its own span
+     *
+     * <p>A SHARE and not a price. Scrolling sideways moves the chart into a
+     * different price region, and an offset kept in points would send the bars
+     * off the top of the screen the moment the reader panned back a year. As a
+     * share of the span it means "half a screen up" wherever the chart is.</p>
+     *
+     * <p>Positive slides the window up, which draws the bars lower — the
+     * direction the hand expects when it drags downwards.</p>
+     */
+    public static Viewport of(PriceSeries series, Rectangle bounds, int firstBar, int barCount,
+                              double stretch, double offset) {
         int first = Math.max(0, Math.min(firstBar, Math.max(0, series.size() - 1)));
 
         // SLOTS, not bars. The count is how many bar-widths fit across the
@@ -137,6 +153,13 @@ public final class Viewport {
 
             lowest = centre - half;
             highest = centre + half;
+        }
+
+        if (Double.isFinite(offset) && offset != 0.0) {
+            double slide = (highest - lowest) * offset;
+
+            lowest += slide;
+            highest += slide;
         }
 
         return new Viewport(bounds, first, count, lowest, highest);
