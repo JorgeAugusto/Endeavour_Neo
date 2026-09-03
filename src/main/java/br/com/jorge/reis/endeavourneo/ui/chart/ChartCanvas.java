@@ -17,7 +17,9 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.chart;
 
+import br.com.jorge.reis.endeavourneo.domain.market.Aggregation;
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
+import br.com.jorge.reis.endeavourneo.domain.market.Timeframe;
 
 import br.com.jorge.reis.endeavourneo.ui.chart.style.CandleStyle;
 
@@ -184,6 +186,18 @@ public final class ChartCanvas extends JComponent {
     /** Told when the bars themselves are replaced. */
     private transient Runnable onSeriesChanged = () -> { };
 
+    /**
+     * The bars as they are STORED, before the period is applied.
+     *
+     * <p>Kept alongside the drawn series because changing the period has to fold
+     * the original minutes again. Folding the already-folded ones would work for
+     * 1m→5m→15m and be quietly wrong for anything else — renko over five-minute
+     * bars is not renko over the trades that made them.</p>
+     */
+    private transient PriceSeries base = PriceSeries.empty();
+
+    private transient Aggregation period = Timeframe.ONE_MINUTE;
+
     private int firstBar;
 
     private int visibleBars = DEFAULT_VISIBLE_BARS;
@@ -239,6 +253,7 @@ public final class ChartCanvas extends JComponent {
 
         installContextMenu();
         installControlToggle();
+        installDigits();
 
         // Set at construction, not on the first mouse move: until the pointer
         // moves, the canvas would show the parent's cursor and the mode would be
@@ -329,6 +344,33 @@ public final class ChartCanvas extends JComponent {
      * installed after the chart closes keeps a reference to it and keeps
      * reacting to keys for a window that is gone.</p>
      */
+    /**
+     * Typing a digit anywhere on the chart opens the period window.
+     *
+     * <p>Bound for the whole window rather than the focused component: the chart
+     * is the window, and asking the reader to click it first before a shortcut
+     * works is the kind of thing that makes shortcuts go unused. There is no
+     * text field here for the digits to be stolen from.</p>
+     */
+    private void installDigits() {
+        for (char digit = '0'; digit <= '9'; digit++) {
+            String typed = String.valueOf(digit);
+
+            getInputMap(WHEN_IN_FOCUSED_WINDOW)
+                    .put(javax.swing.KeyStroke.getKeyStroke(digit), "period" + typed);
+            getActionMap().put("period" + typed, new javax.swing.AbstractAction() {
+
+                private static final long serialVersionUID = 1L;
+
+                @Override
+                public void actionPerformed(java.awt.event.ActionEvent e) {
+                    askForPeriod(javax.swing.SwingUtilities.getWindowAncestor(ChartCanvas.this),
+                            typed);
+                }
+            });
+        }
+    }
+
     private void installControlToggle() {
         java.awt.KeyEventDispatcher dispatcher = event -> {
             if (event.getKeyCode() != java.awt.event.KeyEvent.VK_CONTROL) {
@@ -477,8 +519,50 @@ public final class ChartCanvas extends JComponent {
         return java.util.List.copyOf(overlays);
     }
 
+    /**
+     * @param newSeries the bars as stored, at their own scale
+     *
+     * <p>The period is applied on top and survives: opening another instrument
+     * on a chart set to renko keeps it on renko, which is what the reader
+     * arranged the window for.</p>
+     */
     public void setSeries(PriceSeries newSeries) {
-        this.series = newSeries == null ? PriceSeries.empty() : newSeries;
+        this.base = newSeries == null ? PriceSeries.empty() : newSeries;
+
+        refold();
+    }
+
+    /** @param newPeriod the scale to look at, from {@link PeriodCatalog} */
+    public void setPeriod(Aggregation newPeriod) {
+        if (newPeriod == null || newPeriod == period) {
+            return;
+        }
+
+        this.period = newPeriod;
+
+        refold();
+    }
+
+    public Aggregation period() {
+        return period;
+    }
+
+    /**
+     * Opens the period window, and applies whatever comes back.
+     *
+     * @param owner the window it should sit over
+     * @param typed the digit that opened it, or null when a double click did
+     */
+    public void askForPeriod(java.awt.Window owner, String typed) {
+        PeriodCatalog.Choice choice = PeriodDialog.ask(owner, typed);
+
+        if (choice != null) {
+            setPeriod(choice.aggregation());
+        }
+    }
+
+    private void refold() {
+        this.series = period.apply(base);
 
         // Recalculated here, not lazily on the next paint: an overlay still
         // holding values from the previous series would draw a line that

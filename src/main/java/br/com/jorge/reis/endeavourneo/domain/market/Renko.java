@@ -51,6 +51,26 @@ import java.util.List;
  * <p>Volume is accumulated between bricks and split equally among however many
  * complete at once. That split is a convention, not a measurement: the data does
  * not say which part of a minute's volume belonged to which brick.</p>
+ *
+ * <h2>Against ta4j, which was read before this was written</h2>
+ *
+ * <p>Its {@code RenkoBarAggregator} agrees on everything structural — closes
+ * only, a box size, a reversal in boxes, two by default, anchored on the first
+ * close. Three things differ, and each was a choice rather than an oversight:</p>
+ *
+ * <ul>
+ *   <li><b>It refuses unevenly spaced source bars</b> and throws. Ours are
+ *       unevenly spaced by nature — nights and weekends — so that aggregator
+ *       could not read this project's data at all. That alone settled whether to
+ *       write this.</li>
+ *   <li><b>It gives all the volume to the first brick</b> of a batch and zero to
+ *       the rest. Zero is as much a claim as a share is; we spread it, and say
+ *       here that it is a convention.</li>
+ *   <li><b>It advances the timestamps</b> so bricks from one bar differ. That is
+ *       required by its own series, which will not take two bars at the same
+ *       instant. Our chart places bricks by index, so we can keep the true time
+ *       instead of inventing gaps inside a minute.</li>
+ * </ul>
  */
 public final class Renko implements Aggregation {
 

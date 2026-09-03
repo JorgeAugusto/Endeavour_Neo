@@ -64,7 +64,11 @@ public final class RandomWalkSeries implements PriceSeries {
         Random random = new Random(20_260_902L);
 
         double price = start;
-        double volatility = start * 0.002;
+        // Measured against the real thing: a WIN minute moves some tens of
+        // points on an index around 135.000, which is a couple of hundredths of
+        // one per cent. The first version used 0,2% -- ten times too much -- and
+        // it only showed when renko turned 2.000 bars into 26.000 bricks.
+        double volatility = start * 0.00025;
         long time = System.currentTimeMillis() - bars * 60_000L;
 
         for (int i = 0; i < bars; i++) {
@@ -72,7 +76,7 @@ public final class RandomWalkSeries implements PriceSeries {
             // cluster their movement, and a chart drawn over constant-variance
             // noise looks wrong in a way that is hard to name.
             volatility *= 1.0 + random.nextGaussian() * 0.05;
-            volatility = Math.max(start * 0.0004, Math.min(volatility, start * 0.01));
+            volatility = Math.max(start * 0.00008, Math.min(volatility, start * 0.0008));
 
             double open = price;
             double close = open + random.nextGaussian() * volatility;

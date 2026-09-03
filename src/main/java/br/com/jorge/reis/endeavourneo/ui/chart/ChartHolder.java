@@ -125,6 +125,9 @@ public final class ChartHolder {
      */
     private final OverlayLegend legend;
 
+    /** Instrument and period, inside the chart and below the title bar. */
+    private final ChartHeader chartHeader;
+
     /**
      * Toolbar and legend together, so the pair moves between containers as one.
      *
@@ -164,6 +167,7 @@ public final class ChartHolder {
         this.name = name;
         this.key = name.replaceAll("[^A-Za-z0-9]+", "_");
         this.legend = new OverlayLegend(canvas, this.key);
+        this.chartHeader = new ChartHeader(canvas, name);
 
         // The legend reads the overlays off the canvas; nothing else tells it
         // they are gone. Without this, switching layout leaves the old list on
@@ -175,7 +179,13 @@ public final class ChartHolder {
 
         canvas.onSeriesChanged(this::retitle);
 
-        header.add(legend, BorderLayout.CENTER);
+        JPanel stack = new JPanel();
+
+        stack.setLayout(new javax.swing.BoxLayout(stack, javax.swing.BoxLayout.Y_AXIS));
+        stack.add(chartHeader);
+        stack.add(legend);
+
+        header.add(stack, BorderLayout.CENTER);
         this.desktop = desktop;
         this.owner = owner;
         this.onClosed = onClosed == null ? () -> { } : onClosed;
@@ -195,10 +205,13 @@ public final class ChartHolder {
      * is nothing to compare against, and a "0,00%" would be a claim.</p>
      */
     private String title() {
+        // The period in the title as well as inside the chart: the title is what
+        // is readable when the window is behind two others.
+        String scale = "  " + canvas.period().label();
         String change = Sessions.formatChange(
                 Sessions.changeOnDay(canvas.series(), java.time.ZoneId.systemDefault()));
 
-        return change.isEmpty() ? name : name + "   " + change;
+        return change.isEmpty() ? name + scale : name + scale + "   " + change;
     }
 
     private void retitle() {
