@@ -350,15 +350,30 @@ public final class ReplayPanel extends JPanel {
     private void refresh() {
         boolean ready = session != null;
 
+        // The first session's ticks are read before play is offered, and the
+        // transport says so. Offering a play button that starts on invented
+        // ticks, and then swaps them for the real ones a quarter of a second
+        // later, would be a difference nobody could see and everybody would
+        // inherit.
+        boolean waiting = ready && session.isPreparing();
+
         chip.setText(ready ? session.instrument() : Messages.get("replay.noSession"));
         chip.setEnabled(ready);
 
         for (Component each : new Component[]{play, back, forward, scrubber, speed}) {
-            each.setEnabled(ready);
+            each.setEnabled(ready && !waiting);
         }
 
         play.setIcon(ready && session.isPlaying()
                 ? ReplayIcons.pause(18) : ReplayIcons.play(18));
+
+        if (waiting) {
+            clock.setText(Messages.get("replay.loading"));
+            ends.setText("");
+            chip.setEnabled(true);
+
+            return;
+        }
 
         clock.setText(ready ? session.clockText() : "--:--:--");
         ends.setText(ready ? session.endText() : "");

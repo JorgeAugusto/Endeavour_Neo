@@ -20,7 +20,9 @@ package br.com.jorge.reis.endeavourneo.ui.replay;
 import br.com.jorge.reis.endeavourneo.domain.market.ConcatSeries;
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
 import br.com.jorge.reis.endeavourneo.domain.market.ReplaySeries;
+import br.com.jorge.reis.endeavourneo.domain.market.RecordedTicks;
 import br.com.jorge.reis.endeavourneo.domain.market.SyntheticTicks;
+import br.com.jorge.reis.endeavourneo.domain.market.TickLibrary;
 import br.com.jorge.reis.endeavourneo.ui.chart.RandomWalkSeries;
 
 import java.time.Instant;
@@ -88,6 +90,18 @@ public final class ReplaySession {
     /** The smallest step the instrument moves in; goes with the base one day. */
     private static final double TICK = 5.0;
 
+    /** The sessions of real ticks, at most three of them in memory. */
+    private final transient TickLibrary ticks;
+
+    /**
+     * True until the first session's ticks are in memory.
+     *
+     * <p>Volatile: set on the interface thread, read by it too, but written
+     * from a callback that starts on the loader's thread before it hops over.
+     * </p>
+     */
+    private volatile boolean preparing;
+
     private static final DateTimeFormatter CLOCK = DateTimeFormatter.ofPattern("HH:mm:ss");
 
     private static final DateTimeFormatter DAY_AND_CLOCK =
@@ -141,6 +155,19 @@ public final class ReplaySession {
      * skipped, so "Monday to Monday" is six sessions and not eight.</p>
      */
     public ReplaySession(String instrument, LocalDate date, LocalDate until, int historyDays) {
+        this(instrument, date, until, historyDays,
+                br.com.jorge.reis.endeavourneo.platform.Bases.folder().resolve("ticks"));
+    }
+
+    /**
+     * @param tickFolder where the exported sessions are
+     *
+     * <p>Package-visible so a test can point at a folder it wrote itself.
+     * Without the seam the only way to test the waiting is to depend on which
+     * months happen to be exported on the machine running the suite.</p>
+     */
+    ReplaySession(String instrument, LocalDate date, LocalDate until, int historyDays,
+                  java.nio.file.Path tickFolder) {
         this.instrument = instrument;
         this.date = date;
         this.until = until == null || until.isBefore(date) ? date : until;
@@ -171,11 +198,31 @@ public final class ReplaySession {
             parts.add(dayOf(date));
         }
 
-        // Broken into prices so bars are watched forming rather than appearing
-        // whole. Seeded by the date, like the day itself: the same session has
-        // to replay the same way, wiggles included.
+        // The exchange's own ticks where they exist, and a synthetic walk where
+        // they do not -- which is most days, with one month of ticks against
+        // eight years of candles. Seeded by the date, like the day itself: the
+        // same session has to replay the same way, wiggles included.
+        this.ticks = new TickLibrary(tickFolder, rootOf(instrument));
+
         this.live = new ReplaySeries(ConcatSeries.of(parts), before, before,
-                new SyntheticTicks(TICK, date.toEpochDay()));
+                new RecordedTicks(ticks, new SyntheticTicks(TICK, date.toEpochDay())));
+
+        // The FIRST session is waited for, and nothing else is. Everywhere else
+        // a quarter-second of synthetic path is better than a quarter-second of
+        // frozen animation -- but here the reader is already standing still,
+        // waiting to press play, and starting on invented ticks without saying
+        // so would be a lie told in the one moment it is easy to avoid.
+        this.preparing = ticks.has(date);
+
+        ticks.onLoaded(() -> javax.swing.SwingUtilities.invokeLater(() -> {
+            if (preparing && ticks.at(this.date) != null) {
+                preparing = false;
+
+                announce();
+            }
+        }));
+
+        ticks.request(date);
 
         this.timer = new Timer(FRAME, e -> tick());
         this.timer.setCoalesce(true);
@@ -244,6 +291,44 @@ public final class ReplaySession {
         return new RandomWalkSeries(MINUTES, 135_000.0, first, day.toEpochDay());
     }
 
+    /** @return whether the first session's ticks are still being read */
+    public boolean isPreparing() {
+        return preparing;
+    }
+
+    /**
+     * @return how many tick sessions this replay is holding
+     *
+     * <p>Package-visible for the test that proves stopping gives them back.
+     * Three of them are 340 MB, so "it was released" has to be something a test
+     * can actually see, not something the code merely claims.</p>
+     */
+    int residentTicks() {
+        return ticks.residentCount();
+    }
+
+    /** @return whether this day is replayed from the exchange's own ticks */
+    public boolean isRecorded() {
+        return ticks.has(date);
+    }
+
+    /**
+     * @return the instrument the tick files are named after
+     *
+     * <p>The chart calls its series {@code winfut-1m}; the tick sessions are
+     * {@code winfut-2021-01-04.bin}. The scale belongs to the candles, not to
+     * the instrument, so it comes off.</p>
+     */
+    static String rootOf(String instrument) {
+        if (instrument == null) {
+            return "";
+        }
+
+        int dash = instrument.indexOf('-');
+
+        return dash > 0 ? instrument.substring(0, dash) : instrument;
+    }
+
     public String instrument() {
         return instrument;
     }
@@ -298,6 +383,12 @@ public final class ReplaySession {
     }
 
     public void toggle() {
+        if (preparing) {
+            // Nothing, and the button is disabled anyway. Belt and braces: a
+            // keyboard shortcut or a restored state could reach this.
+            return;
+        }
+
         if (timer.isRunning()) {
             timer.stop();
         } else {
@@ -378,6 +469,10 @@ public final class ReplaySession {
      */
     public void stop() {
         timer.stop();
+
+        // Three sessions of ticks are 340 MB. Holding them after the replay is
+        // over would be the one place this design leaks.
+        ticks.close();
 
         for (Runnable ending : new ArrayList<>(endings)) {
             ending.run();
