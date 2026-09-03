@@ -27,6 +27,7 @@ import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Point;
 import java.awt.Rectangle;
+import java.awt.RenderingHints;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseWheelEvent;
@@ -108,6 +109,21 @@ public final class ChartCanvas extends JComponent {
     private static final DateTimeFormatter CLOCK = DateTimeFormatter.ofPattern("HH:mm");
 
     private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("dd/MM");
+
+    /** Diameter of the button that jumps back to the newest bars. */
+    private static final int JUMP_SIZE = 26;
+
+    /** How far it sits from the bottom-right corner of the plot. */
+    private static final int JUMP_MARGIN = 14;
+
+    /**
+     * How much a pixel of horizontal drag changes the number of visible bars.
+     *
+     * <p>Smaller than the vertical one because the horizontal drag has the whole
+     * width to work with, and because losing the place sideways is more
+     * disorienting than losing the scale.</p>
+     */
+    private static final double TIME_DRAG_SENSITIVITY = 0.004;
 
     /**
      * How much a pixel of vertical drag changes the scale.
@@ -204,6 +220,49 @@ public final class ChartCanvas extends JComponent {
     }
 
     /**
+     * @return where the jump button sits, or null when there is nowhere to jump
+     *
+     * <p>Absent rather than disabled when already at the end: a permanent
+     * control that does nothing most of the time trains the reader to ignore
+     * it, and this one matters precisely on the rare occasion it appears.</p>
+     */
+    private Rectangle jumpBounds() {
+        if (series.size() == 0 || firstBar + visibleBars >= series.size()) {
+            return null;
+        }
+
+        Rectangle plot = plotBounds();
+
+        return new Rectangle(plot.width - JUMP_SIZE - JUMP_MARGIN,
+                plot.height - JUMP_SIZE - JUMP_MARGIN, JUMP_SIZE, JUMP_SIZE);
+    }
+
+    /** Scrolls back to the newest bars. */
+    public void goToEnd() {
+        firstBar = Math.max(0, series.size() - visibleBars);
+
+        repaint();
+    }
+
+    /**
+     * @param currentBars how many bars are visible now
+     * @param deltaX how far the mouse moved right since the drag started
+     * @param available how many bars the series has
+     * @return the new count, clamped
+     *
+     * <p>Dragging LEFT pulls more history in, so more bars fit and they get
+     * narrower. It matches the gesture of hauling the axis towards the past.
+     * Separate from the mouse handling so the arithmetic can be tested without
+     * a window.</p>
+     */
+    static int barsForDrag(int currentBars, int deltaX, int available) {
+        double scaled = currentBars * Math.exp(deltaX * TIME_DRAG_SENSITIVITY);
+
+        return (int) Math.max(MINIMUM_VISIBLE_BARS,
+                Math.min(Math.round(scaled), Math.max(MINIMUM_VISIBLE_BARS, available)));
+    }
+
+    /**
      * @param current the factor now
      * @param deltaY how far the mouse moved down since the drag started
      * @return the new factor, clamped
@@ -250,6 +309,8 @@ public final class ChartCanvas extends JComponent {
             paintTimeAxis(g, viewport);
             paintLastPrice(g, viewport);
             paintCrosshair(g, viewport);
+            paintJumpButton(g);
+            paintReadout(g, viewport);
         } finally {
             g.dispose();
         }
@@ -465,6 +526,56 @@ public final class ChartCanvas extends JComponent {
     }
 
     /**
+     * The summary of the bar under the cursor.
+     *
+     * <p>Painted last so nothing covers it, and only while the mouse is over the
+     * plot -- not over the axes, where there is no bar to describe.</p>
+     */
+    private void paintReadout(Graphics2D g, Viewport viewport) {
+        if (cursor == null || onAxis(cursor.x) || onTimeAxis(cursor.y)) {
+            return;
+        }
+
+        BarReadout.paint(g, series, viewport.barAt(cursor.x), cursor,
+                new Rectangle(0, 0, getWidth(), getHeight()));
+    }
+
+    /**
+     * The button that returns to the newest bars.
+     *
+     * <p>Once panning can take the chart years into the past, getting back is a
+     * long drag with no landmark. Every terminal has this, and its absence is
+     * noticed the first time someone scrolls too far.</p>
+     */
+    private void paintJumpButton(Graphics2D g) {
+        Rectangle where = jumpBounds();
+
+        if (where == null) {
+            return;
+        }
+
+        Object previous = g.getRenderingHint(RenderingHints.KEY_ANTIALIASING);
+
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+        g.setColor(ChartColors.grid());
+        g.fillOval(where.x, where.y, where.width, where.height);
+
+        g.setColor(ChartColors.foreground());
+        g.setStroke(new BasicStroke(1.8f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+
+        int cx = where.x + where.width / 2;
+        int cy = where.y + where.height / 2;
+
+        g.drawLine(cx - 3, cy - 5, cx + 3, cy);
+        g.drawLine(cx + 3, cy, cx - 3, cy + 5);
+
+        if (previous != null) {
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, previous);
+        }
+    }
+
+    /**
      * @param step the distance between grid lines
      * @return a format with just enough decimals for that step
      *
@@ -549,16 +660,18 @@ public final class ChartCanvas extends JComponent {
 
         private double scalingBase;
 
+        /** Where a time drag started, and the bar count it started from. */
+        private int timingFrom = -1;
+
+        private int timingBase;
+
         @Override
         public void mouseMoved(MouseEvent e) {
             cursor = e.getPoint();
 
             // The cursor is the only thing that says the strip is interactive.
             // Without it the area reads as decoration and nobody discovers it.
-            setCursor(Cursor.getPredefinedCursor(
-                    onAxis(e.getX()) && !onTimeAxis(e.getY())
-                            ? Cursor.N_RESIZE_CURSOR
-                            : Cursor.DEFAULT_CURSOR));
+            setCursor(Cursor.getPredefinedCursor(cursorFor(e.getX(), e.getY())));
 
             repaint();
         }
@@ -570,8 +683,43 @@ public final class ChartCanvas extends JComponent {
             repaint();
         }
 
+        private int cursorFor(int x, int y) {
+            Rectangle jump = jumpBounds();
+
+            if (jump != null && jump.contains(x, y)) {
+                return Cursor.HAND_CURSOR;
+            }
+            if (onTimeAxis(y) && !onAxis(x)) {
+                return Cursor.E_RESIZE_CURSOR;
+            }
+            if (onAxis(x) && !onTimeAxis(y)) {
+                return Cursor.N_RESIZE_CURSOR;
+            }
+
+            return Cursor.DEFAULT_CURSOR;
+        }
+
         @Override
         public void mousePressed(MouseEvent e) {
+            Rectangle jump = jumpBounds();
+
+            if (jump != null && jump.contains(e.getPoint())) {
+                goToEnd();
+
+                return;
+            }
+
+            if (onTimeAxis(e.getY()) && !onAxis(e.getX())) {
+                timingFrom = e.getX();
+                timingBase = visibleBars;
+                scalingFrom = -1;
+                grabbedAt = -1;
+
+                return;
+            }
+
+            timingFrom = -1;
+
             if (onAxis(e.getX()) && !onTimeAxis(e.getY())) {
                 // A drag that starts on the strip scales and never pans, even
                 // when it wanders over the plot. Deciding by where the mouse IS
@@ -592,11 +740,26 @@ public final class ChartCanvas extends JComponent {
         @Override
         public void mouseReleased(MouseEvent e) {
             scalingFrom = -1;
+            timingFrom = -1;
             grabbedAt = -1;
         }
 
         @Override
         public void mouseDragged(MouseEvent e) {
+            if (timingFrom >= 0) {
+                // The newest visible bar stays put while the count changes.
+                // Anchoring on the left instead would walk the chart away from
+                // the present, which is where the reader almost always is.
+                int end = firstBar + visibleBars;
+
+                visibleBars = barsForDrag(timingBase, e.getX() - timingFrom, series.size());
+                firstBar = clampFirstBar(end - visibleBars);
+
+                repaint();
+
+                return;
+            }
+
             if (scalingFrom >= 0) {
                 stretch = stretchForDrag(scalingBase, e.getY() - scalingFrom);
 

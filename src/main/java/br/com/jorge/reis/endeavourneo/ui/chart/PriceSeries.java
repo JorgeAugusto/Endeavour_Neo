@@ -50,6 +50,18 @@ public interface PriceSeries {
 
     double closeAt(int index);
 
+    /**
+     * @param index 0 is the oldest bar
+     * @return how much traded in that bar, or NaN when the series has none
+     *
+     * <p>Optional, and NaN rather than zero when absent. Zero is a claim -- that
+     * nothing traded -- and the wrong one; NaN says "not known", and the readout
+     * omits the row instead of printing a falsehood.</p>
+     */
+    default double volumeAt(int index) {
+        return Double.NaN;
+    }
+
     /** @return a series with no bars, for an empty screen */
     static PriceSeries empty() {
         return new PriceSeries() {

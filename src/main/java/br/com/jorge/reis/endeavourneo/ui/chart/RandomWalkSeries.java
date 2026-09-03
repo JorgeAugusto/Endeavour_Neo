@@ -45,6 +45,8 @@ public final class RandomWalkSeries implements PriceSeries {
 
     private final double[] closes;
 
+    private final double[] volumes;
+
     /**
      * @param bars how many to generate
      * @param start the starting price
@@ -55,6 +57,7 @@ public final class RandomWalkSeries implements PriceSeries {
         this.highs = new double[bars];
         this.lows = new double[bars];
         this.closes = new double[bars];
+        this.volumes = new double[bars];
 
         Random random = new Random(20_260_902L);
 
@@ -78,6 +81,12 @@ public final class RandomWalkSeries implements PriceSeries {
             closes[i] = close;
             highs[i] = Math.max(open, close) + wick;
             lows[i] = Math.min(open, close) - wick;
+
+            // Volume that follows the movement: a big bar traded more. Not a
+            // law of markets, but close enough that a chart drawn over constant
+            // volume looks obviously fake.
+            volumes[i] = Math.round(500 + Math.abs(close - open) / volatility * 900
+                    + random.nextDouble() * 400);
 
             price = close;
         }
@@ -111,5 +120,10 @@ public final class RandomWalkSeries implements PriceSeries {
     @Override
     public double closeAt(int index) {
         return closes[index];
+    }
+
+    @Override
+    public double volumeAt(int index) {
+        return volumes[index];
     }
 }
