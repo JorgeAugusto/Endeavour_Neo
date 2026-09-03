@@ -33,6 +33,25 @@ import java.awt.Graphics2D;
  */
 public final class CandleStyle implements ChartStyle {
 
+    /**
+     * Whether rising bodies are drawn hollow.
+     *
+     * <p>Hollow is the older convention and the one Profit uses. It reads
+     * differently rather than merely looking different: with hollow bodies the
+     * <b>ink</b> on the screen marks the falling bars, so a downward stretch is
+     * visibly darker. Filled-both-ways relies on colour alone, which is exactly
+     * what a colour-blind reader does not have.</p>
+     */
+    private final boolean hollow;
+
+    public CandleStyle() {
+        this(false);
+    }
+
+    public CandleStyle(boolean hollow) {
+        this.hollow = hollow;
+    }
+
     /** Share of the bar's width the body occupies; the rest is the gap. */
     private static final double BODY_SHARE = 0.72;
 
@@ -41,7 +60,7 @@ public final class CandleStyle implements ChartStyle {
 
     @Override
     public String nameKey() {
-        return "chart.style.candle";
+        return hollow ? "chart.style.candleHollow" : "chart.style.candle";
     }
 
     @Override
@@ -82,7 +101,20 @@ public final class CandleStyle implements ChartStyle {
 
             // A doji -- open equal to close -- has zero height and would vanish
             // entirely. One pixel is the honest minimum: the bar exists.
-            g.fillRect(left, (int) Math.round(top), (int) bodyWidth, Math.max(1, height));
+            int drawHeight = Math.max(1, height);
+
+            if (hollow && rising && drawHeight > 2) {
+                // Outlined, with the background showing through. Below three
+                // pixels the outline and the fill are the same thing, so a tiny
+                // body stays solid rather than becoming an invisible ring.
+                g.setColor(ChartColors.background());
+                g.fillRect(left, (int) Math.round(top), (int) bodyWidth, drawHeight);
+
+                g.setColor(ChartColors.up());
+                g.drawRect(left, (int) Math.round(top), (int) bodyWidth - 1, drawHeight - 1);
+            } else {
+                g.fillRect(left, (int) Math.round(top), (int) bodyWidth, drawHeight);
+            }
         }
     }
 }

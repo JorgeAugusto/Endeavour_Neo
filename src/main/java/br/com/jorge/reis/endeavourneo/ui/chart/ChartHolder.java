@@ -273,6 +273,8 @@ public final class ChartHolder {
 
         chart.setMnemonic(Messages.mnemonic("menu.chart"));
         chart.add(item("chart.style.candle", () -> canvas.setStyle(new CandleStyle())));
+        chart.add(item("chart.style.candleHollow",
+                () -> canvas.setStyle(new CandleStyle(true))));
         chart.add(item("chart.style.line", () -> canvas.setStyle(new LineStyle())));
         chart.addSeparator();
         chart.add(item("chart.resetScale", canvas::resetStretch));

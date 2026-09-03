@@ -165,6 +165,25 @@ final class BarReadout {
 
         rows.add(new String[]{Messages.get("readout.change"), movement,
                 change > 0 ? "up" : change < 0 ? "down" : "flat"});
+
+        // Against the PREVIOUS close, which is a different question from
+        // close-minus-open and the one a quote screen answers. A bar can close
+        // above its own open and still be down on the session, and only this
+        // row says so.
+        if (index > 0) {
+            double previous = series.closeAt(index - 1);
+            double session = close - previous;
+            String sessionSign = session > 0 ? "+" : "";
+            String text = sessionSign + price.format(session)
+                    + (previous != 0.0
+                            ? "  (" + sessionSign
+                                    + percent.format(100.0 * session / previous) + "%)"
+                            : "");
+
+            rows.add(new String[]{Messages.get("readout.fromPrevious"), text,
+                    session > 0 ? "up" : session < 0 ? "down" : "flat"});
+        }
+
         rows.add(new String[]{Messages.get("readout.range"), price.format(high - low)});
 
         double volume = series.volumeAt(index);

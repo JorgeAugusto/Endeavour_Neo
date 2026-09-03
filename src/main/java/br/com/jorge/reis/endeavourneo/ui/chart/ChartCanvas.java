@@ -88,8 +88,18 @@ public final class ChartCanvas extends JComponent {
      */
     private static final int AXIS_WIDTH = 62;
 
-    /** Height of the time strip along the bottom, in pixels. */
+    /** Height of the hours strip along the bottom, in pixels. */
     private static final int TIME_HEIGHT = 20;
+
+    /**
+     * Height of the day band below the hours.
+     *
+     * <p>A band of its own rather than a date substituted into the hour labels.
+     * Substituting costs an hour label and makes the reader notice the swap; a
+     * second strip states the day continuously and never competes with the
+     * time.</p>
+     */
+    private static final int DAY_HEIGHT = 17;
 
     /**
      * The time steps a label may fall on, in minutes.
@@ -204,10 +214,15 @@ public final class ChartCanvas extends JComponent {
         return Viewport.of(series, plotBounds(), firstBar, visibleBars, stretch);
     }
 
+    /** @return how much the bottom strips take together */
+    private int axisHeight() {
+        return TIME_HEIGHT + DAY_HEIGHT;
+    }
+
     /** @return the drawing area, which stops before both strips */
     private Rectangle plotBounds() {
         return new Rectangle(0, 0, Math.max(1, getWidth() - AXIS_WIDTH),
-                Math.max(1, getHeight() - TIME_HEIGHT));
+                Math.max(1, getHeight() - axisHeight()));
     }
 
     /** @param x a horizontal pixel
@@ -219,7 +234,7 @@ public final class ChartCanvas extends JComponent {
     /** @param y a vertical pixel
      *  @return whether it falls in the time strip */
     private boolean onTimeAxis(int y) {
-        return y >= getHeight() - TIME_HEIGHT;
+        return y >= getHeight() - axisHeight();
     }
 
     /**
@@ -357,7 +372,7 @@ public final class ChartCanvas extends JComponent {
         int left = getWidth() - AXIS_WIDTH;
         double step = gridStep(viewport);
 
-        int bottom = getHeight() - TIME_HEIGHT;
+        int bottom = getHeight() - axisHeight();
 
         g.setColor(ChartColors.background());
         g.fillRect(left, 0, AXIS_WIDTH, bottom);
@@ -398,14 +413,17 @@ public final class ChartCanvas extends JComponent {
      * the reader work out for themselves that a night went by.</p>
      */
     private void paintTimeAxis(Graphics2D g, Viewport viewport) {
-        int top = getHeight() - TIME_HEIGHT;
+        int top = getHeight() - axisHeight();
         int step = timeStep(viewport);
 
         g.setColor(ChartColors.background());
-        g.fillRect(0, top, getWidth(), TIME_HEIGHT);
+        g.fillRect(0, top, getWidth(), axisHeight());
 
         g.setColor(ChartColors.grid());
         g.drawLine(0, top, getWidth(), top);
+        g.drawLine(0, top + TIME_HEIGHT, getWidth(), top + TIME_HEIGHT);
+
+        paintDayBand(g, viewport, top + TIME_HEIGHT);
 
         g.setFont(getFont().deriveFont(11f));
 
@@ -432,7 +450,7 @@ public final class ChartCanvas extends JComponent {
             }
 
             int x = (int) Math.round(viewport.x(i));
-            String text = newDay ? time.format(DAY) : time.format(CLOCK);
+            String text = time.format(CLOCK);
             int width = metrics.stringWidth(text);
 
             // Skip a label that would touch the previous one. Drawing both and
@@ -450,6 +468,74 @@ public final class ChartCanvas extends JComponent {
             g.setColor(ChartColors.foreground());
             g.drawString(text, x - width / 2, top + metrics.getAscent() + 3);
         }
+    }
+
+    /**
+     * The day band: one label per day, centred over the bars of that day.
+     *
+     * <p>Centred over its own span rather than placed at the boundary, so the
+     * label says "these bars are this day" instead of "the day changed here".
+     * The divider between days carries the boundary; the label carries the
+     * name.</p>
+     */
+    private void paintDayBand(Graphics2D g, Viewport viewport, int top) {
+        ZoneId zone = ZoneId.systemDefault();
+
+        g.setFont(getFont().deriveFont(11f));
+
+        FontMetrics metrics = g.getFontMetrics();
+        int limit = Math.min(viewport.lastBar(), series.size());
+        int spanStart = viewport.firstBar();
+
+        java.time.LocalDate current = null;
+
+        for (int i = viewport.firstBar(); i <= limit; i++) {
+            java.time.LocalDate day = i < limit
+                    ? Instant.ofEpochMilli(series.timeAt(i)).atZone(zone).toLocalDate()
+                    : null;
+
+            if (current == null) {
+                current = day;
+
+                continue;
+            }
+
+            if (day != null && day.equals(current)) {
+                continue;
+            }
+
+            drawDay(g, metrics, viewport, current, spanStart, i, top);
+
+            if (i < limit) {
+                g.setColor(ChartColors.foreground());
+                g.drawLine((int) Math.round(viewport.x(i) - viewport.barWidth() / 2), top,
+                        (int) Math.round(viewport.x(i) - viewport.barWidth() / 2),
+                        top + DAY_HEIGHT);
+            }
+
+            spanStart = i;
+            current = day;
+        }
+    }
+
+    private void drawDay(Graphics2D g, FontMetrics metrics, Viewport viewport,
+                         java.time.LocalDate day, int from, int to, int top) {
+        double left = viewport.x(from) - viewport.barWidth() / 2;
+        double right = viewport.x(to - 1) + viewport.barWidth() / 2;
+
+        String text = day.format(DAY);
+        int width = metrics.stringWidth(text);
+
+        // A span too narrow for its own label is left blank. Drawing it anyway
+        // would spill over the neighbouring days and make the band unreadable
+        // exactly when the chart is zoomed out and the band matters most.
+        if (right - left < width + 10) {
+            return;
+        }
+
+        g.setColor(ChartColors.foreground());
+        g.drawString(text, (int) Math.round((left + right) / 2 - width / 2.0),
+                top + metrics.getAscent() + 2);
     }
 
     /**
@@ -509,7 +595,7 @@ public final class ChartCanvas extends JComponent {
         double price = series.closeAt(index);
         int y = (int) Math.round(viewport.y(price));
 
-        if (y < 0 || y > getHeight() - TIME_HEIGHT) {
+        if (y < 0 || y > getHeight() - axisHeight()) {
             // The last bar is scrolled out of the visible price range. Drawing
             // the tag clamped to an edge would claim a price that is not there.
             return;
@@ -688,7 +774,7 @@ public final class ChartCanvas extends JComponent {
         g.setStroke(new BasicStroke(1.0f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER,
                 1.0f, new float[]{3.0f, 3.0f}, 0.0f));
 
-        g.drawLine(x, 0, x, getHeight() - TIME_HEIGHT);
+        g.drawLine(x, 0, x, getHeight() - axisHeight());
         g.drawLine(0, cursor.y, getWidth() - AXIS_WIDTH, cursor.y);
     }
 
