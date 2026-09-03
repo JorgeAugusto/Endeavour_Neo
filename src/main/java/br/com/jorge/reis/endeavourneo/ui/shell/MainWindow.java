@@ -216,6 +216,7 @@ public final class MainWindow extends JFrame {
         view.addSeparator();
         view.add(item("chart.style.candle", 0, () -> applyStyle(new CandleStyle())));
         view.add(item("chart.style.line", 0, () -> applyStyle(new LineStyle())));
+        view.add(item("chart.resetScale", 0, this::resetChartScale));
 
         JMenu run = menu("menu.run");
         run.add(item("action.sampleJob", 0, this::runSampleJob));
@@ -290,13 +291,29 @@ public final class MainWindow extends JFrame {
      * this is not one.</p>
      */
     private void applyStyle(br.com.jorge.reis.endeavourneo.ui.chart.ChartStyle style) {
+        chartInFront().ifPresent(canvas -> {
+            canvas.setStyle(style);
+            status.say(Messages.get(style.nameKey()));
+        });
+    }
+
+    /** Puts the chart in front back on the automatic vertical scale. */
+    private void resetChartScale() {
+        chartInFront().ifPresent(canvas -> {
+            canvas.resetStretch();
+            status.say(Messages.get("chart.resetScale"));
+        });
+    }
+
+    private java.util.Optional<ChartCanvas> chartInFront() {
         java.awt.Component tab = editors.getSelectedComponent();
 
         if (tab instanceof JPanel panel && panel.getComponentCount() > 0
                 && panel.getComponent(0) instanceof ChartCanvas canvas) {
-            canvas.setStyle(style);
-            status.say(Messages.get(style.nameKey()));
+            return java.util.Optional.of(canvas);
         }
+
+        return java.util.Optional.empty();
     }
 
     private JToolBar buildToolBar() {

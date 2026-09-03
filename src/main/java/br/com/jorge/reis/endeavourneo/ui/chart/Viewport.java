@@ -33,6 +33,14 @@ import java.awt.Rectangle;
  * flat line across the middle of the screen — the movement is still there, it
  * just got squashed by a spike from three years ago.</p>
  *
+ * <p>The vertical scale can be stretched by hand on top of the automatic one.
+ * Automatic is the right default, but it has one case where it gets in the way
+ * and that case is daily: a structure of 300 points inside a day that moved
+ * 1.800. Fit the day and the structure is a few pixels; fit the structure and
+ * the day leaves the screen. The other half of the problem is comparison --
+ * two periods of very different volatility look identical when each is rescaled
+ * to fill the height.</p>
+ *
  * <p>Immutable: panning or zooming produces a new viewport. That removes a whole
  * class of bug where half a paint pass used the old scale and half the new one,
  * and it makes the arithmetic testable without a window.</p>
@@ -69,6 +77,21 @@ public final class Viewport {
      * @return a viewport scaled to those bars
      */
     public static Viewport of(PriceSeries series, Rectangle bounds, int firstBar, int barCount) {
+        return of(series, bounds, firstBar, barCount, 1.0);
+    }
+
+    /**
+     * @param stretch 1 is the automatic scale; above it stretches, below it flattens
+     *
+     * <p>The factor divides the price span, so 2 shows half the prices over the
+     * same height -- taller candles. It is applied <b>around the centre of the
+     * visible range</b>: whatever price sits in the middle of the screen stays
+     * there while the scale changes. Anchoring on the cursor instead would be
+     * consistent with the horizontal zoom and disorienting in practice, because
+     * the price under the mouse is not something the reader is tracking.</p>
+     */
+    public static Viewport of(PriceSeries series, Rectangle bounds, int firstBar, int barCount,
+                              double stretch) {
         int first = Math.max(0, Math.min(firstBar, Math.max(0, series.size() - 1)));
         int count = Math.max(1, Math.min(barCount, series.size() - first));
 
@@ -91,8 +114,20 @@ public final class Viewport {
         }
 
         double margin = (high - low) * PADDING;
+        double lowest = low - margin;
+        double highest = high + margin;
 
-        return new Viewport(bounds, first, count, low - margin, high + margin);
+        double factor = Double.isFinite(stretch) && stretch > 0.0 ? stretch : 1.0;
+
+        if (factor != 1.0) {
+            double centre = (lowest + highest) / 2.0;
+            double half = (highest - lowest) / 2.0 / factor;
+
+            lowest = centre - half;
+            highest = centre + half;
+        }
+
+        return new Viewport(bounds, first, count, lowest, highest);
     }
 
     /** @return the leftmost visible bar */

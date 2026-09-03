@@ -108,6 +108,60 @@ class ViewportTest {
         assertEquals(2, viewport.barAt(9_999.0), "a pixel right of the chart must clamp to the last");
     }
 
+    @Test
+    @DisplayName("stretching keeps the CENTRE price fixed -- that is the whole promise")
+    void stretchPivotsOnTheCentre() {
+        // If the centre moved, stretching would also pan, and the reader would
+        // lose what they were looking at every time they adjusted the scale.
+        PriceSeries series = new Fake(new double[]{100, 110, 90, 105});
+
+        Viewport automatic = Viewport.of(series, AREA, 0, 4);
+        double centre = (automatic.lowestPrice() + automatic.highestPrice()) / 2.0;
+
+        for (double factor : new double[]{0.25, 0.5, 2.0, 8.0}) {
+            Viewport scaled = Viewport.of(series, AREA, 0, 4, factor);
+            double scaledCentre = (scaled.lowestPrice() + scaled.highestPrice()) / 2.0;
+
+            assertEquals(centre, scaledCentre, 1e-9,
+                    "factor " + factor + " moved the centre of the visible range");
+        }
+    }
+
+    @Test
+    @DisplayName("a factor above 1 stretches -- fewer prices over the same height")
+    void aboveOneStretches() {
+        PriceSeries series = new Fake(new double[]{100, 110, 90, 105});
+
+        double automatic = span(Viewport.of(series, AREA, 0, 4));
+        double stretched = span(Viewport.of(series, AREA, 0, 4, 2.0));
+        double flattened = span(Viewport.of(series, AREA, 0, 4, 0.5));
+
+        assertEquals(automatic / 2.0, stretched, 1e-9,
+                "doubling the factor must halve the visible price span");
+        assertEquals(automatic * 2.0, flattened, 1e-9,
+                "halving the factor must double it");
+    }
+
+    @Test
+    @DisplayName("a nonsense factor falls back to automatic instead of blanking the chart")
+    void nonsenseFactorIsIgnored() {
+        // Zero or negative would invert or collapse the scale, and NaN would
+        // make every pixel NaN -- a chart that paints nothing at all, with no
+        // exception to say why.
+        PriceSeries series = new Fake(new double[]{100, 110, 90});
+
+        double automatic = span(Viewport.of(series, AREA, 0, 3));
+
+        for (double bad : new double[]{0.0, -2.0, Double.NaN, Double.POSITIVE_INFINITY}) {
+            assertEquals(automatic, span(Viewport.of(series, AREA, 0, 3, bad)), 1e-9,
+                    "factor " + bad + " was not rejected");
+        }
+    }
+
+    private static double span(Viewport viewport) {
+        return viewport.highestPrice() - viewport.lowestPrice();
+    }
+
     /** A series built from closing prices, with a small range around each. */
     private record Fake(double[] closes) implements PriceSeries {
 

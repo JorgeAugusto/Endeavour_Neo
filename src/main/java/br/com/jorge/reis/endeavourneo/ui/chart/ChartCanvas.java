@@ -63,6 +63,11 @@ public final class ChartCanvas extends JComponent {
     /** Roughly how many pixels apart the horizontal grid lines should sit. */
     private static final int GRID_SPACING = 56;
 
+    /** Flatter than this and the candles are a line; taller and they leave the screen. */
+    private static final double MINIMUM_STRETCH = 0.1;
+
+    private static final double MAXIMUM_STRETCH = 20.0;
+
     private transient PriceSeries series = PriceSeries.empty();
 
     private transient ChartStyle style = new CandleStyle();
@@ -72,6 +77,17 @@ public final class ChartCanvas extends JComponent {
     private int visibleBars = DEFAULT_VISIBLE_BARS;
 
     private transient Point cursor;
+
+    /**
+     * The manual vertical scale, on top of the automatic one.
+     *
+     * <p>Kept per canvas, which means per tab: stretching one chart must not
+     * reach into the others. It persists while the tab lives -- a factor that
+     * reset on every repaint would be unusable -- and View offers a way back to
+     * automatic, because a chart left stretched three days ago looks wrong for
+     * no reason the reader can name.</p>
+     */
+    private double stretch = 1.0;
 
     public ChartCanvas() {
         setOpaque(true);
@@ -117,7 +133,19 @@ public final class ChartCanvas extends JComponent {
 
     private Viewport viewport() {
         return Viewport.of(series, new Rectangle(0, 0, getWidth(), getHeight()),
-                firstBar, visibleBars);
+                firstBar, visibleBars, stretch);
+    }
+
+    /** @return the manual vertical factor; 1 is automatic */
+    public double getStretch() {
+        return stretch;
+    }
+
+    /** Back to the automatic vertical scale. */
+    public void resetStretch() {
+        stretch = 1.0;
+
+        repaint();
     }
 
     @Override
@@ -260,6 +288,17 @@ public final class ChartCanvas extends JComponent {
         @Override
         public void mouseWheelMoved(MouseWheelEvent e) {
             if (series.size() == 0) {
+                return;
+            }
+
+            if (e.isShiftDown()) {
+                // Shift plus wheel is what TradingView and MetaTrader use for
+                // the vertical scale, so the hand already knows it.
+                stretch *= e.getWheelRotation() > 0 ? 0.85 : 1.0 / 0.85;
+                stretch = Math.max(MINIMUM_STRETCH, Math.min(stretch, MAXIMUM_STRETCH));
+
+                repaint();
+
                 return;
             }
 
