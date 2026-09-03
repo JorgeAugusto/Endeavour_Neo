@@ -99,7 +99,21 @@ dialog to find out breaks the reading.
 
 ## D — indicator side buttons
 
-Three small controls. Best guess: visibility, colour, edit. **Not established.**
+Confirmed by the author: **show/hide, colour, edit** — one row per indicator.
+
+| button | what it does | needs | status |
+|---|---|---|---|
+| show/hide | toggles the indicator without removing it | a visible flag per overlay | planned |
+| colour | opens the colour picker for its lines | a colour per plot | planned |
+| edit | opens the parameters dialog | the indicator's settings | planned |
+
+> **Show/hide is the one that earns its place.** Removing an indicator to see the
+> price underneath means retyping its parameters to get it back, so people stop
+> trying things. A toggle makes comparison free, and comparison is the whole
+> reason for having several.
+
+These belong next to the legend in zone C, not in a menu: they act on **one**
+indicator, and a menu would have to name which — turning one click into three.
 
 ## E — plot area
 
@@ -240,7 +254,7 @@ triggering — comes after, and each addition needs its own fill rule written do
 
 ## Open questions
 
-1. **The three buttons in zone D.** Visibility, colour, edit?
+1. ~~The three buttons in zone D.~~ **Answered: show/hide, colour, edit.**
 2. **The two-value price tag in zone F.** Last trade and close? Price and
    settlement?
 3. **The three controls at the right of zone B.**
