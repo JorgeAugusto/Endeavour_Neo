@@ -83,6 +83,9 @@ public final class Launcher {
         Runtime.getRuntime().addShutdownHook(new Thread(jobs::close, "jobs-shutdown"));
 
         SwingUtilities.invokeLater(() -> {
+            // Before the first label is read: every window builds its text once.
+            br.com.jorge.reis.endeavourneo.platform.Language.install();
+
             MainWindow window = new MainWindow(Messages.get("app.title"), jobs);
 
             // Order matters: capture standard output only once the console

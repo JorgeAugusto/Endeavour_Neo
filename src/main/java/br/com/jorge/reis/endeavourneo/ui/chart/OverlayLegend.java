@@ -19,6 +19,7 @@ package br.com.jorge.reis.endeavourneo.ui.chart;
 
 import br.com.jorge.reis.endeavourneo.platform.Appearance;
 import br.com.jorge.reis.endeavourneo.platform.Messages;
+import br.com.jorge.reis.endeavourneo.platform.Settings;
 
 import java.awt.BasicStroke;
 import java.awt.Color;
@@ -77,9 +78,7 @@ public final class OverlayLegend extends JComponent {
 
     private static final int GAP = 3;
 
-    private static final java.util.prefs.Preferences PREFS =
-            java.util.prefs.Preferences.userRoot()
-                    .node("br/com/jorge/reis/endeavourneo/legend");
+    private static final Settings PREFS = Settings.workspace();
 
     private final transient ChartCanvas canvas;
 

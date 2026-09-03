@@ -29,6 +29,8 @@ import br.com.jorge.reis.endeavourneo.platform.JobService;
 import br.com.jorge.reis.endeavourneo.ui.chart.ChartHolder;
 import br.com.jorge.reis.endeavourneo.ui.chart.RandomWalkSeries;
 import br.com.jorge.reis.endeavourneo.platform.Messages;
+import br.com.jorge.reis.endeavourneo.platform.Settings;
+import br.com.jorge.reis.endeavourneo.ui.chart.PeriodCatalog;
 import br.com.jorge.reis.endeavourneo.ui.settings.AppearancePage;
 import br.com.jorge.reis.endeavourneo.ui.settings.GeneralPage;
 import br.com.jorge.reis.endeavourneo.ui.settings.SettingsDialog;
@@ -169,10 +171,21 @@ public final class MainWindow extends JFrame {
 
         restoreLayout();
 
+        // After the frame is on screen: a chart works out its opening size from
+        // the desktop, and the desktop has no size until the window is laid out.
+        // Restoring here in the constructor would give every chart the fallback
+        // size instead of a quarter of the window.
+        javax.swing.SwingUtilities.invokeLater(this::restoreCharts);
+
         addWindowListener(new WindowAdapter() {
 
             @Override
             public void windowClosing(WindowEvent e) {
+                // Written BEFORE anything is closed, and then frozen.
+                rememberCharts();
+
+                leaving = true;
+
                 closeCharts();
                 storeLayout();
             }
@@ -190,6 +203,98 @@ public final class MainWindow extends JFrame {
      * name brings the existing window forward instead of creating a second one,
      * which is the behaviour the tabs had and the one people expect.</p>
      */
+    /**
+     * Writes down which charts are open, so they come back.
+     *
+     * <p>On every open and close rather than at exit: an application that saves
+     * on the way out saves nothing when it does not get to leave, and this one
+     * is meant to be left running overnight.</p>
+     *
+     * <p>The NAME is stored, not the window's own title. "winn-1m (2)" is what
+     * the second chart of a series is called, and reopening has to ask for the
+     * series and let the numbering happen again -- otherwise a restart leaves
+     * "(2)" with no "(1)" beside it.</p>
+     */
+    private void rememberCharts() {
+        if (leaving) {
+            // Closing the application closes every chart, and each close would
+            // rewrite this list one chart shorter until it was empty. The list
+            // was already written the moment before; the closing itself must
+            // not touch it. Without this the feature saves nothing and looks
+            // like it works, because it is only ever read after a restart.
+            return;
+        }
+
+        Settings workspace = Settings.workspace();
+
+        workspace.removeStartingWith("chart.open.");
+
+        int at = 0;
+
+        for (java.util.Map.Entry<String, ChartHolder> each : charts.entrySet()) {
+            workspace.put("chart.open." + at + ".series", seriesOf(each.getKey()));
+            workspace.put("chart.open." + at + ".period", each.getValue().canvas().periodCode());
+
+            at++;
+        }
+    }
+
+    /** @return the series a chart title came from, with any "(2)" taken off */
+    private static String seriesOf(String title) {
+        int bracket = title.lastIndexOf(" (");
+
+        return bracket > 0 && title.endsWith(")") ? title.substring(0, bracket) : title;
+    }
+
+    /**
+     * Reopens the charts that were open last time.
+     *
+     * <p>Nothing at all on the first run, which is right: an empty desktop with
+     * the menus in it says "open something" more clearly than a chart of
+     * whatever the application decided to guess.</p>
+     */
+    private void restoreCharts() {
+        Settings workspace = Settings.workspace();
+
+        for (String key : workspace.keysStartingWith("chart.open.")) {
+            if (!key.endsWith(".series")) {
+                continue;
+            }
+
+            String series = workspace.get(key, null);
+            String period = workspace.get(key.replace(".series", ".period"), null);
+
+            if (series == null || series.isBlank()) {
+                continue;
+            }
+
+            open(series);
+
+            PeriodCatalog.Choice choice = PeriodCatalog.byCode(period);
+
+            if (choice != null) {
+                ChartHolder holder = charts.get(uniqueTitleOf(series));
+
+                if (holder != null) {
+                    holder.canvas().setPeriod(choice.aggregation(), choice.title(), choice.code());
+                }
+            }
+        }
+    }
+
+    /** @return the title the chart just opened for that series ended up with */
+    private String uniqueTitleOf(String series) {
+        String last = series;
+
+        for (String title : charts.keySet()) {
+            if (title.equals(series) || title.startsWith(series + " (")) {
+                last = title;
+            }
+        }
+
+        return last;
+    }
+
     public void open(String series) {
         // ALWAYS a new chart, never fronting an existing one. A terminal is
         // expected to show the same instrument at several timeframes at once,
@@ -198,7 +303,10 @@ public final class MainWindow extends JFrame {
         // editor per file -- is wrong for a chart and was the previous
         // behaviour.
         String title = uniqueTitle(series);
-        ChartHolder holder = new ChartHolder(title, desktop, this, () -> charts.remove(title));
+        ChartHolder holder = new ChartHolder(title, desktop, this, () -> {
+            charts.remove(title);
+            rememberCharts();
+        });
 
         // Synthetic bars for now. Replaced the moment a real series is wired in
         // -- see RandomWalkSeries.
@@ -210,6 +318,7 @@ public final class MainWindow extends JFrame {
                 new br.com.jorge.reis.endeavourneo.ui.chart.overlay.MovingAverages(17, 55, 200));
 
         charts.put(title, holder);
+        rememberCharts();
 
         // Opens in whichever mode it was last left in -- docked on first open.
         holder.show();
@@ -272,6 +381,9 @@ public final class MainWindow extends JFrame {
     }
 
     /** Closes every chart; also the "close all" action. */
+    /** True from the moment the window starts closing, so the list stops moving. */
+    private transient boolean leaving;
+
     public void closeCharts() {
         for (ChartHolder holder : new java.util.ArrayList<>(charts.values())) {
             holder.close();

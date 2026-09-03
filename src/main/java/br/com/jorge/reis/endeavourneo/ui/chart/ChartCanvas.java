@@ -239,6 +239,15 @@ public final class ChartCanvas extends JComponent {
      */
     private transient String periodLabel = Timeframe.ONE_MINUTE.label();
 
+    /**
+     * The period as the reader would type it -- "5m", "11R".
+     *
+     * <p>Kept apart from the label because they answer different questions: the
+     * label is for reading and the code is for rebuilding. Restoring a window
+     * from "11R - 55 pts" would mean parsing prose.</p>
+     */
+    private transient String periodCode = Timeframe.ONE_MINUTE.label();
+
     private int firstBar;
 
     /**
@@ -613,20 +622,31 @@ public final class ChartCanvas extends JComponent {
 
     /** @param newPeriod the scale to look at, from {@link PeriodCatalog} */
     public void setPeriod(Aggregation newPeriod) {
-        setPeriod(newPeriod, newPeriod == null ? null : newPeriod.label());
+        setPeriod(newPeriod, newPeriod == null ? null : newPeriod.label(),
+                newPeriod == null ? null : newPeriod.label());
+    }
+
+    public void setPeriod(Aggregation newPeriod, String label) {
+        setPeriod(newPeriod, label, label);
+    }
+
+    /** @return the period as the reader would type it, for reopening this chart */
+    public String periodCode() {
+        return periodCode;
     }
 
     /**
      * @param newPeriod the scale to look at
      * @param label how to write it, or null to let the scale name itself
      */
-    public void setPeriod(Aggregation newPeriod, String label) {
+    public void setPeriod(Aggregation newPeriod, String label, String code) {
         if (newPeriod == null || newPeriod == period) {
             return;
         }
 
         this.period = newPeriod;
         this.periodLabel = label == null ? newPeriod.label() : label;
+        this.periodCode = code == null ? this.periodLabel : code;
 
         refold();
     }
@@ -652,7 +672,7 @@ public final class ChartCanvas extends JComponent {
             // The label is carried across: turning the tails off does not change
             // which period this is, and the title must not start saying
             // something else because a switch was flipped.
-            setPeriod(renko.withWicks(show), periodLabel);
+            setPeriod(renko.withWicks(show), periodLabel, periodCode);
         }
     }
 
@@ -677,7 +697,7 @@ public final class ChartCanvas extends JComponent {
         PeriodCatalog.Choice choice = PeriodDialog.ask(owner, typed);
 
         if (choice != null) {
-            setPeriod(choice.aggregation(), choice.title());
+            setPeriod(choice.aggregation(), choice.title(), choice.code());
         }
     }
 

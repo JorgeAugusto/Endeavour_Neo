@@ -17,7 +17,6 @@
  */
 package br.com.jorge.reis.endeavourneo.platform;
 
-import java.util.prefs.Preferences;
 
 /**
  * The application's colour themes.
@@ -61,8 +60,7 @@ public enum Theme {
      * app} never reads. That defect does not show up in tests and surfaces only
      * as "the program does not remember what I chose".</p>
      */
-    private static final Preferences PREFS =
-            Preferences.userRoot().node("br/com/jorge/reis/endeavourneo");
+    private static final Settings PREFS = Settings.settings();
 
     private static final String KEY = "theme";
 

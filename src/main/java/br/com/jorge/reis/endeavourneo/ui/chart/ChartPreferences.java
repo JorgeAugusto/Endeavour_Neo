@@ -17,9 +17,10 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.chart;
 
+import br.com.jorge.reis.endeavourneo.platform.Settings;
+
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.prefs.Preferences;
 
 /**
  * What every chart draws, decided once for all of them.
@@ -34,8 +35,7 @@ import java.util.prefs.Preferences;
  */
 public final class ChartPreferences {
 
-    private static final Preferences PREFS =
-            Preferences.userRoot().node("br/com/jorge/reis/endeavourneo/chart");
+    private static final Settings PREFS = Settings.settings();
 
     private static final String PERIOD_LINE = "periodLine";
 

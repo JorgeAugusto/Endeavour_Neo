@@ -128,6 +128,36 @@ public final class PeriodCatalog {
         return choices;
     }
 
+    /**
+     * @param code what the reader typed, as it was stored -- "5m", "11R"
+     * @return that period, or null when nothing answers to the code
+     *
+     * <p>How a chart comes back after a restart. Null rather than a guess: a
+     * window reopening on the wrong scale is worse than one reopening on the
+     * default, because it looks right.</p>
+     */
+    public static Choice byCode(String code) {
+        if (code == null || code.isBlank()) {
+            return null;
+        }
+
+        String wanted = code.trim();
+
+        for (Choice choice : forText(wanted.replaceAll("[^0-9]", ""))) {
+            if (choice.code().equalsIgnoreCase(wanted)) {
+                return choice;
+            }
+        }
+
+        for (Choice choice : common()) {
+            if (choice.code().equalsIgnoreCase(wanted)) {
+                return choice;
+            }
+        }
+
+        return null;
+    }
+
     /** @return the periods worth showing before anything is typed */
     private static List<Choice> common() {
         List<Choice> choices = new ArrayList<>();

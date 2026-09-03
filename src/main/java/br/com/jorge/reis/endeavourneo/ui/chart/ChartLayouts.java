@@ -18,10 +18,10 @@
 package br.com.jorge.reis.endeavourneo.ui.chart;
 
 import br.com.jorge.reis.endeavourneo.platform.Messages;
+import br.com.jorge.reis.endeavourneo.platform.Settings;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.prefs.Preferences;
 
 /**
  * Where the named layouts live, and how they survive a restart.
@@ -43,8 +43,7 @@ import java.util.prefs.Preferences;
  */
 public final class ChartLayouts {
 
-    private static final Preferences PREFS = Preferences.userRoot()
-            .node("br/com/jorge/reis/endeavourneo/layouts");
+    private static final Settings PREFS = Settings.settings();
 
     private static final String COUNT = "count";
 

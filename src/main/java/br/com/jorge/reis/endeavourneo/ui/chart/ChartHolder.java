@@ -19,6 +19,7 @@ package br.com.jorge.reis.endeavourneo.ui.chart;
 
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
 import br.com.jorge.reis.endeavourneo.platform.Messages;
+import br.com.jorge.reis.endeavourneo.platform.Settings;
 import br.com.jorge.reis.endeavourneo.ui.chart.style.CandleStyle;
 import br.com.jorge.reis.endeavourneo.ui.chart.style.LineStyle;
 
@@ -32,7 +33,6 @@ import java.awt.Window;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.beans.PropertyVetoException;
-import java.util.prefs.Preferences;
 import javax.swing.JDesktopPane;
 import br.com.jorge.reis.endeavourneo.ui.shell.Icons;
 import javax.swing.BorderFactory;
@@ -70,37 +70,12 @@ import javax.swing.event.InternalFrameEvent;
  */
 public final class ChartHolder {
 
-    private static final Preferences PREFS = Preferences.userRoot()
-            .node("br/com/jorge/reis/endeavourneo/charts");
+    private static final Settings PREFS = Settings.workspace();
 
-    /**
-     * The shape of what is stored here.
-     *
-     * <p>Raised when a stored value stops meaning what it used to. Version 2:
-     * before it, the size written for a maximised chart was the desktop's size,
-     * so every chart reopened merely large and never maximised. Those entries
-     * cannot be told apart from a chart the reader deliberately made that big,
-     * so they are dropped rather than interpreted -- one lost window size, once,
-     * against a wrong one for ever.</p>
-     */
-    private static final int SCHEMA = 2;
-
-    private static final String SCHEMA_KEY = "schema";
-
-    static {
-        if (PREFS.getInt(SCHEMA_KEY, 0) < SCHEMA) {
-            try {
-                for (String stale : PREFS.keys()) {
-                    PREFS.remove(stale);
-                }
-            } catch (java.util.prefs.BackingStoreException e) {
-                // Nothing to do and nothing worth saying: the worst outcome is
-                // that charts open at the size they opened at yesterday.
-            }
-
-            PREFS.putInt(SCHEMA_KEY, SCHEMA);
-        }
-    }
+    // The schema number that used to live here is gone with the store it
+    // guarded. It existed to drop geometry written before "maximised" became a
+    // state instead of a size; that data was in the registry, and the workspace
+    // file starts empty. Nothing stale can be left to clean.
 
     private static final int DEFAULT_WIDTH = 900;
 

@@ -17,9 +17,10 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.chart;
 
+import br.com.jorge.reis.endeavourneo.platform.Settings;
+
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.prefs.Preferences;
 
 /**
  * Whether dragging measures or moves — for the whole application at once.
@@ -39,8 +40,7 @@ import java.util.prefs.Preferences;
  */
 public final class RulerMode {
 
-    private static final Preferences PREFS =
-            Preferences.userRoot().node("br/com/jorge/reis/endeavourneo");
+    private static final Settings PREFS = Settings.settings();
 
     private static final String KEY = "chart.ruler";
 

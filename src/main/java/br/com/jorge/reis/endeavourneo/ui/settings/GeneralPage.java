@@ -47,6 +47,10 @@ public final class GeneralPage implements SettingsPage {
 
     private final JCheckBox ruler = new JCheckBox(Messages.get("settings.ruler"));
 
+    private final javax.swing.JComboBox<br.com.jorge.reis.endeavourneo.platform.Language> language =
+            new javax.swing.JComboBox<>(
+                    br.com.jorge.reis.endeavourneo.platform.Language.values());
+
     public GeneralPage() {
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
 
@@ -61,6 +65,38 @@ public final class GeneralPage implements SettingsPage {
 
         panel.add(ruler);
         panel.add(hint);
+
+        JPanel row = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 6, 0));
+
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.add(new JLabel(Messages.get("settings.language")));
+        row.add(language);
+
+        language.setRenderer(new javax.swing.DefaultListCellRenderer() {
+
+            private static final long serialVersionUID = 1L;
+
+            @Override
+            public java.awt.Component getListCellRendererComponent(javax.swing.JList<?> list,
+                    Object value, int index, boolean selected, boolean focused) {
+                super.getListCellRendererComponent(list, value, index, selected, focused);
+
+                if (value instanceof br.com.jorge.reis.endeavourneo.platform.Language chosen) {
+                    setText(Messages.get("settings.language." + chosen.code()));
+                }
+
+                return this;
+            }
+        });
+
+        JLabel languageHint = new JLabel(Messages.get("settings.language.hint"));
+
+        languageHint.setAlignmentX(Component.LEFT_ALIGNMENT);
+        languageHint.setBorder(BorderFactory.createEmptyBorder(4, 4, 8, 0));
+        languageHint.setEnabled(false);
+
+        panel.add(row);
+        panel.add(languageHint);
         panel.add(Box.createVerticalGlue());
     }
 
@@ -80,10 +116,12 @@ public final class GeneralPage implements SettingsPage {
         // flipped it since, and a dialog showing the old value would put it back
         // the moment anything else on the page is applied.
         ruler.setSelected(RulerMode.isOn());
+        language.setSelectedItem(br.com.jorge.reis.endeavourneo.platform.Language.remembered());
     }
 
     @Override
     public void apply() {
         RulerMode.set(ruler.isSelected());
+        ((br.com.jorge.reis.endeavourneo.platform.Language) language.getSelectedItem()).remember();
     }
 }

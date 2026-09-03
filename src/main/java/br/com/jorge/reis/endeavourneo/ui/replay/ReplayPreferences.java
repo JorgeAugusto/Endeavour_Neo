@@ -17,15 +17,15 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.replay;
 
-import java.util.prefs.Preferences;
+import br.com.jorge.reis.endeavourneo.platform.Settings;
+
 
 /**
  * What the replay remembers between runs.
  */
 public final class ReplayPreferences {
 
-    private static final Preferences PREFS =
-            Preferences.userRoot().node("br/com/jorge/reis/endeavourneo/replay");
+    private static final Settings PREFS = Settings.settings();
 
     private static final String HISTORY = "historyDays";
 
