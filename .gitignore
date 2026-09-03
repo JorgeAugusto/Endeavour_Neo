@@ -73,3 +73,7 @@ adaptativo-tela.properties
 
 # machine-local paths for the hook
 .githooks/env
+
+# saida e cache do hook de compilacao
+target/hook-classes/
+.claude/hooks/.classpath

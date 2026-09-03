@@ -166,7 +166,18 @@ public final class ChartCanvas extends JComponent {
     /** The overlays drawn on the price, in the order they were added. */
     private final transient java.util.List<Overlay> overlays = new java.util.ArrayList<>();
 
+    /**
+     * Told when the overlays change in a way that should be WRITTEN DOWN.
+     *
+     * <p>Separate from {@link #onOverlaysRedrawn} because the two questions are
+     * not the same one, and answering them together was a bug: applying a layout
+     * has to redraw everything showing the overlays, and must NOT be written
+     * down -- the layout bar would capture back what it has just applied.</p>
+     */
     private transient Runnable onOverlaysChanged = () -> { };
+
+    /** Told when the overlays change in a way that has to be REDRAWN. */
+    private transient Runnable onOverlaysRedrawn = () -> { };
 
     private int firstBar;
 
@@ -361,11 +372,22 @@ public final class ChartCanvas extends JComponent {
         }
 
         repaint();
+
+        // Redrawn but not written down. Everything showing this set has to hear
+        // about it -- the legend above all, which otherwise keeps listing the
+        // indicators of the layout that was left behind until a stray mouse
+        // movement happens to repaint it.
+        onOverlaysRedrawn.run();
     }
 
-    /** @param listener told whenever the overlays or their state change */
+    /** @param listener told when the overlays change and should be stored */
     public void onOverlaysChanged(Runnable listener) {
         this.onOverlaysChanged = listener == null ? () -> { } : listener;
+    }
+
+    /** @param listener told whenever the overlays change, storable or not */
+    public void onOverlaysRedrawn(Runnable listener) {
+        this.onOverlaysRedrawn = listener == null ? () -> { } : listener;
     }
 
     /**
@@ -377,6 +399,7 @@ public final class ChartCanvas extends JComponent {
      */
     public void overlaysChanged() {
         onOverlaysChanged.run();
+        onOverlaysRedrawn.run();
     }
 
     /**

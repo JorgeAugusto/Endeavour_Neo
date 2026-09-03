@@ -142,6 +142,14 @@ public final class ChartHolder {
         this.name = name;
         this.key = name.replaceAll("[^A-Za-z0-9]+", "_");
         this.legend = new OverlayLegend(canvas, this.key);
+
+        // The legend reads the overlays off the canvas; nothing else tells it
+        // they are gone. Without this, switching layout leaves the old list on
+        // screen until a stray mouse movement repaints it.
+        canvas.onOverlaysRedrawn(() -> {
+            legend.revalidate();
+            legend.repaint();
+        });
         this.desktop = desktop;
         this.owner = owner;
         this.onClosed = onClosed == null ? () -> { } : onClosed;
