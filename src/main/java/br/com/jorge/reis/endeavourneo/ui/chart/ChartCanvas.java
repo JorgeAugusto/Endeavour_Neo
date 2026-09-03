@@ -153,6 +153,16 @@ public final class ChartCanvas extends JComponent {
     private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("dd/MM");
 
     /**
+     * The cursor's time tag carries the DATE as well as the clock.
+     *
+     * <p>The axis underneath is already showing hours; repeating just the hour
+     * would say nothing the reader could not see. The date is the part the axis
+     * only shows once per day, in a band the cursor is nowhere near.</p>
+     */
+    private static final DateTimeFormatter CURSOR_TIME =
+            DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+
+    /**
      * The dotted line between one period and the next.
      *
      * <p>Short dashes with an equal gap: long dashes read as a drawing the
@@ -1680,6 +1690,62 @@ public final class ChartCanvas extends JComponent {
 
         g.drawLine(x, 0, x, getHeight() - axisHeight());
         g.drawLine(0, cursor.y, getWidth() - AXIS_WIDTH, cursor.y);
+
+        paintCursorTags(g, viewport, bar, x);
+    }
+
+    /**
+     * The price and the time the cursor is on, written on the two axes.
+     *
+     * <p>Without them the crosshair says "here" and nothing else: reading a
+     * level off it means following the line across to the axis and guessing
+     * between two labels. These put the number where the eye already is.</p>
+     *
+     * <p>They are painted <b>over</b> the axis labels rather than beside them.
+     * A tag that made room for itself would push the whole scale about as the
+     * mouse moved, and a scale that moves is not a scale.</p>
+     */
+    private void paintCursorTags(Graphics2D g, Viewport viewport, int bar, int x) {
+        g.setStroke(new BasicStroke(1.0f));
+        g.setFont(br.com.jorge.reis.endeavourneo.platform.Appearance.monospaced(11));
+
+        FontMetrics metrics = g.getFontMetrics();
+
+        // The price, on the vertical strip.
+        // The same rounding the axis beside it uses: two labels of the same
+        // price that disagree in the last digit read as a bug in the chart.
+        String price = formatFor(gridStep(viewport)).format(viewport.priceAt(cursor.y));
+        int height = metrics.getHeight() + 2;
+        int top = Math.max(0, Math.min(cursor.y - height / 2,
+                getHeight() - axisHeight() - height));
+
+        tag(g, metrics, price, getWidth() - AXIS_WIDTH + 3, top, AXIS_WIDTH - 6);
+
+        // The time, on the horizontal band. Bars beyond the end of the series
+        // have no time to show -- the chart is scrolled into the air past the
+        // last one -- and an invented label there would be a claim.
+        if (bar < 0 || bar >= series.size()) {
+            return;
+        }
+
+        String moment = java.time.Instant.ofEpochMilli(series.timeAt(bar))
+                .atZone(java.time.ZoneId.systemDefault())
+                .format(CURSOR_TIME);
+
+        int width = metrics.stringWidth(moment) + 10;
+        int left = Math.max(0, Math.min(x - width / 2, getWidth() - AXIS_WIDTH - width));
+
+        tag(g, metrics, moment, left, getHeight() - axisHeight() + 1, width);
+    }
+
+    /** A filled box with the text in it, in the accent used by the last-price tag. */
+    private void tag(Graphics2D g, FontMetrics metrics, String text, int x, int y, int width) {
+        g.setColor(ChartColors.foreground());
+        g.fillRect(x, y, width, metrics.getHeight() + 2);
+
+        g.setColor(ChartColors.background());
+        g.drawString(text, x + (width - metrics.stringWidth(text)) / 2,
+                y + metrics.getAscent() + 1);
     }
 
     /** Wheel zooms around the cursor; dragging pans. */
