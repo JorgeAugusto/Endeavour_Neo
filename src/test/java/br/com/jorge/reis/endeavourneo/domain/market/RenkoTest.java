@@ -160,6 +160,55 @@ class RenkoTest {
     }
 
     @Test
+    @DisplayName("a level TOUCHED lays a brick, even if the close comes back")
+    void touchingTheLevelIsEnough() {
+        // The discriminating case. Price reaches 115 and closes back at 102.
+        // Reading closes alone, nothing happened; reading what was reached, the
+        // level went through and the brick belongs on the chart.
+        PriceSeries bricks = Renko.of(10).apply(ohlc(
+                new double[]{100, 100, 100, 100},
+                new double[]{100, 115, 100, 102}));
+
+        assertEquals(1, bricks.size(),
+                "the level was reached and no brick was laid: this is the closes-only reading");
+        assertEquals(110.0, bricks.closeAt(0));
+    }
+
+    @Test
+    @DisplayName("a brick already laid is never taken away as the bar goes on")
+    void bricksAreNeverUnlaid() {
+        // The defect, as a property. A forming bar's extremes only widen, so
+        // rebuilding the renko from scratch on every frame must never come back
+        // with fewer bricks than the frame before.
+        double[][] forming = {
+                {100, 100, 100, 100},
+                {100, 100, 100, 100},
+        };
+
+        int most = 0;
+
+        // The second bar forms: its high climbs, then its low drops, then the
+        // close wanders -- exactly what a replay feeds in.
+        double[][] steps = {
+                {100, 104, 99, 103}, {100, 112, 99, 111}, {100, 112, 99, 101},
+                {100, 116, 95, 102}, {100, 124, 88, 90}, {100, 124, 85, 121},
+        };
+
+        for (double[] step : steps) {
+            forming[1] = step;
+
+            int now = Renko.of(10).apply(ohlc(forming[0], forming[1])).size();
+
+            assertTrue(now >= most,
+                    "the chart lost a brick it had already drawn: " + most + " then " + now);
+
+            most = Math.max(most, now);
+        }
+
+        assertTrue(most > 0, "no brick was ever laid, so the check proved nothing");
+    }
+
+    @Test
     @DisplayName("a brick with nothing fought against it has no tail")
     void noExcursionMeansNoTail() {
         PriceSeries bricks = Renko.of(10).apply(closes(100, 110));
