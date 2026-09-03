@@ -107,7 +107,7 @@ if [ -z "$MVN" ]; then
     exit 1
 fi
 
-echo "pre-commit: running the suite with $(basename "$JAVA_HOME") ..."
+echo "pre-commit: running the suite with $("$JAVA_HOME/bin/javac" -version 2>&1) ..."
 
 if ! "$MVN" -q -o test; then
     echo
