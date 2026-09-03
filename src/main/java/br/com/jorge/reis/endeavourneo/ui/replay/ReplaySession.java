@@ -54,7 +54,24 @@ public final class ReplaySession {
      * has to take one minute, and it takes one minute at every scale. Bars per
      * second was unambiguous and matched nobody's idea of a replay.</p>
      */
-    public static final int[] SPEEDS = {1, 2, 5, 10, 30, 60, 300};
+    public static final int[] SPEEDS = {1, 2, 5, 10, 25, 50};
+
+    /**
+     * The fastest the transport goes, and why it is fifty and not more.
+     *
+     * <p>Not a limit of the machine. Measured: advancing the ticks and folding
+     * the day again costs 0,03 ms against a 40 ms frame — over a thousand times
+     * the headroom, and a thousand times speed would replay a whole session in
+     * thirty-four seconds without straining.</p>
+     *
+     * <p>It is a limit of what can be <b>seen</b>. A bar is broken into about
+     * thirty-one prices, so one arrives every 1,93 s of market time. At fifty
+     * times that is one price every 39 ms — just inside a frame. Above this,
+     * prices start being skipped and the bar forms in jumps, which is the very
+     * thing the ticks exist to avoid. A speed that shows less while claiming
+     * more is worth leaving out.</p>
+     */
+    public static final int FASTEST = 50;
 
     /**
      * How often the clock ticks, in milliseconds of wall time.
@@ -142,7 +159,7 @@ public final class ReplaySession {
 
     /** @param multiple how many times faster than the market to run */
     public void setSpeed(int multiple) {
-        this.speed = Math.max(1, multiple);
+        this.speed = Math.max(1, Math.min(multiple, FASTEST));
 
         announce();
     }

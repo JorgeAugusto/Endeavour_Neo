@@ -138,8 +138,19 @@ class ReplaySessionTest {
         replay.setSpeed(16);
         assertEquals(16, replay.speed());
 
-        // A zero would be a division by zero in the timer's delay.
         replay.setSpeed(0);
-        assertEquals(1, replay.speed());
+        assertEquals(1, replay.speed(), "a speed of zero would never advance");
+
+        // Capped where the animation stops showing everything: a bar is about
+        // thirty-one prices, one every 1,93 s of market time, so fifty times is
+        // one price per 40 ms frame. Faster skips prices, and the bar starts
+        // forming in jumps again -- which is what the ticks exist to prevent.
+        replay.setSpeed(1000);
+        assertEquals(ReplaySession.FASTEST, replay.speed());
+
+        for (int offered : ReplaySession.SPEEDS) {
+            assertTrue(offered <= ReplaySession.FASTEST,
+                    "the list offers " + offered + ", past the cap");
+        }
     }
 }
