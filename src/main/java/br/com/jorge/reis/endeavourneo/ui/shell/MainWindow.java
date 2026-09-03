@@ -25,6 +25,8 @@ import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
+import br.com.jorge.reis.endeavourneo.platform.Bases;
 import br.com.jorge.reis.endeavourneo.platform.JobService;
 import br.com.jorge.reis.endeavourneo.ui.chart.ChartHolder;
 import br.com.jorge.reis.endeavourneo.ui.chart.RandomWalkSeries;
@@ -268,18 +270,50 @@ public final class MainWindow extends JFrame {
                 continue;
             }
 
-            open(series);
+            String title = open(series);
 
             PeriodCatalog.Choice choice = PeriodCatalog.byCode(period);
 
             if (choice != null) {
-                ChartHolder holder = charts.get(uniqueTitleOf(series));
+                ChartHolder holder = charts.get(title);
 
                 if (holder != null) {
                     holder.canvas().setPeriod(choice.aggregation(), choice.title(), choice.code());
                 }
             }
         }
+    }
+
+    /**
+     * @param name a base's name
+     * @param title what the window will be called, for the message if it fails
+     * @return the bars to draw
+     *
+     * <p>The synthetic walk is the answer only when there is no base at all —
+     * on a machine where the data folder has not been found yet, the
+     * application still opens and still draws. It is never the answer when a
+     * base exists and fails to read: that says so out loud, because prices that
+     * are not the market's, drawn without a word, are the one thing a chart
+     * must never do.</p>
+     */
+    private PriceSeries seriesFor(String name, String title) {
+        try {
+            java.util.Optional<PriceSeries> base = Bases.open(name);
+
+            if (base.isPresent()) {
+                console.write(Messages.get("console.baseLoaded", name,
+                        String.valueOf(base.get().size())));
+
+                return base.get();
+            }
+        } catch (java.io.IOException e) {
+            console.write(Messages.get("console.baseFailed", name, String.valueOf(e.getMessage())));
+            status.say(Messages.get("console.baseFailed", name, String.valueOf(e.getMessage())));
+        }
+
+        console.write(Messages.get("console.baseMissing", Bases.folder().toString()));
+
+        return new RandomWalkSeries(2_000, 135_000.0);
     }
 
     /** @return the title the chart just opened for that series ended up with */
@@ -295,22 +329,32 @@ public final class MainWindow extends JFrame {
         return last;
     }
 
-    public void open(String series) {
+    /**
+     * @param series a base's name, or any name at all
+     * @return the title the chart ended up with, which is NOT always what was
+     *         asked for -- see below
+     */
+    public String open(String series) {
+        // A name that is not a base opens the default one instead, and is
+        // titled after it. Workspaces written before there was a base hold
+        // names like "Sem título", and showing prices under a title that names
+        // no instrument is worse than quietly correcting it -- which also
+        // repairs the entry, since what is open is what gets remembered.
+        String name = Bases.has(series) ? series : Bases.defaultName();
+
         // ALWAYS a new chart, never fronting an existing one. A terminal is
         // expected to show the same instrument at several timeframes at once,
         // and two charts of the same series side by side is how one compares
         // zoom levels. Fronting instead -- the semantics of an IDE tab, one
         // editor per file -- is wrong for a chart and was the previous
         // behaviour.
-        String title = uniqueTitle(series);
+        String title = uniqueTitle(Bases.has(name) ? name : series);
         ChartHolder holder = new ChartHolder(title, desktop, this, () -> {
             charts.remove(title);
             rememberCharts();
         });
 
-        // Synthetic bars for now. Replaced the moment a real series is wired in
-        // -- see RandomWalkSeries.
-        holder.canvas().setSeries(new RandomWalkSeries(2_000, 135_000.0));
+        holder.canvas().setSeries(seriesFor(name, title));
 
         // Every chart accepts a replay dropped on it, from the moment it opens.
         br.com.jorge.reis.endeavourneo.ui.replay.ReplayDrop.enable(holder);
@@ -330,6 +374,12 @@ public final class MainWindow extends JFrame {
 
         console.write(Messages.get("console.opened", title));
         status.say(title);
+
+        // The title, because the caller cannot work it out: it depends on
+        // whether the name was a base and on what was already open. Restoring a
+        // workspace looked the chart up by the name it asked for, and quietly
+        // found nothing the moment that name stopped being the title.
+        return title;
     }
 
     /**
@@ -505,7 +555,7 @@ public final class MainWindow extends JFrame {
         JMenuBar bar = new JMenuBar();
 
         JMenu file = menu("menu.file");
-        file.add(item("action.new", KeyEvent.VK_N, () -> open(Messages.get("document.untitled"))));
+        file.add(item("action.new", KeyEvent.VK_N, () -> open(Bases.defaultName())));
         file.addSeparator();
         file.add(item("action.preferences", KeyEvent.VK_COMMA, this::openPreferences));
         file.addSeparator();
@@ -705,7 +755,7 @@ public final class MainWindow extends JFrame {
         bar.setFloatable(false);
         bar.setBorder(BorderFactory.createEmptyBorder(2, 4, 2, 4));
 
-        bar.add(button("action.new", () -> open(Messages.get("document.untitled"))));
+        bar.add(button("action.new", () -> open(Bases.defaultName())));
         bar.addSeparator();
         bar.add(iconButton("action.tileCharts", Icons.tile(16), this::tileCharts));
         bar.addSeparator();

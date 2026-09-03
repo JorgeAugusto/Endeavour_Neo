@@ -20,6 +20,8 @@ package br.com.jorge.reis.endeavourneo.ui.shell;
 import br.com.jorge.reis.endeavourneo.platform.Messages;
 
 import java.awt.BorderLayout;
+import br.com.jorge.reis.endeavourneo.platform.Bases;
+
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.function.Consumer;
@@ -27,6 +29,7 @@ import javax.swing.BorderFactory;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTree;
+import java.util.List;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreeSelectionModel;
@@ -99,9 +102,19 @@ public final class Navigator extends JPanel {
 
         DefaultMutableTreeNode series =
                 new DefaultMutableTreeNode(Messages.get("navigator.series"));
-        series.add(new DefaultMutableTreeNode("winn-1m"));
-        series.add(new DefaultMutableTreeNode("winfut-1m"));
-        series.add(new DefaultMutableTreeNode("btcusdt-1m"));
+        // What is actually on disk, not a list written here. A name in this
+        // tree that opens nothing is worse than a short tree: the reader
+        // double-clicks it and blames the chart.
+        List<String> bases = Bases.names();
+
+        for (String base : bases) {
+            series.add(new DefaultMutableTreeNode(base));
+        }
+
+        if (bases.isEmpty()) {
+            series.add(new DefaultMutableTreeNode(
+                    Messages.get("navigator.noBases", Bases.folder().toString())));
+        }
 
         DefaultMutableTreeNode studies =
                 new DefaultMutableTreeNode(Messages.get("navigator.studies"));

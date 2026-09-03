@@ -129,15 +129,19 @@ class MainWindowTest {
         // lost on every move -- and that loss is invisible in code review.
         onEdt(window -> {
             try {
-                window.open("Chart");
+                // The title it ENDED UP with, not the one asked for. A name
+                // that is not a base opens the default base and is titled after
+                // it, so a machine that has the data and one that does not
+                // would otherwise disagree about this test.
+                String title = window.open("Chart");
 
-                assertFalse(window.isFloating("Chart"), "it should open docked");
+                assertFalse(window.isFloating(title), "it should open docked");
 
-                window.toggleChartMode("Chart");
-                assertTrue(window.isFloating("Chart"), "toggling did not set it free");
+                window.toggleChartMode(title);
+                assertTrue(window.isFloating(title), "toggling did not set it free");
 
-                window.toggleChartMode("Chart");
-                assertFalse(window.isFloating("Chart"), "toggling back did not dock it");
+                window.toggleChartMode(title);
+                assertFalse(window.isFloating(title), "toggling back did not dock it");
             } finally {
                 window.closeCharts();
             }
