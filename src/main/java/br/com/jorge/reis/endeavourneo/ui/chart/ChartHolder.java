@@ -292,6 +292,8 @@ public final class ChartHolder {
         chart.addSeparator();
         chart.add(item("chart.resetScale", canvas::resetStretch));
         chart.addSeparator();
+        chart.add(modeItem());
+        chart.addSeparator();
         // The label names the destination, not the current state: "Float" when
         // docked. A toggle labelled with where you are rather than where you go
         // is read backwards by half the people who see it.
@@ -300,6 +302,29 @@ public final class ChartHolder {
         bar.add(chart);
 
         return bar;
+    }
+
+    /**
+     * The ruler toggle, ticked to show which mode the chart is in.
+     *
+     * <p>Visible state on purpose. Control alone flips the mode, and a shortcut
+     * with no indicator leaves the reader guessing why a drag did something
+     * else -- the classic complaint about modal tools. The tick answers it
+     * before it is asked.</p>
+     */
+    private JMenuItem modeItem() {
+        javax.swing.JCheckBoxMenuItem entry =
+                new javax.swing.JCheckBoxMenuItem(Messages.get("chart.measureMode"));
+
+        entry.setMnemonic(Messages.mnemonic("chart.measureMode"));
+        entry.setSelected(canvas.getMode() == ChartCanvas.Mode.MEASURE);
+        entry.setAccelerator(javax.swing.KeyStroke.getKeyStroke("control CONTROL"));
+        entry.addActionListener(e -> canvas.setMode(entry.isSelected()
+                ? ChartCanvas.Mode.MEASURE : ChartCanvas.Mode.PAN));
+
+        canvas.onModeChanged(() -> entry.setSelected(canvas.getMode() == ChartCanvas.Mode.MEASURE));
+
+        return entry;
     }
 
     private JMenuItem item(String messageKey, Runnable action) {

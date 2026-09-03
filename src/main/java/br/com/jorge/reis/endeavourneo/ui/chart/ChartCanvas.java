@@ -138,6 +138,16 @@ public final class ChartCanvas extends JComponent {
     /** How far above the high and below the low still counts as touching the bar. */
     private static final int HIT_TOLERANCE = 3;
 
+    /** What a drag on the plot does. */
+    public enum Mode {
+
+        /** Drag moves the chart. The default, and what most drags mean. */
+        PAN,
+
+        /** Drag measures between two points. */
+        MEASURE
+    }
+
     /**
      * How much a pixel of vertical drag changes the scale.
      *
@@ -171,6 +181,22 @@ public final class ChartCanvas extends JComponent {
      */
     private double stretch = 1.0;
 
+    private transient Mode mode = Mode.PAN;
+
+    /** Told when the mode changes, so a menu can tick the right entry. */
+    private transient Runnable onModeChanged = () -> { };
+
+    /** The measurement being drawn, or the last one, until cleared. */
+    private transient Measurement measurement;
+
+    /** Where the ruler drag started, in bar and price. */
+    private int rulerBar = -1;
+
+    private double rulerPrice;
+
+    /** Whether Control has been held with no other key since it went down. */
+    private transient boolean controlAlone;
+
     public ChartCanvas() {
         setOpaque(true);
         setPreferredSize(new Dimension(640, 360));
@@ -181,6 +207,61 @@ public final class ChartCanvas extends JComponent {
         addMouseListener(mouse);
         addMouseMotionListener(mouse);
         addMouseWheelListener(mouse);
+
+        installControlToggle();
+    }
+
+    /**
+     * Control on its own toggles the mode.
+     *
+     * <p><b>On its own is the whole difficulty.</b> Binding the release of
+     * Control would also fire after Ctrl+C, Ctrl+V and every other shortcut, so
+     * copying text would silently switch the chart into measuring mode. The
+     * dispatcher below watches for another key arriving while Control is held
+     * and, if one does, treats the release as the end of a shortcut rather than
+     * as the gesture.</p>
+     *
+     * <p>Registered only while the canvas is on screen. A dispatcher left
+     * installed after the chart closes keeps a reference to it and keeps
+     * reacting to keys for a window that is gone.</p>
+     */
+    private void installControlToggle() {
+        java.awt.KeyEventDispatcher dispatcher = event -> {
+            if (event.getKeyCode() != java.awt.event.KeyEvent.VK_CONTROL) {
+                if (event.getID() == java.awt.event.KeyEvent.KEY_PRESSED) {
+                    controlAlone = false;
+                }
+
+                return false;
+            }
+
+            if (event.getID() == java.awt.event.KeyEvent.KEY_PRESSED) {
+                controlAlone = true;
+            } else if (event.getID() == java.awt.event.KeyEvent.KEY_RELEASED && controlAlone) {
+                controlAlone = false;
+
+                // Only the window this canvas is in. Otherwise every chart on
+                // screen would flip together.
+                if (isShowing() && javax.swing.SwingUtilities.getWindowAncestor(this) != null
+                        && javax.swing.SwingUtilities.getWindowAncestor(this).isActive()) {
+                    toggleMode();
+                }
+            }
+
+            return false;
+        };
+
+        addHierarchyListener(event -> {
+            java.awt.KeyboardFocusManager keyboard =
+                    java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager();
+
+            if (isDisplayable()) {
+                keyboard.removeKeyEventDispatcher(dispatcher);
+                keyboard.addKeyEventDispatcher(dispatcher);
+            } else {
+                keyboard.removeKeyEventDispatcher(dispatcher);
+            }
+        });
     }
 
     /** @param newSeries the data to draw; showing the most recent bars */
@@ -325,6 +406,47 @@ public final class ChartCanvas extends JComponent {
         return Math.max(MINIMUM_STRETCH, Math.min(scaled, MAXIMUM_STRETCH));
     }
 
+    public Mode getMode() {
+        return mode;
+    }
+
+    /**
+     * @param newMode what a drag should do from now on
+     *
+     * <p>Switching away from measuring clears the ruler. A line left on screen
+     * in panning mode cannot be removed by any gesture that mode has, so it
+     * would sit there until the chart was closed.</p>
+     */
+    public void setMode(Mode newMode) {
+        if (newMode == null || newMode == mode) {
+            return;
+        }
+
+        mode = newMode;
+
+        if (mode == Mode.PAN) {
+            measurement = null;
+            rulerBar = -1;
+        }
+
+        setCursor(java.awt.Cursor.getPredefinedCursor(
+                mode == Mode.MEASURE
+                        ? java.awt.Cursor.CROSSHAIR_CURSOR
+                        : java.awt.Cursor.DEFAULT_CURSOR));
+
+        onModeChanged.run();
+        repaint();
+    }
+
+    /** Flips between moving and measuring. */
+    public void toggleMode() {
+        setMode(mode == Mode.PAN ? Mode.MEASURE : Mode.PAN);
+    }
+
+    public void onModeChanged(Runnable listener) {
+        this.onModeChanged = listener == null ? () -> { } : listener;
+    }
+
     /** @return the manual vertical factor; 1 is automatic */
     public double getStretch() {
         return stretch;
@@ -359,6 +481,7 @@ public final class ChartCanvas extends JComponent {
             paintLastPrice(g, viewport);
             paintCrosshair(g, viewport);
             paintJumpButton(g);
+            paintRuler(g, viewport);
             paintReadout(g, viewport);
         } finally {
             g.dispose();
@@ -709,13 +832,51 @@ public final class ChartCanvas extends JComponent {
     }
 
     /**
+     * The ruler: a line between the two points, with a box of what it measured.
+     *
+     * <p>Round handles on both ends. Without them the line is ambiguous about
+     * where it actually starts and finishes, which matters because the numbers
+     * are read against those points and not against the line.</p>
+     */
+    private void paintRuler(Graphics2D g, Viewport viewport) {
+        if (measurement == null) {
+            return;
+        }
+
+        int x1 = (int) Math.round(viewport.x(measurement.fromBar()));
+        int y1 = (int) Math.round(viewport.y(measurement.fromPrice()));
+        int x2 = (int) Math.round(viewport.x(measurement.toBar()));
+        int y2 = (int) Math.round(viewport.y(measurement.toPrice()));
+
+        Object previous = g.getRenderingHint(RenderingHints.KEY_ANTIALIASING);
+
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+        g.setColor(ChartColors.foreground());
+        g.setStroke(new BasicStroke(1.2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.drawLine(x1, y1, x2, y2);
+
+        g.fillOval(x1 - 3, y1 - 3, 6, 6);
+        g.fillOval(x2 - 3, y2 - 3, 6, 6);
+
+        if (previous != null) {
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, previous);
+        }
+
+        RulerReadout.paint(g, measurement, new java.awt.Point(x2, y2),
+                new Rectangle(0, 0, getWidth(), getHeight()));
+    }
+
+    /**
      * The summary of the bar under the cursor.
      *
      * <p>Painted last so nothing covers it, and only while the mouse is over the
      * plot -- not over the axes, where there is no bar to describe.</p>
      */
     private void paintReadout(Graphics2D g, Viewport viewport) {
-        if (cursor == null || onAxis(cursor.x) || onTimeAxis(cursor.y)) {
+        // While measuring, the ruler box already occupies the corner and says
+        // more. Two boxes chasing the same cursor is one too many.
+        if (mode == Mode.MEASURE || cursor == null || onAxis(cursor.x) || onTimeAxis(cursor.y)) {
             return;
         }
 
@@ -910,6 +1071,9 @@ public final class ChartCanvas extends JComponent {
             if (jump != null && jump.contains(x, y)) {
                 return Cursor.HAND_CURSOR;
             }
+            if (mode == Mode.MEASURE && !onAxis(x) && !onTimeAxis(y)) {
+                return Cursor.CROSSHAIR_CURSOR;
+            }
             if (onTimeAxis(y) && !onAxis(x)) {
                 return Cursor.E_RESIZE_CURSOR;
             }
@@ -941,6 +1105,20 @@ public final class ChartCanvas extends JComponent {
 
             timingFrom = -1;
 
+            if (mode == Mode.MEASURE && !onAxis(e.getX()) && !onTimeAxis(e.getY())) {
+                Viewport viewport = viewport();
+
+                rulerBar = viewport.barAt(e.getX());
+                rulerPrice = viewport.priceAt(e.getY());
+                measurement = null;
+                grabbedAt = -1;
+                scalingFrom = -1;
+
+                repaint();
+
+                return;
+            }
+
             if (onAxis(e.getX()) && !onTimeAxis(e.getY())) {
                 // A drag that starts on the strip scales and never pans, even
                 // when it wanders over the plot. Deciding by where the mouse IS
@@ -963,10 +1141,23 @@ public final class ChartCanvas extends JComponent {
             scalingFrom = -1;
             timingFrom = -1;
             grabbedAt = -1;
+            rulerBar = -1;
         }
 
         @Override
         public void mouseDragged(MouseEvent e) {
+            if (rulerBar >= 0) {
+                Viewport viewport = viewport();
+
+                measurement = Measurement.between(series, rulerBar, rulerPrice,
+                        viewport.barAt(e.getX()), viewport.priceAt(e.getY()));
+                cursor = e.getPoint();
+
+                repaint();
+
+                return;
+            }
+
             if (timingFrom >= 0) {
                 // The newest visible bar stays put while the count changes.
                 // Anchoring on the left instead would walk the chart away from
