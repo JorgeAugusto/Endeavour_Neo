@@ -26,7 +26,7 @@ import java.awt.event.KeyEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import br.com.jorge.reis.endeavourneo.platform.JobService;
-import br.com.jorge.reis.endeavourneo.ui.chart.ChartWindow;
+import br.com.jorge.reis.endeavourneo.ui.chart.ChartHolder;
 import br.com.jorge.reis.endeavourneo.ui.chart.RandomWalkSeries;
 import br.com.jorge.reis.endeavourneo.platform.Messages;
 import br.com.jorge.reis.endeavourneo.ui.settings.AppearancePage;
@@ -47,7 +47,7 @@ import javax.swing.JMenuBar;
 import javax.swing.JMenuItem;
 import javax.swing.JPanel;
 import javax.swing.JSplitPane;
-import javax.swing.JTabbedPane;
+import javax.swing.JDesktopPane;
 import javax.swing.JToolBar;
 import javax.swing.KeyStroke;
 import javax.swing.SwingUtilities;
@@ -99,7 +99,15 @@ public final class MainWindow extends JFrame {
 
     private final Navigator navigator = new Navigator();
 
-    private final JTabbedPane editors = new JTabbedPane();
+    /**
+     * Where docked charts live.
+     *
+     * <p>A {@link JDesktopPane} rather than a tabbed pane because the charts are
+     * windows even when contained: several visible at once, moved and resized
+     * inside the frame. Tabs are exclusive by construction and would defeat the
+     * point of having them contained at all.</p>
+     */
+    private final JDesktopPane desktop = new JDesktopPane();
 
     private final Console console = new Console();
 
@@ -119,7 +127,7 @@ public final class MainWindow extends JFrame {
      * them all down. Without the registry the main window can exit while five
      * charts stay on screen, orphaned.</p>
      */
-    private final transient java.util.Map<String, ChartWindow> charts =
+    private final transient java.util.Map<String, ChartHolder> charts =
             new java.util.LinkedHashMap<>();
 
     /**
@@ -137,10 +145,10 @@ public final class MainWindow extends JFrame {
 
         setDefaultCloseOperation(EXIT_ON_CLOSE);
 
-        editors.addTab(Messages.get("view.documents"), placeholder());
+        desktop.setBackground(java.awt.Color.DARK_GRAY);
 
         bottomDivider = new JSplitPane(JSplitPane.VERTICAL_SPLIT,
-                borderless(editors), titled(Messages.get("view.console"), console));
+                desktop, titled(Messages.get("view.console"), console));
         bottomDivider.setResizeWeight(1.0);
         bottomDivider.setBorder(null);
 
@@ -182,35 +190,43 @@ public final class MainWindow extends JFrame {
      * which is the behaviour the tabs had and the one people expect.</p>
      */
     public void open(String name) {
-        ChartWindow existing = charts.get(name);
+        ChartHolder existing = charts.get(name);
 
-        if (existing != null && existing.isDisplayable()) {
-            existing.setExtendedState(existing.getExtendedState() & ~java.awt.Frame.ICONIFIED);
-            existing.toFront();
-            existing.requestFocus();
+        if (existing != null) {
+            existing.front();
 
             return;
         }
 
-        ChartWindow window = new ChartWindow(name, this);
+        ChartHolder holder = new ChartHolder(name, desktop, this, () -> charts.remove(name));
 
         // Synthetic bars for now. Replaced the moment a real series is wired in
         // -- see RandomWalkSeries.
-        window.setSeries(new RandomWalkSeries(2_000, 135_000.0));
+        holder.canvas().setSeries(new RandomWalkSeries(2_000, 135_000.0));
 
-        window.addWindowListener(new WindowAdapter() {
+        charts.put(name, holder);
 
-            @Override
-            public void windowClosed(WindowEvent e) {
-                charts.remove(name);
-            }
-        });
-
-        charts.put(name, window);
-        window.setVisible(true);
+        // Opens in whichever mode it was last left in -- docked on first open.
+        holder.show();
 
         console.write(Messages.get("console.opened", name));
         status.say(name);
+    }
+
+    /** @return whether the named chart is floating; false when it is not open */
+    public boolean isFloating(String name) {
+        ChartHolder holder = charts.get(name);
+
+        return holder != null && holder.isFloating();
+    }
+
+    /** Switches the named chart between docked and floating. */
+    public void toggleChartMode(String name) {
+        ChartHolder holder = charts.get(name);
+
+        if (holder != null) {
+            holder.toggleMode();
+        }
     }
 
     /** @return the names of the chart windows open now, in the order opened */
@@ -218,13 +234,20 @@ public final class MainWindow extends JFrame {
         return java.util.List.copyOf(charts.keySet());
     }
 
-    /** Closes every chart window; also the "close all" action. */
+    /** Closes every chart; also the "close all" action. */
     public void closeCharts() {
-        for (ChartWindow window : new java.util.ArrayList<>(charts.values())) {
-            window.dispose();
+        for (ChartHolder holder : new java.util.ArrayList<>(charts.values())) {
+            holder.close();
         }
 
         charts.clear();
+    }
+
+    /** Brings every floating chart back inside the main window. */
+    public void dockCharts() {
+        for (ChartHolder holder : charts.values()) {
+            holder.dock();
+        }
     }
 
     public Console getConsole() {
@@ -235,8 +258,8 @@ public final class MainWindow extends JFrame {
         return status;
     }
 
-    public JTabbedPane getEditors() {
-        return editors;
+    public JDesktopPane getDesktop() {
+        return desktop;
     }
 
     // ------------------------------------------------------------ assembly
@@ -255,6 +278,7 @@ public final class MainWindow extends JFrame {
         view.add(item("action.clearConsole", KeyEvent.VK_L, console::clear));
         view.add(item("action.resetLayout", 0, this::defaultLayout));
         view.addSeparator();
+        view.add(item("action.dockCharts", 0, this::dockCharts));
         view.add(item("action.closeCharts", 0, this::closeCharts));
 
         JMenu run = menu("menu.run");
@@ -392,31 +416,6 @@ public final class MainWindow extends JFrame {
         panel.add(content, BorderLayout.CENTER);
 
         return panel;
-    }
-
-    /**
-     * What the editor area shows while charts live in their own windows.
-     *
-     * <p>An empty {@code JTabbedPane} renders as a bare strip and reads as a
-     * defect. Saying where the charts went costs one label and removes the
-     * question.</p>
-     */
-    private static JComponent placeholder() {
-        JPanel panel = new JPanel(new BorderLayout());
-        JLabel label = new JLabel(Messages.get("view.chartsOpenInWindows"),
-                javax.swing.SwingConstants.CENTER);
-
-        label.setEnabled(false);
-        panel.setBorder(BorderFactory.createEmptyBorder(24, 24, 24, 24));
-        panel.add(label, BorderLayout.CENTER);
-
-        return panel;
-    }
-
-    private static JComponent borderless(JComponent component) {
-        component.setBorder(BorderFactory.createEmptyBorder());
-
-        return component;
     }
 
     // ------------------------------------------------------------ state

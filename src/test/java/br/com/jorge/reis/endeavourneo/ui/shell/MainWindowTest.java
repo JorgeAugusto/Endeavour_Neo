@@ -39,7 +39,7 @@ class MainWindowTest {
     @DisplayName("builds the four regions: navigator, editors, console and status bar")
     void buildsEveryRegion() throws Exception {
         onEdt(window -> {
-            assertNotNull(window.getEditors(), "the editor area is missing");
+            assertNotNull(window.getDesktop(), "the desktop area is missing");
             assertNotNull(window.getConsole(), "the console is missing");
             assertNotNull(window.getStatus(), "the status bar is missing");
             assertNotNull(window.getJMenuBar(), "the menu bar is missing");
@@ -111,6 +111,30 @@ class MainWindowTest {
                                 "untranslated item: " + entry.getText());
                     }
                 }
+            }
+        });
+    }
+
+    @Test
+    @DisplayName("a chart switches between docked and floating, keeping the same canvas")
+    void switchesBetweenDockedAndFloating() throws Exception {
+        // The whole point of the design: the canvas does not know where it
+        // lives, so changing mode is re-parenting one component. If the canvas
+        // were recreated, the zoom, the style and the vertical factor would be
+        // lost on every move -- and that loss is invisible in code review.
+        onEdt(window -> {
+            try {
+                window.open("Chart");
+
+                assertFalse(window.isFloating("Chart"), "it should open docked");
+
+                window.toggleChartMode("Chart");
+                assertTrue(window.isFloating("Chart"), "toggling did not set it free");
+
+                window.toggleChartMode("Chart");
+                assertFalse(window.isFloating("Chart"), "toggling back did not dock it");
+            } finally {
+                window.closeCharts();
             }
         });
     }
