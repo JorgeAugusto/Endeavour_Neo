@@ -49,15 +49,16 @@ import javax.swing.SpinnerNumberModel;
 /**
  * The settings of one moving average, in the shape the reference product uses.
  *
- * <p>Three tabs, and the split is not arbitrary: <b>Parameters</b> changes what
- * is computed, <b>Appearance</b> changes only how it is drawn, and <b>Values</b>
- * says which price is read. Somebody adjusting a colour never has to look at a
- * period, which is the whole reason for tabs rather than one long form.</p>
+ * <p>Four tabs, and the split is not arbitrary: <b>Parameters</b> changes what
+ * is computed, <b>Appearance</b> changes only how it is drawn, <b>Values</b>
+ * says which price is read, and <b>Period</b> says on what scale. Somebody
+ * adjusting a colour never has to look at a period, which is the whole reason
+ * for tabs rather than one long form.</p>
  *
- * <p>The reference product has a fourth tab, <i>Instrument/Period</i>, for
- * reading an average of a different symbol or a larger scale. That is a real
- * feature and it is not built, so the tab is <b>absent rather than empty</b>: a
- * tab that opens onto nothing is discovered by clicking, and reads as broken.</p>
+ * <p>The reference product's fourth tab also lets an indicator read another
+ * <i>instrument</i>. That half is deliberately absent: this one always follows
+ * the chart's instrument, and a control that only ever has one value costs a
+ * glance and gives nothing back.</p>
  *
  * <p>The <b>sample</b> at the bottom of Appearance is drawn with the very stroke
  * the chart will use. A preview built by other code is a preview that can
@@ -86,6 +87,16 @@ public final class MovingAverageDialog extends JDialog {
 
     private final JButton colour = new JButton();
 
+    private final javax.swing.JCheckBox ownPeriod =
+            new javax.swing.JCheckBox(Messages.get("overlay.ma.ownPeriod"));
+
+    private final JButton periodButton = new JButton();
+
+    private final javax.swing.JCheckBox interpolate =
+            new javax.swing.JCheckBox(Messages.get("overlay.ma.interpolate"));
+
+    private transient String periodCode;
+
     private final Sample sample = new Sample();
 
     private transient Color chosen;
@@ -97,6 +108,7 @@ public final class MovingAverageDialog extends JDialog {
 
         this.average = average;
         this.chosen = average.chosenColour();
+        this.periodCode = average.ownPeriod();
 
         this.period = new JSpinner(new SpinnerNumberModel(average.period(), 1, 2_000, 1));
         this.shift = new JSpinner(new SpinnerNumberModel(average.shift(), -500, 500, 1));
@@ -125,6 +137,7 @@ public final class MovingAverageDialog extends JDialog {
         tabs.addTab(Messages.get("overlay.tab.parameters"), parameters());
         tabs.addTab(Messages.get("overlay.tab.appearance"), appearance());
         tabs.addTab(Messages.get("overlay.tab.values"), values());
+        tabs.addTab(Messages.get("overlay.tab.period"), period());
 
         add(tabs, BorderLayout.CENTER);
         add(buttons(), BorderLayout.SOUTH);
@@ -185,6 +198,75 @@ public final class MovingAverageDialog extends JDialog {
         panel.add(sample, at);
 
         return panel;
+    }
+
+    /**
+     * The scale this average is computed on, when it is not the chart's.
+     *
+     * <p>The reference product also lets an indicator read another INSTRUMENT
+     * here. That half is left out on purpose — this one always follows the
+     * chart's instrument, and a control that only ever has one value is a
+     * control that costs a glance and gives nothing.</p>
+     *
+     * <p>The period is chosen through the same window a digit opens on the
+     * chart. Inventing a second way to name a period — a unit beside a count —
+     * would mean two vocabularies for one idea in one application.</p>
+     */
+    private JComponent period() {
+        JPanel panel = form();
+
+        group(panel, 0, Messages.get("overlay.tab.period"));
+
+        GridBagConstraints across = new GridBagConstraints();
+
+        across.gridx = 0;
+        across.gridy = 1;
+        across.gridwidth = 2;
+        across.anchor = GridBagConstraints.WEST;
+        across.insets = new Insets(3, 8, 3, 0);
+
+        panel.add(ownPeriod, across);
+
+        field(panel, 2, Messages.get("overlay.ma.scale"), periodButton);
+
+        group(panel, 3, Messages.get("overlay.ma.painting"));
+
+        GridBagConstraints last = new GridBagConstraints();
+
+        last.gridx = 0;
+        last.gridy = 4;
+        last.gridwidth = 2;
+        last.anchor = GridBagConstraints.WEST;
+        last.insets = new Insets(3, 8, 3, 0);
+
+        panel.add(interpolate, last);
+
+        ownPeriod.setSelected(periodCode != null);
+        interpolate.setSelected(average.isInterpolated());
+        ownPeriod.addActionListener(e -> refreshPeriod());
+
+        periodButton.addActionListener(e -> {
+            PeriodCatalog.Choice choice = PeriodDialog.ask(this, null);
+
+            if (choice != null) {
+                periodCode = choice.code();
+
+                refreshPeriod();
+            }
+        });
+
+        refreshPeriod();
+
+        return panel;
+    }
+
+    private void refreshPeriod() {
+        boolean own = ownPeriod.isSelected();
+
+        periodButton.setEnabled(own);
+        interpolate.setEnabled(own);
+        periodButton.setText(periodCode == null
+                ? Messages.get("overlay.ma.chooseScale") : periodCode);
     }
 
     private JComponent values() {
@@ -279,6 +361,8 @@ public final class MovingAverageDialog extends JDialog {
         average.setSource((MovingAverage.Source) source.getSelectedItem());
         average.setLine((MovingAverage.Line) line.getSelectedItem());
         average.setColour(chosen);
+        average.setOwnPeriod(ownPeriod.isSelected() ? periodCode : null);
+        average.setInterpolated(interpolate.isSelected());
     }
 
     private void pickColour() {

@@ -102,7 +102,18 @@ public final class Messages {
      * @param locale the locale to use
      */
     public static void setLocale(Locale locale) {
-        bundle = ResourceBundle.getBundle(BASE, locale);
+        // NO FALLBACK TO THE DEFAULT LOCALE, and this is the whole fix for a
+        // real defect: asking for English on a Brazilian machine gave
+        // Portuguese. getBundle's normal order is
+        //
+        //     messages_en  ->  messages_<default locale>  ->  messages
+        //
+        // so with no messages_en on disk it landed on messages_pt_BR -- the
+        // base bundle, which IS English, was never reached. It looked like the
+        // setting did nothing.
+        bundle = ResourceBundle.getBundle(BASE, locale,
+                ResourceBundle.Control.getNoFallbackControl(
+                        ResourceBundle.Control.FORMAT_PROPERTIES));
     }
 
     /** @return the locale actually in use, which may be the fallback */

@@ -126,6 +126,24 @@ public final class MovingAverage implements Overlay {
 
     private int thickness = 1;
 
+    /**
+     * The period this average is computed on, or null to follow the chart.
+     *
+     * <p>Kept as the CODE the reader would type -- "15m" -- and not as an
+     * aggregation, because it has to survive being written into a layout and
+     * read back, and prose does not.</p>
+     */
+    private String ownPeriod;
+
+    /**
+     * Whether the line is smoothed between the coarse points it is made of.
+     *
+     * <p>On by default. Without it a fifteen-minute average drawn over
+     * five-minute bars is a staircase, and the steps are an artefact of the
+     * drawing rather than anything the market did.</p>
+     */
+    private boolean interpolate = true;
+
     private double[] values = new double[0];
 
     private boolean visible = true;
@@ -193,6 +211,23 @@ public final class MovingAverage implements Overlay {
         this.line = value == null ? Line.SOLID : value;
     }
 
+    /** @return the period this average uses, or null when it follows the chart */
+    public String ownPeriod() {
+        return ownPeriod;
+    }
+
+    public void setOwnPeriod(String code) {
+        this.ownPeriod = code == null || code.isBlank() ? null : code.trim();
+    }
+
+    public boolean isInterpolated() {
+        return interpolate;
+    }
+
+    public void setInterpolated(boolean value) {
+        this.interpolate = value;
+    }
+
     public int thickness() {
         return thickness;
     }
@@ -248,11 +283,147 @@ public final class MovingAverage implements Overlay {
             return;
         }
 
-        switch (kind) {
-            case EXPONENTIAL -> exponential(series);
-            case WEIGHTED -> weighted(series);
-            default -> arithmetic(series);
+        if (ownPeriod != null) {
+            onItsOwnPeriod(series);
+
+            return;
         }
+
+        computeOver(series, values);
+    }
+
+    private void computeOver(PriceSeries series, double[] into) {
+        double[] keep = values;
+
+        values = into;
+
+        try {
+            switch (kind) {
+                case EXPONENTIAL -> exponential(series);
+                case WEIGHTED -> weighted(series);
+                default -> arithmetic(series);
+            }
+        } finally {
+            if (into != keep) {
+                values = keep;
+            }
+        }
+    }
+
+    /**
+     * Computes on a larger scale and lays the result over the chart's bars.
+     *
+     * <p><b>This is where multi-timeframe indicators usually lie.</b> The
+     * obvious mapping takes, for each bar on screen, the coarse bar that
+     * CONTAINS it — and that coarse bar is not finished yet: it is made partly
+     * of bars to the right of the one being drawn. The line then knows the rest
+     * of the hour while standing at its first minute, and every measurement
+     * built on it is worth nothing.</p>
+     *
+     * <p>What is used instead is the <b>last coarse bar that has already
+     * closed</b>. The line lags, visibly, by up to one coarse bar. That lag is
+     * the truth: at 09:05 nobody knew what the nine o'clock hour would close
+     * at.</p>
+     */
+    private void onItsOwnPeriod(PriceSeries series) {
+        br.com.jorge.reis.endeavourneo.domain.market.Aggregation scale = scaleOf();
+
+        if (scale == null) {
+            computeOver(series, values);
+
+            return;
+        }
+
+        PriceSeries coarse = scale.apply(series);
+
+        if (coarse.size() == 0) {
+            java.util.Arrays.fill(values, Double.NaN);
+
+            return;
+        }
+
+        double[] slow = new double[coarse.size()];
+
+        computeOver(coarse, slow);
+
+        int closed = -1;
+
+        for (int i = 0; i < values.length; i++) {
+            // Advance while the NEXT coarse bar has already begun -- which is
+            // what makes the one before it closed.
+            while (closed + 1 < coarse.size() - 1
+                    && coarse.timeAt(closed + 2) <= series.timeAt(i)) {
+                closed++;
+            }
+
+            if (closed < 0 && coarse.size() > 1 && coarse.timeAt(1) <= series.timeAt(i)) {
+                closed = 0;
+            }
+
+            values[i] = closed < 0 ? Double.NaN : slow[closed];
+        }
+
+        if (interpolate) {
+            smooth(series, coarse, slow);
+        }
+    }
+
+    /**
+     * Draws a slope between the closed coarse points instead of a staircase.
+     *
+     * <p>Only between points that have both closed. Sloping towards the coarse
+     * bar still forming would put tomorrow's number into today's line, which is
+     * the very thing the mapping above exists to avoid.</p>
+     */
+    private void smooth(PriceSeries series, PriceSeries coarse, double[] slow) {
+        for (int i = 0; i < values.length; i++) {
+            int closed = indexOfClosed(series, coarse, i);
+
+            if (closed < 1 || !Double.isFinite(slow[closed]) || !Double.isFinite(slow[closed - 1])) {
+                continue;
+            }
+
+            long from = coarse.timeAt(closed);
+            long to = closed + 1 < coarse.size() ? coarse.timeAt(closed + 1) : from;
+            long span = to - from;
+
+            if (span <= 0) {
+                continue;
+            }
+
+            double along = Math.max(0.0, Math.min(1.0, (series.timeAt(i) - from) / (double) span));
+
+            values[i] = slow[closed - 1] + (slow[closed] - slow[closed - 1]) * along;
+        }
+    }
+
+    /** @return the last coarse bar closed by the time that bar opened, or -1 */
+    private static int indexOfClosed(PriceSeries series, PriceSeries coarse, int bar) {
+        long when = series.timeAt(bar);
+        int low = 0;
+        int high = coarse.size() - 1;
+        int found = -1;
+
+        while (low <= high) {
+            int middle = (low + high) >>> 1;
+
+            if (middle + 1 < coarse.size() && coarse.timeAt(middle + 1) <= when) {
+                found = middle;
+                low = middle + 1;
+            } else {
+                high = middle - 1;
+            }
+        }
+
+        return found;
+    }
+
+    /** @return the aggregation named by {@link #ownPeriod}, or null when unknown */
+    private br.com.jorge.reis.endeavourneo.domain.market.Aggregation scaleOf() {
+        br.com.jorge.reis.endeavourneo.ui.chart.PeriodCatalog.Choice choice =
+                br.com.jorge.reis.endeavourneo.ui.chart.PeriodCatalog.byCode(ownPeriod);
+
+        return choice == null ? null : choice.aggregation();
     }
 
     private double priceAt(PriceSeries series, int bar) {
@@ -328,7 +499,9 @@ public final class MovingAverage implements Overlay {
     @Override
     public String appearance() {
         return kind + ";" + source + ";" + line + ";" + thickness + ";"
-                + (colour == null ? "auto" : Integer.toHexString(colour.getRGB() & 0xFFFFFF));
+                + (colour == null ? "auto" : Integer.toHexString(colour.getRGB() & 0xFFFFFF))
+                + ";" + (ownPeriod == null ? "chart" : ownPeriod)
+                + ";" + interpolate;
     }
 
     @Override
@@ -364,6 +537,14 @@ public final class MovingAverage implements Overlay {
 
         if (fields.length > 4) {
             setColour("auto".equals(fields[4]) ? null : parseColour(fields[4]));
+        }
+
+        if (fields.length > 5) {
+            setOwnPeriod("chart".equals(fields[5]) ? null : fields[5]);
+        }
+
+        if (fields.length > 6) {
+            setInterpolated(Boolean.parseBoolean(fields[6]));
         }
     }
 
