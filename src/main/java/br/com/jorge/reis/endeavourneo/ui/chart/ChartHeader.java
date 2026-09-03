@@ -101,7 +101,7 @@ public final class ChartHeader extends JComponent {
             g.setFont(base);
 
             FontMetrics plain = g.getFontMetrics();
-            String period = canvas.period().label();
+            String period = canvas.periodLabel();
 
             // The period dimmer than the instrument: they are read together, and
             // making both the same weight leaves neither leading.

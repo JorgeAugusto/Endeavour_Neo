@@ -215,6 +215,9 @@ public final class ChartCanvas extends JComponent {
     /** Told when the bars themselves are replaced. */
     private transient Runnable onSeriesChanged = () -> { };
 
+    /** Told when the vertical scale stops or starts being the automatic one. */
+    private transient Runnable onScaleChanged = () -> { };
+
     /**
      * The bars as they are STORED, before the period is applied.
      *
@@ -226,6 +229,15 @@ public final class ChartCanvas extends JComponent {
     private transient PriceSeries base = PriceSeries.empty();
 
     private transient Aggregation period = Timeframe.ONE_MINUTE;
+
+    /**
+     * How the chosen period is written in the title and inside the chart.
+     *
+     * <p>Kept beside the aggregation instead of asked of it: naming a renko
+     * brick in ticks needs the instrument's tick size, and the domain has no
+     * business knowing what a tick is worth.</p>
+     */
+    private transient String periodLabel = Timeframe.ONE_MINUTE.label();
 
     private int firstBar;
 
@@ -273,6 +285,9 @@ public final class ChartCanvas extends JComponent {
 
     /** Kept so it can be removed again: see addNotify and removeNotify. */
     private final transient Runnable followRuler = this::followGlobalMode;
+
+    /** Kept so it can be removed again: see addNotify and removeNotify. */
+    private final transient Runnable followDrawing = this::repaint;
 
     /** Told when the mode changes, so a menu can tick the right entry. */
     private transient Runnable onModeChanged = () -> { };
@@ -489,6 +504,22 @@ public final class ChartCanvas extends JComponent {
         return series;
     }
 
+    /**
+     * @return whether the vertical scale is the one the chart chose for itself
+     *
+     * <p>What the toolbar button shows. Stretching or sliding the price leaves
+     * automatic; the button unticks, and that tick is the only thing on screen
+     * that says the scale is now the reader's and not the chart's.</p>
+     */
+    public boolean isAutomaticScale() {
+        return stretch == 1.0 && priceOffset == 0.0;
+    }
+
+    /** @param listener told when the vertical scale becomes manual, or automatic again */
+    public void onScaleChanged(Runnable listener) {
+        this.onScaleChanged = listener == null ? () -> { } : listener;
+    }
+
     /** @param listener told when the bars are replaced */
     public void onSeriesChanged(Runnable listener) {
         this.onSeriesChanged = listener == null ? () -> { } : listener;
@@ -582,13 +613,27 @@ public final class ChartCanvas extends JComponent {
 
     /** @param newPeriod the scale to look at, from {@link PeriodCatalog} */
     public void setPeriod(Aggregation newPeriod) {
+        setPeriod(newPeriod, newPeriod == null ? null : newPeriod.label());
+    }
+
+    /**
+     * @param newPeriod the scale to look at
+     * @param label how to write it, or null to let the scale name itself
+     */
+    public void setPeriod(Aggregation newPeriod, String label) {
         if (newPeriod == null || newPeriod == period) {
             return;
         }
 
         this.period = newPeriod;
+        this.periodLabel = label == null ? newPeriod.label() : label;
 
         refold();
+    }
+
+    /** @return the period as the title and the chart header write it */
+    public String periodLabel() {
+        return periodLabel;
     }
 
     public Aggregation period() {
@@ -604,7 +649,10 @@ public final class ChartCanvas extends JComponent {
      */
     public void setWicks(boolean show) {
         if (period instanceof br.com.jorge.reis.endeavourneo.domain.market.Renko renko) {
-            setPeriod(renko.withWicks(show));
+            // The label is carried across: turning the tails off does not change
+            // which period this is, and the title must not start saying
+            // something else because a switch was flipped.
+            setPeriod(renko.withWicks(show), periodLabel);
         }
     }
 
@@ -629,7 +677,7 @@ public final class ChartCanvas extends JComponent {
         PeriodCatalog.Choice choice = PeriodDialog.ask(owner, typed);
 
         if (choice != null) {
-            setPeriod(choice.aggregation());
+            setPeriod(choice.aggregation(), choice.title());
         }
     }
 
@@ -816,12 +864,14 @@ public final class ChartCanvas extends JComponent {
         super.addNotify();
 
         RulerMode.listen(followRuler);
+        ChartPreferences.listen(followDrawing);
         followGlobalMode();
     }
 
     @Override
     public void removeNotify() {
         RulerMode.forget(followRuler);
+        ChartPreferences.forget(followDrawing);
 
         super.removeNotify();
     }
@@ -902,6 +952,7 @@ public final class ChartCanvas extends JComponent {
         priceOffset = 0.0;
 
         repaint();
+        onScaleChanged.run();
     }
 
     /**
@@ -915,6 +966,7 @@ public final class ChartCanvas extends JComponent {
         firstBar = clampFirstBar(series.size() - visibleBars + rightMargin);
 
         repaint();
+        onScaleChanged.run();
     }
 
     private int birthMargin() {
@@ -966,6 +1018,10 @@ public final class ChartCanvas extends JComponent {
      * produces the numbers a reader expects to see on an axis.</p>
      */
     private void paintGrid(Graphics2D g, Viewport viewport) {
+        if (!ChartPreferences.horizontalGrid()) {
+            return;
+        }
+
         double step = gridStep(viewport);
 
         g.setColor(ChartColors.grid());
@@ -1152,15 +1208,25 @@ public final class ChartCanvas extends JComponent {
             // rather than as another division of the same scale.
             java.awt.Stroke was = g.getStroke();
 
-            if (newDay) {
-                g.setColor(ChartColors.foreground());
-                g.setStroke(BOUNDARY);
+            if (newDay && !ChartPreferences.periodLine()) {
+                // Asked for, and off by default. On a chart of a few hundred
+                // bars the boundary falls often enough to become a second grid,
+                // and a grid on top of the grid is noise however faint. The day
+                // band underneath already says where the day changed, and says
+                // it with a name instead of a line.
+                g.setStroke(was);
             } else {
-                g.setColor(ChartColors.grid());
-            }
+                if (newDay) {
+                    g.setColor(ChartColors.foreground());
+                    g.setStroke(BOUNDARY);
+                    g.drawLine(x, 0, x, top);
+                } else if (ChartPreferences.verticalGrid()) {
+                    g.setColor(ChartColors.grid());
+                    g.drawLine(x, 0, x, top);
+                }
 
-            g.drawLine(x, 0, x, top);
-            g.setStroke(was);
+                g.setStroke(was);
+            }
 
             g.setColor(ChartColors.foreground());
             g.drawString(text, x - width / 2, top + metrics.getAscent() + 3);
@@ -1680,6 +1746,7 @@ public final class ChartCanvas extends JComponent {
                 stretch = stretchForDrag(scalingBase, e.getY() - scalingFrom);
 
                 repaint();
+                onScaleChanged.run();
 
                 return;
             }
@@ -1703,6 +1770,8 @@ public final class ChartCanvas extends JComponent {
             priceOffset = clampOffset(grabbedOffset + (e.getY() - grabbedY) / (double) height);
             cursor = e.getPoint();
 
+            onScaleChanged.run();
+
             repaint();
         }
 
@@ -1719,6 +1788,7 @@ public final class ChartCanvas extends JComponent {
                 stretch = Math.max(MINIMUM_STRETCH, Math.min(stretch, MAXIMUM_STRETCH));
 
                 repaint();
+                onScaleChanged.run();
 
                 return;
             }

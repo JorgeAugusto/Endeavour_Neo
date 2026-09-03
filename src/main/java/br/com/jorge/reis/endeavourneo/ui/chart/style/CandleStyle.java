@@ -43,14 +43,20 @@ public final class CandleStyle implements ChartStyle {
      * visibly darker. Filled-both-ways relies on colour alone, which is exactly
      * what a colour-blind reader does not have.</p>
      */
-    private final boolean hollow;
-
-    public CandleStyle() {
-        this(false);
+    /**
+     * Read at paint time rather than fixed at construction.
+     *
+     * <p>So the setting reaches charts already open. Building the style with a
+     * flag would leave every window drawn the way it was when it opened, and the
+     * checkbox would only take effect on the next chart.</p>
+     */
+    private boolean hollow() {
+        return br.com.jorge.reis.endeavourneo.ui.chart.ChartPreferences.hollowCandles();
     }
 
-    public CandleStyle(boolean hollow) {
-        this.hollow = hollow;
+    public CandleStyle() {
+        // Nothing to keep: whether bodies are hollow is a setting, read when the
+        // candle is drawn.
     }
 
     /** Share of the bar's width the body occupies; the rest is the gap. */
@@ -61,7 +67,7 @@ public final class CandleStyle implements ChartStyle {
 
     @Override
     public String nameKey() {
-        return hollow ? "chart.style.candleHollow" : "chart.style.candle";
+        return "chart.style.candle";
     }
 
     @Override
@@ -104,7 +110,7 @@ public final class CandleStyle implements ChartStyle {
             // entirely. One pixel is the honest minimum: the bar exists.
             int drawHeight = Math.max(1, height);
 
-            if (hollow && rising && drawHeight > 2) {
+            if (hollow() && rising && drawHeight > 2) {
                 // Outlined, with the background showing through. Below three
                 // pixels the outline and the fill are the same thing, so a tiny
                 // body stays solid rather than becoming an invisible ring.

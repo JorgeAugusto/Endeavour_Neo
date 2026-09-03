@@ -64,6 +64,24 @@ public final class PeriodCatalog {
 
     /** One offer in the list: what it is called and what it builds. */
     public record Choice(String code, String description, Aggregation aggregation) {
+
+        /**
+         * @return how the chart writes this period in its title
+         *
+         * <p>Renko carries both numbers, because neither alone is enough:
+         * <code>11R</code> is what was typed and what the reader will type
+         * again, and <code>55 pts</code> is what a brick actually measures. The
+         * conversion needs the instrument's tick size, which is why this lives
+         * here and not on {@link Renko} — a brick in the domain knows its height
+         * in price and has no business knowing what a tick is worth.</p>
+         */
+        public String title() {
+            if (aggregation instanceof Renko renko) {
+                return code + " - " + trim(renko.brick()) + " pts";
+            }
+
+            return code;
+        }
     }
 
     private PeriodCatalog() {

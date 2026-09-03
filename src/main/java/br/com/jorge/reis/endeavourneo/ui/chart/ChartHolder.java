@@ -238,13 +238,13 @@ public final class ChartHolder {
             // there IS no previous close in a session played on its own, and a
             // percentage measured against the first bar of the day would look
             // like the real thing and not be it.
-            return name + "  " + canvas.period().label()
+            return name + "  " + canvas.periodLabel()
                     + "   " + Messages.get("replay.inTitle", replayLabel);
         }
 
         // The period in the title as well as inside the chart: the title is what
         // is readable when the window is behind two others.
-        String scale = "  " + canvas.period().label();
+        String scale = "  " + canvas.periodLabel();
         String change = Sessions.formatChange(
                 Sessions.changeOnDay(canvas.series(), java.time.ZoneId.systemDefault()));
 
@@ -500,8 +500,6 @@ public final class ChartHolder {
 
         bar.add(styleButton(styles, "chart.style.candle", Icons.candle(15),
                 () -> new CandleStyle()));
-        bar.add(styleButton(styles, "chart.style.candleHollow", Icons.candleHollow(15),
-                () -> new CandleStyle(true)));
         bar.add(styleButton(styles, "chart.style.line", Icons.line(15),
                 () -> new LineStyle()));
 
@@ -517,7 +515,28 @@ public final class ChartHolder {
 
         bar.add(wicks);
         bar.addSeparator();
-        bar.add(button("chart.resetScale", Icons.fitVertical(15), canvas::resetStretch));
+
+        // A TOGGLE and not a plain button, ticked while the scale is the one the
+        // chart chose. It was a push button and there was nothing on screen
+        // saying whether the vertical scale was automatic or something the
+        // reader had dragged -- the same complaint as any unlabelled mode.
+        JToggleButton automatic = new JToggleButton(Icons.fitVertical(15));
+
+        automatic.setToolTipText(Messages.get("chart.resetScale"));
+        automatic.setFocusable(false);
+        automatic.setSelected(canvas.isAutomaticScale());
+        automatic.addActionListener(e -> {
+            canvas.resetStretch();
+
+            // Always ticked after a click: clicking it means "go automatic", and
+            // it is automatic now. Letting it untick would show the state of the
+            // button rather than the state of the chart.
+            automatic.setSelected(true);
+        });
+
+        canvas.onScaleChanged(() -> automatic.setSelected(canvas.isAutomaticScale()));
+
+        bar.add(automatic);
         bar.addSeparator();
 
         // The label names the DESTINATION, not the current state: "float" while
