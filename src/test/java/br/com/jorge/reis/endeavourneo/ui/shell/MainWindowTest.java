@@ -49,21 +49,26 @@ class MainWindowTest {
     }
 
     @Test
-    @DisplayName("opening the same name twice fronts the window instead of duplicating it")
-    void doesNotDuplicateWindows() throws Exception {
-        // Charts live in windows so several can sit on several monitors. But
-        // double-clicking the same navigator entry must still front the one
-        // already open rather than stack a second identical window on top --
-        // which is worse than duplicate tabs were, because the copy hides the
-        // original completely.
+    @DisplayName("the same series can be opened several times, with distinct titles")
+    void opensSeveralChartsOfOneSeries() throws Exception {
+        // A terminal shows the same instrument at several timeframes at once,
+        // and two charts of one series side by side is how zoom levels get
+        // compared. Fronting the existing window instead -- one editor per
+        // file, the semantics of an IDE tab -- is wrong for a chart.
+        //
+        // The titles have to differ: two windows both called winn-1m cannot be
+        // told apart in the Window menu, and their stored geometry would
+        // collide, so moving one would move the other on the next launch.
         onEdt(window -> {
             try {
-                window.open("Report");
-                window.open("Balance");
-                window.open("Report");
+                window.open("winn-1m");
+                window.open("winn-1m");
+                window.open("winfut-1m");
+                window.open("winn-1m");
 
-                assertEquals(List.of("Report", "Balance"), window.openCharts(),
-                        "the same chart was opened twice");
+                assertEquals(List.of("winn-1m", "winn-1m (2)", "winfut-1m", "winn-1m (3)"),
+                        window.openCharts(),
+                        "opening the same series again did not produce a second chart");
             } finally {
                 window.closeCharts();
             }

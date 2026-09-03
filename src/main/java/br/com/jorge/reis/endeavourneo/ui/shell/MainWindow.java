@@ -189,28 +189,59 @@ public final class MainWindow extends JFrame {
      * name brings the existing window forward instead of creating a second one,
      * which is the behaviour the tabs had and the one people expect.</p>
      */
-    public void open(String name) {
-        ChartHolder existing = charts.get(name);
-
-        if (existing != null) {
-            existing.front();
-
-            return;
-        }
-
-        ChartHolder holder = new ChartHolder(name, desktop, this, () -> charts.remove(name));
+    public void open(String series) {
+        // ALWAYS a new chart, never fronting an existing one. A terminal is
+        // expected to show the same instrument at several timeframes at once,
+        // and two charts of the same series side by side is how one compares
+        // zoom levels. Fronting instead -- the semantics of an IDE tab, one
+        // editor per file -- is wrong for a chart and was the previous
+        // behaviour.
+        String title = uniqueTitle(series);
+        ChartHolder holder = new ChartHolder(title, desktop, this, () -> charts.remove(title));
 
         // Synthetic bars for now. Replaced the moment a real series is wired in
         // -- see RandomWalkSeries.
         holder.canvas().setSeries(new RandomWalkSeries(2_000, 135_000.0));
 
-        charts.put(name, holder);
+        charts.put(title, holder);
 
         // Opens in whichever mode it was last left in -- docked on first open.
         holder.show();
 
-        console.write(Messages.get("console.opened", name));
-        status.say(name);
+        console.write(Messages.get("console.opened", title));
+        status.say(title);
+    }
+
+    /**
+     * @param series the series name
+     * @return that name, or it followed by a number when charts of it are open
+     *
+     * <p>The title has to distinguish them: two windows both called
+     * {@code winn-1m} are indistinguishable in the Window menu, and their
+     * remembered geometry would collide -- moving one would move the other on
+     * the next launch.</p>
+     */
+    private String uniqueTitle(String series) {
+        if (!charts.containsKey(series)) {
+            return series;
+        }
+
+        for (int n = 2; ; n++) {
+            String candidate = series + " (" + n + ")";
+
+            if (!charts.containsKey(candidate)) {
+                return candidate;
+            }
+        }
+    }
+
+    /** Brings the named chart to the front. */
+    public void front(String title) {
+        ChartHolder holder = charts.get(title);
+
+        if (holder != null) {
+            holder.front();
+        }
     }
 
     /** @return whether the named chart is floating; false when it is not open */
@@ -372,8 +403,60 @@ public final class MainWindow extends JFrame {
         bar.add(file);
         bar.add(view);
         bar.add(run);
+        bar.add(buildWindowMenu());
 
         return bar;
+    }
+
+    /**
+     * The list of open charts, rebuilt each time it is shown.
+     *
+     * <p>Rebuilt rather than kept in step with events: the list changes whenever
+     * a chart opens or closes, and a menu that is only correct if every one of
+     * those paths remembered to update it will eventually be wrong. Building it
+     * on the way open costs nothing at this size and cannot drift.</p>
+     *
+     * <p>It exists because once several charts are docked, one behind another,
+     * the menu is the only way to reach the one underneath.</p>
+     */
+    private JMenu buildWindowMenu() {
+        JMenu menu = menu("menu.window");
+
+        menu.addMenuListener(new javax.swing.event.MenuListener() {
+
+            @Override
+            public void menuSelected(javax.swing.event.MenuEvent e) {
+                menu.removeAll();
+
+                if (charts.isEmpty()) {
+                    JMenuItem empty = new JMenuItem(Messages.get("window.none"));
+
+                    empty.setEnabled(false);
+                    menu.add(empty);
+
+                    return;
+                }
+
+                for (String title : charts.keySet()) {
+                    JMenuItem entry = new JMenuItem(title);
+
+                    entry.addActionListener(chosen -> front(title));
+                    menu.add(entry);
+                }
+            }
+
+            @Override
+            public void menuDeselected(javax.swing.event.MenuEvent e) {
+                // nothing to undo
+            }
+
+            @Override
+            public void menuCanceled(javax.swing.event.MenuEvent e) {
+                // nothing to undo
+            }
+        });
+
+        return menu;
     }
 
     /**
