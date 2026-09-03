@@ -27,11 +27,11 @@ import java.util.Locale;
  * is wrong on somebody's computer by construction; a program that asks is wrong
  * for anybody who never opens the settings.</p>
  *
- * <p><b>A change takes effect on the next launch</b>, and the page says so.
- * Every label in this application is read once when its window is built, so
- * switching live would mean rebuilding every window, every menu and every
- * tooltip — a great deal of machinery for something done once, if ever. Saying
- * "next time" is honest; silently changing half the labels would not be.</p>
+ * <p><b>A change takes effect at once.</b> Every label is read once, when its
+ * window is built, so the main window is rebuilt — which the application
+ * already knows how to do, because it restores itself on every launch. The
+ * first version made the reader restart, and that was a worse answer dressed up
+ * as an honest one: the machinery to avoid it was already there.</p>
  */
 public enum Language {
 
@@ -83,12 +83,16 @@ public enum Language {
         return SYSTEM;
     }
 
-    /** Applies the remembered choice. Called once, before the first window exists. */
+    /**
+     * Applies the remembered choice.
+     *
+     * <p>Called before the first window is built, and again whenever the choice
+     * changes and the window is rebuilt.</p>
+     */
     public static void install() {
-        Language chosen = remembered();
-
-        if (chosen != SYSTEM) {
-            Messages.setLocale(chosen.locale());
-        }
+        // Always, including SYSTEM -- whose locale() is the machine's. Doing it
+        // only for the other two meant switching BACK to "follow the system"
+        // left the previous choice in place until the next launch.
+        Messages.setLocale(remembered().locale());
     }
 }

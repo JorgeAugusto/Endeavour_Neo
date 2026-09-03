@@ -614,7 +614,41 @@ public final class MainWindow extends JFrame {
         replay.toFront();
     }
 
+    /**
+     * Builds this window again, in the language just chosen.
+     *
+     * <p>Every label is read once, when its component is built, so there is
+     * nothing to re-read: the window is made again. It costs nothing extra
+     * because restoring the open charts is what the application does on every
+     * launch anyway — this is that path, run without leaving.</p>
+     */
+    private void relaunch() {
+        rememberCharts();
+        storeLayout();
+
+        if (replay != null) {
+            replay.dispose();
+            replay = null;
+        }
+
+        leaving = true;
+
+        closeCharts();
+        dispose();
+
+        br.com.jorge.reis.endeavourneo.platform.Language.install();
+
+        // Built after the locale changes, or the title would still be the old
+        // language while everything inside it was the new one.
+        MainWindow fresh = new MainWindow(Messages.get("app.title"), jobs);
+
+        fresh.setVisible(true);
+    }
+
     private void openPreferences() {
+        br.com.jorge.reis.endeavourneo.platform.Language before =
+                br.com.jorge.reis.endeavourneo.platform.Language.remembered();
+
         SettingsDialog.show(this, List.of(
                 new GeneralPage(),
                 new br.com.jorge.reis.endeavourneo.ui.settings.ChartPage(),
@@ -623,6 +657,10 @@ public final class MainWindow extends JFrame {
                     console.write(Messages.get("console.appearance", installed));
                     status.say(installed);
                 })));
+
+        if (br.com.jorge.reis.endeavourneo.platform.Language.remembered() != before) {
+            relaunch();
+        }
     }
 
     /**
