@@ -1,0 +1,50 @@
+#!/bin/sh
+#
+# Runs the test suite before letting a commit through.
+#
+# This is the local stand-in for continuous integration: with no remote, the
+# only moment where broken code can be stopped from entering history is here.
+#
+# INSTALL (once per clone):
+#
+#     git config core.hooksPath .githooks
+#
+# The hook is versioned precisely for that reason -- inside .git/hooks it does
+# not travel with the repository and is lost on the next clone.
+#
+# TO SKIP, when you know what you are doing:
+#
+#     git commit --no-verify
+#
+# Skipping is legitimate for work in progress on your own branch. It is not
+# legitimate on master.
+
+set -e
+
+# A commit that touches no code does not need the suite. Without this, editing
+# a .md would cost half a minute.
+if ! git diff --cached --name-only | grep -qE '^src/.*\.(java|properties)$'; then
+    echo "pre-commit: no source in this commit, skipping the tests"
+    exit 0
+fi
+
+MVN="./mvnw"
+
+if [ ! -x "$MVN" ]; then
+    MVN="mvn"
+fi
+
+if ! command -v "$MVN" >/dev/null 2>&1 && [ ! -x "$MVN" ]; then
+    echo "pre-commit: neither ./mvnw nor mvn found; use --no-verify"
+    exit 1
+fi
+
+echo "pre-commit: running the suite..."
+
+if ! "$MVN" -q test; then
+    echo
+    echo "pre-commit: commit blocked -- the suite is failing"
+    exit 1
+fi
+
+exit 0

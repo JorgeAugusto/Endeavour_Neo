@@ -1,0 +1,72 @@
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+### IntelliJ IDEA ###
+.idea/
+*.iws
+*.iml
+*.ipr
+
+### Eclipse ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### VS Code ###
+.vscode/
+
+### Mac OS ###
+.DS_Store
+
+### Java ###
+*.class
+*.jar
+*.war
+*.log
+
+### Dados de mercado (baixados, nao versionados) ###
+data/
+
+# Configuracao dos indicadores: e escolha de cada maquina, e nao do projeto.
+indicadores.properties
+
+# Configuracao da operacao: idem -- contratos e custos sao de quem opera.
+operacao.properties
+
+# Entradas escolhidas para a rede: e a premissa que cada um esta testando.
+entradas.properties
+
+# Series importadas de terminal: cada maquina tem a sua.
+data/win/
+data/win-1m.bin
+
+# Grafo gerado pelo graphify (6 MB, reconstruivel com "graphify update .")
+graphify-out/
+
+# Redes treinadas sao artefatos locais, por escolha: pesam megabytes e
+# dependem da base local. O formato e as ferramentas estao versionados.
+*.endvnet
+
+# Estado das telas: onde cada divisor ficou, que combo estava marcado. E a
+# posicao em que a janela foi deixada, e nao configuracao do projeto -- apagar
+# devolve ao padrao e nao muda resultado nenhum.
+grafico.properties
+rede-tela.properties
+sinais-tela.properties
+adaptativo-tela.properties
