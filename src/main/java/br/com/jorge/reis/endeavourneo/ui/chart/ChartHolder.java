@@ -318,7 +318,13 @@ public final class ChartHolder {
 
         entry.setMnemonic(Messages.mnemonic("chart.measureMode"));
         entry.setSelected(canvas.getMode() == ChartCanvas.Mode.MEASURE);
-        entry.setAccelerator(javax.swing.KeyStroke.getKeyStroke("control CONTROL"));
+
+        // NO accelerator here, deliberately. "control CONTROL" is matched by
+        // Swing on the Control PRESS -- while the canvas toggles on the RELEASE
+        // -- so a quick tap flipped the mode twice and landed back where it
+        // started. Holding the key produced an odd number of auto-repeat
+        // presses, which is why it appeared to need a few seconds. The shortcut
+        // is owned by the canvas alone; the label names it.
         entry.addActionListener(e -> canvas.setMode(entry.isSelected()
                 ? ChartCanvas.Mode.MEASURE : ChartCanvas.Mode.PAN));
 

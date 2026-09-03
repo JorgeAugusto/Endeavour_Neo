@@ -209,6 +209,11 @@ public final class ChartCanvas extends JComponent {
         addMouseWheelListener(mouse);
 
         installControlToggle();
+
+        // Set at construction, not on the first mouse move: until the pointer
+        // moves, the canvas would show the parent's cursor and the mode would be
+        // invisible.
+        setCursor(java.awt.Cursor.getPredefinedCursor(cursorForMode()));
     }
 
     /**
@@ -411,6 +416,23 @@ public final class ChartCanvas extends JComponent {
     }
 
     /**
+     * @return the cursor the current mode uses over the plot
+     *
+     * <p>The hand says "this surface moves"; the crosshair says "you are
+     * pointing at an exact spot". A mode with no cursor of its own leaves the
+     * reader to discover what a drag does by trying it.</p>
+     *
+     * <p>AWT has no open-and-closing grab hand, so the pointing hand stands in.
+     * A real grab cursor would mean shipping an image, and an image cursor does
+     * not follow the theme.</p>
+     */
+    private int cursorForMode() {
+        return mode == Mode.MEASURE
+                ? java.awt.Cursor.CROSSHAIR_CURSOR
+                : java.awt.Cursor.HAND_CURSOR;
+    }
+
+    /**
      * @param newMode what a drag should do from now on
      *
      * <p>Switching away from measuring clears the ruler. A line left on screen
@@ -429,10 +451,7 @@ public final class ChartCanvas extends JComponent {
             rulerBar = -1;
         }
 
-        setCursor(java.awt.Cursor.getPredefinedCursor(
-                mode == Mode.MEASURE
-                        ? java.awt.Cursor.CROSSHAIR_CURSOR
-                        : java.awt.Cursor.DEFAULT_CURSOR));
+        setCursor(java.awt.Cursor.getPredefinedCursor(cursorForMode()));
 
         onModeChanged.run();
         repaint();
@@ -1071,8 +1090,8 @@ public final class ChartCanvas extends JComponent {
             if (jump != null && jump.contains(x, y)) {
                 return Cursor.HAND_CURSOR;
             }
-            if (mode == Mode.MEASURE && !onAxis(x) && !onTimeAxis(y)) {
-                return Cursor.CROSSHAIR_CURSOR;
+            if (!onAxis(x) && !onTimeAxis(y)) {
+                return cursorForMode();
             }
             if (onTimeAxis(y) && !onAxis(x)) {
                 return Cursor.E_RESIZE_CURSOR;
