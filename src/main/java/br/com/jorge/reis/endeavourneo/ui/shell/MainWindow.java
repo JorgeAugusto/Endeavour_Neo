@@ -30,6 +30,7 @@ import br.com.jorge.reis.endeavourneo.ui.chart.ChartHolder;
 import br.com.jorge.reis.endeavourneo.ui.chart.RandomWalkSeries;
 import br.com.jorge.reis.endeavourneo.platform.Messages;
 import br.com.jorge.reis.endeavourneo.ui.settings.AppearancePage;
+import br.com.jorge.reis.endeavourneo.ui.settings.GeneralPage;
 import br.com.jorge.reis.endeavourneo.ui.settings.SettingsDialog;
 import br.com.jorge.reis.endeavourneo.ui.settings.SettingsPage;
 
@@ -472,6 +473,7 @@ public final class MainWindow extends JFrame {
      */
     private void openPreferences() {
         SettingsDialog.show(this, List.of(
+                new GeneralPage(),
                 new AppearancePage(installed -> {
                     console.write(Messages.get("console.appearance", installed));
                     status.say(installed);

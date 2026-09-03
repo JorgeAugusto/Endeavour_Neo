@@ -48,6 +48,89 @@ public final class Icons {
      * @param size the square side, in pixels
      * @return the "arrange the windows" glyph: four panes in a frame
      */
+    /** A filled candle: the default drawing style. */
+    public static Icon candle(int size) {
+        return new Painted(size, (g, w, h, colour) -> {
+            g.setColor(colour);
+
+            int mid = w / 2;
+
+            g.drawLine(mid, 1, mid, h - 2);
+            g.fillRect(mid - 3, 4, 7, h - 8);
+        });
+    }
+
+    /**
+     * The same candle, hollow.
+     *
+     * <p>Outline against fill, and the same silhouette: the pair has to read as
+     * two settings of one thing rather than as two different tools.</p>
+     */
+    public static Icon candleHollow(int size) {
+        return new Painted(size, (g, w, h, colour) -> {
+            g.setColor(colour);
+
+            int mid = w / 2;
+
+            g.drawLine(mid, 1, mid, h - 2);
+            g.drawRect(mid - 3, 4, 6, h - 9);
+        });
+    }
+
+    /** A polyline: the close-only drawing style. */
+    public static Icon line(int size) {
+        return new Painted(size, (g, w, h, colour) -> {
+            g.setColor(colour);
+            g.drawPolyline(
+                    new int[]{1, w / 3, 2 * w / 3, w - 2},
+                    new int[]{h - 3, h / 2, h - 5, 2}, 4);
+        });
+    }
+
+    /**
+     * A double arrow across the height: the vertical scale, back to automatic.
+     *
+     * <p>Vertical and not four-way, because that is the only axis this button
+     * touches — the horizontal scale is set by dragging the time axis.</p>
+     */
+    public static Icon fitVertical(int size) {
+        return new Painted(size, (g, w, h, colour) -> {
+            g.setColor(colour);
+
+            int mid = w / 2;
+
+            g.drawLine(mid, 2, mid, h - 3);
+            g.drawLine(mid, 2, mid - 3, 5);
+            g.drawLine(mid, 2, mid + 3, 5);
+            g.drawLine(mid, h - 3, mid - 3, h - 6);
+            g.drawLine(mid, h - 3, mid + 3, h - 6);
+        });
+    }
+
+    /** A small pane settling inside a larger one: docking. */
+    public static Icon dock(int size) {
+        return new Painted(size, (g, w, h, colour) -> {
+            g.setColor(colour);
+            g.drawRect(0, 0, w - 1, h - 1);
+            g.fillRect(3, 4, w - 7, h - 8);
+        });
+    }
+
+    /** A pane leaving its frame: floating free. */
+    public static Icon undock(int size) {
+        return new Painted(size, (g, w, h, colour) -> {
+            g.setColor(colour);
+
+            // The frame it leaves is drawn broken on the side it leaves from,
+            // so the two icons differ in more than which square is filled.
+            g.drawLine(0, 0, w - 6, 0);
+            g.drawLine(0, 0, 0, h - 1);
+            g.drawLine(0, h - 1, w - 6, h - 1);
+
+            g.drawRect(4, 3, w - 6, h - 7);
+        });
+    }
+
     public static Icon tile(int size) {
         return new Painted(size, (g, w, h, colour) -> {
             g.setColor(colour);

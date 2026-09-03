@@ -33,10 +33,16 @@ import java.awt.event.WindowEvent;
 import java.beans.PropertyVetoException;
 import java.util.prefs.Preferences;
 import javax.swing.JDesktopPane;
+import br.com.jorge.reis.endeavourneo.ui.shell.Icons;
+import javax.swing.BorderFactory;
+import javax.swing.ButtonGroup;
+import javax.swing.JButton;
+import javax.swing.JPanel;
+import javax.swing.JToggleButton;
+import javax.swing.JToolBar;
 import javax.swing.JFrame;
 import javax.swing.JInternalFrame;
 import javax.swing.JMenu;
-import javax.swing.JMenuBar;
 import javax.swing.JMenuItem;
 import javax.swing.event.InternalFrameAdapter;
 import javax.swing.event.InternalFrameEvent;
@@ -119,6 +125,22 @@ public final class ChartHolder {
      */
     private final OverlayLegend legend;
 
+    /**
+     * Toolbar and legend together, so the pair moves between containers as one.
+     *
+     * <p>A toolbar and not a menu: everything in it is one click away and stays
+     * visible, which for four controls used constantly beats a menu that has to
+     * be opened to find out what is in it. What did NOT come across is the ruler
+     * -- it is one setting for the whole application now, and lives in the
+     * preferences.</p>
+     */
+    private final JPanel header = new JPanel(new BorderLayout());
+
+    private JToolBar toolBar;
+
+    /** Which drawing style the buttons should show as chosen. */
+    private String styleChoice = "candle";
+
     /** The layout tabs, below the time axis. Built on first use. */
     private LayoutBar layoutBar;
 
@@ -152,6 +174,8 @@ public final class ChartHolder {
         });
 
         canvas.onSeriesChanged(this::retitle);
+
+        header.add(legend, BorderLayout.CENTER);
         this.desktop = desktop;
         this.owner = owner;
         this.onClosed = onClosed == null ? () -> { } : onClosed;
@@ -237,8 +261,7 @@ public final class ChartHolder {
 
         docked = new JInternalFrame(title(), true, true, true, true);
 
-        docked.setJMenuBar(buildMenuBar());
-        docked.getContentPane().add(legend, BorderLayout.NORTH);
+        docked.getContentPane().add(header(), BorderLayout.NORTH);
         docked.getContentPane().add(canvas, BorderLayout.CENTER);
         docked.getContentPane().add(layouts(), BorderLayout.SOUTH);
         boolean firstInside = countInside() == 0;
@@ -295,8 +318,7 @@ public final class ChartHolder {
         floating = new JFrame(title());
 
         floating.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-        floating.setJMenuBar(buildMenuBar());
-        floating.getContentPane().add(legend, BorderLayout.NORTH);
+        floating.getContentPane().add(header(), BorderLayout.NORTH);
         floating.getContentPane().add(canvas, BorderLayout.CENTER);
         floating.getContentPane().add(layouts(), BorderLayout.SOUTH);
         floating.setSize(restoredSize());
@@ -373,7 +395,7 @@ public final class ChartHolder {
 
         Container content = docked.getContentPane();
 
-        content.remove(legend);
+        content.remove(header);
         content.remove(canvas);
         content.remove(layouts());
         docked.dispose();
@@ -387,7 +409,7 @@ public final class ChartHolder {
 
         storeFloatingBounds();
 
-        floating.getContentPane().remove(legend);
+        floating.getContentPane().remove(header);
         floating.getContentPane().remove(canvas);
         floating.getContentPane().remove(layouts());
         floating.dispose();
@@ -396,56 +418,84 @@ public final class ChartHolder {
 
     // ------------------------------------------------------------------ menu
 
-    private JMenuBar buildMenuBar() {
-        JMenuBar bar = new JMenuBar();
+    /**
+     * @return the toolbar and legend, with the toolbar rebuilt for this frame
+     *
+     * <p>Rebuilt because one of its buttons names where the window is going --
+     * "float" while docked, "dock" while floating -- and that is decided by the
+     * frame being built. The legend is not rebuilt: it carries which indicators
+     * the reader has hidden.</p>
+     */
+    private JPanel header() {
+        if (toolBar != null) {
+            header.remove(toolBar);
+        }
 
-        JMenu chart = new JMenu(Messages.get("menu.chart"));
+        toolBar = buildToolBar();
 
-        chart.setMnemonic(Messages.mnemonic("menu.chart"));
-        chart.add(item("chart.style.candle", () -> canvas.setStyle(new CandleStyle())));
-        chart.add(item("chart.style.candleHollow",
-                () -> canvas.setStyle(new CandleStyle(true))));
-        chart.add(item("chart.style.line", () -> canvas.setStyle(new LineStyle())));
-        chart.addSeparator();
-        chart.add(item("chart.resetScale", canvas::resetStretch));
-        chart.addSeparator();
-        chart.add(modeItem());
-        chart.addSeparator();
-        // The label names the destination, not the current state: "Float" when
+        header.add(toolBar, BorderLayout.NORTH);
+
+        return header;
+    }
+
+    private JToolBar buildToolBar() {
+        JToolBar bar = new JToolBar();
+
+        bar.setFloatable(false);
+        bar.setBorder(BorderFactory.createEmptyBorder(2, 4, 2, 4));
+
+        ButtonGroup styles = new ButtonGroup();
+
+        bar.add(styleButton(styles, "chart.style.candle", Icons.candle(15),
+                () -> new CandleStyle()));
+        bar.add(styleButton(styles, "chart.style.candleHollow", Icons.candleHollow(15),
+                () -> new CandleStyle(true)));
+        bar.add(styleButton(styles, "chart.style.line", Icons.line(15),
+                () -> new LineStyle()));
+
+        bar.addSeparator();
+        bar.add(button("chart.resetScale", Icons.fitVertical(15), canvas::resetStretch));
+        bar.addSeparator();
+
+        // The label names the DESTINATION, not the current state: "float" while
         // docked. A toggle labelled with where you are rather than where you go
         // is read backwards by half the people who see it.
-        chart.add(item(isFloating() ? "chart.dock" : "chart.float", this::toggleMode));
+        boolean floating = isFloating();
 
-        bar.add(chart);
+        bar.add(button(floating ? "chart.dock" : "chart.float",
+                floating ? Icons.dock(15) : Icons.undock(15), this::toggleMode));
 
         return bar;
     }
 
-    /**
-     * The ruler toggle, ticked to show which mode the chart is in.
-     *
-     * <p>Visible state on purpose. Control alone flips the mode, and a shortcut
-     * with no indicator leaves the reader guessing why a drag did something
-     * else -- the classic complaint about modal tools. The tick answers it
-     * before it is asked.</p>
-     */
-    private JMenuItem modeItem() {
-        javax.swing.JCheckBoxMenuItem entry =
-                new javax.swing.JCheckBoxMenuItem(Messages.get("chart.measureMode"));
+    private JButton button(String key, javax.swing.Icon icon, Runnable action) {
+        JButton entry = new JButton(icon);
 
-        entry.setMnemonic(Messages.mnemonic("chart.measureMode"));
-        entry.setSelected(canvas.getMode() == ChartCanvas.Mode.MEASURE);
+        // Icon and tooltip, no text: five labelled buttons make a toolbar wider
+        // than the chart it sits above. The tooltip carries the whole sentence,
+        // which a menu label could not.
+        entry.setToolTipText(Messages.get(key));
+        entry.setFocusable(false);
+        entry.addActionListener(e -> action.run());
 
-        // NO accelerator here, deliberately. "control CONTROL" is matched by
-        // Swing on the Control PRESS -- while the canvas toggles on the RELEASE
-        // -- so a quick tap flipped the mode twice and landed back where it
-        // started. Holding the key produced an odd number of auto-repeat
-        // presses, which is why it appeared to need a few seconds. The shortcut
-        // is owned by the canvas alone; the label names it.
-        entry.addActionListener(e -> canvas.setMode(entry.isSelected()
-                ? ChartCanvas.Mode.MEASURE : ChartCanvas.Mode.PAN));
+        return entry;
+    }
 
-        canvas.onModeChanged(() -> entry.setSelected(canvas.getMode() == ChartCanvas.Mode.MEASURE));
+    private JToggleButton styleButton(ButtonGroup group, String key,
+                                      javax.swing.Icon icon,
+                                      java.util.function.Supplier<ChartStyle> style) {
+        JToggleButton entry = new JToggleButton(icon);
+
+        entry.setToolTipText(Messages.get(key));
+        entry.setFocusable(false);
+        entry.setSelected(key.equals(styleChoice) || key.endsWith(styleChoice));
+        entry.addActionListener(e -> {
+            styleChoice = key;
+
+            canvas.setStyle(style.get());
+        });
+
+        group.add(entry);
 
         return entry;
     }

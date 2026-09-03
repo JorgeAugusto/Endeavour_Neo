@@ -199,7 +199,16 @@ public final class ChartCanvas extends JComponent {
      */
     private double stretch = 1.0;
 
-    private transient Mode mode = Mode.PAN;
+    /**
+     * Kept in step with {@link RulerMode}, which owns it for the whole
+     * application. Held here as a field so the paint path reads it without a
+     * static call on every frame, and so the ruler can be cleared exactly when
+     * the mode leaves measuring.
+     */
+    private transient Mode mode = RulerMode.isOn() ? Mode.MEASURE : Mode.PAN;
+
+    /** Kept so it can be removed again: see addNotify and removeNotify. */
+    private final transient Runnable followRuler = this::followGlobalMode;
 
     /** Told when the mode changes, so a menu can tick the right entry. */
     private transient Runnable onModeChanged = () -> { };
@@ -596,6 +605,34 @@ public final class ChartCanvas extends JComponent {
     }
 
     /**
+     * Starts following the application-wide mode.
+     *
+     * <p>Registered here rather than in the constructor, and dropped again in
+     * {@link #removeNotify}, so a closed chart does not keep the window it lived
+     * in alive through a listener nobody can reach. Re-parenting between docked
+     * and floating passes through both, which is exactly right: it leaves and
+     * comes back.</p>
+     */
+    @Override
+    public void addNotify() {
+        super.addNotify();
+
+        RulerMode.listen(followRuler);
+        followGlobalMode();
+    }
+
+    @Override
+    public void removeNotify() {
+        RulerMode.forget(followRuler);
+
+        super.removeNotify();
+    }
+
+    private void followGlobalMode() {
+        applyMode(RulerMode.isOn() ? Mode.MEASURE : Mode.PAN);
+    }
+
+    /**
      * @return the cursor the current mode uses over the plot
      *
      * <p>The hand says "this surface moves"; the crosshair says "you are
@@ -620,6 +657,20 @@ public final class ChartCanvas extends JComponent {
      * would sit there until the chart was closed.</p>
      */
     public void setMode(Mode newMode) {
+        if (newMode != null) {
+            // Through the application-wide switch, never straight into the
+            // field: every other chart has to change with this one, and the
+            // preferences checkbox has to end up ticked.
+            RulerMode.set(newMode == Mode.MEASURE);
+        }
+    }
+
+    /** Flips between moving and measuring, everywhere. */
+    public void toggleMode() {
+        RulerMode.toggle();
+    }
+
+    private void applyMode(Mode newMode) {
         if (newMode == null || newMode == mode) {
             return;
         }
@@ -635,11 +686,6 @@ public final class ChartCanvas extends JComponent {
 
         onModeChanged.run();
         repaint();
-    }
-
-    /** Flips between moving and measuring. */
-    public void toggleMode() {
-        setMode(mode == Mode.PAN ? Mode.MEASURE : Mode.PAN);
     }
 
     public void onModeChanged(Runnable listener) {
