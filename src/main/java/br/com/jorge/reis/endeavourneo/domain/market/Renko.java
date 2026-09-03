@@ -56,10 +56,12 @@ import java.util.List;
  * one minute completes three bricks, the three share a timestamp. Nothing else
  * is true — they really did all happen inside that minute.</p>
  *
- * <p><b>A tail on each side, meaning different things.</b> The first brick of
- * a batch shows how far price went the OTHER way before it broke -- the move
- * was fought. The last shows the overshoot past its own level: points that went
- * through and were not enough to lay another brick.</p>
+ * <p><b>One tail, against the brick.</b> The first brick of a batch shows how
+ * far price went the OTHER way before it broke -- the move was fought. There is
+ * no tail past the close: a brick ends at its own extreme, as it does in the
+ * Profit, and the points that went through without making another brick are
+ * simply not drawn. The first version drew them, and a brick that ended a little
+ * beyond its close read as wrong to a reader who knew the Profit's.</p>
  *
  * <p>Volume is accumulated between bricks and split equally among however many
  * complete at once. That split is a convention, not a measurement: the data does
@@ -246,16 +248,31 @@ public final class Renko implements Aggregation {
             // are rebuilt in a different order. The renko trend only changes
             // when a brick is laid, so it cannot flip underneath a bar that is
             // still forming.
-            sinceLow = Math.min(sinceLow, source.lowAt(i));
-            sinceHigh = Math.max(sinceHigh, source.highAt(i));
-
-            double[] reached = direction >= 0
-                    ? new double[]{source.lowAt(i), source.highAt(i)}
-                    : new double[]{source.highAt(i), source.lowAt(i)};
-
+            // Each extreme is folded into the running tail ONLY when its turn
+            // comes in the assumed order -- not both at the top of the bar.
+            //
+            // Folding both first was the defect seen on screen: a brick of 55
+            // wearing a tail of 117 against it, where a reversal costs 110. The
+            // trend was down, so the high went first and turned it upwards; the
+            // up bricks then took their tail from a running low that already
+            // held THIS bar's low -- a price that, in the assumed path, had not
+            // happened yet. Instrumented: anchor 136.990, bar low 136.835, and
+            // the up brick born with a tail 155 below its own open.
+            boolean lowFirst = direction >= 0;
             int made = 0;
 
-            for (double price : reached) {
+            for (int step = 0; step < 2; step++) {
+                boolean thisIsTheLow = (step == 0) == lowFirst;
+                double price;
+
+                if (thisIsTheLow) {
+                    sinceLow = Math.min(sinceLow, source.lowAt(i));
+                    price = source.lowAt(i);
+                } else {
+                    sinceHigh = Math.max(sinceHigh, source.highAt(i));
+                    price = source.highAt(i);
+                }
+
                 double upNeeded = direction >= 0 ? brick : reversal * brick;
                 double downNeeded = direction <= 0 ? brick : reversal * brick;
 
@@ -268,15 +285,11 @@ public final class Renko implements Aggregation {
                     made += count;
 
                     if (wicks) {
-                        // Two different tails, on different bricks. The FIRST of
-                        // a batch carries how far price went the other way
-                        // before breaking -- it is the one that was fought. The
-                        // LAST carries the overshoot past its own level: points
-                        // that went through and were not enough for another
-                        // brick. With a single brick it carries both.
+                        // Only the FIRST of a batch wears a tail: how far price
+                        // went the other way before breaking. The overshoot past
+                        // the last brick is not drawn -- the brick ends at its
+                        // own extreme.
                         bricks.get(at)[2] = Math.min(bricks.get(at)[2], sinceLow);
-                        bricks.get(bricks.size() - 1)[1] =
-                                Math.max(bricks.get(bricks.size() - 1)[1], sinceHigh);
                     }
                 } else if (anchor - price >= downNeeded) {
                     int count = (int) Math.floor((anchor - price) / brick);
@@ -288,8 +301,6 @@ public final class Renko implements Aggregation {
 
                     if (wicks) {
                         bricks.get(at)[1] = Math.max(bricks.get(at)[1], sinceHigh);
-                        bricks.get(bricks.size() - 1)[2] =
-                                Math.min(bricks.get(bricks.size() - 1)[2], sinceLow);
                     }
                 }
 

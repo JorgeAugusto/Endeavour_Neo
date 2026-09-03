@@ -220,34 +220,42 @@ class RenkoTest {
     @Test
     @DisplayName("the tail shows how far price went the other way before breaking")
     void tailShowsTheFightBeforeTheBreak() {
-        // Anchored at 100. The second bar runs down to 88 and then up through
-        // 110: the brick was fought twelve points the other way, and its tail
+        // Anchored at 100. The second bar runs down to 93 and then up through
+        // 110: the brick was fought seven points the other way, and its tail
         // has to say so.
+        //
+        // Seven, not twelve. The first draft fought twelve, which at a brick of
+        // ten and no trend yet is not a fight but a DOWN brick, 100 to 90 -- and
+        // the 88 the test then saw was that brick's overshoot, back when the
+        // overshoot was drawn. The test passed on a tail that meant the
+        // opposite of what it claimed.
         PriceSeries bricks = Renko.of(10).apply(ohlc(
                 new double[]{100, 101, 100, 100},
-                new double[]{100, 112, 88, 112}));
+                new double[]{100, 112, 93, 112}));
 
         assertTrue(bricks.size() >= 1, "no brick was laid at all");
+        assertEquals(110.0, bricks.closeAt(0), 1e-9, "the first brick should be the up brick");
 
         double firstTail = bricks.lowAt(0);
 
-        assertTrue(firstTail <= 88.0,
-                "the brick forgot the twelve points price went the other way: " + firstTail);
+        assertTrue(firstTail <= 93.0,
+                "the brick forgot the seven points price went the other way: " + firstTail);
     }
 
     @Test
-    @DisplayName("the last brick of a run keeps the overshoot past its own level")
-    void tailShowsTheOvershoot() {
+    @DisplayName("a brick ends at its own extreme: the overshoot is not a tail")
+    void noTailPastTheClose() {
         // Price reaches 117 and only 110 became a brick. The seven points that
-        // went through and were not enough for another brick belong on the
-        // chart, or the brick claims the move stopped where it did not.
+        // went through are not drawn -- the brick ends at 110, as it does in the
+        // Profit. The first version kept them as a tail, and a brick that ended
+        // a little beyond its own close read as wrong on screen.
         PriceSeries bricks = Renko.of(10).apply(ohlc(
                 new double[]{100, 100, 100, 100},
                 new double[]{100, 117, 100, 112}));
 
         double top = bricks.highAt(bricks.size() - 1);
 
-        assertTrue(top >= 117.0, "the seven points of overshoot were thrown away: " + top);
+        assertEquals(110.0, top, 1e-9, "the brick reaches past its own close: " + top);
     }
 
     @Test
