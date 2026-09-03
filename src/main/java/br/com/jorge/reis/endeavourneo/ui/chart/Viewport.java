@@ -95,12 +95,22 @@ public final class Viewport {
     public static Viewport of(PriceSeries series, Rectangle bounds, int firstBar, int barCount,
                               double stretch) {
         int first = Math.max(0, Math.min(firstBar, Math.max(0, series.size() - 1)));
-        int count = Math.max(1, Math.min(barCount, series.size() - first));
+
+        // SLOTS, not bars. The count is how many bar-widths fit across the
+        // plot, and it does NOT shrink when the window runs past the end of the
+        // series -- shrinking it was a real defect: the bars simply grew to fill
+        // the width again, so scrolling past the last bar looked like zooming in
+        // and no empty space ever appeared on the right.
+        int count = Math.max(1, barCount);
 
         double low = Double.POSITIVE_INFINITY;
         double high = Double.NEGATIVE_INFINITY;
 
-        for (int i = first; i < first + count && i < series.size(); i++) {
+        // The scale is taken from the bars that EXIST in that window. Empty
+        // slots have no prices to offer and must not drag the range anywhere.
+        int until = Math.min(first + count, series.size());
+
+        for (int i = first; i < until; i++) {
             low = Math.min(low, series.lowAt(i));
             high = Math.max(high, series.highAt(i));
         }

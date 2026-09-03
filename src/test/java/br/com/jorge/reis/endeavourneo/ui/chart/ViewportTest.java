@@ -100,14 +100,49 @@ class ViewportTest {
     }
 
     @Test
-    @DisplayName("asking for more bars than exist is clamped instead of exploding")
-    void clampsOutOfRange() {
+    @DisplayName("the count is SLOTS across the plot, not bars that exist")
+    void countsSlotsNotBars() {
+        // This assertion used to say the opposite, and that was the defect. When
+        // the count shrank to the bars available, the bars simply grew to fill
+        // the width again: scrolling past the last bar looked like zooming in,
+        // and no empty space ever appeared on the right.
         PriceSeries series = new Fake(new double[]{1, 2, 3});
         Viewport viewport = Viewport.of(series, AREA, 0, 999);
 
-        assertEquals(3, viewport.barCount(), "it claimed more visible bars than the series has");
+        assertEquals(999, viewport.barCount(), "the window has to keep the width it was given");
         assertEquals(0, viewport.barAt(-50.0), "a pixel left of the chart must clamp to the first bar");
-        assertEquals(2, viewport.barAt(9_999.0), "a pixel right of the chart must clamp to the last");
+    }
+
+    @Test
+    @DisplayName("scrolling past the end leaves space, and does not resize the bars")
+    void spaceOnTheRightIsNotAZoom() {
+        // The bug this exists for, reported from the screen: dragging the chart
+        // to the right did not detach from the edge; it magnified instead.
+        PriceSeries series = new Fake(new double[]{100, 110, 90, 105, 120, 95, 130, 115});
+
+        Viewport atTheEnd = Viewport.of(series, AREA, 4, 4);
+        Viewport pastTheEnd = Viewport.of(series, AREA, 6, 4);
+
+        assertEquals(atTheEnd.barWidth(), pastTheEnd.barWidth(), 1e-9,
+                "the bars changed width, which is what made it look like a zoom");
+
+        // And the last bar has actually moved left, which is the point: there is
+        // now room to the right of it.
+        assertTrue(pastTheEnd.x(7) < atTheEnd.x(7),
+                "the newest bar did not move away from the right edge");
+    }
+
+    @Test
+    @DisplayName("the price scale comes from the bars present, not from the empty slots")
+    void emptySlotsDoNotMoveTheScale() {
+        PriceSeries series = new Fake(new double[]{100, 110, 90, 105});
+
+        Viewport tight = Viewport.of(series, AREA, 2, 2);
+        Viewport withRoom = Viewport.of(series, AREA, 2, 6);
+
+        assertEquals(tight.lowestPrice(), withRoom.lowestPrice(), 1e-9);
+        assertEquals(tight.highestPrice(), withRoom.highestPrice(), 1e-9,
+                "empty space to the right dragged the price scale with it");
     }
 
     @Test
