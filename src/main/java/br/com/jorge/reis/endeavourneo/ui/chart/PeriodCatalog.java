@@ -23,19 +23,20 @@ import br.com.jorge.reis.endeavourneo.domain.market.Timeframe;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * What typing a number offers.
  *
  * <p>Copied in shape from the reference product, where a period is <b>reached by
  * typing it</b> rather than found in a menu: type <code>6</code> and the list
- * offers six minutes, six-tick renko, six seconds, six trades. It is faster than
- * any menu can be, and it scales — a menu holding every useful period would need
- * a hundred entries.</p>
+ * offers six minutes and six-tick renko. It is faster than any menu can be, and
+ * it scales — a menu holding every useful period would need a hundred
+ * entries.</p>
  *
- * <p>We offer the ones we can actually build. A list that showed <i>6 Trades</i>
- * and then produced nothing would be worse than not showing it, and it is the
- * kind of gap that gets discovered by clicking rather than by reading.</p>
+ * <p>We offer the ones we can actually build. A list that showed something and
+ * then produced nothing would be worse than not showing it, and it is the kind
+ * of gap that gets discovered by clicking rather than by reading.</p>
  */
 public final class PeriodCatalog {
 
@@ -48,6 +49,18 @@ public final class PeriodCatalog {
      * 5 buried in a calculation.</p>
      */
     public static final double TICK = 5.0;
+
+    /**
+     * The smallest brick worth offering, in ticks.
+     *
+     * <p>Two, not one. A one-tick brick lays a brick on every price change, so
+     * nothing is filtered and the chart is the tick tape drawn as boxes — which
+     * is the one thing renko exists not to be.</p>
+     */
+    public static final int SMALLEST_BRICK = 2;
+
+    /** The largest brick worth offering, in ticks: 101 is 505 points on the mini. */
+    public static final int LARGEST_BRICK = 101;
 
     /** One offer in the list: what it is called and what it builds. */
     public record Choice(String code, String description, Aggregation aggregation) {
@@ -79,27 +92,20 @@ public final class PeriodCatalog {
         }
 
         List<Choice> choices = new ArrayList<>();
-
-        Timeframe minutes = timeframeOf(number);
+        Timeframe minutes = Timeframe.ofMinutes(number);
 
         if (minutes != null) {
-            choices.add(new Choice(String.valueOf(number),
-                    number + " minutos", minutes));
+            choices.add(new Choice(minutes.label(), describe(minutes), minutes));
         }
 
         // Bricks are named in TICKS, as the reference product names them: six
         // ticks is thirty points on the mini index. Naming them in points would
         // be more direct and would stop matching what the reader types.
-        choices.add(new Choice(number + "R",
-                number + " ticks (renko " + trim(number * TICK) + " pts)",
-                Renko.of(number * TICK).withForming(true)));
-
-        if (number <= 60) {
-            choices.add(new Choice(number + "D",
-                    number == 1 ? "1 dia" : number + " dias (ainda não)", null));
+        if (number >= SMALLEST_BRICK && number <= LARGEST_BRICK) {
+            choices.add(new Choice(number + "R",
+                    number + " ticks (renko " + trim(number * TICK) + " pts)",
+                    Renko.of(number * TICK).withForming(true)));
         }
-
-        choices.removeIf(choice -> choice.aggregation() == null);
 
         return choices;
     }
@@ -108,11 +114,11 @@ public final class PeriodCatalog {
     private static List<Choice> common() {
         List<Choice> choices = new ArrayList<>();
 
-        for (Timeframe frame : Timeframe.values()) {
+        for (Timeframe frame : Timeframe.common()) {
             choices.add(new Choice(frame.label(), describe(frame), frame));
         }
 
-        for (int ticks : new int[]{2, 3, 4, 5, 6}) {
+        for (int ticks : new int[]{2, 3, 4, 5, 6, 10, 20}) {
             choices.add(new Choice(ticks + "R",
                     ticks + " ticks (renko " + trim(ticks * TICK) + " pts)",
                     Renko.of(ticks * TICK).withForming(true)));
@@ -123,12 +129,12 @@ public final class PeriodCatalog {
 
     /** @return the periods whose name contains the text, for typing "ren" or "dia" */
     private static List<Choice> byName(String text) {
-        String wanted = text.toLowerCase(java.util.Locale.ROOT);
+        String wanted = text.toLowerCase(Locale.ROOT);
         List<Choice> choices = new ArrayList<>();
 
         for (Choice choice : common()) {
-            if (choice.description().toLowerCase(java.util.Locale.ROOT).contains(wanted)
-                    || choice.code().toLowerCase(java.util.Locale.ROOT).contains(wanted)) {
+            if (choice.description().toLowerCase(Locale.ROOT).contains(wanted)
+                    || choice.code().toLowerCase(Locale.ROOT).contains(wanted)) {
                 choices.add(choice);
             }
         }
@@ -137,33 +143,39 @@ public final class PeriodCatalog {
     }
 
     /**
-     * @return the timeframe of that many minutes, or null when we have none
+     * @return how that scale is written out in the list
      *
-     * <p>Only the ones that exist. Folding an arbitrary number of minutes is
-     * possible and will probably come, but offering <i>7 minutos</i> today would
-     * offer something that cannot be built.</p>
+     * <p>Spelled out rather than abbreviated: the code column already carries
+     * <code>15m</code>, and a list where both columns say the same thing wastes
+     * the one that could have explained it.</p>
      */
-    private static Timeframe timeframeOf(int minutes) {
-        for (Timeframe frame : Timeframe.values()) {
-            if (frame.label().equals(minutes + "m")
-                    || (minutes == 60 && frame == Timeframe.ONE_HOUR)) {
-                return frame;
-            }
+    private static String describe(Timeframe frame) {
+        int minutes = frame.minutes();
+
+        if (minutes == 0) {
+            return "1 dia";
         }
 
-        return null;
-    }
+        if (minutes == -1) {
+            return "1 semana";
+        }
 
-    private static String describe(Timeframe frame) {
-        return switch (frame) {
-            case ONE_MINUTE -> "1 minuto";
-            case FIVE_MINUTES -> "5 minutos";
-            case FIFTEEN_MINUTES -> "15 minutos";
-            case THIRTY_MINUTES -> "30 minutos";
-            case ONE_HOUR -> "1 hora";
-            case DAILY -> "1 dia";
-            case WEEKLY -> "1 semana";
-        };
+        if (minutes == -2) {
+            return "1 mês";
+        }
+
+        if (minutes == 1) {
+            return "1 minuto";
+        }
+
+        if (minutes % 60 == 0) {
+            int hours = minutes / 60;
+
+            return hours + (hours == 1 ? " hora" : " horas")
+                    + " (" + minutes + " minutos)";
+        }
+
+        return minutes + " minutos";
     }
 
     private static String trim(double value) {

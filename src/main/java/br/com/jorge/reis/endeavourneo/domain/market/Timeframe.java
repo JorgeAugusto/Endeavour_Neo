@@ -26,7 +26,9 @@ import java.time.ZonedDateTime;
  * The scale bars are looked at: five minutes, a day, a week.
  *
  * <p>One minute is the storage format; every measurement is made at some other
- * scale, and this is what gets it there.</p>
+ * scale, and this is what gets it there. Anything from one minute to one month:
+ * the named constants below are the ones worth listing, and
+ * {@link #ofMinutes(int)} builds the rest.</p>
  *
  * <h2>Everything here turns on the time zone</h2>
  *
@@ -59,24 +61,76 @@ import java.time.ZonedDateTime;
  * bar there is; nothing comes after it to look ahead to, and dropping it would
  * silently shorten every series by up to one period.</p>
  */
-public enum Timeframe implements Aggregation {
+public final class Timeframe implements Aggregation {
 
-    ONE_MINUTE("1m", 1),
-    FIVE_MINUTES("5m", 5),
-    FIFTEEN_MINUTES("15m", 15),
-    THIRTY_MINUTES("30m", 30),
-    ONE_HOUR("1h", 60),
-    DAILY("D1", 0),
-    WEEKLY("W1", -1);
+    /** Marks a bucket that is a calendar unit rather than a count of minutes. */
+    private static final int DAY = 0;
+
+    private static final int WEEK = -1;
+
+    private static final int MONTH = -2;
+
+    /** A month of trading minutes: the longest a minute-count may be asked for. */
+    public static final int MOST_MINUTES = 43_200;
+
+    public static final Timeframe ONE_MINUTE = new Timeframe("1m", 1);
+
+    public static final Timeframe FIVE_MINUTES = new Timeframe("5m", 5);
+
+    public static final Timeframe FIFTEEN_MINUTES = new Timeframe("15m", 15);
+
+    public static final Timeframe THIRTY_MINUTES = new Timeframe("30m", 30);
+
+    public static final Timeframe ONE_HOUR = new Timeframe("1h", 60);
+
+    public static final Timeframe DAILY = new Timeframe("D1", DAY);
+
+    public static final Timeframe WEEKLY = new Timeframe("W1", WEEK);
+
+    public static final Timeframe MONTHLY = new Timeframe("M1", MONTH);
 
     private final String label;
 
-    /** Minutes per bar; 0 means a calendar day and -1 a calendar week. */
+    /** Minutes per bar, or one of DAY, WEEK, MONTH. */
     private final int minutes;
 
-    Timeframe(String label, int minutes) {
+    private Timeframe(String label, int minutes) {
         this.label = label;
         this.minutes = minutes;
+    }
+
+    /**
+     * @param count how many minutes one bar covers, from 1 to {@link #MOST_MINUTES}
+     * @return that scale, or null when the count is outside what is offered
+     *
+     * <p>A class and no longer an enum precisely for this. Seven minutes is a
+     * perfectly good scale and the enum could not express it: the reader typed
+     * <code>7</code> and was offered renko and nothing else. The named constants
+     * are still here because they are the ones worth putting in a list.</p>
+     */
+    public static Timeframe ofMinutes(int count) {
+        if (count < 1 || count > MOST_MINUTES) {
+            return null;
+        }
+
+        for (Timeframe known : common()) {
+            if (known.minutes == count) {
+                return known;
+            }
+        }
+
+        return new Timeframe(count + "m", count);
+    }
+
+    /** @return the scales worth listing before anything is typed */
+    public static java.util.List<Timeframe> common() {
+        return java.util.List.of(ONE_MINUTE, FIVE_MINUTES, FIFTEEN_MINUTES,
+                THIRTY_MINUTES, ONE_HOUR, DAILY, WEEKLY, MONTHLY);
+    }
+
+    /** @return minutes per bar, or 0 for a day, -1 for a week, -2 for a month */
+    public int minutes() {
+        return minutes;
     }
 
     @Override
@@ -104,7 +158,7 @@ public enum Timeframe implements Aggregation {
             return PriceSeries.empty();
         }
 
-        if (this == ONE_MINUTE) {
+        if (minutes == 1) {
             // Not an optimisation -- a correctness point. Folding one-minute
             // bars into one-minute buckets would still work, but only if the
             // stored bars really are aligned to the minute. Handing the source
@@ -180,11 +234,17 @@ public enum Timeframe implements Aggregation {
     long bucketOf(long millis, ZoneId zone) {
         ZonedDateTime local = Instant.ofEpochMilli(millis).atZone(zone);
 
-        if (this == DAILY) {
+        if (minutes == DAY) {
             return local.toLocalDate().toEpochDay();
         }
 
-        if (this == WEEKLY) {
+        if (minutes == MONTH) {
+            // Year and month together: a month number on its own would put every
+            // September of every year in one bar.
+            return local.getYear() * 12L + local.getMonthValue();
+        }
+
+        if (minutes == WEEK) {
             // Back to the local Monday. Not epochDay / 7, which starts weeks on
             // a Thursday because 1970-01-01 was one.
             return local.toLocalDate()
