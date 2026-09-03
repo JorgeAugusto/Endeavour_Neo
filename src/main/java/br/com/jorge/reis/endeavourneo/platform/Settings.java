@@ -20,13 +20,21 @@ package br.com.jorge.reis.endeavourneo.platform;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CharsetDecoder;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 
 /**
@@ -107,18 +115,129 @@ public final class Settings {
         return HOME;
     }
 
+    /**
+     * Reads the file, in the encoding it was written in.
+     *
+     * <p><b>UTF-8, said out loud.</b> The obvious {@code load(InputStream)}
+     * decodes ISO-8859-1 — that is its contract, not an accident — while the
+     * writing side asks for UTF-8. A window called <i>Sem título</i> came back
+     * as <i>Sem tÃ­tulo</i>: each accented letter arrived as the two characters
+     * its UTF-8 bytes spell in the other encoding. The wrong text was then
+     * written back out and read wrong again, so the damage compounded on every
+     * launch; the file that showed it had been through four rounds.</p>
+     *
+     * <p>Bytes that are not UTF-8 are replaced rather than thrown, so a file
+     * damaged some other way still opens. Losing one character is a smaller
+     * harm than losing the whole layout.</p>
+     */
     private void load() {
         if (!Files.isRegularFile(file)) {
             return;
         }
 
-        try (InputStream in = Files.newInputStream(file)) {
-            values.load(in);
+        CharsetDecoder decoder = StandardCharsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPLACE)
+                .onUnmappableCharacter(CodingErrorAction.REPLACE);
+
+        try (InputStream in = Files.newInputStream(file);
+                Reader reader = new InputStreamReader(in, decoder)) {
+            values.load(reader);
         } catch (IOException e) {
             // Unreadable settings are the same as none: the application opens
             // with its defaults rather than refusing to open at all. Losing a
             // theme is a smaller harm than losing the program.
             values.clear();
+
+            return;
+        }
+
+        repair();
+    }
+
+    /**
+     * Undoes the damage in a file written before the encoding was fixed.
+     *
+     * <p>Reading correctly from now on protects what is written from now on. It
+     * does nothing for the title already on the reader's disk, which would stay
+     * broken for good — so the damage is undone on the way in, as many rounds
+     * as it was done.</p>
+     *
+     * <p>The test for damage is not a guess: text that came from this defect is
+     * made only of characters that fit in a byte, and those bytes are valid
+     * UTF-8. Correct Portuguese is not — <i>ção</i> as ISO-8859-1 bytes is a
+     * malformed UTF-8 sequence, so the undoing stops and the text is left
+     * alone. That is asserted in the tests rather than assumed here.</p>
+     */
+    private void repair() {
+        Map<String, String> healed = new LinkedHashMap<>();
+        boolean changed = false;
+
+        for (String key : values.stringPropertyNames()) {
+            String value = values.getProperty(key);
+            String healedKey = repair(key);
+            String healedValue = repair(value);
+
+            changed |= !healedKey.equals(key) || !healedValue.equals(value);
+            healed.put(healedKey, healedValue);
+        }
+
+        if (!changed) {
+            return;
+        }
+
+        values.clear();
+        values.putAll(healed);
+    }
+
+    /** How many rounds of damage to undo before deciding the text is just odd. */
+    private static final int ROUNDS = 8;
+
+    private static String repair(String text) {
+        String current = text;
+
+        for (int round = 0; round < ROUNDS; round++) {
+            String once = undo(current);
+
+            if (once == null) {
+                return current;
+            }
+
+            current = once;
+        }
+
+        return current;
+    }
+
+    /** @return the text with one round of damage undone, or null if there was none */
+    private static String undo(String text) {
+        boolean accented = false;
+
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+
+            if (c > 0xFF) {
+                // A character that never fitted in a byte cannot have come from
+                // one being misread.
+                return null;
+            }
+
+            accented |= c > 0x7F;
+        }
+
+        if (!accented) {
+            return null;
+        }
+
+        CharsetDecoder strict = StandardCharsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT);
+
+        try {
+            return strict.decode(ByteBuffer.wrap(
+                    text.getBytes(StandardCharsets.ISO_8859_1))).toString();
+        } catch (CharacterCodingException e) {
+            // Not valid UTF-8, so it was never UTF-8 read wrongly. Healthy text.
+            return null;
         }
     }
 
