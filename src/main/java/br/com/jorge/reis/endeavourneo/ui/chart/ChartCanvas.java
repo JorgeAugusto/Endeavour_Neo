@@ -22,6 +22,7 @@ import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
 import br.com.jorge.reis.endeavourneo.domain.market.Timeframe;
 
 import br.com.jorge.reis.endeavourneo.ui.chart.style.CandleStyle;
+import br.com.jorge.reis.endeavourneo.ui.chart.style.LineStyle;
 
 import java.awt.BasicStroke;
 import java.awt.Cursor;
@@ -91,6 +92,12 @@ public final class ChartCanvas extends JComponent {
 
     /** How far the price window may slide, up or down, as a share of its span. */
     private static final double AIR_VERTICAL = 0.5;
+
+    /**
+     * Pixels of vertical wobble a sideways drag is allowed before the price
+     * slides. Six is about the wander of a hand meaning to move only sideways.
+     */
+    private static final int VERTICAL_SLACK = 6;
 
     /**
      * Space kept to the right of the newest bar when a chart opens.
@@ -656,6 +663,11 @@ public final class ChartCanvas extends JComponent {
         return periodLabel;
     }
 
+    /** @return the bars as stored, before the period is applied */
+    public PriceSeries base() {
+        return base;
+    }
+
     public Aggregation period() {
         return period;
     }
@@ -987,6 +999,70 @@ public final class ChartCanvas extends JComponent {
 
         repaint();
         onScaleChanged.run();
+    }
+
+    /**
+     * Writes down everything about how this chart is being LOOKED AT.
+     *
+     * @param into where to write, and @param prefix what to write it under
+     *
+     * <p>Not the data and not the indicators -- the view: how far in, how far
+     * along, how stretched, how slid, and drawn how. Reopening a chart that
+     * comes back at the default zoom is a chart that has to be set up again
+     * every morning, and setting it up is most of the work.</p>
+     */
+    public void storeView(br.com.jorge.reis.endeavourneo.platform.Settings into, String prefix) {
+        into.putInt(prefix + "visibleBars", visibleBars);
+        into.putInt(prefix + "rightMargin", rightMargin);
+        into.put(prefix + "stretch", String.valueOf(stretch));
+        into.put(prefix + "priceOffset", String.valueOf(priceOffset));
+        into.put(prefix + "period", periodCode);
+        into.put(prefix + "style", style instanceof LineStyle ? "line" : "candle");
+    }
+
+    /** Puts the chart back the way {@link #storeView} found it. */
+    public void restoreView(br.com.jorge.reis.endeavourneo.platform.Settings from, String prefix) {
+        PeriodCatalog.Choice period = PeriodCatalog.byCode(from.get(prefix + "period", null));
+
+        if (period != null) {
+            setPeriod(period.aggregation(), period.title(), period.code());
+        }
+
+        if ("line".equals(from.get(prefix + "style", "candle"))) {
+            setStyle(new LineStyle());
+        }
+
+        stretch = readDouble(from, prefix + "stretch", 1.0, MINIMUM_STRETCH, MAXIMUM_STRETCH);
+        priceOffset = clampOffset(readDouble(from, prefix + "priceOffset", 0.0,
+                -AIR_VERTICAL, AIR_VERTICAL));
+
+        visibleBars = Math.max(MINIMUM_VISIBLE_BARS,
+                Math.min(from.getInt(prefix + "visibleBars", visibleBars),
+                        Math.max(MINIMUM_VISIBLE_BARS, series.size())));
+
+        rightMargin = Math.max(0, from.getInt(prefix + "rightMargin", rightMargin));
+        firstBar = clampFirstBar(series.size() - visibleBars + rightMargin);
+
+        repaint();
+        onScaleChanged.run();
+    }
+
+    /**
+     * @return a stored decimal, clamped, or the fallback when it is not one
+     *
+     * <p>The file can be edited by hand, and a chart that refuses to open
+     * because somebody typed a letter into it would be a poor trade for a
+     * setting nobody would miss.</p>
+     */
+    private static double readDouble(br.com.jorge.reis.endeavourneo.platform.Settings from,
+                                     String key, double fallback, double least, double most) {
+        try {
+            double value = Double.parseDouble(from.get(key, String.valueOf(fallback)));
+
+            return Double.isFinite(value) ? Math.max(least, Math.min(value, most)) : fallback;
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
     }
 
     private int birthMargin() {
@@ -1786,8 +1862,20 @@ public final class ChartCanvas extends JComponent {
             // lower: the content follows the hand, which is the only direction
             // that ever feels right.
             int height = Math.max(1, plotBounds().height);
+            int dy = e.getY() - grabbedY;
 
-            priceOffset = clampOffset(grabbedOffset + (e.getY() - grabbedY) / (double) height);
+            // A DEAD ZONE before the price starts sliding. Every sideways drag
+            // carries a few pixels of vertical wobble, and without this the
+            // chart left automatic scale -- and the toolbar untoggled -- every
+            // time somebody scrolled left. Reported from the screen exactly
+            // that way.
+            //
+            // The zone is subtracted rather than jumped over, so the slide
+            // starts from nothing instead of leaping the moment it is crossed.
+            int slack = Math.abs(dy) <= VERTICAL_SLACK ? 0
+                    : dy - Integer.signum(dy) * VERTICAL_SLACK;
+
+            priceOffset = clampOffset(grabbedOffset + slack / (double) height);
             cursor = e.getPoint();
 
             onScaleChanged.run();

@@ -49,7 +49,21 @@ public final class ReplayWindow extends JFrame {
         super(Messages.get("replay.title"));
 
         setDefaultCloseOperation(HIDE_ON_CLOSE);
-        setContentPane(new ReplayPanel());
+
+        ReplayPanel panel = new ReplayPanel();
+
+        setContentPane(panel);
+
+        // Closing the transport ends the session and gives every chart back its
+        // own data. Leaving them frozen on a day that stopped playing, with a
+        // title still claiming a replay, would make the charts need closing too.
+        addWindowListener(new java.awt.event.WindowAdapter() {
+
+            @Override
+            public void windowClosing(java.awt.event.WindowEvent e) {
+                panel.release();
+            }
+        });
         setAlwaysOnTop(true);
 
         pack();

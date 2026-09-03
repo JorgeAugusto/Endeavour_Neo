@@ -108,6 +108,9 @@ public final class ReplaySession {
 
     private final transient List<Runnable> watchers = new ArrayList<>();
 
+    /** Told when this session ends, so each chart can take itself back. */
+    private final transient List<Runnable> endings = new ArrayList<>();
+
     private final Timer timer;
 
     private int speed = 1;
@@ -359,8 +362,28 @@ public final class ReplaySession {
                 + " " + OPEN.plusMinutes(MINUTES - 1L).format(DateTimeFormatter.ofPattern("HH:mm"));
     }
 
+    /** @param ending run when the session ends, to give a chart back its data */
+    public void whenEnded(Runnable ending) {
+        if (ending != null) {
+            endings.add(ending);
+        }
+    }
+
+    /**
+     * Ends the session and hands every chart back to itself.
+     *
+     * <p>The charts are told BEFORE the watchers are dropped: a chart that took
+     * itself back would otherwise still be subscribed to a clock that no longer
+     * runs, and would sit there waiting for a tick that never comes.</p>
+     */
     public void stop() {
         timer.stop();
+
+        for (Runnable ending : new ArrayList<>(endings)) {
+            ending.run();
+        }
+
+        endings.clear();
         watchers.clear();
     }
 

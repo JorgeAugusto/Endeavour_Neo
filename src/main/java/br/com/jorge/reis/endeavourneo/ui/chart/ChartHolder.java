@@ -123,6 +123,16 @@ public final class ChartHolder {
     /** Undoes the subscription when another replay arrives, or the window closes. */
     private transient Runnable detachReplay = () -> { };
 
+    /**
+     * The bars this chart was showing before a replay took it over.
+     *
+     * <p>Kept so closing the replay gives the chart back rather than leaving it
+     * frozen on a day that is no longer playing. A window that has to be closed
+     * and reopened to become useful again is a window that was broken by a
+     * feature.</p>
+     */
+    private transient PriceSeries beforeReplay;
+
     /** Which drawing style the buttons should show as chosen. */
     private String styleChoice = "candle";
 
@@ -191,6 +201,12 @@ public final class ChartHolder {
     public void attachReplay(String label, PriceSeries live, Runnable detach) {
         detachReplay.run();
 
+        // Only the FIRST time: a second replay dropped on a chart already
+        // playing one must not remember the first replay as "before".
+        if (beforeReplay == null) {
+            beforeReplay = canvas.base();
+        }
+
         this.replayLabel = label;
         this.detachReplay = detach == null ? () -> { } : detach;
 
@@ -207,6 +223,28 @@ public final class ChartHolder {
      * is dropped, not shown as zero, when the series carries a single day: there
      * is nothing to compare against, and a "0,00%" would be a claim.</p>
      */
+    /**
+     * Gives the chart back its own data.
+     *
+     * <p>Called when the replay it was following ends. Doing nothing instead
+     * would leave the window showing a day that stopped moving, with a title
+     * still claiming a replay.</p>
+     */
+    public void detachReplay() {
+        if (beforeReplay == null) {
+            return;
+        }
+
+        detachReplay.run();
+        detachReplay = () -> { };
+        replayLabel = null;
+
+        canvas.setSeries(beforeReplay);
+        beforeReplay = null;
+
+        retitle();
+    }
+
     private String title() {
         if (replayLabel != null) {
             // The change against the previous close is dropped while replaying:
@@ -326,6 +364,11 @@ public final class ChartHolder {
         }
 
         PREFS.putBoolean(key + ".floating", false);
+
+        // After the frame exists and has a size: the view is restored in terms
+        // of bars across a plot, and the plot has no width until then.
+        javax.swing.SwingUtilities.invokeLater(
+                () -> canvas.restoreView(Settings.workspace(), "chart." + key + "."));
 
         front();
     }
@@ -664,6 +707,8 @@ public final class ChartHolder {
     }
 
     private void store() {
+        canvas.storeView(Settings.workspace(), "chart." + key + ".");
+
         if (floating != null) {
             storeFloatingBounds();
         } else if (docked != null) {

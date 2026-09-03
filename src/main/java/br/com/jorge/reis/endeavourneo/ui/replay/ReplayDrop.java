@@ -87,6 +87,8 @@ public final class ReplayDrop {
                 session.series(), () -> session.forget(follow));
 
         session.watch(follow);
+        session.whenEnded(holder::detachReplay);
+
         holder.canvas().seriesGrew();
     }
 }

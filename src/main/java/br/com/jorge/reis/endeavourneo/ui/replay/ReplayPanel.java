@@ -126,7 +126,39 @@ public final class ReplayPanel extends JPanel {
             }
         });
 
+        // The dates come back as they were left: this window is opened to
+        // continue yesterday's work more often than to start something new.
+        LocalDate from = readDate("replay.from", LocalDate.now().minusDays(1));
+
+        date.setDate(from);
+        until.setDate(keepInWindow(from, readDate("replay.to", from),
+                ReplayPreferences.windowDays()));
+
         refresh();
+    }
+
+    /** @return a date remembered in the workspace, or the fallback */
+    private static LocalDate readDate(String key, LocalDate fallback) {
+        try {
+            String stored = br.com.jorge.reis.endeavourneo.platform.Settings.workspace()
+                    .get(key, null);
+
+            return stored == null ? fallback : LocalDate.parse(stored);
+        } catch (java.time.format.DateTimeParseException e) {
+            // A hand-edited file. Yesterday is a better answer than a dialog.
+            return fallback;
+        }
+    }
+
+    /** Ends whatever is playing and gives every chart following it back. */
+    public void release() {
+        if (session != null) {
+            session.forget(refresh);
+            session.stop();
+            session = null;
+
+            refresh();
+        }
     }
 
     // ------------------------------------------------------------- the pieces
@@ -295,6 +327,12 @@ public final class ReplayPanel extends JPanel {
             session.forget(refresh);
             session.stop();
         }
+
+        br.com.jorge.reis.endeavourneo.platform.Settings workspace =
+                br.com.jorge.reis.endeavourneo.platform.Settings.workspace();
+
+        workspace.put("replay.from", day.toString());
+        workspace.put("replay.to", (last == null ? day : last).toString());
 
         session = new ReplaySession("WINFUT", day, last == null ? day : last,
                 ReplayPreferences.historyDays());
