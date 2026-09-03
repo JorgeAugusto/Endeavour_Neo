@@ -44,6 +44,15 @@ public final class ReplaySeries implements PriceSeries {
 
     private final PriceSeries day;
 
+    /**
+     * Bars before the session, always visible.
+     *
+     * <p>The days leading up to the one being played. They are history and were
+     * never in doubt, so the transport cannot hide them: rewinding to the start
+     * goes back to the session's open, not to an empty screen.</p>
+     */
+    private final int origin;
+
     private final SyntheticTicks ticks;
 
     /** How much market time one source bar covers. */
@@ -72,9 +81,20 @@ public final class ReplaySeries implements PriceSeries {
      * @param ticks how a bar is broken into prices, or null to jump bar by bar
      */
     public ReplaySeries(PriceSeries day, int completed, SyntheticTicks ticks) {
+        this(day, 0, completed, ticks);
+    }
+
+    /**
+     * @param day everything the chart may see, history and session together
+     * @param origin how many leading bars are history and always visible
+     * @param completed how many bars have finished, counted from the start
+     * @param ticks how a bar is broken into prices, or null to jump bar by bar
+     */
+    public ReplaySeries(PriceSeries day, int origin, int completed, SyntheticTicks ticks) {
         this.day = day == null ? PriceSeries.empty() : day;
         this.ticks = ticks;
-        this.completed = clamp(completed);
+        this.origin = Math.max(0, Math.min(origin, this.day.size()));
+        this.completed = clamp(Math.max(this.origin, completed));
         this.barMillis = measureBar(this.day);
     }
 
@@ -85,6 +105,11 @@ public final class ReplaySeries implements PriceSeries {
     /** @param day the whole session, with nothing revealed yet */
     public static ReplaySeries of(PriceSeries day) {
         return new ReplaySeries(day, 0, null);
+    }
+
+    /** @return how many leading bars are history rather than replay */
+    public int origin() {
+        return origin;
     }
 
     /**
@@ -114,6 +139,13 @@ public final class ReplaySeries implements PriceSeries {
 
     public boolean finished() {
         return completed >= day.size() && path == null;
+    }
+
+    /** @return how far through the SESSION it is, ignoring the history */
+    public double progress() {
+        int playable = day.size() - origin;
+
+        return playable <= 0 ? 1.0 : (size() - origin) / (double) playable;
     }
 
     // ------------------------------------------------------------- the clock
@@ -215,12 +247,21 @@ public final class ReplaySeries implements PriceSeries {
         completed = clamp(bar);
     }
 
+    /**
+     * @param fraction 0 for the session's open, 1 for its close
+     *
+     * <p>Measured over the SESSION, not over everything on screen: the scrubber
+     * is the day being played, and history taking up nine tenths of it would
+     * leave the whole replay squeezed into the last centimetre.</p>
+     */
     public void seekFraction(double fraction) {
         if (!Double.isFinite(fraction)) {
             return;
         }
 
-        seek((int) Math.round(Math.max(0.0, Math.min(1.0, fraction)) * day.size()));
+        double clamped = Math.max(0.0, Math.min(1.0, fraction));
+
+        seek(origin + (int) Math.round(clamped * (day.size() - origin)));
     }
 
     /** @return the instant the session would show on its clock right now */
@@ -236,7 +277,7 @@ public final class ReplaySeries implements PriceSeries {
     }
 
     private int clamp(int bar) {
-        return Math.max(0, Math.min(bar, day.size()));
+        return Math.max(origin, Math.min(bar, day.size()));
     }
 
     // ------------------------------------------------ what has arrived so far

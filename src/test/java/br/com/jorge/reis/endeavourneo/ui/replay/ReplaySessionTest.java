@@ -37,8 +37,9 @@ import org.junit.jupiter.api.Test;
 @DisplayName("Replay session")
 class ReplaySessionTest {
 
+    /** No history, so the assertions below are about the session alone. */
     private static ReplaySession session() {
-        return new ReplaySession("WINFUT", LocalDate.of(2026, 9, 2));
+        return new ReplaySession("WINFUT", LocalDate.of(2026, 9, 2), 0);
     }
 
     @Test
@@ -68,7 +69,7 @@ class ReplaySessionTest {
         assertEquals(first.series().closeAt(19), second.series().closeAt(19));
 
         // And a different day is a different market.
-        ReplaySession other = new ReplaySession("WINFUT", LocalDate.of(2026, 9, 3));
+        ReplaySession other = new ReplaySession("WINFUT", LocalDate.of(2026, 9, 3), 0);
 
         other.step(20);
 

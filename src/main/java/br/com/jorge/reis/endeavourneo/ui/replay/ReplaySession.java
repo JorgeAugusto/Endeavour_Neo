@@ -17,6 +17,7 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.replay;
 
+import br.com.jorge.reis.endeavourneo.domain.market.ConcatSeries;
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
 import br.com.jorge.reis.endeavourneo.domain.market.ReplaySeries;
 import br.com.jorge.reis.endeavourneo.domain.market.SyntheticTicks;
@@ -110,12 +111,36 @@ public final class ReplaySession {
      * @param date the session
      */
     public ReplaySession(String instrument, LocalDate date) {
+        this(instrument, date, ReplayPreferences.historyDays());
+    }
+
+    /**
+     * @param instrument what is being replayed
+     * @param date the session to play
+     * @param historyDays how many sessions before it to show already drawn
+     */
+    public ReplaySession(String instrument, LocalDate date, int historyDays) {
         this.instrument = instrument;
         this.date = date;
+        // The days before, already drawn, so the chart does not open on an empty
+        // screen -- and so the first decision of the session is taken with the
+        // same context the reader would have had that morning.
+        List<PriceSeries> parts = new ArrayList<>();
+        int before = 0;
+
+        for (LocalDate day : sessionsBefore(date, historyDays)) {
+            PriceSeries session = dayOf(day);
+
+            parts.add(session);
+            before += session.size();
+        }
+
+        parts.add(dayOf(date));
+
         // Broken into prices so bars are watched forming rather than appearing
         // whole. Seeded by the date, like the day itself: the same session has
         // to replay the same way, wiggles included.
-        this.live = new ReplaySeries(dayOf(date), 0,
+        this.live = new ReplaySeries(ConcatSeries.of(parts), before, before,
                 new SyntheticTicks(TICK, date.toEpochDay()));
 
         this.timer = new Timer(FRAME, e -> tick());
@@ -130,6 +155,31 @@ public final class ReplaySession {
      * would be useless for comparing decisions. Replaced the moment a real
      * loader exists; the rest of this class does not care which it gets.</p>
      */
+    /**
+     * @return the sessions before that date, oldest first
+     *
+     * <p>Weekends are skipped rather than generated and hidden: an empty
+     * Saturday in the middle would put a gap in the concatenation that no bar
+     * lands on, and the chart would draw a day that never traded.</p>
+     */
+    private static List<LocalDate> sessionsBefore(LocalDate date, int howMany) {
+        List<LocalDate> days = new ArrayList<>();
+        LocalDate walking = date;
+
+        while (days.size() < Math.max(0, howMany)) {
+            walking = walking.minusDays(1);
+
+            if (walking.getDayOfWeek() != java.time.DayOfWeek.SATURDAY
+                    && walking.getDayOfWeek() != java.time.DayOfWeek.SUNDAY) {
+                days.add(walking);
+            }
+        }
+
+        java.util.Collections.reverse(days);
+
+        return days;
+    }
+
     private static PriceSeries dayOf(LocalDate day) {
         long first = day.atTime(OPEN).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
 
@@ -182,7 +232,7 @@ public final class ReplaySession {
             // Pressing play at the close starts the day again rather than doing
             // nothing: a dead button on a finished session reads as a bug.
             if (live.finished()) {
-                live.seek(0);
+                live.seek(live.origin());
             }
 
             timer.start();
@@ -213,7 +263,7 @@ public final class ReplaySession {
     }
 
     public double progress() {
-        return live.total() == 0 ? 0.0 : live.revealed() / (double) live.total();
+        return live.progress();
     }
 
     /** @return the session clock, as the reader would have seen it that day */

@@ -500,6 +500,7 @@ public final class MainWindow extends JFrame {
     private void openPreferences() {
         SettingsDialog.show(this, List.of(
                 new GeneralPage(),
+                new br.com.jorge.reis.endeavourneo.ui.settings.ReplayPage(),
                 new AppearancePage(installed -> {
                     console.write(Messages.get("console.appearance", installed));
                     status.say(installed);
