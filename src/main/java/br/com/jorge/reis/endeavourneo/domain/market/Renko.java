@@ -56,6 +56,11 @@ import java.util.List;
  * one minute completes three bricks, the three share a timestamp. Nothing else
  * is true — they really did all happen inside that minute.</p>
  *
+ * <p><b>A tail on each side, meaning different things.</b> The first brick of
+ * a batch shows how far price went the OTHER way before it broke -- the move
+ * was fought. The last shows the overshoot past its own level: points that went
+ * through and were not enough to lay another brick.</p>
+ *
  * <p>Volume is accumulated between bricks and split equally among however many
  * complete at once. That split is a convention, not a measurement: the data does
  * not say which part of a minute's volume belonged to which brick.</p>
@@ -197,10 +202,16 @@ public final class Renko implements Aggregation {
         List<double[]> bricks = new ArrayList<>();
         List<Long> stamps = new ArrayList<>();
 
-        // The level the last brick closed at. It starts at the first close, so
-        // the first brick is measured from where the series actually begins and
-        // not from a rounded grid the data never touched.
-        double anchor = source.closeAt(0);
+        // The level the last brick closed at. It starts at the first bar's OPEN,
+        // which is the one price in a bar that never moves.
+        //
+        // It used to start at the first CLOSE, and that was a defect reported
+        // from the screen as the chart trembling. While the first bar is still
+        // forming its close wanders, so the whole ruler moved with the price and
+        // every brick was measured from a shifting origin. Instrumented: the
+        // same bar, the same high and the same low, and the completed bricks
+        // going from four to two because the close had moved eighteen points.
+        double anchor = source.openAt(0);
         int direction = 0;
         double pending = 0.0;
         boolean anyVolume = false;
@@ -256,11 +267,16 @@ public final class Renko implements Aggregation {
                     direction = +1;
                     made += count;
 
-                    // The tail goes on the FIRST brick of the batch: that is the
-                    // one that was being fought while the others had already
-                    // gone through.
                     if (wicks) {
+                        // Two different tails, on different bricks. The FIRST of
+                        // a batch carries how far price went the other way
+                        // before breaking -- it is the one that was fought. The
+                        // LAST carries the overshoot past its own level: points
+                        // that went through and were not enough for another
+                        // brick. With a single brick it carries both.
                         bricks.get(at)[2] = Math.min(bricks.get(at)[2], sinceLow);
+                        bricks.get(bricks.size() - 1)[1] =
+                                Math.max(bricks.get(bricks.size() - 1)[1], sinceHigh);
                     }
                 } else if (anchor - price >= downNeeded) {
                     int count = (int) Math.floor((anchor - price) / brick);
@@ -272,6 +288,8 @@ public final class Renko implements Aggregation {
 
                     if (wicks) {
                         bricks.get(at)[1] = Math.max(bricks.get(at)[1], sinceHigh);
+                        bricks.get(bricks.size() - 1)[2] =
+                                Math.min(bricks.get(bricks.size() - 1)[2], sinceLow);
                     }
                 }
 
@@ -294,19 +312,23 @@ public final class Renko implements Aggregation {
 
         if (forming) {
             double now = source.closeAt(source.size() - 1);
+            double top = wicks ? Math.max(sinceHigh, Math.max(anchor, now))
+                    : Math.max(anchor, now);
+            double bottom = wicks ? Math.min(sinceLow, Math.min(anchor, now))
+                    : Math.min(anchor, now);
 
-            // Only when there is something to show. A partial brick of zero
-            // height would be a line on the chart that means nothing, and it
-            // would appear and vanish as price crossed the anchor.
-            if (Math.abs(now - anchor) >= brick / 20.0) {
-                double top = wicks ? Math.max(sinceHigh, Math.max(anchor, now))
-                        : Math.max(anchor, now);
-                double bottom = wicks ? Math.min(sinceLow, Math.min(anchor, now))
-                        : Math.min(anchor, now);
-
-                bricks.add(new double[]{anchor, top, bottom, now, pending});
-                stamps.add(source.timeAt(source.size() - 1));
-            }
+            // ALWAYS, even at no height at all. The first version only drew it
+            // when it had grown past a twentieth of a brick, and that was a
+            // defect reported from the screen: price wanders across the level,
+            // the partial brick appears and vanishes, the BAR COUNT CHANGES and
+            // the whole chart shifts sideways by one bar. The chart trembled.
+            //
+            // A brick of no height is a flat mark at the level, which is what
+            // "price is exactly on the level" looks like. Nothing is lost by
+            // drawing it, and a bar that never comes and goes is worth more than
+            // one that is always meaningful.
+            bricks.add(new double[]{anchor, top, bottom, now, pending});
+            stamps.add(source.timeAt(source.size() - 1));
         }
 
         return assemble(bricks, stamps, anyVolume);

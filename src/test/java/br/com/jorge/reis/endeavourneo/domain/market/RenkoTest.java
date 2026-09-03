@@ -218,20 +218,36 @@ class RenkoTest {
     }
 
     @Test
-    @DisplayName("the tail shows how far price went the other way first")
+    @DisplayName("the tail shows how far price went the other way before breaking")
     void tailShowsTheFightBeforeTheBreak() {
-        // Price dips to 85 before going through 110. The brick still runs
-        // 100 to 110; the tail says the move was fought for fifteen points.
+        // Anchored at 100. The second bar runs down to 88 and then up through
+        // 110: the brick was fought twelve points the other way, and its tail
+        // has to say so.
         PriceSeries bricks = Renko.of(10).apply(ohlc(
-                new double[]{100, 100, 85, 90},
-                new double[]{90, 112, 90, 112}));
+                new double[]{100, 101, 100, 100},
+                new double[]{100, 112, 88, 112}));
 
         assertTrue(bricks.size() >= 1, "no brick was laid at all");
 
-        double lowestTail = bricks.lowAt(0);
+        double firstTail = bricks.lowAt(0);
 
-        assertTrue(lowestTail <= 85.0,
-                "the brick forgot the fifteen points price went the other way: " + lowestTail);
+        assertTrue(firstTail <= 88.0,
+                "the brick forgot the twelve points price went the other way: " + firstTail);
+    }
+
+    @Test
+    @DisplayName("the last brick of a run keeps the overshoot past its own level")
+    void tailShowsTheOvershoot() {
+        // Price reaches 117 and only 110 became a brick. The seven points that
+        // went through and were not enough for another brick belong on the
+        // chart, or the brick claims the move stopped where it did not.
+        PriceSeries bricks = Renko.of(10).apply(ohlc(
+                new double[]{100, 100, 100, 100},
+                new double[]{100, 117, 100, 112}));
+
+        double top = bricks.highAt(bricks.size() - 1);
+
+        assertTrue(top >= 117.0, "the seven points of overshoot were thrown away: " + top);
     }
 
     @Test
@@ -279,11 +295,43 @@ class RenkoTest {
     }
 
     @Test
-    @DisplayName("price back on the level leaves nothing under construction")
-    void nothingToBuildIsNotDrawn() {
-        // A partial brick of no height would be a line on the chart meaning
-        // nothing, appearing and vanishing as price crossed the level.
-        assertEquals(1, Renko.of(10).withForming(true).apply(closes(100, 110)).size());
+    @DisplayName("the brick under construction is ALWAYS there, even at no height")
+    void formingIsAlwaysDrawn() {
+        // This assertion used to say the opposite, and that was the defect,
+        // reported from the screen as the chart trembling: price wanders across
+        // the level, the partial brick appears and vanishes, the BAR COUNT
+        // changes and the whole chart shifts sideways by one bar.
+        //
+        // A brick of no height is a flat mark at the level, which is what price
+        // sitting on the level looks like. A bar that never comes and goes is
+        // worth more than one that is always meaningful.
+        assertEquals(2, Renko.of(10).withForming(true).apply(closes(100, 110)).size(),
+                "the brick under construction went missing when it had no height");
+    }
+
+    @Test
+    @DisplayName("the bar count never falls while a bar is still forming")
+    void theCountNeverFalls() {
+        // The trembling, as a property. The ruler is anchored on the first
+        // bar's OPEN, which never moves; anchoring it on the first CLOSE was the
+        // defect -- while that bar formed, its close wandered and every brick
+        // was measured from a shifting origin. Instrumented at the time: the
+        // same bar, the same high, the same low, and the completed bricks going
+        // from four to two.
+        double[] first = {100, 100, 100, 100};
+        int most = 0;
+
+        for (double[] step : new double[][]{
+                {100, 104, 96, 103}, {100, 112, 96, 111}, {100, 112, 96, 101},
+                {100, 116, 92, 93}, {100, 124, 88, 121}, {100, 124, 85, 90}}) {
+
+            int now = Renko.of(10).withForming(true).apply(ohlc(first, step)).size();
+
+            assertTrue(now >= most, "the chart lost a bar it had already drawn: "
+                    + most + " then " + now);
+
+            most = Math.max(most, now);
+        }
     }
 
     @Test
@@ -314,11 +362,16 @@ class RenkoTest {
     }
 
     @Test
-    @DisplayName("the first brick is measured from where the data starts")
-    void anchoredOnTheFirstClose() {
+    @DisplayName("the ruler starts at the first OPEN, the one price that never moves")
+    void anchoredOnTheFirstOpen() {
         // Not on a rounded grid the series never touched: starting at 137 with
         // ten-point bricks, the first brick top is 147, not 140.
         assertEquals(147.0, Renko.of(10).apply(closes(137, 148)).closeAt(0));
+
+        // The OPEN and not the close: while a bar forms its close moves, and a
+        // ruler that moves with it measures every brick from a shifting origin.
+        assertEquals(100.0, Renko.of(10).apply(ohlc(new double[]{100, 130, 100, 125})).openAt(0),
+                "the ruler started somewhere other than the first open");
     }
 
     @Test

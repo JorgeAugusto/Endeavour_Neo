@@ -55,24 +55,25 @@ public final class ReplaySession {
      * has to take one minute, and it takes one minute at every scale. Bars per
      * second was unambiguous and matched nobody's idea of a replay.</p>
      */
-    public static final int[] SPEEDS = {1, 2, 5, 10, 25, 50};
+    public static final int[] SPEEDS = {1, 2, 5, 10, 30, 60};
 
     /**
-     * The fastest the transport goes, and why it is fifty and not more.
+     * The fastest the transport goes: <b>a minute of market per second</b>.
      *
-     * <p>Not a limit of the machine. Measured: advancing the ticks and folding
-     * the day again costs 0,03 ms against a 40 ms frame — over a thousand times
-     * the headroom, and a thousand times speed would replay a whole session in
-     * thirty-four seconds without straining.</p>
+     * <p>Sixty is a number anybody can hold: the clock on screen runs a minute
+     * while a second passes, so a session of nine and a half hours takes nine
+     * and a half minutes.</p>
      *
-     * <p>It is a limit of what can be <b>seen</b>. A bar is broken into about
-     * thirty-one prices, so one arrives every 1,93 s of market time. At fifty
-     * times that is one price every 39 ms — just inside a frame. Above this,
-     * prices start being skipped and the bar forms in jumps, which is the very
-     * thing the ticks exist to avoid. A speed that shows less while claiming
-     * more is worth leaving out.</p>
+     * <p>Not a limit of the machine — measured, advancing the ticks and folding
+     * the day again costs 0,03 ms against a 40 ms frame, over a thousand times
+     * the headroom. It is a limit of what can be <b>seen</b>: a bar is broken
+     * into about thirty-one prices, one every 1,93 s of market time, so at sixty
+     * times one arrives every 32 ms and a 40 ms frame drops the odd one. That is
+     * the price of the round number, and it is worth paying — past here the bar
+     * stops forming and starts jumping, which is the thing the ticks exist to
+     * prevent.</p>
      */
-    public static final int FASTEST = 50;
+    public static final int FASTEST = 60;
 
     /**
      * How often the clock ticks, in milliseconds of wall time.
