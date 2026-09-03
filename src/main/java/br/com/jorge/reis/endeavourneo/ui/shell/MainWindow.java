@@ -243,6 +243,89 @@ public final class MainWindow extends JFrame {
         charts.clear();
     }
 
+    /**
+     * Arranges the docked charts in a grid, filling the desktop.
+     *
+     * <p>Only the docked ones. A floating chart is managed by the operating
+     * system, and moving it from here would fight the window manager -- and
+     * would move a window the user deliberately put on another monitor.</p>
+     */
+    public void tileCharts() {
+        java.util.List<javax.swing.JInternalFrame> frames = new java.util.ArrayList<>();
+
+        for (javax.swing.JInternalFrame frame : desktop.getAllFrames()) {
+            if (frame.isVisible() && !frame.isIcon()) {
+                frames.add(frame);
+            }
+        }
+
+        for (int i = 0; i < frames.size(); i++) {
+            frames.get(i).setBounds(tileBounds(i, frames.size(),
+                    desktop.getWidth(), desktop.getHeight()));
+        }
+
+        status.say(Messages.get("status.tiled", frames.size()));
+    }
+
+    /**
+     * @param index which window, from zero
+     * @param count how many there are
+     * @param width the desktop's width
+     * @param height the desktop's height
+     * @return the cell that window should occupy
+     *
+     * <p>Columns come from the square root, so the cells stay close to square
+     * rather than becoming letterbox strips. The last row absorbs the remainder,
+     * which is what stops a leftover window from being squeezed into a sliver.</p>
+     *
+     * <p>Separate from the window handling so the arithmetic can be checked
+     * without a desktop: the part that can be wrong is the layout, not the
+     * setBounds call.</p>
+     */
+    static java.awt.Rectangle tileBounds(int index, int count, int width, int height) {
+        if (count <= 0) {
+            return new java.awt.Rectangle(0, 0, width, height);
+        }
+
+        int rows = Math.max(1, (int) Math.round(Math.sqrt(count)));
+
+        // Rows hold as close to the same number as divides: with three windows
+        // and two rows, two on top and one below. A fixed grid would put three
+        // in a 2x2 and leave a quadrant empty, which is a visible hole rather
+        // than a layout.
+        int base = count / rows;
+        int extra = count % rows;
+
+        int row = 0;
+        int before = 0;
+
+        while (row < rows) {
+            int inThisRow = base + (row < extra ? 1 : 0);
+
+            if (index < before + inThisRow) {
+                break;
+            }
+
+            before += inThisRow;
+            row++;
+        }
+
+        int columns = base + (row < extra ? 1 : 0);
+        int column = index - before;
+
+        int cellWidth = width / columns;
+        int cellHeight = height / rows;
+
+        // The last cell of a row and the last row take whatever integer division
+        // left behind, so the grid reaches the edges instead of leaving a strip
+        // that reads as a misalignment.
+        int w = column == columns - 1 ? width - cellWidth * column : cellWidth;
+        int h = row == rows - 1 ? height - cellHeight * row : cellHeight;
+
+        return new java.awt.Rectangle(cellWidth * column, cellHeight * row,
+                Math.max(1, w), Math.max(1, h));
+    }
+
     /** Brings every floating chart back inside the main window. */
     public void dockCharts() {
         for (ChartHolder holder : charts.values()) {
@@ -278,6 +361,7 @@ public final class MainWindow extends JFrame {
         view.add(item("action.clearConsole", KeyEvent.VK_L, console::clear));
         view.add(item("action.resetLayout", 0, this::defaultLayout));
         view.addSeparator();
+        view.add(item("action.tileCharts", 0, this::tileCharts));
         view.add(item("action.dockCharts", 0, this::dockCharts));
         view.add(item("action.closeCharts", 0, this::closeCharts));
 
@@ -353,6 +437,8 @@ public final class MainWindow extends JFrame {
 
         bar.add(button("action.new", () -> open(Messages.get("document.untitled"))));
         bar.addSeparator();
+        bar.add(iconButton("action.tileCharts", Icons.tile(16), this::tileCharts));
+        bar.addSeparator();
         bar.add(button("action.clearConsole", console::clear));
 
         return bar;
@@ -394,6 +480,23 @@ public final class MainWindow extends JFrame {
         menuItem.setMnemonic(Messages.mnemonic(key));
 
         return menuItem;
+    }
+
+    /**
+     * A toolbar button that is only an icon.
+     *
+     * <p>The label moves to the tooltip rather than disappearing. An icon with
+     * no name is a guess for anyone who did not draw it, and a toolbar of
+     * unlabelled glyphs is learned by trial.</p>
+     */
+    private static JButton iconButton(String key, javax.swing.Icon icon, Runnable action) {
+        JButton button = new JButton(icon);
+
+        button.setToolTipText(Messages.get(key));
+        button.setFocusable(false);
+        button.addActionListener(e -> action.run());
+
+        return button;
     }
 
     private static JButton button(String key, Runnable action) {

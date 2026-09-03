@@ -125,6 +125,9 @@ public final class ChartCanvas extends JComponent {
      */
     private static final double TIME_DRAG_SENSITIVITY = 0.004;
 
+    /** How far above the high and below the low still counts as touching the bar. */
+    private static final int HIT_TOLERANCE = 3;
+
     /**
      * How much a pixel of vertical drag changes the scale.
      *
@@ -233,8 +236,11 @@ public final class ChartCanvas extends JComponent {
 
         Rectangle plot = plotBounds();
 
-        return new Rectangle(plot.width - JUMP_SIZE - JUMP_MARGIN,
-                plot.height - JUMP_SIZE - JUMP_MARGIN, JUMP_SIZE, JUMP_SIZE);
+        // Top right, not bottom: the eye goes to the top-right corner for the
+        // most recent data, and a control that returns you there belongs where
+        // you are already looking. It also stays clear of the time axis.
+        return new Rectangle(plot.width - JUMP_SIZE - JUMP_MARGIN, JUMP_MARGIN,
+                JUMP_SIZE, JUMP_SIZE);
     }
 
     /** Scrolls back to the newest bars. */
@@ -536,8 +542,46 @@ public final class ChartCanvas extends JComponent {
             return;
         }
 
-        BarReadout.paint(g, series, viewport.barAt(cursor.x), cursor,
+        int bar = barUnder(viewport, cursor.x, cursor.y);
+
+        if (bar < 0) {
+            return;
+        }
+
+        BarReadout.paint(g, series, bar, cursor,
                 new Rectangle(0, 0, getWidth(), getHeight()));
+    }
+
+    /**
+     * @return the bar the cursor is actually ON, or -1 when it is over empty space
+     *
+     * <p><b>Different from {@link Viewport#barAt} on purpose.</b> That one asks
+     * "which column is this", clamps, and always answers — right for a crosshair,
+     * which follows the mouse everywhere. This one asks "is the pointer on the
+     * drawing", and says no over the empty space above and below the candle. A
+     * readout that appears anywhere in the plot is on screen permanently, which
+     * is the same as not being a readout at all.</p>
+     *
+     * <p>The vertical tolerance is not politeness: a wick is one pixel wide and a
+     * doji's body is one pixel tall. Demanding an exact hit would make the box
+     * almost impossible to summon on the bars where it is most wanted.</p>
+     */
+    private int barUnder(Viewport viewport, int x, int y) {
+        int bar = viewport.barAt(x);
+
+        if (bar < 0 || bar >= series.size()) {
+            return -1;
+        }
+
+        // Horizontally: inside the column the bar owns.
+        if (Math.abs(x - viewport.x(bar)) > Math.max(2.0, viewport.barWidth() / 2.0)) {
+            return -1;
+        }
+
+        double top = viewport.y(series.highAt(bar)) - HIT_TOLERANCE;
+        double bottom = viewport.y(series.lowAt(bar)) + HIT_TOLERANCE;
+
+        return y >= top && y <= bottom ? bar : -1;
     }
 
     /**

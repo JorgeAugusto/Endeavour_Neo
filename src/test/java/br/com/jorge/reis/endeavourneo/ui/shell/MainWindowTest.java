@@ -139,6 +139,44 @@ class MainWindowTest {
         });
     }
 
+    @Test
+    @DisplayName("tiling covers the whole desktop with no window overlapping another")
+    void tilingLeavesNoGapsAndNoOverlap() {
+        // Two failures live here and both are silent: cells that overlap hide
+        // one window behind another, and cells that fall short leave a strip of
+        // empty desktop that reads as a misalignment.
+        for (int count = 1; count <= 9; count++) {
+            java.awt.Rectangle[] cells = new java.awt.Rectangle[count];
+            long area = 0;
+
+            for (int i = 0; i < count; i++) {
+                cells[i] = MainWindow.tileBounds(i, count, 1000, 600);
+                area += (long) cells[i].width * cells[i].height;
+            }
+
+            for (int i = 0; i < count; i++) {
+                for (int j = i + 1; j < count; j++) {
+                    assertFalse(cells[i].intersects(cells[j]),
+                            count + " windows: cell " + i + " overlaps cell " + j);
+                }
+            }
+
+            assertEquals(1000L * 600L, area,
+                    count + " windows did not cover the desktop exactly");
+        }
+    }
+
+    @Test
+    @DisplayName("cells stay roughly square instead of becoming letterbox strips")
+    void cellsStayRoughlySquare() {
+        // Four windows in one row would give each a strip 250 by 600 -- unusable
+        // for a chart. The square root is what keeps them close to square.
+        java.awt.Rectangle cell = MainWindow.tileBounds(0, 4, 1000, 600);
+
+        assertEquals(500, cell.width, "four windows should make two columns");
+        assertEquals(300, cell.height, "four windows should make two rows");
+    }
+
     private static void onEdt(Consumer<MainWindow> test) throws Exception {
         assumeFalse(GraphicsEnvironment.isHeadless(), "no graphics environment");
 
