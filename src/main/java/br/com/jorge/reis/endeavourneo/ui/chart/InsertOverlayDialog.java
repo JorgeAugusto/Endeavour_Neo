@@ -69,8 +69,9 @@ public final class InsertOverlayDialog extends JDialog {
 
     private transient Overlay chosen;
 
-    private InsertOverlayDialog(Window owner) {
-        super(owner, Messages.get("overlay.insertTitle"), ModalityType.APPLICATION_MODAL);
+    private InsertOverlayDialog(Window owner, Overlay editing) {
+        super(owner, Messages.get(editing == null ? "overlay.insertTitle" : "overlay.editTitle"),
+                ModalityType.APPLICATION_MODAL);
 
         kinds.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         kinds.addListSelectionListener(e -> showParametersFor(kinds.getSelectedValue()));
@@ -91,7 +92,7 @@ public final class InsertOverlayDialog extends JDialog {
 
         closeOnEscape();
 
-        kinds.setSelectedIndex(0);
+        selectFor(editing);
 
         setSize(new Dimension(460, 300));
         setLocationRelativeTo(owner);
@@ -102,11 +103,60 @@ public final class InsertOverlayDialog extends JDialog {
      * @return the overlay to add, or null when the dialog was cancelled
      */
     public static Overlay ask(Window owner) {
-        InsertOverlayDialog dialog = new InsertOverlayDialog(owner);
+        InsertOverlayDialog dialog = new InsertOverlayDialog(owner, null);
 
         dialog.setVisible(true);
 
         return dialog.chosen;
+    }
+
+    /**
+     * @param owner the window to centre on
+     * @param overlay the one being changed
+     * @return a replacement built from the edited parameters, or null if cancelled
+     *
+     * <p>A replacement rather than a mutation. An overlay holds computed values;
+     * changing a period means recomputing everything anyway, and building a new
+     * one keeps it impossible to end up with parameters that no longer match the
+     * numbers.</p>
+     */
+    public static Overlay edit(Window owner, Overlay overlay) {
+        InsertOverlayDialog dialog = new InsertOverlayDialog(owner, overlay);
+
+        dialog.setVisible(true);
+
+        return dialog.chosen;
+    }
+
+    /**
+     * Selects the kind that matches, and fills in the values it already has.
+     *
+     * <p>Matched by name key. An overlay whose kind is no longer in the
+     * catalogue -- removed between versions -- simply lands on the first entry
+     * rather than opening an empty dialog.</p>
+     */
+    private void selectFor(Overlay overlay) {
+        if (overlay == null) {
+            kinds.setSelectedIndex(0);
+
+            return;
+        }
+
+        for (int i = 0; i < OverlayCatalog.kinds().size(); i++) {
+            if (OverlayCatalog.kinds().get(i).nameKey().equals(overlay.nameKey())) {
+                kinds.setSelectedIndex(i);
+
+                List<Integer> current = overlay.parameters();
+
+                for (int line = 0; line < spinners.size() && line < current.size(); line++) {
+                    spinners.get(line).setValue(current.get(line));
+                }
+
+                return;
+            }
+        }
+
+        kinds.setSelectedIndex(0);
     }
 
     private void showParametersFor(OverlayCatalog.Kind kind) {

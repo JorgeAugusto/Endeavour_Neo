@@ -342,6 +342,30 @@ public final class ChartCanvas extends JComponent {
     }
 
     /** @param newSeries the data to draw; showing the most recent bars */
+    /**
+     * Swaps one overlay for another IN PLACE.
+     *
+     * <p>In place, keeping the position, because the legend is read top to
+     * bottom: changing a period should not send the row to the end of the list
+     * and make the reader hunt for it.</p>
+     *
+     * @param existing the one to replace
+     * @param replacement the new one; calculated here
+     */
+    public void replaceOverlay(Overlay existing, Overlay replacement) {
+        int at = overlays.indexOf(existing);
+
+        if (at < 0 || replacement == null) {
+            return;
+        }
+
+        replacement.setVisible(existing.isVisible());
+        replacement.calculate(series);
+        overlays.set(at, replacement);
+
+        repaint();
+    }
+
     /** Removes an overlay and redraws without it. */
     public void removeOverlay(Overlay overlay) {
         if (overlays.remove(overlay)) {
