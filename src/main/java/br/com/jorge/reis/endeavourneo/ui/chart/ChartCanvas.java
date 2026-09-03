@@ -151,6 +151,9 @@ public final class ChartCanvas extends JComponent {
 
     private transient ChartStyle style = new CandleStyle();
 
+    /** The overlays drawn on the price, in the order they were added. */
+    private final transient java.util.List<Overlay> overlays = new java.util.ArrayList<>();
+
     private int firstBar;
 
     private int visibleBars = DEFAULT_VISIBLE_BARS;
@@ -181,8 +184,32 @@ public final class ChartCanvas extends JComponent {
     }
 
     /** @param newSeries the data to draw; showing the most recent bars */
+    /** @param overlay something drawn on the price; calculated immediately */
+    public void addOverlay(Overlay overlay) {
+        if (overlay == null) {
+            return;
+        }
+
+        overlay.calculate(series);
+        overlays.add(overlay);
+
+        repaint();
+    }
+
+    /** @return the overlays, for the legend and the show/hide toggles */
+    public java.util.List<Overlay> overlays() {
+        return java.util.List.copyOf(overlays);
+    }
+
     public void setSeries(PriceSeries newSeries) {
         this.series = newSeries == null ? PriceSeries.empty() : newSeries;
+
+        // Recalculated here, not lazily on the next paint: an overlay still
+        // holding values from the previous series would draw a line that
+        // belongs to other data, and it would look plausible.
+        for (Overlay overlay : overlays) {
+            overlay.calculate(this.series);
+        }
         this.visibleBars = Math.min(DEFAULT_VISIBLE_BARS, Math.max(1, this.series.size()));
         this.firstBar = Math.max(0, this.series.size() - visibleBars);
 
@@ -326,6 +353,7 @@ public final class ChartCanvas extends JComponent {
 
             paintGrid(g, viewport);
             style.paint(g, series, viewport);
+            paintOverlays(g, viewport);
             paintPriceAxis(g, viewport);
             paintTimeAxis(g, viewport);
             paintLastPrice(g, viewport);
@@ -358,6 +386,69 @@ public final class ChartCanvas extends JComponent {
             g.drawLine(0, y, getWidth() - AXIS_WIDTH, y);
 
             price += step;
+        }
+    }
+
+    /**
+     * The overlays, each as one polyline per value it reports.
+     *
+     * <p>Drawn after the price so a moving average sits on top of the candles,
+     * which is where the eye expects it. Before them the candles would cover the
+     * line at exactly the places it matters -- where price and average meet.</p>
+     *
+     * <p>A NaN breaks the line rather than being plotted as zero. During an
+     * average's warm-up there is nothing to say, and a line dragged up from the
+     * bottom of the chart to the first real value reads as a move that never
+     * happened.</p>
+     */
+    private void paintOverlays(Graphics2D g, Viewport viewport) {
+        int from = viewport.firstBar();
+        int to = Math.min(viewport.lastBar(), series.size());
+
+        g.setStroke(new BasicStroke(1.4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+
+        Object previous = g.getRenderingHint(RenderingHints.KEY_ANTIALIASING);
+
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+        for (Overlay overlay : overlays) {
+            if (!overlay.isVisible()) {
+                continue;
+            }
+
+            java.util.List<java.awt.Color> colours = overlay.colours();
+            int lines = colours.size();
+
+            for (int line = 0; line < lines; line++) {
+                g.setColor(colours.get(line));
+
+                int lastX = Integer.MIN_VALUE;
+                int lastY = 0;
+
+                for (int i = from; i < to; i++) {
+                    double[] row = overlay.valueAt(i);
+
+                    if (line >= row.length || !Double.isFinite(row[line])) {
+                        lastX = Integer.MIN_VALUE;
+
+                        continue;
+                    }
+
+                    int x = (int) Math.round(viewport.x(i));
+                    int y = (int) Math.round(viewport.y(row[line]));
+
+                    if (lastX != Integer.MIN_VALUE) {
+                        g.drawLine(lastX, lastY, x, y);
+                    }
+
+                    lastX = x;
+                    lastY = y;
+                }
+            }
+        }
+
+        if (previous != null) {
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, previous);
         }
     }
 

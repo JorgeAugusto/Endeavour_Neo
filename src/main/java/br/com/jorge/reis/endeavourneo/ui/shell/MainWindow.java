@@ -202,6 +202,8 @@ public final class MainWindow extends JFrame {
         // Synthetic bars for now. Replaced the moment a real series is wired in
         // -- see RandomWalkSeries.
         holder.canvas().setSeries(new RandomWalkSeries(2_000, 135_000.0));
+        holder.canvas().addOverlay(
+                new br.com.jorge.reis.endeavourneo.ui.chart.overlay.MovingAverages(17, 55, 200));
 
         charts.put(title, holder);
 

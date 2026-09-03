@@ -81,6 +81,15 @@ public final class ChartHolder {
 
     private final ChartCanvas canvas = new ChartCanvas();
 
+    /**
+     * The legend, moved between containers along with the canvas.
+     *
+     * <p>Built once and re-parented, for the same reason the canvas is: a legend
+     * recreated on every dock and undock would lose which overlays the reader
+     * had hidden.</p>
+     */
+    private final OverlayLegend legend = new OverlayLegend(canvas);
+
     private final JDesktopPane desktop;
 
     private final Window owner;
@@ -141,6 +150,7 @@ public final class ChartHolder {
         docked = new JInternalFrame(name, true, true, true, true);
 
         docked.setJMenuBar(buildMenuBar());
+        docked.getContentPane().add(legend, BorderLayout.NORTH);
         docked.getContentPane().add(canvas, BorderLayout.CENTER);
         docked.setSize(restoredSize());
         docked.setLocation(cascadeInside());
@@ -176,6 +186,7 @@ public final class ChartHolder {
 
         floating.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         floating.setJMenuBar(buildMenuBar());
+        floating.getContentPane().add(legend, BorderLayout.NORTH);
         floating.getContentPane().add(canvas, BorderLayout.CENTER);
         floating.setSize(restoredSize());
         floating.setLocation(restoredLocation());
@@ -247,6 +258,7 @@ public final class ChartHolder {
 
         Container content = docked.getContentPane();
 
+        content.remove(legend);
         content.remove(canvas);
         docked.dispose();
         docked = null;
@@ -259,6 +271,7 @@ public final class ChartHolder {
 
         storeFloatingBounds();
 
+        floating.getContentPane().remove(legend);
         floating.getContentPane().remove(canvas);
         floating.dispose();
         floating = null;
