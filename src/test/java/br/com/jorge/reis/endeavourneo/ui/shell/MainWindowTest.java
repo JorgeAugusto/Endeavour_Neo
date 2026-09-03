@@ -26,6 +26,7 @@ import static org.junit.jupiter.api.Assumptions.assumeFalse;
 import br.com.jorge.reis.endeavourneo.platform.JobService;
 
 import java.awt.GraphicsEnvironment;
+import java.util.List;
 import java.util.function.Consumer;
 import javax.swing.SwingUtilities;
 import org.junit.jupiter.api.DisplayName;
@@ -48,20 +49,41 @@ class MainWindowTest {
     }
 
     @Test
-    @DisplayName("opening the same name twice fronts the tab instead of duplicating it")
-    void doesNotDuplicateTabs() throws Exception {
-        // The behaviour of every IDE, and a source of irritation when absent:
-        // double-clicking the same navigator entry should not fill the tab bar
-        // with identical tabs.
+    @DisplayName("opening the same name twice fronts the window instead of duplicating it")
+    void doesNotDuplicateWindows() throws Exception {
+        // Charts live in windows so several can sit on several monitors. But
+        // double-clicking the same navigator entry must still front the one
+        // already open rather than stack a second identical window on top --
+        // which is worse than duplicate tabs were, because the copy hides the
+        // original completely.
         onEdt(window -> {
-            window.open("Report");
-            window.open("Balance");
-            window.open("Report");
+            try {
+                window.open("Report");
+                window.open("Balance");
+                window.open("Report");
 
-            assertEquals(2, window.getEditors().getTabCount(), "the same tab was opened twice");
-            assertEquals("Report",
-                    window.getEditors().getTitleAt(window.getEditors().getSelectedIndex()),
-                    "reopening should bring the existing tab to the front");
+                assertEquals(List.of("Report", "Balance"), window.openCharts(),
+                        "the same chart was opened twice");
+            } finally {
+                window.closeCharts();
+            }
+        });
+    }
+
+    @Test
+    @DisplayName("closing the application takes the chart windows down with it")
+    void closingTakesChartsDown() throws Exception {
+        // Without this the main window can exit while five charts stay on
+        // screen, orphaned, with no way left to close them but the task manager.
+        onEdt(window -> {
+            window.open("One");
+            window.open("Two");
+
+            assertEquals(2, window.openCharts().size(), "the charts did not open");
+
+            window.closeCharts();
+
+            assertTrue(window.openCharts().isEmpty(), "chart windows survived the close");
         });
     }
 

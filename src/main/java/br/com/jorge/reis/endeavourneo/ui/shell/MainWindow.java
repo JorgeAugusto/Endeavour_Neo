@@ -26,10 +26,8 @@ import java.awt.event.KeyEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import br.com.jorge.reis.endeavourneo.platform.JobService;
-import br.com.jorge.reis.endeavourneo.ui.chart.ChartCanvas;
+import br.com.jorge.reis.endeavourneo.ui.chart.ChartWindow;
 import br.com.jorge.reis.endeavourneo.ui.chart.RandomWalkSeries;
-import br.com.jorge.reis.endeavourneo.ui.chart.style.CandleStyle;
-import br.com.jorge.reis.endeavourneo.ui.chart.style.LineStyle;
 import br.com.jorge.reis.endeavourneo.platform.Messages;
 import br.com.jorge.reis.endeavourneo.ui.settings.AppearancePage;
 import br.com.jorge.reis.endeavourneo.ui.settings.SettingsDialog;
@@ -114,6 +112,17 @@ public final class MainWindow extends JFrame {
     private final transient JobService jobs;
 
     /**
+     * The chart windows that are open, by name.
+     *
+     * <p>Kept so reopening a name fronts the existing window rather than
+     * stacking a second one on top of it, and so closing the application takes
+     * them all down. Without the registry the main window can exit while five
+     * charts stay on screen, orphaned.</p>
+     */
+    private final transient java.util.Map<String, ChartWindow> charts =
+            new java.util.LinkedHashMap<>();
+
+    /**
      * @param title the window title
      * @param jobs where every long task goes; not null
      *
@@ -127,6 +136,8 @@ public final class MainWindow extends JFrame {
         this.jobs = jobs;
 
         setDefaultCloseOperation(EXIT_ON_CLOSE);
+
+        editors.addTab(Messages.get("view.documents"), placeholder());
 
         bottomDivider = new JSplitPane(JSplitPane.VERTICAL_SPLIT,
                 borderless(editors), titled(Messages.get("view.console"), console));
@@ -153,6 +164,7 @@ public final class MainWindow extends JFrame {
 
             @Override
             public void windowClosing(WindowEvent e) {
+                closeCharts();
                 storeLayout();
             }
         });
@@ -160,30 +172,59 @@ public final class MainWindow extends JFrame {
 
     // ------------------------------------------------------------ public
 
-    /** Opens a tab, or brings the existing one with that name to the front. */
+    /**
+     * Opens a chart in a window of its own, or fronts the one already open.
+     *
+     * <p><b>A window rather than a tab, deliberately.</b> Tabs are exclusive by
+     * construction — only one is ever visible — and the whole point here is to
+     * watch several charts at once, spread across monitors. Reopening the same
+     * name brings the existing window forward instead of creating a second one,
+     * which is the behaviour the tabs had and the one people expect.</p>
+     */
     public void open(String name) {
-        for (int i = 0; i < editors.getTabCount(); i++) {
-            if (editors.getTitleAt(i).equals(name)) {
-                editors.setSelectedIndex(i);
+        ChartWindow existing = charts.get(name);
 
-                return;
-            }
+        if (existing != null && existing.isDisplayable()) {
+            existing.setExtendedState(existing.getExtendedState() & ~java.awt.Frame.ICONIFIED);
+            existing.toFront();
+            existing.requestFocus();
+
+            return;
         }
 
-        // Every tab is a chart for now, on synthetic bars. Replaced the moment
-        // a real series is wired in -- see RandomWalkSeries.
-        ChartCanvas canvas = new ChartCanvas();
+        ChartWindow window = new ChartWindow(name, this);
 
-        canvas.setSeries(new RandomWalkSeries(2_000, 135_000.0));
+        // Synthetic bars for now. Replaced the moment a real series is wired in
+        // -- see RandomWalkSeries.
+        window.setSeries(new RandomWalkSeries(2_000, 135_000.0));
 
-        JPanel holder = new JPanel(new BorderLayout());
-        holder.add(canvas, BorderLayout.CENTER);
+        window.addWindowListener(new WindowAdapter() {
 
-        editors.addTab(name, holder);
-        editors.setSelectedComponent(holder);
+            @Override
+            public void windowClosed(WindowEvent e) {
+                charts.remove(name);
+            }
+        });
+
+        charts.put(name, window);
+        window.setVisible(true);
 
         console.write(Messages.get("console.opened", name));
         status.say(name);
+    }
+
+    /** @return the names of the chart windows open now, in the order opened */
+    public java.util.List<String> openCharts() {
+        return java.util.List.copyOf(charts.keySet());
+    }
+
+    /** Closes every chart window; also the "close all" action. */
+    public void closeCharts() {
+        for (ChartWindow window : new java.util.ArrayList<>(charts.values())) {
+            window.dispose();
+        }
+
+        charts.clear();
     }
 
     public Console getConsole() {
@@ -214,9 +255,7 @@ public final class MainWindow extends JFrame {
         view.add(item("action.clearConsole", KeyEvent.VK_L, console::clear));
         view.add(item("action.resetLayout", 0, this::defaultLayout));
         view.addSeparator();
-        view.add(item("chart.style.candle", 0, () -> applyStyle(new CandleStyle())));
-        view.add(item("chart.style.line", 0, () -> applyStyle(new LineStyle())));
-        view.add(item("chart.resetScale", 0, this::resetChartScale));
+        view.add(item("action.closeCharts", 0, this::closeCharts));
 
         JMenu run = menu("menu.run");
         run.add(item("action.sampleJob", 0, this::runSampleJob));
@@ -281,39 +320,6 @@ public final class MainWindow extends JFrame {
             console.write(Messages.get("job.failed", String.valueOf(error)));
             status.say(Messages.get("job.failed", error.getClass().getSimpleName()));
         });
-    }
-
-    /**
-     * Switches the drawing style of the chart in front.
-     *
-     * <p>Only the visible one: a style is a per-chart choice, the way it is in
-     * every terminal. Changing all of them at once would be a preference, and
-     * this is not one.</p>
-     */
-    private void applyStyle(br.com.jorge.reis.endeavourneo.ui.chart.ChartStyle style) {
-        chartInFront().ifPresent(canvas -> {
-            canvas.setStyle(style);
-            status.say(Messages.get(style.nameKey()));
-        });
-    }
-
-    /** Puts the chart in front back on the automatic vertical scale. */
-    private void resetChartScale() {
-        chartInFront().ifPresent(canvas -> {
-            canvas.resetStretch();
-            status.say(Messages.get("chart.resetScale"));
-        });
-    }
-
-    private java.util.Optional<ChartCanvas> chartInFront() {
-        java.awt.Component tab = editors.getSelectedComponent();
-
-        if (tab instanceof JPanel panel && panel.getComponentCount() > 0
-                && panel.getComponent(0) instanceof ChartCanvas canvas) {
-            return java.util.Optional.of(canvas);
-        }
-
-        return java.util.Optional.empty();
     }
 
     private JToolBar buildToolBar() {
@@ -388,6 +394,25 @@ public final class MainWindow extends JFrame {
         return panel;
     }
 
+    /**
+     * What the editor area shows while charts live in their own windows.
+     *
+     * <p>An empty {@code JTabbedPane} renders as a bare strip and reads as a
+     * defect. Saying where the charts went costs one label and removes the
+     * question.</p>
+     */
+    private static JComponent placeholder() {
+        JPanel panel = new JPanel(new BorderLayout());
+        JLabel label = new JLabel(Messages.get("view.chartsOpenInWindows"),
+                javax.swing.SwingConstants.CENTER);
+
+        label.setEnabled(false);
+        panel.setBorder(BorderFactory.createEmptyBorder(24, 24, 24, 24));
+        panel.add(label, BorderLayout.CENTER);
+
+        return panel;
+    }
+
     private static JComponent borderless(JComponent component) {
         component.setBorder(BorderFactory.createEmptyBorder());
 
@@ -426,6 +451,7 @@ public final class MainWindow extends JFrame {
     }
 
     private void exit() {
+        closeCharts();
         storeLayout();
         dispose();
         System.exit(0);
