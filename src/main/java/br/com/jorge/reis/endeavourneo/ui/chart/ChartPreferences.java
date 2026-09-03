@@ -43,6 +43,8 @@ public final class ChartPreferences {
 
     private static final String HORIZONTAL_GRID = "horizontalGrid";
 
+    private static final String SYNTHETIC = "syntheticTicks";
+
     private static final String HOLLOW = "hollowCandles";
 
     /**
@@ -56,6 +58,23 @@ public final class ChartPreferences {
     private static boolean verticalGrid = PREFS.getBoolean(VERTICAL_GRID, true);
 
     private static boolean horizontalGrid = PREFS.getBoolean(HORIZONTAL_GRID, true);
+
+    /**
+     * Whether a bar with no recorded ticks may be animated with invented ones.
+     *
+     * <p>On by default, and that is a deliberate choice rather than a shrug:
+     * one month of the base has real ticks and eight years do not, so refusing
+     * to draw a path would leave almost every replay jumping bar to bar.</p>
+     *
+     * <p><b>Turning it off does more than stop the animation.</b> Renko built
+     * from candles is not renko: measured on the same day of WINFUT, brick 55
+     * gives 477 bricks from one-minute candles and 2.563 from the exchange's
+     * own ticks -- 437% more. From candles the algorithm sees one high and one
+     * low a minute, in an order it assumes; the ticks show every reversal that
+     * really happened. So with this off, renko is offered only where there are
+     * ticks to build it from.</p>
+     */
+    private static boolean syntheticTicks = PREFS.getBoolean(SYNTHETIC, true);
 
     private static boolean hollowCandles = PREFS.getBoolean(HOLLOW, true);
 
@@ -122,6 +141,21 @@ public final class ChartPreferences {
      * made it look like a third kind of chart, and the reader had to know that
      * two of the three were the same thing.</p>
      */
+    public static boolean syntheticTicks() {
+        return syntheticTicks;
+    }
+
+    public static void setSyntheticTicks(boolean allow) {
+        if (syntheticTicks == allow) {
+            return;
+        }
+
+        syntheticTicks = allow;
+
+        PREFS.putBoolean(SYNTHETIC, allow);
+        announce();
+    }
+
     public static boolean hollowCandles() {
         return hollowCandles;
     }

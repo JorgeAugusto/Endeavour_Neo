@@ -384,6 +384,9 @@ public final class MainWindow extends JFrame {
             rememberCharts();
         });
 
+        // The canvas needs the instrument to find its tick sessions: they are
+        // named winfut-2021-01-04.bin and the chart calls itself winfut-1m.
+        holder.canvas().setInstrument(name);
         holder.canvas().setSeries(seriesFor(name, title));
 
         // Every chart accepts a replay dropped on it, from the moment it opens.

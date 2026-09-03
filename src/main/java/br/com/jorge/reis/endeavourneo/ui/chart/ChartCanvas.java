@@ -265,6 +265,9 @@ public final class ChartCanvas extends JComponent {
      */
     private transient String periodCode = Timeframe.ONE_MINUTE.label();
 
+    /** What this chart shows, so its tick sessions can be found by name. */
+    private transient String instrument;
+
     private int firstBar;
 
     /**
@@ -718,9 +721,43 @@ public final class ChartCanvas extends JComponent {
     public void askForPeriod(java.awt.Window owner, String typed) {
         PeriodCatalog.Choice choice = PeriodDialog.ask(owner, typed);
 
-        if (choice != null) {
-            setPeriod(choice.aggregation(), choice.title(), choice.code());
+        if (choice == null) {
+            return;
         }
+
+        if (choice.aggregation() instanceof br.com.jorge.reis.endeavourneo.domain.market.Renko
+                && !renkoAllowed()) {
+            // Refused rather than quietly drawn from candles. See RenkoSource
+            // for the measurement: the two differ by two to eleven times, and
+            // the reader has said in the settings that they would rather be
+            // told than shown a chart that is not what it claims.
+            javax.swing.JOptionPane.showMessageDialog(owner,
+                    Messages.get("chart.renkoNeedsTicks", instrument == null ? "" : instrument),
+                    Messages.get("chart.renkoNeedsTicks.title"),
+                    javax.swing.JOptionPane.INFORMATION_MESSAGE);
+
+            return;
+        }
+
+        setPeriod(choice.aggregation(), choice.title(), choice.code());
+    }
+
+    /** @return whether a renko may be built for what this chart is showing */
+    private boolean renkoAllowed() {
+        return RenkoSource.allows(series,
+                new br.com.jorge.reis.endeavourneo.domain.market.TickLibrary(
+                        br.com.jorge.reis.endeavourneo.platform.Bases.folder().resolve("ticks"),
+                        RenkoSource.rootOf(instrument)),
+                ChartPreferences.syntheticTicks());
+    }
+
+    /** @param name what the chart is showing, so its tick sessions can be found */
+    public void setInstrument(String name) {
+        this.instrument = name;
+    }
+
+    public String instrument() {
+        return instrument;
     }
 
     /**

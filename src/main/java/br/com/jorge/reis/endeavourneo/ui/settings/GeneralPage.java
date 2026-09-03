@@ -47,6 +47,9 @@ public final class GeneralPage implements SettingsPage {
 
     private final JCheckBox ruler = new JCheckBox(Messages.get("settings.ruler"));
 
+    private final JCheckBox synthetic =
+            new JCheckBox(Messages.get("settings.syntheticTicks"));
+
     private final javax.swing.JComboBox<br.com.jorge.reis.endeavourneo.platform.Language> language =
             new javax.swing.JComboBox<>(
                     br.com.jorge.reis.endeavourneo.platform.Language.values());
@@ -97,6 +100,17 @@ public final class GeneralPage implements SettingsPage {
 
         panel.add(row);
         panel.add(languageHint);
+
+        JLabel syntheticHint = new JLabel(Messages.get("settings.syntheticTicks.hint"));
+
+        syntheticHint.setFont(syntheticHint.getFont().deriveFont(
+                syntheticHint.getFont().getSize2D() - 1f));
+        syntheticHint.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        synthetic.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+
+        panel.add(Box.createVerticalStrut(14));
+        panel.add(synthetic);
+        panel.add(syntheticHint);
         panel.add(Box.createVerticalGlue());
     }
 
@@ -116,12 +130,16 @@ public final class GeneralPage implements SettingsPage {
         // flipped it since, and a dialog showing the old value would put it back
         // the moment anything else on the page is applied.
         ruler.setSelected(RulerMode.isOn());
+        synthetic.setSelected(
+                br.com.jorge.reis.endeavourneo.ui.chart.ChartPreferences.syntheticTicks());
         language.setSelectedItem(br.com.jorge.reis.endeavourneo.platform.Language.remembered());
     }
 
     @Override
     public void apply() {
         RulerMode.set(ruler.isSelected());
+        br.com.jorge.reis.endeavourneo.ui.chart.ChartPreferences
+                .setSyntheticTicks(synthetic.isSelected());
         ((br.com.jorge.reis.endeavourneo.platform.Language) language.getSelectedItem()).remember();
     }
 }

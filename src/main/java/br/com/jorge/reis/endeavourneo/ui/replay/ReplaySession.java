@@ -204,8 +204,15 @@ public final class ReplaySession {
         // same session has to replay the same way, wiggles included.
         this.ticks = new TickLibrary(tickFolder, rootOf(instrument));
 
+        // The synthetic walk is consulted through the setting, not captured, so
+        // turning it off takes effect on a replay already open instead of on
+        // the next one.
+        SyntheticTicks invented = new SyntheticTicks(TICK, date.toEpochDay());
+
         this.live = new ReplaySeries(ConcatSeries.of(parts), before, before,
-                new RecordedTicks(ticks, new SyntheticTicks(TICK, date.toEpochDay())));
+                new RecordedTicks(ticks, (bars, index) ->
+                        br.com.jorge.reis.endeavourneo.ui.chart.ChartPreferences.syntheticTicks()
+                                ? invented.pathFor(bars, index) : null));
 
         // The FIRST session is waited for, and nothing else is. Everywhere else
         // a quarter-second of synthetic path is better than a quarter-second of

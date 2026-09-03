@@ -195,6 +195,15 @@ public final class ReplaySeries implements PriceSeries {
         }
 
         path = ticks.pathFor(day, completed);
+
+        if (path == null || path.length == 0) {
+            // No path for this bar, and none invented. Happens where there are
+            // no recorded ticks and the reader has turned the synthetic ones
+            // off: the bar then appears whole instead of forming, which is the
+            // honest picture of what is known about it.
+            return false;
+        }
+
         cursor = 0;
         high = path[0];
         low = path[0];
