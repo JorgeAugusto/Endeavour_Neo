@@ -69,10 +69,12 @@ public final class Bases {
     /**
      * The base a chart opens when nothing else says which.
      *
-     * <p>The same default the first Endeavour uses, so a window opened in
-     * either program shows the same prices.</p>
+     * <p>The SOURCE, since 03/09/2026: one series, checked minute by minute
+     * against the reference product, with the search-and-test boundary living
+     * inside it as segments. It used to be {@code winn-1m}, back when the
+     * boundary was two files.</p>
      */
-    private static final String DEFAULT = "winn-1m";
+    private static final String DEFAULT = "winfull-1m";
 
     private static final String RETIRED_KEY = "data.retired";
 
@@ -214,17 +216,21 @@ public final class Bases {
      * What each base is FOR, which is the thing that changes a decision.
      *
      * <p>Not derivable from the file: two bases of the same instrument, the
-     * same scale and the same format can have opposite roles. {@code winn} is
-     * where every hypothesis was mined, so no number from it proves anything on
-     * its own; {@code winfut} covers the years those hypotheses never saw, and
-     * is what decides. Opening the wrong one by accident is the expensive
-     * mistake this label exists to prevent.</p>
+     * same scale and the same format can have opposite roles.</p>
+     *
+     * <p>Since 03/09/2026 there is one SOURCE, {@code winfull-1m}, and the
+     * search-and-test boundary lives inside it as segments rather than as two
+     * files. The other two are the raw exports it was built from, kept because
+     * they are the originals and because the source can be rebuilt from them.
+     * Measuring on one of those by accident is the expensive mistake this label
+     * exists to prevent: {@code winfut} is missing 94 business days in
+     * 2018-2019 and its March-to-August 2020 has no afternoon.</p>
      *
      * <p>A setting, so the roles move as the work does — the merged base is
      * about to be cut into segments, and the roles will follow them.</p>
      */
     private static final String ROLES_BY_DEFAULT =
-            "winn-1m=search,winfut-1m=test,winfull-1m=merged";
+            "winfull-1m=source,winn-1m=export,winfut-1m=export";
 
     /** @return the role of each base, by name; a base may have none */
     public static Map<String, String> roles() {

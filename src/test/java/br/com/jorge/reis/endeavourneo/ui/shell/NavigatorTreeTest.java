@@ -96,20 +96,20 @@ class NavigatorTreeTest {
         // The whole point of the change: the reader sees what a base is FOR,
         // and a double click still asks for the file. Showing the role by
         // renaming the node would break opening it, silently.
-        base(folder, "winn-1m");
+        base(folder, "winfull-1m");
         Bases.useFolderForTest(folder);
 
         List<String[]> leaves = leaves(Navigator.treeModel());
         String[] winn = leaves.stream()
-                .filter(each -> "winn-1m".equals(each[1]))
+                .filter(each -> "winfull-1m".equals(each[1]))
                 .findFirst()
                 .orElse(null);
 
-        assertNotNull(winn, "winn-1m is not in the tree; leaves were " + leaves.size());
-        assertTrue(winn[0].startsWith("winn-1m"), "the label lost the name: " + winn[0]);
-        assertTrue(winn[0].contains(Messages.orElse("navigator.role.search", "search")),
+        assertNotNull(winn, "winfull-1m is not in the tree; leaves were " + leaves.size());
+        assertTrue(winn[0].startsWith("winfull-1m"), "the label lost the name: " + winn[0]);
+        assertTrue(winn[0].contains(Messages.orElse("navigator.role.source", "source")),
                 "the label does not say what the base is for: " + winn[0]);
-        assertEquals("winn-1m", winn[1], "opening this leaf would ask for the label");
+        assertEquals("winfull-1m", winn[1], "opening this leaf would ask for the label");
     }
 
     @Test

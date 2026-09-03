@@ -134,14 +134,17 @@ class BasesTest {
     }
 
     @Test
-    @DisplayName("the default is the search base when it is there")
-    void theDefaultIsTheSearchBase(@TempDir Path folder) throws IOException {
+    @DisplayName("the default is the source, when it is there")
+    void theDefaultIsTheSource(@TempDir Path folder) throws IOException {
+        // The one series checked against the reference product, with the
+        // search-and-test boundary inside it as segments. Opening a raw export
+        // by default would put a chart on screen that nobody vetted.
         base(folder, "btcusdt-1m", 60_000);
         base(folder, "winn-1m", 136_000);
+        base(folder, "winfull-1m", 136_000);
         Bases.useFolderForTest(folder);
 
-        assertEquals("winn-1m", Bases.defaultName(),
-                "the same default the other program uses, so both show the same prices");
+        assertEquals("winfull-1m", Bases.defaultName());
     }
 
     @Test
@@ -150,7 +153,7 @@ class BasesTest {
         Bases.useFolderForTest(folder);
 
         assertTrue(Bases.names().isEmpty());
-        assertEquals("winn-1m", Bases.defaultName());
-        assertFalse(Bases.has("winn-1m"));
+        assertEquals("winfull-1m", Bases.defaultName());
+        assertFalse(Bases.has("winfull-1m"));
     }
 }
