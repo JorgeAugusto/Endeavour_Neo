@@ -68,6 +68,43 @@ class ChartCanvasTest {
     }
 
     @Test
+    @DisplayName("the time step is always a round interval, never an arbitrary one")
+    void timeStepIsRound() {
+        // A label at 14:00 and the next at 14:37 is arithmetic showing through.
+        // Every value returned has to be one a person would choose.
+        int[] round = {1, 2, 5, 10, 15, 30, 60, 120, 180, 240, 360, 720, 1_440, 2_880, 10_080};
+
+        for (long span : new long[]{5, 37, 120, 400, 1_000, 5_000, 50_000, 900_000}) {
+            int step = ChartCanvas.niceTimeStep(span, 8);
+            boolean known = false;
+
+            for (int candidate : round) {
+                known |= candidate == step;
+            }
+
+            assertTrue(known, "span " + span + " produced the odd step " + step);
+        }
+    }
+
+    @Test
+    @DisplayName("a wider chart gets finer steps, never coarser")
+    void widerMeansFiner() {
+        // More room means more labels fit, so the interval may shrink. If it
+        // grew instead, widening the window would remove information.
+        long span = 600;
+
+        assertTrue(ChartCanvas.niceTimeStep(span, 20) <= ChartCanvas.niceTimeStep(span, 4),
+                "more labels asked for produced a coarser step");
+    }
+
+    @Test
+    @DisplayName("an absurd span falls on the largest step instead of overflowing")
+    void absurdSpanIsClamped() {
+        assertEquals(10_080, ChartCanvas.niceTimeStep(Long.MAX_VALUE / 2, 8),
+                "a span of centuries did not clamp to the largest step");
+    }
+
+    @Test
     @DisplayName("a drag of zero pixels changes nothing")
     void zeroDragIsIdentity() {
         // Guards the click that is not a drag: pressing on the axis and

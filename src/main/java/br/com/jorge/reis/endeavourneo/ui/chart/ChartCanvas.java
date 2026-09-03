@@ -32,6 +32,10 @@ import java.awt.event.MouseEvent;
 import java.awt.event.MouseWheelEvent;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import javax.swing.JComponent;
 
@@ -44,7 +48,7 @@ import javax.swing.JComponent;
  *   background   the theme's surface
  *   grid         horizontal price lines, recessive
  *   style        the price itself -- see {@link ChartStyle}
- *   axis         the prices, in a strip reserved on the right
+ *   axes         prices on the right, times along the bottom
  *   crosshair    where the mouse is
  * </pre>
  *
@@ -82,6 +86,28 @@ public final class ChartCanvas extends JComponent {
      * most recent bars, which are the ones being watched.</p>
      */
     private static final int AXIS_WIDTH = 62;
+
+    /** Height of the time strip along the bottom, in pixels. */
+    private static final int TIME_HEIGHT = 20;
+
+    /**
+     * The time steps a label may fall on, in minutes.
+     *
+     * <p>Round intervals only, and the same reasoning as the 1-2-5 price grid:
+     * a label at 14:00 and the next at 14:37 is arithmetic showing through. The
+     * list ends at a week; beyond that the chart is showing years and the day
+     * boundaries carry the information anyway.</p>
+     */
+    private static final int[] TIME_STEPS = {
+            1, 2, 5, 10, 15, 30, 60, 120, 180, 240, 360, 720,
+            1_440, 2_880, 10_080};
+
+    /** Roughly how many pixels apart the time labels should sit. */
+    private static final int TIME_SPACING = 90;
+
+    private static final DateTimeFormatter CLOCK = DateTimeFormatter.ofPattern("HH:mm");
+
+    private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("dd/MM");
 
     /**
      * How much a pixel of vertical drag changes the scale.
@@ -159,15 +185,22 @@ public final class ChartCanvas extends JComponent {
         return Viewport.of(series, plotBounds(), firstBar, visibleBars, stretch);
     }
 
-    /** @return the drawing area, which stops before the price strip */
+    /** @return the drawing area, which stops before both strips */
     private Rectangle plotBounds() {
-        return new Rectangle(0, 0, Math.max(1, getWidth() - AXIS_WIDTH), getHeight());
+        return new Rectangle(0, 0, Math.max(1, getWidth() - AXIS_WIDTH),
+                Math.max(1, getHeight() - TIME_HEIGHT));
     }
 
     /** @param x a horizontal pixel
      *  @return whether it falls in the price strip */
     private boolean onAxis(int x) {
         return x >= getWidth() - AXIS_WIDTH;
+    }
+
+    /** @param y a vertical pixel
+     *  @return whether it falls in the time strip */
+    private boolean onTimeAxis(int y) {
+        return y >= getHeight() - TIME_HEIGHT;
     }
 
     /**
@@ -213,7 +246,9 @@ public final class ChartCanvas extends JComponent {
 
             paintGrid(g, viewport);
             style.paint(g, series, viewport);
-            paintAxis(g, viewport);
+            paintPriceAxis(g, viewport);
+            paintTimeAxis(g, viewport);
+            paintLastPrice(g, viewport);
             paintCrosshair(g, viewport);
         } finally {
             g.dispose();
@@ -251,15 +286,17 @@ public final class ChartCanvas extends JComponent {
      * floats without a line. Computing them twice from the same rule would
      * eventually drift apart when one of the two is edited.</p>
      */
-    private void paintAxis(Graphics2D g, Viewport viewport) {
+    private void paintPriceAxis(Graphics2D g, Viewport viewport) {
         int left = getWidth() - AXIS_WIDTH;
         double step = gridStep(viewport);
 
+        int bottom = getHeight() - TIME_HEIGHT;
+
         g.setColor(ChartColors.background());
-        g.fillRect(left, 0, AXIS_WIDTH, getHeight());
+        g.fillRect(left, 0, AXIS_WIDTH, bottom);
 
         g.setColor(ChartColors.grid());
-        g.drawLine(left, 0, left, getHeight());
+        g.drawLine(left, 0, left, bottom);
 
         g.setColor(ChartColors.foreground());
         g.setFont(getFont().deriveFont(11f));
@@ -277,6 +314,154 @@ public final class ChartCanvas extends JComponent {
 
             price += step;
         }
+    }
+
+    /**
+     * The times, along the bottom, on round intervals.
+     *
+     * <p>A label lands on the first visible bar that crosses a step boundary,
+     * which is what makes them fall on 14:00 and 14:30 rather than on whatever
+     * bar happens to be there. Iterating the bars rather than the clock also
+     * handles gaps for free: after a session break the next bar simply starts a
+     * new boundary, and nothing is drawn over the hours the market was shut.</p>
+     *
+     * <p><b>A change of day is marked differently</b> — a stronger line and the
+     * date instead of the time. On an intraday chart the session boundary is the
+     * most important vertical there is, and a bare "09:00" after "18:00" makes
+     * the reader work out for themselves that a night went by.</p>
+     */
+    private void paintTimeAxis(Graphics2D g, Viewport viewport) {
+        int top = getHeight() - TIME_HEIGHT;
+        int step = timeStep(viewport);
+
+        g.setColor(ChartColors.background());
+        g.fillRect(0, top, getWidth(), TIME_HEIGHT);
+
+        g.setColor(ChartColors.grid());
+        g.drawLine(0, top, getWidth(), top);
+
+        g.setFont(getFont().deriveFont(11f));
+
+        FontMetrics metrics = g.getFontMetrics();
+        ZoneId zone = ZoneId.systemDefault();
+
+        int last = Integer.MIN_VALUE;
+        long previousStep = Long.MIN_VALUE;
+        ZonedDateTime previousTime = null;
+
+        for (int i = viewport.firstBar(); i < viewport.lastBar() && i < series.size(); i++) {
+            ZonedDateTime time = Instant.ofEpochMilli(series.timeAt(i)).atZone(zone);
+            long bucket = series.timeAt(i) / (step * 60_000L);
+
+            boolean newDay = previousTime != null
+                    && !time.toLocalDate().equals(previousTime.toLocalDate());
+            boolean boundary = previousStep != Long.MIN_VALUE && bucket != previousStep;
+
+            previousStep = bucket;
+            previousTime = time;
+
+            if (!boundary && !newDay) {
+                continue;
+            }
+
+            int x = (int) Math.round(viewport.x(i));
+            String text = newDay ? time.format(DAY) : time.format(CLOCK);
+            int width = metrics.stringWidth(text);
+
+            // Skip a label that would touch the previous one. Drawing both and
+            // letting them overlap is the single thing that makes an axis look
+            // broken.
+            if (x - width / 2 < last + 8) {
+                continue;
+            }
+
+            last = x + width / 2;
+
+            g.setColor(newDay ? ChartColors.foreground() : ChartColors.grid());
+            g.drawLine(x, 0, x, top);
+
+            g.setColor(ChartColors.foreground());
+            g.drawString(text, x - width / 2, top + metrics.getAscent() + 3);
+        }
+    }
+
+    /**
+     * @return the smallest round interval that does not crowd the labels
+     *
+     * <p>Derived from the bars actually visible rather than from the timeframe,
+     * because the series does not say what timeframe it is -- and should not
+     * have to.</p>
+     */
+    private int timeStep(Viewport viewport) {
+        int first = viewport.firstBar();
+        int lastBar = Math.min(viewport.lastBar(), series.size()) - 1;
+
+        if (lastBar <= first) {
+            return TIME_STEPS[0];
+        }
+
+        long minutes = (series.timeAt(lastBar) - series.timeAt(first)) / 60_000L;
+
+        return niceTimeStep(minutes, Math.max(1, plotBounds().width / TIME_SPACING));
+    }
+
+    /**
+     * @param spanMinutes how much time the visible bars cover
+     * @param wantedLabels how many labels fit across the width
+     * @return the smallest round interval that keeps the count at or under that
+     *
+     * <p>Separate from the painting so it can be checked without a window: the
+     * part that can be wrong is which interval gets chosen, not the drawing.</p>
+     */
+    static int niceTimeStep(long spanMinutes, int wantedLabels) {
+        long target = Math.max(1, spanMinutes / Math.max(1, wantedLabels));
+
+        for (int step : TIME_STEPS) {
+            if (step >= target) {
+                return step;
+            }
+        }
+
+        return TIME_STEPS[TIME_STEPS.length - 1];
+    }
+
+    /**
+     * The last close, as a filled tag on the price axis.
+     *
+     * <p>It answers the question the chart is opened for -- what is it worth
+     * now -- without the reader tracing a grid line across with their eye. Every
+     * terminal has it, and its absence is felt immediately.</p>
+     */
+    private void paintLastPrice(Graphics2D g, Viewport viewport) {
+        int index = Math.min(viewport.lastBar(), series.size()) - 1;
+
+        if (index < 0) {
+            return;
+        }
+
+        double price = series.closeAt(index);
+        int y = (int) Math.round(viewport.y(price));
+
+        if (y < 0 || y > getHeight() - TIME_HEIGHT) {
+            // The last bar is scrolled out of the visible price range. Drawing
+            // the tag clamped to an edge would claim a price that is not there.
+            return;
+        }
+
+        g.setFont(getFont().deriveFont(java.awt.Font.BOLD, 11f));
+
+        FontMetrics metrics = g.getFontMetrics();
+        String text = formatFor(gridStep(viewport)).format(price);
+        int width = metrics.stringWidth(text);
+        int height = metrics.getHeight();
+        int left = getWidth() - AXIS_WIDTH + 1;
+
+        g.setColor(series.closeAt(index) >= series.openAt(index)
+                ? ChartColors.up() : ChartColors.down());
+        g.fillRect(left, y - height / 2, AXIS_WIDTH - 1, height);
+
+        g.setColor(ChartColors.background());
+        g.drawString(text, getWidth() - 6 - width, y - height / 2 + metrics.getAscent());
     }
 
     /**
@@ -348,7 +533,7 @@ public final class ChartCanvas extends JComponent {
         g.setStroke(new BasicStroke(1.0f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER,
                 1.0f, new float[]{3.0f, 3.0f}, 0.0f));
 
-        g.drawLine(x, 0, x, getHeight());
+        g.drawLine(x, 0, x, getHeight() - TIME_HEIGHT);
         g.drawLine(0, cursor.y, getWidth() - AXIS_WIDTH, cursor.y);
     }
 
@@ -371,7 +556,9 @@ public final class ChartCanvas extends JComponent {
             // The cursor is the only thing that says the strip is interactive.
             // Without it the area reads as decoration and nobody discovers it.
             setCursor(Cursor.getPredefinedCursor(
-                    onAxis(e.getX()) ? Cursor.N_RESIZE_CURSOR : Cursor.DEFAULT_CURSOR));
+                    onAxis(e.getX()) && !onTimeAxis(e.getY())
+                            ? Cursor.N_RESIZE_CURSOR
+                            : Cursor.DEFAULT_CURSOR));
 
             repaint();
         }
@@ -385,7 +572,7 @@ public final class ChartCanvas extends JComponent {
 
         @Override
         public void mousePressed(MouseEvent e) {
-            if (onAxis(e.getX())) {
+            if (onAxis(e.getX()) && !onTimeAxis(e.getY())) {
                 // A drag that starts on the strip scales and never pans, even
                 // when it wanders over the plot. Deciding by where the mouse IS
                 // rather than where the drag BEGAN would switch behaviour
