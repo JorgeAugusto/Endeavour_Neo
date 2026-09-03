@@ -104,23 +104,31 @@ public final class CandleStyle implements ChartStyle {
             double bottom = viewport.y(Math.min(open, close));
 
             int left = (int) Math.round(centre - bodyWidth / 2.0);
-            int height = (int) Math.round(bottom - top);
+            int first = (int) Math.round(top);
 
-            // A doji -- open equal to close -- has zero height and would vanish
-            // entirely. One pixel is the honest minimum: the bar exists.
-            int drawHeight = Math.max(1, height);
+            // Both rows INCLUSIVE, which is where the +1 comes from. A line is
+            // drawn with both of its ends and a rectangle stops one row short of
+            // its own bottom, so rounding the HEIGHT left the wick's last row
+            // uncovered. On a renko brick, whose low is its own close, that was
+            // a thread of one pixel hanging below every brick -- below the
+            // falling ones too, which by the rules have no tail down there.
+            //
+            // A doji -- open equal to close -- comes out of this as a single
+            // row, which is the honest minimum: the bar exists. The max only
+            // guards the case where the two roundings disagree.
+            int drawHeight = Math.max(1, (int) Math.round(bottom) - first + 1);
 
             if (hollow() && rising && drawHeight > 2) {
                 // Outlined, with the background showing through. Below three
                 // pixels the outline and the fill are the same thing, so a tiny
                 // body stays solid rather than becoming an invisible ring.
                 g.setColor(ChartColors.background());
-                g.fillRect(left, (int) Math.round(top), (int) bodyWidth, drawHeight);
+                g.fillRect(left, first, (int) bodyWidth, drawHeight);
 
                 g.setColor(ChartColors.up());
-                g.drawRect(left, (int) Math.round(top), (int) bodyWidth - 1, drawHeight - 1);
+                g.drawRect(left, first, (int) bodyWidth - 1, drawHeight - 1);
             } else {
-                g.fillRect(left, (int) Math.round(top), (int) bodyWidth, drawHeight);
+                g.fillRect(left, first, (int) bodyWidth, drawHeight);
             }
         }
     }
