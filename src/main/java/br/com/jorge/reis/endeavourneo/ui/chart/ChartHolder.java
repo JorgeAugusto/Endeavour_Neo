@@ -150,6 +150,8 @@ public final class ChartHolder {
             legend.revalidate();
             legend.repaint();
         });
+
+        canvas.onSeriesChanged(this::retitle);
         this.desktop = desktop;
         this.owner = owner;
         this.onClosed = onClosed == null ? () -> { } : onClosed;
@@ -157,6 +159,34 @@ public final class ChartHolder {
 
     public String name() {
         return name;
+    }
+
+    /**
+     * The title, with how far the price is from the last session's close.
+     *
+     * <p>Beside the instrument's name because that is where a quote screen puts
+     * it and where the eye goes first — and because the title is the one part of
+     * a chart still readable when the window is behind three others. The percent
+     * is dropped, not shown as zero, when the series carries a single day: there
+     * is nothing to compare against, and a "0,00%" would be a claim.</p>
+     */
+    private String title() {
+        String change = Sessions.formatChange(
+                Sessions.changeOnDay(canvas.series(), java.time.ZoneId.systemDefault()));
+
+        return change.isEmpty() ? name : name + "   " + change;
+    }
+
+    private void retitle() {
+        String title = title();
+
+        if (docked != null) {
+            docked.setTitle(title);
+        }
+
+        if (floating != null) {
+            floating.setTitle(title);
+        }
     }
 
     public ChartCanvas canvas() {
@@ -205,7 +235,7 @@ public final class ChartHolder {
 
         detachFromFloating();
 
-        docked = new JInternalFrame(name, true, true, true, true);
+        docked = new JInternalFrame(title(), true, true, true, true);
 
         docked.setJMenuBar(buildMenuBar());
         docked.getContentPane().add(legend, BorderLayout.NORTH);
@@ -262,7 +292,7 @@ public final class ChartHolder {
 
         detachFromDocked();
 
-        floating = new JFrame(name);
+        floating = new JFrame(title());
 
         floating.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         floating.setJMenuBar(buildMenuBar());

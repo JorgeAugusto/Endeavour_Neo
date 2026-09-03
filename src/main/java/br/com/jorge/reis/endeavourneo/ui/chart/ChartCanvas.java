@@ -179,6 +179,9 @@ public final class ChartCanvas extends JComponent {
     /** Told when the overlays change in a way that has to be REDRAWN. */
     private transient Runnable onOverlaysRedrawn = () -> { };
 
+    /** Told when the bars themselves are replaced. */
+    private transient Runnable onSeriesChanged = () -> { };
+
     private int firstBar;
 
     private int visibleBars = DEFAULT_VISIBLE_BARS;
@@ -380,6 +383,16 @@ public final class ChartCanvas extends JComponent {
         onOverlaysRedrawn.run();
     }
 
+    /** @return the bars this chart is drawing */
+    public PriceSeries series() {
+        return series;
+    }
+
+    /** @param listener told when the bars are replaced */
+    public void onSeriesChanged(Runnable listener) {
+        this.onSeriesChanged = listener == null ? () -> { } : listener;
+    }
+
     /** @param listener told when the overlays change and should be stored */
     public void onOverlaysChanged(Runnable listener) {
         this.onOverlaysChanged = listener == null ? () -> { } : listener;
@@ -466,6 +479,7 @@ public final class ChartCanvas extends JComponent {
         this.firstBar = Math.max(0, this.series.size() - visibleBars);
 
         repaint();
+        onSeriesChanged.run();
     }
 
     public void setStyle(ChartStyle newStyle) {
