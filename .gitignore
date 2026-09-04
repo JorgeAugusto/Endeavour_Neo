@@ -77,3 +77,6 @@ adaptativo-tela.properties
 # saida e cache do hook de compilacao
 target/hook-classes/
 .claude/hooks/.classpath
+
+# lixo do shell
+*.stackdump
