@@ -25,6 +25,7 @@ import br.com.jorge.reis.endeavourneo.domain.market.Segment;
 import br.com.jorge.reis.endeavourneo.domain.market.SegmentedSeries;
 import br.com.jorge.reis.endeavourneo.domain.market.SyntheticTicks;
 import br.com.jorge.reis.endeavourneo.domain.market.TickLibrary;
+import br.com.jorge.reis.endeavourneo.domain.market.TickSeries;
 import br.com.jorge.reis.endeavourneo.domain.market.TickSource;
 import br.com.jorge.reis.endeavourneo.ui.chart.RandomWalkSeries;
 
@@ -161,8 +162,22 @@ public final class ReplaySession {
      * skipped, so "Monday to Monday" is six sessions and not eight.</p>
      */
     public ReplaySession(String instrument, LocalDate date, LocalDate until, int historyDays) {
+        this(instrument, date, until, historyDays, TickSource.METATRADER);
+    }
+
+    /**
+     * @param source which export the ticks come from
+     *
+     * <p>Chosen and never guessed. The two sources cover different years today
+     * and hold different things always -- one has the book, the other has the
+     * counterparties -- so a replay that picked one on its own would be
+     * answering a question the reader is the only one who can answer.</p>
+     */
+    public ReplaySession(String instrument, LocalDate date, LocalDate until,
+            int historyDays, TickSource source) {
         this(instrument, date, until, historyDays,
-                br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.ticksOf(rootOf(instrument)));
+                br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.ticksOf(rootOf(instrument)),
+                source);
     }
 
     /**
@@ -174,6 +189,11 @@ public final class ReplaySession {
      */
     ReplaySession(String instrument, LocalDate date, LocalDate until, int historyDays,
                   java.nio.file.Path tickFolder) {
+        this(instrument, date, until, historyDays, tickFolder, TickSource.METATRADER);
+    }
+
+    ReplaySession(String instrument, LocalDate date, LocalDate until, int historyDays,
+                  java.nio.file.Path tickFolder, TickSource source) {
         this.instrument = instrument;
         this.date = date;
         this.until = until == null || until.isBefore(date) ? date : until;
@@ -208,7 +228,7 @@ public final class ReplaySession {
         // they do not -- which is most days, with one month of ticks against
         // eight years of candles. Seeded by the date, like the day itself: the
         // same session has to replay the same way, wiggles included.
-        this.ticks = new TickLibrary(tickFolder, rootOf(instrument), TickSource.METATRADER);
+        this.ticks = new TickLibrary(tickFolder, rootOf(instrument), source);
 
         // The synthetic walk is consulted through the setting, not captured, so
         // turning it off takes effect on a replay already open instead of on
@@ -372,6 +392,19 @@ public final class ReplaySession {
      */
     int residentTicks() {
         return ticks.residentCount();
+    }
+
+    /**
+     * @return the ticks held for that day, or null if they are not in yet
+     *
+     * <p>Beside the one that counts them, and for the sibling reason: counting
+     * proves the loading finished, and this proves WHICH file it finished
+     * loading. Both sources can hold the same session of the same market, so a
+     * replay handed the wrong one would still play -- with another market's
+     * worth of numbers and nothing on screen to say so.</p>
+     */
+    TickSeries residentAt(LocalDate day) {
+        return ticks.at(day);
     }
 
     /** @return whether this day is replayed from the exchange's own ticks */

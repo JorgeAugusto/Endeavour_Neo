@@ -19,6 +19,7 @@ package br.com.jorge.reis.endeavourneo.ui.shell;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import br.com.jorge.reis.endeavourneo.domain.market.TickSource;
@@ -68,10 +69,31 @@ class NavigatorTreeTest {
 
         SeriesCatalog.useFolderForTest(folder);
 
-        Path file = SeriesCatalog.fileOf(name);
+        Path file = under(folder, SeriesCatalog.fileOf(name));
 
         Files.createDirectories(file.getParent());
         Files.write(file, buffer.array());
+    }
+
+    /**
+     * @return that path, having checked it is inside the test's own folder
+     *
+     * <p>A guard bought at a price. A fixture that asked the catalog where a
+     * file goes, without having told it where to look, wrote a
+     * twenty-four-byte header over a ninety-megabyte session of real ticks --
+     * and the test that did it failed for an unrelated-looking reason, so the
+     * damage was found by accident. Paths in these fixtures come from the
+     * catalog, which is right; this makes sure the catalog is pointing at the
+     * temporary folder when they do.</p>
+     */
+    private static Path under(Path folder, Path file) {
+        if (!file.toAbsolutePath().startsWith(folder.toAbsolutePath())) {
+            throw new IllegalStateException("this fixture was about to write to " + file
+                    + ", which is outside " + folder
+                    + " -- the catalog is not pointing at the test's folder");
+        }
+
+        return file;
     }
 
     /** Every leaf under the tree, with its label and what it would open. */
@@ -229,7 +251,8 @@ class NavigatorTreeTest {
     /** A session header of that source: tag, version, day, count. */
     private static void tickSession(Path folder, String instrument,
             java.time.LocalDate day, TickSource source) throws IOException {
-        Path file = source.fileFor(folder, instrument, day);
+        Path file = under(folder, source.fileFor(
+                SeriesCatalog.ticksOf(instrument), instrument, day));
         ByteBuffer header = ByteBuffer.allocate(24).order(ByteOrder.BIG_ENDIAN);
 
         header.put(source.tag().getBytes(StandardCharsets.US_ASCII));
@@ -248,13 +271,12 @@ class NavigatorTreeTest {
         // the Profit tape has both brokers and the aggressor -- so which one a
         // day came from changes what can be asked of it. Listed together as
         // "ticks" it would be the one thing worth knowing that the tree hides.
+        SeriesCatalog.useFolderForTest(folder);
         base(folder, "winfull-1m");
 
-        Path ticks = SeriesCatalog.ticksOf("win");
-
-        tickSession(ticks, "win", java.time.LocalDate.of(2021, 1, 4), TickSource.METATRADER);
-        tickSession(ticks, "win", java.time.LocalDate.of(2026, 9, 1), TickSource.PROFIT);
-        tickSession(ticks, "win", java.time.LocalDate.of(2026, 9, 2), TickSource.PROFIT);
+        tickSession(folder, "win", java.time.LocalDate.of(2021, 1, 4), TickSource.METATRADER);
+        tickSession(folder, "win", java.time.LocalDate.of(2026, 9, 1), TickSource.PROFIT);
+        tickSession(folder, "win", java.time.LocalDate.of(2026, 9, 2), TickSource.PROFIT);
 
         List<String> lines = leaves(Navigator.treeModel()).stream()
                 .map(each -> each[0])
@@ -286,11 +308,10 @@ class NavigatorTreeTest {
     void anEmptySourceIsSilent(@TempDir Path folder) throws IOException {
         // There is no tape on disk today, and a permanent "Profit: 0" under
         // every instrument would be a standing reminder of nothing.
+        SeriesCatalog.useFolderForTest(folder);
         base(folder, "winfull-1m");
 
-        Path ticks = SeriesCatalog.ticksOf("win");
-
-        tickSession(ticks, "win", java.time.LocalDate.of(2021, 1, 4), TickSource.METATRADER);
+        tickSession(folder, "win", java.time.LocalDate.of(2021, 1, 4), TickSource.METATRADER);
 
         List<String> lines = leaves(Navigator.treeModel()).stream()
                 .map(each -> each[0])
@@ -299,5 +320,22 @@ class NavigatorTreeTest {
                 .toList();
 
         assertTrue(lines.isEmpty(), "an empty source was listed: " + lines);
+    }
+    @Test
+    @DisplayName("a fixture pointed at the wrong folder refuses to write")
+    void theGuardRefusesToLeaveTheTemporaryFolder(@TempDir Path folder) {
+        // Proved directly rather than left to chance, because it already went
+        // wrong once: a fixture asked the catalog where a tick session goes
+        // while the catalog was still pointing at the real data folder, and
+        // wrote a twenty-four-byte header over ninety megabytes of exported
+        // ticks. The test that did it failed for an unrelated-looking reason,
+        // so the damage was found by accident rather than by the failure.
+        SeriesCatalog.useFolderForTest(folder.resolve("somewhere-else"));
+
+        IllegalStateException thrown = assertThrows(IllegalStateException.class,
+                () -> tickSession(folder.resolve("mine"), "win",
+                        java.time.LocalDate.of(2021, 1, 4), TickSource.METATRADER));
+
+        assertTrue(thrown.getMessage().contains("outside"), thrown.getMessage());
     }
 }

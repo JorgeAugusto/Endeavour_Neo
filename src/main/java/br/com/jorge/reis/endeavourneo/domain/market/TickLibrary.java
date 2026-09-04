@@ -171,7 +171,7 @@ public final class TickLibrary {
             return null;
         }
 
-        TickSeries read = TickFile.read(fileFor(day));
+        TickSeries read = source.read(fileFor(day));
 
         keep(day, read);
 
@@ -213,7 +213,7 @@ public final class TickLibrary {
         loader.execute(() -> {
             try {
                 if (has(day)) {
-                    keep(day, TickFile.read(fileFor(day)));
+                    keep(day, source.read(fileFor(day)));
                     whenLoaded.run();
                 }
             } catch (IOException e) {

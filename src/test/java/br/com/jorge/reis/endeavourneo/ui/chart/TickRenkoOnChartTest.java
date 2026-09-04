@@ -101,8 +101,14 @@ class TickRenkoOnChartTest {
         // saying which folder would write into the reader's own data.
         SeriesCatalog.useFolderForTest(folder);
 
-        try (TickFile.Writer writer = new TickFile.Writer(
-                TickSource.METATRADER.fileFor(SeriesCatalog.ticksOf("win"), "win", DAY), DAY)) {
+        Path file = TickSource.METATRADER.fileFor(SeriesCatalog.ticksOf("win"), "win", DAY);
+
+        if (!file.toAbsolutePath().startsWith(folder.toAbsolutePath())) {
+            throw new IllegalStateException("this fixture was about to write to " + file
+                    + ", which is outside " + folder);
+        }
+
+        try (TickFile.Writer writer = new TickFile.Writer(file, DAY)) {
 
             for (int i = 0; i < prices.length; i++) {
                 writer.add(9 * 3_600_000 + i * 1_000, 0, 0, prices[i], 1, 88,

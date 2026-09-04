@@ -118,6 +118,22 @@ public enum TickSource {
     }
 
     /**
+     * @return every trade or tick in that session
+     * @throws java.io.IOException if the file is missing, truncated or not ours
+     *
+     * <p>A switch and not an {@code if}, so a third source cannot be added
+     * without saying how it is read: the compiler refuses an incomplete one.
+     * The two formats share nothing below this line and everything above
+     * it.</p>
+     */
+    public TickSeries read(Path file) throws java.io.IOException {
+        return switch (this) {
+            case METATRADER -> TickFile.read(file);
+            case PROFIT -> TapeFile.read(file);
+        };
+    }
+
+    /**
      * @return the session that file holds, or null if it is not one of this
      *         source's
      */
