@@ -32,7 +32,7 @@ import java.util.Set;
  * <p>A session is 4,4 million ticks and 113 MB. Ten of them will not sit in
  * memory together, and a renko over ten days is a perfectly ordinary thing to
  * want. So each session is read, folded into bricks, and let go — and what is
- * kept is the bricks, which are 2.563 a day at brick 55. Three orders of
+ * kept is the bricks, which are 594 a day at brick 55. Four orders of
  * magnitude smaller, and the memory does not grow with the range.</p>
  *
  * <p>That only works because a renko continued from where the last one stopped

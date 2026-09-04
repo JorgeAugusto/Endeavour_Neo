@@ -85,7 +85,7 @@ public final class RecordedTicks implements TickPath {
         int count = 0;
 
         for (int i = first; i < ticks.size() && ticks.timeAt(i) < to; i++) {
-            if (ticks.hasLast(i)) {
+            if (ticks.hasLast(i) && ticks.lastAt(i) > 0) {
                 count++;
             }
         }
@@ -102,7 +102,10 @@ public final class RecordedTicks implements TickPath {
         int at = 0;
 
         for (int i = first; i < ticks.size() && ticks.timeAt(i) < to; i++) {
-            if (ticks.hasLast(i)) {
+            // Above zero: a session's opening row states zero for everything,
+            // and animating a bar down to zero and back would be a spike no
+            // trade made. See TickBars for what this cost.
+            if (ticks.hasLast(i) && ticks.lastAt(i) > 0) {
                 path[at++] = ticks.lastAt(i);
             }
         }

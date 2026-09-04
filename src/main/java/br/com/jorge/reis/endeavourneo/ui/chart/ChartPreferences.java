@@ -67,12 +67,12 @@ public final class ChartPreferences {
      * to draw a path would leave almost every replay jumping bar to bar.</p>
      *
      * <p><b>Turning it off does more than stop the animation.</b> Renko built
-     * from candles is not renko: measured on the same day of WINFUT, brick 55
-     * gives 477 bricks from one-minute candles and 2.563 from the exchange's
-     * own ticks -- 437% more. From candles the algorithm sees one high and one
-     * low a minute, in an order it assumes; the ticks show every reversal that
-     * really happened. So with this off, renko is offered only where there are
-     * ticks to build it from.</p>
+     * from candles is not the same renko: measured over January 2021 on WINFUT,
+     * brick 55 gives 15.100 bricks from one-minute candles and 11.886 from the
+     * exchange's own ticks. The candles lay 27% MORE, because reading a bar as
+     * "the high then the low" manufactures a swing the real path did not make.
+     * So with this off, renko is offered only where there are ticks to build it
+     * from.</p>
      */
     private static boolean syntheticTicks = PREFS.getBoolean(SYNTHETIC, true);
 

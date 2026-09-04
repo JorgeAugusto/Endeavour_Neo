@@ -743,7 +743,7 @@ public final class ChartCanvas extends JComponent {
         if (choice.aggregation() instanceof br.com.jorge.reis.endeavourneo.domain.market.Renko
                 && !renkoAllowed()) {
             // Refused rather than quietly drawn from candles. See RenkoSource
-            // for the measurement: the two differ by two to eleven times, and
+            // for the measurement: the two differ by 8% to 27%, and
             // the reader has said in the settings that they would rather be
             // told than shown a chart that is not what it claims.
             javax.swing.JOptionPane.showMessageDialog(owner,
@@ -762,8 +762,7 @@ public final class ChartCanvas extends JComponent {
      *
      * <p>Only when EVERY session on screen has ticks: a renko built partly from
      * ticks and partly from candles would change density halfway across and
-     * look like the market did it. Measured, the two differ by two to eleven
-     * times — see {@link RenkoSource}.</p>
+     * look like the market did it. Measured, the two differ by 8% to 27% — see {@link RenkoSource}.</p>
      *
      * <p>The result is dropped if the period changed while it was being built.
      * A reader who types 11 and then 55 must not be shown the eleven, arriving

@@ -30,7 +30,7 @@ import org.junit.jupiter.api.Test;
  *
  * <p>This is the property the whole tick-renko rests on. A day of ticks is 4,4
  * million bars and ten days will not fit in memory at once, so the bricks are
- * built one session at a time and only the bricks are kept — 2.563 a day
+ * built one session at a time and only the bricks are kept — 594 a day
  * against 4,4 million ticks. That is only sound if continuing from where the
  * last session stopped gives exactly what one long pass would have given.</p>
  *

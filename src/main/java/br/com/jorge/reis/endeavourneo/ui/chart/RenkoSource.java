@@ -33,21 +33,23 @@ import java.util.Set;
  *
  * <h2>Why this is a question at all</h2>
  *
- * <p>Renko from one-minute candles is not renko. Measured on WINFUT, the same
- * day, reversal two:</p>
+ * <p>Renko from one-minute candles is not the same renko. Measured on WINFUT
+ * over the twenty sessions of January 2021, reversal two:</p>
  *
  * <pre>
- * brick   from candles   from ticks
- *    25          2.469        6.785
- *    55            477        2.563
- *   105            105        1.242
+ * brick   from candles   from ticks   candles are
+ *    25         65.999       60.855        1,08x
+ *    55         15.100       11.886        1,27x
+ *   105          3.372        3.112        1,08x
  * </pre>
  *
- * <p>From candles the algorithm sees one high and one low a minute, in an order
- * it has to assume; the ticks show every reversal that really happened, and
- * each one the minute hid is two more bricks. Two to eleven times fewer bricks
- * is not an approximation of the same chart — it is a different chart wearing
- * its name.</p>
+ * <p>The candles lay MORE, which is the surprise. Reading a bar as "the high
+ * then the low", in an order that has to be assumed, manufactures a full swing
+ * inside every minute; the real path did not swing that much. The first version
+ * of this comment claimed the opposite and by a factor of five, because the
+ * measurement behind it read the session's opening marker -- a row that states
+ * zero for everything -- as a trade, and anchored the renko at price zero. See
+ * {@code TickBars.isTrade}.</p>
  *
  * <h2>The rule</h2>
  *

@@ -23,11 +23,11 @@ package br.com.jorge.reis.endeavourneo.domain.market;
  * <h2>Why this is what renko wants</h2>
  *
  * <p>A renko built from candles has to GUESS the order in which a bar reached
- * its high and its low, and that guess is most of the answer. Measured on
- * WINFUT, brick 55, one day: 477 bricks from one-minute candles against 2.563
- * from the ticks. From candles the algorithm sees one high and one low a
- * minute, in an assumed order; the ticks show every reversal that happened, and
- * each one the minute hid is two more bricks.</p>
+ * its high and its low, and that guess is most of the answer. Measured on WINFUT over the twenty sessions of January 2021, brick
+ * 55: 15.100 bricks from one-minute candles against 11.886 from the exchange's
+ * own ticks. The CANDLES lay 27% MORE, and that is the surprise: reading a bar
+ * as "the high then the low", in an order that has to be assumed, manufactures
+ * a full swing inside every minute. The real path did not swing that much.</p>
  *
  * <p>Here each bar is a single price, so open, high, low and close are the same
  * number and there is nothing left to assume. The renko that comes out is not
@@ -36,9 +36,9 @@ package br.com.jorge.reis.endeavourneo.domain.market;
  * <h2>Trades only</h2>
  *
  * <p>The rows that carry a quote and no trade are skipped: a bid that moved is
- * not a price the market paid, and renko is built from what traded. They stay
- * in the file, which is what lets the book be rebuilt; they simply are not
- * bars.</p>
+ * not a price the market paid, and renko is built from what traded. So are the
+ * session markers that state zero for everything. They stay in the file, which
+ * is what lets the book be rebuilt; they simply are not bars.</p>
  *
  * <p>A view, not a copy. A session is 4,4 million ticks and copying the traded
  * ones into new arrays would add 50 MB to a chart that is about to reduce them
@@ -61,7 +61,7 @@ public final class TickBars implements PriceSeries {
         int count = 0;
 
         for (int i = 0; i < ticks.size(); i++) {
-            if (ticks.hasLast(i)) {
+            if (isTrade(ticks, i)) {
                 count++;
             }
         }
@@ -70,12 +70,38 @@ public final class TickBars implements PriceSeries {
         int at = 0;
 
         for (int i = 0; i < ticks.size(); i++) {
-            if (ticks.hasLast(i)) {
+            if (isTrade(ticks, i)) {
                 trades[at++] = i;
             }
         }
 
         return new TickBars(ticks, trades);
+    }
+
+    /**
+     * @return whether that row is a trade
+     *
+     * <p><b>Having a price is not enough: it has to be a price.</b> Every
+     * session opens with a row that states zero for the bid, the ask, the last
+     * and the volume — a marker, not a trade, and the whole reason this file
+     * keeps "said zero" apart from "said nothing".</p>
+     *
+     * <p>This cost a measurement, and the wrong answer was published before it was
+     * caught. Reading those rows as trades put a bar at price zero at the head
+     * of every session, and a renko then climbed from zero to 120.000 laying
+     * two thousand bricks that no trade made. It produced "477 bricks from
+     * candles against 2.563 from ticks", which went into four javadocs, a
+     * message the reader sees, and a commit.</p>
+     *
+     * <p>The arithmetic gave it away: 566 minutes whose ranges sum to 45.295
+     * points cannot hold 2.563 bricks of 55. Corrected, the candles lay MORE
+     * than the ticks, not fewer -- 15.100 against 11.886 over January 2021.</p>
+     *
+     * <p>Forty-one rows in twenty sessions. Two a day, and they moved the
+     * answer by a factor of five.</p>
+     */
+    private static boolean isTrade(TickSeries ticks, int index) {
+        return ticks.hasLast(index) && ticks.lastAt(index) > 0;
     }
 
     @Override

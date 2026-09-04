@@ -130,7 +130,7 @@ class RenkoSourceTest {
     void oneSessionShortIsStillRefused(@TempDir Path folder) throws IOException {
         // The case that matters. A renko built partly from ticks and partly
         // from candles would change density halfway across and look like the
-        // market did it: measured, the two differ by two to eleven times.
+        // market did it: measured, the two differ by 8% to 27%.
         session(folder, LocalDate.of(2021, 1, 4));
         session(folder, LocalDate.of(2021, 1, 5));
 

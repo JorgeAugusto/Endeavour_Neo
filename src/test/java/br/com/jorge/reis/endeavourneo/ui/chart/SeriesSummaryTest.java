@@ -134,8 +134,8 @@ class SeriesSummaryTest {
     @DisplayName("it says whether the bricks came from ticks or from candles")
     void theSourceIsStated() {
         // The line that matters most. Measured on WINFUT, brick 55, one day:
-        // 477 bricks from candles against 2.563 from ticks. Nothing else on
-        // screen tells the two apart.
+        // 15.100 bricks from candles against 11.886 from ticks over January
+        // 2021. Nothing else on screen tells the two apart.
         PriceSeries series = over(100, LocalDate.of(2021, 1, 4));
 
         String ticks = valueOf(SeriesSummary.rowsFor(series, "winfull-1m", "55R", true),
