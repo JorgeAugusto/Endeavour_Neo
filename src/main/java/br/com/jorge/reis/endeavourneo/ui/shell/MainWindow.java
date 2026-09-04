@@ -192,11 +192,7 @@ public final class MainWindow extends JFrame {
 
             @Override
             public void windowClosing(WindowEvent e) {
-                // Written BEFORE anything is closed, and then frozen.
-                rememberCharts();
-
-                leaving = true;
-
+                prepareToLeave();
                 closeCharts();
                 storeLayout();
             }
@@ -226,6 +222,22 @@ public final class MainWindow extends JFrame {
      * series and let the numbering happen again -- otherwise a restart leaves
      * "(2)" with no "(1)" beside it.</p>
      */
+    /**
+     * Writes what is open, then freezes the list.
+     *
+     * <p>In that order and as one step, because the two halves are only correct
+     * together. Closing the application closes every chart, and each close asks
+     * for the list to be rewritten one chart shorter -- so without the freeze it
+     * would end empty and nothing would come back. It used to be written out at
+     * each of the two exits, which is how the test ended up simulating an exit
+     * that the application never performs.</p>
+     */
+    void prepareToLeave() {
+        rememberCharts();
+
+        leaving = true;
+    }
+
     void rememberCharts() {
         if (leaving || restoring) {
             // Two reasons, both of them a list being rewritten while it is
@@ -464,6 +476,17 @@ public final class MainWindow extends JFrame {
     }
 
     /** @return the names of the chart windows open now, in the order opened */
+    /**
+     * @return the chart with that title, or null
+     *
+     * <p>Package-visible for the test that proves a closed chart stays closed.
+     * Closing it through the map instead would prove nothing about the wiring
+     * that a reader's click actually goes through.</p>
+     */
+    ChartHolder chartNamed(String title) {
+        return charts.get(title);
+    }
+
     public java.util.List<String> openCharts() {
         return java.util.List.copyOf(charts.keySet());
     }
@@ -707,15 +730,13 @@ public final class MainWindow extends JFrame {
      * launch anyway — this is that path, run without leaving.</p>
      */
     private void relaunch() {
-        rememberCharts();
+        prepareToLeave();
         storeLayout();
 
         if (replay != null) {
             replay.dispose();
             replay = null;
         }
-
-        leaving = true;
 
         closeCharts();
         dispose();

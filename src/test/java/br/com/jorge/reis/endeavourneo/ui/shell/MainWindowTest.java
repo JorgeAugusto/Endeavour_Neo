@@ -25,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 import br.com.jorge.reis.endeavourneo.platform.JobService;
+import br.com.jorge.reis.endeavourneo.platform.SeriesCatalog;
 
 import java.awt.GraphicsEnvironment;
 import java.util.List;
@@ -216,7 +217,10 @@ class MainWindowTest {
                 assertEquals(2, window.openCharts().size(), "two charts did not open");
                 assertNotEquals(first, second, "the second chart took the first one's name");
 
-                window.rememberCharts();
+                // The application's own exit, not an approximation of it:
+                // writing the list and freezing it are one step, and a test
+                // that did only the first was testing a sequence nothing runs.
+                window.prepareToLeave();
                 window.closeCharts();
 
                 assertEquals(0, window.openCharts().size());
@@ -229,6 +233,36 @@ class MainWindowTest {
             } finally {
                 window.closeCharts();
             }
+        });
+    }
+
+    @Test
+    @DisplayName("uma janela fechada nao volta no proximo arranque")
+    void aClosedChartStaysClosed() throws Exception {
+        // Reported: close one chart, close the program, and the chart is back.
+        // The list of what to reopen has to be pruned when a chart closes, not
+        // only when the program does.
+        onEdt(window -> {
+            String first = window.open(SeriesCatalog.defaultName());
+            String second = window.open(SeriesCatalog.defaultName());
+
+            assertEquals(2, window.openCharts().size(), "two charts did not open");
+
+            // Through the frame's own close, which is what the reader clicks --
+            // not through the map, which would prove nothing about the wiring.
+            window.chartNamed(second).close();
+
+            assertEquals(1, window.openCharts().size(), "the chart did not close");
+
+            List<String> saved = br.com.jorge.reis.endeavourneo.platform.Settings.workspace()
+                    .keysStartingWith("chart.open.").stream()
+                    .filter(k -> k.endsWith(".series"))
+                    .toList();
+
+            assertEquals(1, saved.size(),
+                    "the workspace still lists " + saved.size() + " charts to reopen");
+
+            window.closeCharts();
         });
     }
 

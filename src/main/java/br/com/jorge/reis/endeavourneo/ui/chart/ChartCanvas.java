@@ -888,6 +888,17 @@ public final class ChartCanvas extends JComponent {
         // ordinary chart has no next frame, so it folds once and lets go.
         boolean replaying = playing != null;
 
+        // Which day the replay is STANDING on, so the fold below stops one day
+        // short of it and not one day short of the list.
+        //
+        // Those are different at the only moment that matters. When a replay is
+        // dropped, nothing of the session has been revealed yet, so the last
+        // day on screen is the last day of HISTORY -- and stopping one short of
+        // the list left that day unfolded for ever, because the clock then
+        // moved into the next one and never came back. A whole session of
+        // bricks went missing without a mark.
+        java.time.LocalDate standing = replaying ? dayOfClock() : null;
+
         stopGrowing();
 
         new javax.swing.SwingWorker<
@@ -900,13 +911,17 @@ public final class ChartCanvas extends JComponent {
                         new br.com.jorge.reis.endeavourneo.domain.market.TickRenko(
                                 renko, library);
 
-                // Every session but the last, folded whole. The last one is
-                // where the replay is standing: folding it whole would lay
-                // bricks for trades that have not happened on screen yet.
-                int upTo = replaying ? days.size() - 1 : days.size();
+                // Every day BEHIND the one the replay stands on, folded whole.
+                // The one it stands on is left to advance(), which lays only
+                // what has printed by the replay's clock -- folding it whole
+                // would put bricks on screen for trades that have not happened
+                // yet.
+                for (java.time.LocalDate each : days) {
+                    if (standing != null && !each.isBefore(standing)) {
+                        break;
+                    }
 
-                for (int i = 0; i < upTo; i++) {
-                    built.add(days.get(i));
+                    built.add(each);
                 }
 
                 return built;
@@ -1049,6 +1064,29 @@ public final class ChartCanvas extends JComponent {
      * is what makes the cheap path give the same answer as the expensive
      * one.</p>
      */
+    /**
+     * @return the replay's own clock, which moves inside a bar as well as
+     *         between bars
+     *
+     * <p>The bar's timestamp is its bucket's START, so reading that would ask
+     * "what time is it" and be told 09:02 for a whole minute of market -- and
+     * the renko would have nothing new to lay until the minute turned over.
+     * That is exactly how it froze.</p>
+     */
+    private long clockNow() {
+        if (source instanceof br.com.jorge.reis.endeavourneo.domain.market.ReplaySeries live) {
+            return live.clock();
+        }
+
+        return source == null || source.size() == 0
+                ? 0L : source.timeAt(source.size() - 1);
+    }
+
+    private java.time.LocalDate dayOfClock() {
+        return java.time.Instant.ofEpochMilli(clockNow())
+                .atZone(java.time.ZoneId.systemDefault()).toLocalDate();
+    }
+
     private boolean extendBricks() {
         if (source == null || source.size() == 0) {
             return false;
@@ -1059,11 +1097,8 @@ public final class ChartCanvas extends JComponent {
         // would ask "what time is it" and be told 09:02 for a whole minute of
         // market -- and the renko would have nothing new to lay until the
         // minute turned over. That is exactly how it froze.
-        long now = source instanceof br.com.jorge.reis.endeavourneo.domain.market.ReplaySeries live
-                ? live.clock()
-                : source.timeAt(source.size() - 1);
-        java.time.LocalDate day = java.time.Instant.ofEpochMilli(now)
-                .atZone(java.time.ZoneId.systemDefault()).toLocalDate();
+        long now = clockNow();
+        java.time.LocalDate day = dayOfClock();
 
         try {
             if (growing.advancing() != null && day.isBefore(growing.advancing())) {

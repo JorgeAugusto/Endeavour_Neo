@@ -361,8 +361,10 @@ public final class ChartHolder {
 
             @Override
             public void internalFrameClosing(InternalFrameEvent e) {
-                store();
-                onClosed.run();
+                // Through close(), so the X and the programmatic path do the
+                // same things in the same order. They used to do almost the
+                // same things, and the almost is where the bug lived.
+                close();
             }
         });
 
@@ -414,8 +416,7 @@ public final class ChartHolder {
 
             @Override
             public void windowClosing(WindowEvent e) {
-                store();
-                onClosed.run();
+                close();
             }
         });
 
@@ -453,6 +454,18 @@ public final class ChartHolder {
         }
     }
 
+    /**
+     * Closes this chart and says so.
+     *
+     * <p>The saying so is the part that was missing. There are two ways a chart
+     * closes -- the frame's own X, and this -- and only the first told the shell.
+     * So a chart closed the other way stayed in the shell's list of what is
+     * open, the list was written to the workspace on exit, and the chart the
+     * reader had closed came back on the next launch.</p>
+     *
+     * <p>Safe to call twice: the shell removes by title, and removing a title
+     * that is not there does nothing.</p>
+     */
     public void close() {
         detachReplay.run();
 
@@ -463,6 +476,7 @@ public final class ChartHolder {
         store();
         detachFromDocked();
         detachFromFloating();
+        onClosed.run();
     }
 
     // ------------------------------------------------------- moving the canvas
