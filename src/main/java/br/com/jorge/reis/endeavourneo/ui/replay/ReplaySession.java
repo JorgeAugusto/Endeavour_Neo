@@ -25,6 +25,7 @@ import br.com.jorge.reis.endeavourneo.domain.market.Segment;
 import br.com.jorge.reis.endeavourneo.domain.market.SegmentedSeries;
 import br.com.jorge.reis.endeavourneo.domain.market.SyntheticTicks;
 import br.com.jorge.reis.endeavourneo.domain.market.TickLibrary;
+import br.com.jorge.reis.endeavourneo.domain.market.TickSource;
 import br.com.jorge.reis.endeavourneo.ui.chart.RandomWalkSeries;
 
 import java.time.Instant;
@@ -207,7 +208,7 @@ public final class ReplaySession {
         // they do not -- which is most days, with one month of ticks against
         // eight years of candles. Seeded by the date, like the day itself: the
         // same session has to replay the same way, wiggles included.
-        this.ticks = new TickLibrary(tickFolder, rootOf(instrument));
+        this.ticks = new TickLibrary(tickFolder, rootOf(instrument), TickSource.METATRADER);
 
         // The synthetic walk is consulted through the setting, not captured, so
         // turning it off takes effect on a replay already open instead of on

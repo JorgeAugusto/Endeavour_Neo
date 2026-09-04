@@ -21,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import br.com.jorge.reis.endeavourneo.domain.market.TickSource;
 import br.com.jorge.reis.endeavourneo.platform.SeriesCatalog;
 import br.com.jorge.reis.endeavourneo.platform.Messages;
 
@@ -219,5 +220,82 @@ class NavigatorTreeTest {
 
         assertEquals("ouro", String.valueOf(group.getUserObject()),
                 "the heading shows a missing key instead of the instrument");
+    }
+    /** A session header of that source: tag, version, day, count. */
+    private static void tickSession(Path folder, String instrument,
+            java.time.LocalDate day, TickSource source) throws IOException {
+        Path file = source.fileFor(folder, instrument, day);
+        ByteBuffer header = ByteBuffer.allocate(24).order(ByteOrder.BIG_ENDIAN);
+
+        header.put(source.tag().getBytes(StandardCharsets.US_ASCII));
+        header.putInt(1);
+        header.putInt((int) day.toEpochDay());
+        header.putLong(0);
+
+        Files.createDirectories(file.getParent());
+        Files.write(file, header.array());
+    }
+
+    @Test
+    @DisplayName("the ticks say which export they came from")
+    void bothTickSourcesAreNamed(@TempDir Path folder) throws IOException {
+        // The two hold different things -- MetaTrader has the bid and the ask,
+        // the Profit tape has both brokers and the aggressor -- so which one a
+        // day came from changes what can be asked of it. Listed together as
+        // "ticks" it would be the one thing worth knowing that the tree hides.
+        base(folder, "winfull-1m");
+
+        Path ticks = folder.resolve("ticks");
+
+        tickSession(ticks, "win", java.time.LocalDate.of(2021, 1, 4), TickSource.METATRADER);
+        tickSession(ticks, "win", java.time.LocalDate.of(2026, 9, 1), TickSource.PROFIT);
+        tickSession(ticks, "win", java.time.LocalDate.of(2026, 9, 2), TickSource.PROFIT);
+
+        SeriesCatalog.useFolderForTest(folder);
+
+        List<String> lines = leaves(Navigator.treeModel()).stream()
+                .map(each -> each[0])
+                .filter(label -> label.contains("2021") || label.contains("2026"))
+                .toList();
+
+        assertEquals(2, lines.size(), "the sources were not listed apart: " + lines);
+
+        String metatrader = lines.stream()
+                .filter(each -> each.startsWith(
+                        Messages.orElse("navigator.tickSource.metatrader", "metatrader")))
+                .findFirst().orElse(null);
+        String profit = lines.stream()
+                .filter(each -> each.startsWith(
+                        Messages.orElse("navigator.tickSource.profit", "profit")))
+                .findFirst().orElse(null);
+
+        assertNotNull(metatrader, "the MetaTrader sessions are not named: " + lines);
+        assertNotNull(profit, "the Profit sessions are not named: " + lines);
+
+        // And each counts only its own. A library that read both extensions
+        // would say "three sessions" twice and be wrong twice.
+        assertTrue(metatrader.contains("1") && metatrader.contains("2021-01-04"), metatrader);
+        assertTrue(profit.contains("2") && profit.contains("2026-09-01"), profit);
+    }
+
+    @Test
+    @DisplayName("a source with nothing exported is not listed as empty")
+    void anEmptySourceIsSilent(@TempDir Path folder) throws IOException {
+        // There is no tape on disk today, and a permanent "Profit: 0" under
+        // every instrument would be a standing reminder of nothing.
+        base(folder, "winfull-1m");
+
+        Path ticks = folder.resolve("ticks");
+
+        tickSession(ticks, "win", java.time.LocalDate.of(2021, 1, 4), TickSource.METATRADER);
+        SeriesCatalog.useFolderForTest(folder);
+
+        List<String> lines = leaves(Navigator.treeModel()).stream()
+                .map(each -> each[0])
+                .filter(label -> label.startsWith(
+                        Messages.orElse("navigator.tickSource.profit", "profit")))
+                .toList();
+
+        assertTrue(lines.isEmpty(), "an empty source was listed: " + lines);
     }
 }

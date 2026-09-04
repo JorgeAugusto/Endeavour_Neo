@@ -777,7 +777,8 @@ public final class ChartCanvas extends JComponent {
         br.com.jorge.reis.endeavourneo.domain.market.TickLibrary library =
                 new br.com.jorge.reis.endeavourneo.domain.market.TickLibrary(
                         br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.folder().resolve("ticks"),
-                        RenkoSource.rootOf(instrument));
+                        RenkoSource.rootOf(instrument),
+                        br.com.jorge.reis.endeavourneo.domain.market.TickSource.METATRADER);
 
         if (!RenkoSource.allows(source, library, false)) {
             // "false" and not the setting: this asks whether the ticks are
@@ -858,7 +859,8 @@ public final class ChartCanvas extends JComponent {
         return RenkoSource.allows(series,
                 new br.com.jorge.reis.endeavourneo.domain.market.TickLibrary(
                         br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.folder().resolve("ticks"),
-                        RenkoSource.rootOf(instrument)),
+                        RenkoSource.rootOf(instrument),
+                        br.com.jorge.reis.endeavourneo.domain.market.TickSource.METATRADER),
                 ChartPreferences.syntheticTicks());
     }
 

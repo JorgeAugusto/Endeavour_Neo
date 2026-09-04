@@ -116,6 +116,31 @@ public final class TickFile {
     }
 
     /**
+     * @param file any file
+     * @param tag the eight ASCII bytes a source stamps its sessions with
+     * @return the session's date if the file is one of that source's, else null
+     *
+     * <p>Here rather than in each source because the first twenty-four bytes
+     * are the SAME in every kind of session file this program writes -- tag,
+     * version, day, count -- and only the tag differs. A source that invented
+     * its own header would be a source whose files could not be listed by the
+     * one piece of code that lists sessions.</p>
+     */
+    public static LocalDate sessionOf(Path file, String tag) {
+        if (!Files.isRegularFile(file)) {
+            return null;
+        }
+
+        try (FileChannel channel = FileChannel.open(file, StandardOpenOption.READ)) {
+            byte[] wanted = tag.getBytes(StandardCharsets.US_ASCII);
+
+            return LocalDate.ofEpochDay(header(channel, file, wanted).epochDay);
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    /**
      * @param file a file written by {@link Writer}
      * @return every tick in it
      * @throws IOException if the file is missing, truncated or not one of ours
@@ -289,6 +314,10 @@ public final class TickFile {
     private record Header(int epochDay, int count) { }
 
     private static Header header(FileChannel channel, Path file) throws IOException {
+        return header(channel, file, MAGIC);
+    }
+
+    private static Header header(FileChannel channel, Path file, byte[] tag) throws IOException {
         ByteBuffer head = ByteBuffer.allocate(HEADER_BYTES).order(ByteOrder.BIG_ENDIAN);
 
         fill(channel, head, file);
@@ -298,8 +327,9 @@ public final class TickFile {
 
         head.get(magic);
 
-        if (!Arrays.equals(magic, MAGIC)) {
-            throw new IOException(file + ": not an Endeavour tick file");
+        if (!Arrays.equals(magic, tag)) {
+            throw new IOException(file + ": not an Endeavour "
+                    + new String(tag, StandardCharsets.US_ASCII) + " file");
         }
 
         int version = head.getInt();

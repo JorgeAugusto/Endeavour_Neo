@@ -108,7 +108,7 @@ public final class MetaTraderTicks {
                                     folder, instrument);
 
                             open = date;
-                            writer = new TickFile.Writer(fileFor(folder, instrument, date), date);
+                            writer = new TickFile.Writer(TickSource.METATRADER.fileFor(folder, instrument, date), date);
                         }
 
                         write(writer, row, inRow);
@@ -126,7 +126,7 @@ public final class MetaTraderTicks {
                     finish(written, progress, open, writer, folder, instrument);
 
                     open = date;
-                    writer = new TickFile.Writer(fileFor(folder, instrument, date), date);
+                    writer = new TickFile.Writer(TickSource.METATRADER.fileFor(folder, instrument, date), date);
                 }
 
                 write(writer, row, inRow);
@@ -159,41 +159,13 @@ public final class MetaTraderTicks {
 
         writer.close();
 
-        Session done = new Session(date, fileFor(folder, instrument, date), ticks);
+        Session done = new Session(date, TickSource.METATRADER.fileFor(folder, instrument, date), ticks);
 
         written.add(done);
 
         if (progress != null) {
             progress.accept(done);
         }
-    }
-
-    /**
-     * Where one session's ticks live: {@code <folder>/2021/01/win-2021-01-04.bin}.
-     *
-     * <h2>Why the year and the month are folders</h2>
-     *
-     * <p>A session of ticks is around ninety megabytes, so six years of them is
-     * fifteen hundred files and well over a hundred gigabytes in ONE directory.
-     * Every tool that touches it -- the file manager, a backup, a copy to
-     * another disk, this program's own listing -- then pays for the whole
-     * decade to reach one day. Split by month nothing ever holds more than
-     * twenty-three.</p>
-     *
-     * <p>The date stays in the file name as well as in the path. It is
-     * redundant on purpose: a file that gets moved, mailed or dropped into a
-     * folder by hand still says which session it is, and the one thing worse
-     * than a misplaced file is a misplaced file called {@code 04.bin}.</p>
-     *
-     * <p><b>Computed, never searched.</b> A session is found by its date, and
-     * this is the only place that turns a date into a path -- so a file that is
-     * not where its date says is a file this program does not have.</p>
-     */
-    public static Path fileFor(Path folder, String instrument, LocalDate date) {
-        return folder
-                .resolve(String.format("%04d", date.getYear()))
-                .resolve(String.format("%02d", date.getMonthValue()))
-                .resolve(instrument + "-" + date + ".bin");
     }
 
     private static LocalDate dateOf(byte[] row) {

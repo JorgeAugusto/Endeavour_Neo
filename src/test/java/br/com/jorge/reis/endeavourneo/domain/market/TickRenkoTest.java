@@ -42,7 +42,7 @@ class TickRenkoTest {
     /** A session whose trades walk through the prices given, one a second. */
     private static void session(Path folder, LocalDate date, int... prices) throws IOException {
         try (TickFile.Writer writer = new TickFile.Writer(
-                MetaTraderTicks.fileFor(folder, "winfut", date), date)) {
+                TickSource.METATRADER.fileFor(folder, "winfut", date), date)) {
 
             for (int i = 0; i < prices.length; i++) {
                 writer.add(9 * 3_600_000 + i * 1_000, 0, 0, prices[i], 1, 88,
@@ -67,7 +67,7 @@ class TickRenkoTest {
         session(folder, LocalDate.of(2021, 1, 4), monday);
         session(folder, LocalDate.of(2021, 1, 5), tuesday);
 
-        TickLibrary library = new TickLibrary(folder, "winfut");
+        TickLibrary library = new TickLibrary(folder, "winfut", TickSource.METATRADER);
 
         try {
             PriceSeries inPieces = TickRenko.over(new Renko(10, 2), library,
@@ -104,7 +104,7 @@ class TickRenkoTest {
 
         session(folder, day, 100, 110, 120, 130, 140, 150, 160);
 
-        TickLibrary library = new TickLibrary(folder, "winfut");
+        TickLibrary library = new TickLibrary(folder, "winfut", TickSource.METATRADER);
 
         try {
             TickRenko half = new TickRenko(new Renko(10, 2), library);
@@ -139,7 +139,7 @@ class TickRenkoTest {
         session(folder, LocalDate.of(2021, 1, 4), 100, 110, 120);
         session(folder, LocalDate.of(2021, 1, 5), 130, 140);
 
-        TickLibrary library = new TickLibrary(folder, "winfut");
+        TickLibrary library = new TickLibrary(folder, "winfut", TickSource.METATRADER);
 
         try {
             TickRenko building = new TickRenko(new Renko(10, 2), library);
@@ -163,7 +163,7 @@ class TickRenkoTest {
         session(folder, LocalDate.of(2021, 1, 5), 121);
         session(folder, LocalDate.of(2021, 1, 6), 130, 140);
 
-        TickLibrary library = new TickLibrary(folder, "winfut");
+        TickLibrary library = new TickLibrary(folder, "winfut", TickSource.METATRADER);
 
         try {
             PriceSeries withGap = TickRenko.over(new Renko(10, 2), library,
@@ -185,7 +185,7 @@ class TickRenkoTest {
         LocalDate day = LocalDate.of(2021, 1, 4);
 
         try (TickFile.Writer writer = new TickFile.Writer(
-                MetaTraderTicks.fileFor(folder, "winfut", day), day)) {
+                TickSource.METATRADER.fileFor(folder, "winfut", day), day)) {
 
             writer.add(9 * 3_600_000, 0, 0, 100, 1, 88,
                     TickFile.Writer.mask(false, false, true, true));
@@ -196,7 +196,7 @@ class TickRenkoTest {
                     TickFile.Writer.mask(false, false, true, true));
         }
 
-        TickLibrary library = new TickLibrary(folder, "winfut");
+        TickLibrary library = new TickLibrary(folder, "winfut", TickSource.METATRADER);
 
         try {
             TickSeries session = library.load(day);

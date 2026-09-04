@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import br.com.jorge.reis.endeavourneo.domain.market.MetaTraderTicks;
+import br.com.jorge.reis.endeavourneo.domain.market.TickSource;
 import br.com.jorge.reis.endeavourneo.domain.market.TickFile;
 
 import java.io.IOException;
@@ -48,7 +48,7 @@ class FirstSessionTest {
 
     private static void session(Path folder, LocalDate date) throws IOException {
         try (TickFile.Writer writer = new TickFile.Writer(
-                MetaTraderTicks.fileFor(folder, "win", date), date)) {
+                TickSource.METATRADER.fileFor(folder, "win", date), date)) {
 
             for (int i = 0; i < 200; i++) {
                 writer.add(9 * 3_600_000 + i * 100, 0, 0, 118_000 + i % 7, 1, 88,

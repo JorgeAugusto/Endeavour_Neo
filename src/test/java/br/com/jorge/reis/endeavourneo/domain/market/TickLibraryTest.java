@@ -47,7 +47,7 @@ class TickLibraryTest {
     /** A session of a few trades, a second apart from 09:00. */
     private static void session(Path folder, LocalDate date, int from) throws IOException {
         try (TickFile.Writer writer = new TickFile.Writer(
-                MetaTraderTicks.fileFor(folder, "winfut", date), date)) {
+                TickSource.METATRADER.fileFor(folder, "winfut", date), date)) {
 
             for (int i = 0; i < 5; i++) {
                 writer.add(9 * 3_600_000 + i * 1_000,
@@ -79,7 +79,7 @@ class TickLibraryTest {
             session(folder, LocalDate.of(2021, 1, day), 118_000 + day);
         }
 
-        TickLibrary library = new TickLibrary(folder, "winfut");
+        TickLibrary library = new TickLibrary(folder, "winfut", TickSource.METATRADER);
 
         try {
             for (int day = 4; day <= 15; day++) {
@@ -109,7 +109,7 @@ class TickLibraryTest {
             session(folder, LocalDate.of(2021, 1, day), 118_000 + day);
         }
 
-        TickLibrary library = new TickLibrary(folder, "winfut");
+        TickLibrary library = new TickLibrary(folder, "winfut", TickSource.METATRADER);
 
         try {
             library.request(LocalDate.of(2021, 1, 6));
@@ -138,7 +138,7 @@ class TickLibraryTest {
             session(folder, LocalDate.of(2021, 1, day), 118_000 + day);
         }
 
-        TickLibrary library = new TickLibrary(folder, "winfut");
+        TickLibrary library = new TickLibrary(folder, "winfut", TickSource.METATRADER);
 
         try {
             library.request(LocalDate.of(2021, 1, 6));
@@ -171,7 +171,7 @@ class TickLibraryTest {
         // caller draws a synthetic path for that one frame.
         session(folder, LocalDate.of(2021, 1, 4), 118_000);
 
-        TickLibrary library = new TickLibrary(folder, "winfut");
+        TickLibrary library = new TickLibrary(folder, "winfut", TickSource.METATRADER);
 
         try {
             assertNull(library.at(LocalDate.of(2021, 1, 4)),
@@ -193,7 +193,7 @@ class TickLibraryTest {
     void anAbsentSessionIsNotAFailure(@TempDir Path folder) throws Exception {
         session(folder, LocalDate.of(2021, 1, 4), 118_000);
 
-        TickLibrary library = new TickLibrary(folder, "winfut");
+        TickLibrary library = new TickLibrary(folder, "winfut", TickSource.METATRADER);
 
         try {
             assertFalse(library.has(LocalDate.of(2021, 6, 1)));
@@ -216,7 +216,7 @@ class TickLibraryTest {
         session(folder, LocalDate.of(2021, 1, 4), 118_004);
         session(folder, LocalDate.of(2021, 1, 5), 118_005);
 
-        TickLibrary library = new TickLibrary(folder, "winfut");
+        TickLibrary library = new TickLibrary(folder, "winfut", TickSource.METATRADER);
 
         try {
             assertEquals(List.of(LocalDate.of(2021, 1, 4), LocalDate.of(2021, 1, 5),
@@ -232,7 +232,7 @@ class TickLibraryTest {
         LocalDate date = LocalDate.of(2021, 1, 4);
 
         try (TickFile.Writer writer = new TickFile.Writer(
-                MetaTraderTicks.fileFor(folder, "winfut", date), date)) {
+                TickSource.METATRADER.fileFor(folder, "winfut", date), date)) {
 
             // Two minutes of trades: 118000..118002 in the first, 118010..118011
             // in the second. A bar must take its own and not its neighbour's.
@@ -243,7 +243,7 @@ class TickLibraryTest {
             writer.add(9 * 3_600_000 + 70_000, 0, 0, 118_011, 1, 88, trade());
         }
 
-        TickLibrary library = new TickLibrary(folder, "winfut");
+        TickLibrary library = new TickLibrary(folder, "winfut", TickSource.METATRADER);
 
         try {
             library.request(date);
@@ -267,7 +267,7 @@ class TickLibraryTest {
     @DisplayName("without ticks the bar falls back, and says it was not recorded")
     void withoutTicksItFallsBack(@TempDir Path folder) throws Exception {
         LocalDate date = LocalDate.of(2021, 1, 4);
-        TickLibrary library = new TickLibrary(folder, "winfut");
+        TickLibrary library = new TickLibrary(folder, "winfut", TickSource.METATRADER);
 
         try {
             AtomicInteger asked = new AtomicInteger();
@@ -292,7 +292,7 @@ class TickLibraryTest {
     @DisplayName("refusing the fallback draws nothing rather than a guess")
     void theFallbackCanBeRefused(@TempDir Path folder) throws Exception {
         // For a reader who would rather see no path than an invented one.
-        TickLibrary library = new TickLibrary(folder, "winfut");
+        TickLibrary library = new TickLibrary(folder, "winfut", TickSource.METATRADER);
 
         try {
             RecordedTicks ticks = new RecordedTicks(library, null, ZONE);
@@ -353,11 +353,11 @@ class TickLibraryTest {
         // one playable session.
         session(folder, LocalDate.of(2021, 1, 4), 118_000);
 
-        TickLibrary library = new TickLibrary(folder, "winfut");
+        TickLibrary library = new TickLibrary(folder, "winfut", TickSource.METATRADER);
 
         assertEquals(List.of(LocalDate.of(2021, 1, 4)), library.exported());
 
-        Path where = MetaTraderTicks.fileFor(folder, "winfut", LocalDate.of(2021, 1, 4));
+        Path where = TickSource.METATRADER.fileFor(folder, "winfut", LocalDate.of(2021, 1, 4));
         Path wrong = folder.resolve("2021").resolve("02").resolve(where.getFileName());
 
         Files.createDirectories(wrong.getParent());

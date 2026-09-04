@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import br.com.jorge.reis.endeavourneo.domain.market.MetaTraderTicks;
+import br.com.jorge.reis.endeavourneo.domain.market.TickSource;
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
 import br.com.jorge.reis.endeavourneo.domain.market.Renko;
 import br.com.jorge.reis.endeavourneo.domain.market.TickFile;
@@ -97,7 +97,7 @@ class TickRenkoOnChartTest {
         int[] prices = path();
 
         try (TickFile.Writer writer = new TickFile.Writer(
-                MetaTraderTicks.fileFor(folder.resolve("ticks"), "win", DAY), DAY)) {
+                TickSource.METATRADER.fileFor(folder.resolve("ticks"), "win", DAY), DAY)) {
 
             for (int i = 0; i < prices.length; i++) {
                 writer.add(9 * 3_600_000 + i * 1_000, 0, 0, prices[i], 1, 88,

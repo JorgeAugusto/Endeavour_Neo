@@ -65,6 +65,15 @@ public final class TickLibrary {
     private final String instrument;
 
     /**
+     * Which export these sessions came from.
+     *
+     * <p>A library holds one source. The two hold different things -- quotes
+     * against the tape -- and a library that mixed them would answer "yes, I
+     * have that day" without saying which of the two days it has.</p>
+     */
+    private final TickSource source;
+
+    /**
      * What is loaded, newest use last.
      *
      * <p>Access is synchronised on the map itself. It is touched by the loader
@@ -93,9 +102,15 @@ public final class TickLibrary {
 
     private volatile Runnable whenLoaded = () -> { };
 
-    public TickLibrary(Path folder, String instrument) {
+    public TickLibrary(Path folder, String instrument, TickSource source) {
         this.folder = folder;
         this.instrument = instrument;
+        this.source = source;
+    }
+
+    /** @return which export this library reads */
+    public TickSource source() {
+        return source;
     }
 
     /** @param watcher told, on the loader's thread, whenever a session arrives */
@@ -104,12 +119,12 @@ public final class TickLibrary {
     }
 
     public Path fileFor(LocalDate day) {
-        return MetaTraderTicks.fileFor(folder, instrument, day);
+        return source.fileFor(folder, instrument, day);
     }
 
     /** @return whether that session was exported, without reading it */
     public boolean has(LocalDate day) {
-        return TickFile.isTicks(fileFor(day));
+        return day.equals(source.sessionIn(fileFor(day)));
     }
 
     /**
@@ -267,18 +282,16 @@ public final class TickLibrary {
         try (var files = Files.walk(folder, 3)) {
             files.filter(file -> file.getFileName().toString()
                             .startsWith(instrument + "-"))
-                    .filter(TickFile::isTicks)
                     .forEach(file -> {
-                        try {
-                            LocalDate day = TickFile.dateOf(file);
+                        LocalDate day = source.sessionIn(file);
 
-                            if (fileFor(day).toAbsolutePath()
-                                    .equals(file.toAbsolutePath())) {
-                                days.add(day);
-                            }
-                        } catch (IOException ignored) {
-                            // Listed and then unreadable: it was deleted between
-                            // the two, which is not worth a message.
+                        // Null covers all three ways a file is not ours: the
+                        // other source's extension, a tag we do not write, and
+                        // a file that was deleted between the listing and the
+                        // read. None of them is worth a message.
+                        if (day != null && fileFor(day).toAbsolutePath()
+                                .equals(file.toAbsolutePath())) {
+                            days.add(day);
                         }
                     });
         } catch (IOException e) {

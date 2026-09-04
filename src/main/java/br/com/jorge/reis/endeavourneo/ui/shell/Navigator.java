@@ -248,12 +248,20 @@ public final class Navigator extends JPanel {
     }
 
     /**
-     * @return that instrument's exported tick sessions, or null when it has none
+     * @return that instrument's tick sessions, by source, or null when it has none
      *
-     * <p>Listed because they are the difference between a renko that means
-     * something and one built from candles, and there is no other way to see
-     * which days have them. They open nothing: a tick session is what a series
-     * is replayed FROM, not a chart of its own.</p>
+     * <p>One line per SOURCE, because the two hold different things and which
+     * one a day came from changes what can be asked of it: the MetaTrader
+     * export has the bid and the ask, the Profit tape has both brokers and the
+     * aggressor, and neither has the other's. Listing them together as "ticks"
+     * would hide the only thing worth knowing before opening one.</p>
+     *
+     * <p>A source with no sessions is not listed at all rather than listed as
+     * empty. There is no tape on disk today, and a "Profit: 0" sitting under
+     * every instrument would be a permanent reminder of nothing.</p>
+     *
+     * <p>They open nothing: a tick session is what a series is replayed FROM,
+     * not a chart of its own.</p>
      */
     private static DefaultMutableTreeNode tickSessions(String instrument) {
         java.nio.file.Path folder = SeriesCatalog.folder().resolve("ticks");
@@ -262,21 +270,27 @@ public final class Navigator extends JPanel {
             return null;
         }
 
-        List<java.time.LocalDate> days =
-                new br.com.jorge.reis.endeavourneo.domain.market.TickLibrary(
-                        folder, instrument).exported();
-
-        if (days.isEmpty()) {
-            return null;
-        }
-
         DefaultMutableTreeNode node =
                 new DefaultMutableTreeNode(Messages.get("navigator.ticks"));
 
-        node.add(new DefaultMutableTreeNode(new Leaf(null,
-                Messages.get("navigator.tickSessions", String.valueOf(days.size()),
-                        days.get(0).toString(), days.get(days.size() - 1).toString()))));
+        for (br.com.jorge.reis.endeavourneo.domain.market.TickSource source
+                : br.com.jorge.reis.endeavourneo.domain.market.TickSource.values()) {
+            List<java.time.LocalDate> days =
+                    new br.com.jorge.reis.endeavourneo.domain.market.TickLibrary(
+                            folder, instrument, source).exported();
 
-        return node;
+            if (days.isEmpty()) {
+                continue;
+            }
+
+            node.add(new DefaultMutableTreeNode(new Leaf(null,
+                    Messages.get("navigator.tickSessions",
+                            Messages.orElse("navigator.tickSource." + source.key(),
+                                    source.key()),
+                            String.valueOf(days.size()),
+                            days.get(0).toString(), days.get(days.size() - 1).toString()))));
+        }
+
+        return node.getChildCount() == 0 ? null : node;
     }
 }
