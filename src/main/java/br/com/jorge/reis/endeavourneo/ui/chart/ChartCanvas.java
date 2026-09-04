@@ -1054,7 +1054,14 @@ public final class ChartCanvas extends JComponent {
             return false;
         }
 
-        long now = source.timeAt(source.size() - 1);
+        // The replay's own clock, which moves inside a bar as well as between
+        // bars. The bar's timestamp is its bucket's START, so reading that
+        // would ask "what time is it" and be told 09:02 for a whole minute of
+        // market -- and the renko would have nothing new to lay until the
+        // minute turned over. That is exactly how it froze.
+        long now = source instanceof br.com.jorge.reis.endeavourneo.domain.market.ReplaySeries live
+                ? live.clock()
+                : source.timeAt(source.size() - 1);
         java.time.LocalDate day = java.time.Instant.ofEpochMilli(now)
                 .atZone(java.time.ZoneId.systemDefault()).toLocalDate();
 

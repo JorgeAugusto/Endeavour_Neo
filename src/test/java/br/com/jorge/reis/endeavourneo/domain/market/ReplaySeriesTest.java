@@ -168,4 +168,30 @@ class ReplaySeriesTest {
         assertEquals(10, new ReplaySeries(day(), 999).size());
         assertEquals(0, new ReplaySeries(day(), -5).size());
     }
+    @Test
+    @DisplayName("o relogio anda DENTRO da barra, nao so entre barras")
+    void theClockMovesInsideTheBar() {
+        // What froze the tick renko. A bar carries the time its bucket STARTS,
+        // so a clock that only read bar times sat still for a whole minute and
+        // jumped -- and the renko, asking what time it was, got the same answer
+        // sixty seconds running and had nothing new to lay.
+        ReplaySeries live = new ReplaySeries(day(), 0,
+                (day, index) -> new double[]{100, 101, 102, 103, 104, 105, 106, 107});
+
+        // A quarter of a bar at a time, twice, staying inside the first one --
+        // a whole bar would finish it and the clock would move to the next,
+        // which it should, and which is not what this is about.
+        live.advanceMarketTime(15_000);
+
+        long started = live.clock();
+
+        live.advanceMarketTime(15_000);
+
+        long later = live.clock();
+
+        assertTrue(later > started,
+                "the clock did not move inside the bar: " + started + " then " + later);
+        assertTrue(later - started < 60_000,
+                "a quarter of a bar moved the clock a whole bar: " + (later - started));
+    }
 }

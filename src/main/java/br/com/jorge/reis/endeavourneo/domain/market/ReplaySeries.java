@@ -273,7 +273,18 @@ public final class ReplaySeries implements PriceSeries {
         seek(origin + (int) Math.round(clamped * (day.size() - origin)));
     }
 
-    /** @return the instant the session would show on its clock right now */
+    /**
+     * @return the instant the session would show on its clock right now
+     *
+     * <p><b>Inside the bar as well as between bars.</b> A bar carries the time
+     * its bucket STARTS, so a clock that only read bar times would sit still
+     * for a whole minute and jump — and anything driving off it would sit still
+     * with it. That is what froze the tick renko: it asked what time it was,
+     * got 09:02 for sixty seconds of market, and had nothing new to lay.</p>
+     *
+     * <p>The forming bar knows how far along its own path it is, so the answer
+     * is the bucket's start plus that fraction of the bar.</p>
+     */
     public long clock() {
         if (day.size() == 0) {
             return 0L;
@@ -282,7 +293,17 @@ public final class ReplaySeries implements PriceSeries {
         // Before anything arrives, the session's opening time -- not 1970, which
         // is what a bare zero would render as while the reader decides whether
         // to press play.
-        return size() == 0 ? day.timeAt(0) : day.timeAt(size() - 1);
+        if (size() == 0) {
+            return day.timeAt(0);
+        }
+
+        long start = day.timeAt(size() - 1);
+
+        if (path == null || path.length <= 1) {
+            return start;
+        }
+
+        return start + (long) ((double) cursor / path.length * barMillis);
     }
 
     private int clamp(int bar) {
