@@ -1125,7 +1125,9 @@ public final class ChartCanvas extends JComponent {
             return false;
         }
 
-        this.series = growing.bricks();
+        // live(), not bricks(): the one still being built belongs on screen.
+        // Showing only the settled ones is what made the replay jump.
+        this.series = growing.live();
         this.fromTicks = true;
 
         return true;

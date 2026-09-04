@@ -72,6 +72,11 @@ public final class TickRenko {
 
     private int advanced;
 
+    /** The brick still being built at the live edge, and when it was last moved. */
+    private double[] forming;
+
+    private long formingStamp;
+
     /**
      * @param renko the brick size and reversal; its forming brick is ignored
      * @param library where the sessions come from
@@ -187,7 +192,73 @@ public final class TickRenko {
 
         advanced = upTo;
 
+        // The live edge. Without it the chart moves only when a whole brick
+        // closes, which reads as "it froze and now it jumps" -- and that is
+        // exactly how it was reported, because the renko it replaced draws this
+        // brick on every pass.
+        double price = advancingBars.closeAt(upTo - 1);
+
+        forming = carry == null ? null : renko.withForming(true).formingAt(carry, price);
+        formingStamp = advancingBars.timeAt(upTo - 1);
+
         return laid;
+    }
+
+    /**
+     * @return the bricks as a chart should show them right now
+     *
+     * <p>The settled ones plus the one still being built. Apart from {@link
+     * #bricks} because the forming brick is provisional: it belongs on screen
+     * and it must never be counted as laid, compared against a finished renko,
+     * or carried into the next stretch.</p>
+     */
+    public PriceSeries live() {
+        PriceSeries settled = bricks();
+
+        if (forming == null) {
+            return settled;
+        }
+
+        double[] edge = forming;
+        long when = formingStamp;
+
+        return new PriceSeries() {
+
+            @Override
+            public int size() {
+                return settled.size() + 1;
+            }
+
+            @Override
+            public long timeAt(int index) {
+                return index < settled.size() ? settled.timeAt(index) : when;
+            }
+
+            @Override
+            public double openAt(int index) {
+                return index < settled.size() ? settled.openAt(index) : edge[0];
+            }
+
+            @Override
+            public double highAt(int index) {
+                return index < settled.size() ? settled.highAt(index) : edge[1];
+            }
+
+            @Override
+            public double lowAt(int index) {
+                return index < settled.size() ? settled.lowAt(index) : edge[2];
+            }
+
+            @Override
+            public double closeAt(int index) {
+                return index < settled.size() ? settled.closeAt(index) : edge[3];
+            }
+
+            @Override
+            public double volumeAt(int index) {
+                return index < settled.size() ? settled.volumeAt(index) : edge[4];
+            }
+        };
     }
 
     /** @return the session being advanced through, or null before the first */

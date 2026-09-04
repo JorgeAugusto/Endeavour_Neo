@@ -359,4 +359,89 @@ class TickRenkoTest {
             library.close();
         }
     }
+    @Test
+    @DisplayName("a borda viva se move a cada quadro, mesmo sem fechar tijolo")
+    void theLiveEdgeMovesEveryFrame(@TempDir Path folder) throws IOException {
+        // Reported from the screen: "it animates the current candle, then it
+        // freezes and shows in jumps". The jumps were the settled bricks: with
+        // no brick still being built, the chart only moved when a whole one
+        // closed. The renko it replaced draws that brick on every pass, which
+        // is why leaving renko for minutes looked like the fix.
+        session(folder, DAY, WALK);
+
+        TickLibrary library = new TickLibrary(folder, "winfut", TickSource.METATRADER);
+
+        try {
+            TickRenko renko = new TickRenko(new Renko(10, 2), library);
+            TickSeries ticks = library.load(DAY);
+
+            long first = ticks.timeAt(0);
+            long last = ticks.timeAt(ticks.size() - 1);
+
+            int moved = 0;
+            int laid = 0;
+            double before = Double.NaN;
+            int settled = 0;
+
+            for (int i = 1; i <= 40; i++) {
+                renko.advance(DAY, first + (last - first + 1) * i / 40 + 1);
+
+                PriceSeries live = renko.live();
+
+                assertEquals(renko.size() + 1, live.size(),
+                        "the live edge is not on top of the settled bricks");
+
+                double now = live.closeAt(live.size() - 1);
+
+                if (!Double.isNaN(before) && now != before) {
+                    moved++;
+                }
+
+                if (renko.size() > settled) {
+                    laid++;
+                }
+
+                before = now;
+                settled = renko.size();
+            }
+
+            assertTrue(moved > laid, "the edge moved " + moved + " times and "
+                    + laid + " bricks closed -- it is only moving when one does");
+        } finally {
+            library.close();
+        }
+    }
+
+    @Test
+    @DisplayName("o tijolo em formacao nunca conta como assentado")
+    void theFormingBrickIsNeverCounted(@TempDir Path folder) throws IOException {
+        // It belongs on screen and nowhere else. Counted as laid it would make
+        // a replayed renko disagree with the same renko opened afterwards, by
+        // exactly one brick, for ever.
+        session(folder, DAY, WALK);
+
+        TickLibrary library = new TickLibrary(folder, "winfut", TickSource.METATRADER);
+
+        try {
+            TickRenko live = new TickRenko(new Renko(10, 2), library);
+
+            for (int i = 1; i <= 20; i++) {
+                live.advance(DAY, Long.MIN_VALUE + 1);
+            }
+
+            live.advance(DAY, Long.MAX_VALUE);
+
+            TickRenko whole = new TickRenko(new Renko(10, 2), library);
+
+            whole.add(DAY);
+
+            assertEquals(whole.size(), live.size(),
+                    "the forming brick was counted among the settled ones");
+            assertEquals(whole.bricks().size(), live.bricks().size());
+            assertEquals(whole.size() + 1, live.live().size(),
+                    "the live view lost its edge");
+        } finally {
+            library.close();
+        }
+    }
 }

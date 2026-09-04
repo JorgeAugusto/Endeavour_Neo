@@ -219,6 +219,35 @@ public final class Renko implements Aggregation {
      */
     public record Continued(PriceSeries bricks, Carry carry) { }
 
+    /**
+     * @param carry where the renko stands
+     * @param now the price right now
+     * @return the brick still being built, as {open, high, low, close, volume}
+     *
+     * <p>Here so there is ONE of it. The renko draws this brick at the end of a
+     * pass; a renko being fed a replay has to draw it every frame, from the
+     * carry it is holding rather than from a pass it is not making. Two
+     * implementations of the same brick is two chances for the live edge to
+     * disagree with the finished chart.</p>
+     *
+     * <p><b>Always returned, even at no height.</b> The first version only drew
+     * it once it had grown past a twentieth of a brick, and that was a defect
+     * reported from the screen: price wanders across the level, the partial
+     * brick appears and vanishes, the bar count changes and the whole chart
+     * shifts sideways. The chart trembled. A brick of no height is a flat mark
+     * at the level, which is what "price is exactly on the level" looks
+     * like.</p>
+     */
+    public double[] formingAt(Carry carry, double now) {
+        double anchor = carry.anchor();
+        double top = wicks ? Math.max(carry.sinceHigh(), Math.max(anchor, now))
+                : Math.max(anchor, now);
+        double bottom = wicks ? Math.min(carry.sinceLow(), Math.min(anchor, now))
+                : Math.min(anchor, now);
+
+        return new double[]{anchor, top, bottom, now, carry.pending()};
+    }
+
     @Override
     public PriceSeries apply(PriceSeries source) {
         return applyFrom(source, null).bricks();
@@ -360,10 +389,10 @@ public final class Renko implements Aggregation {
 
         if (forming) {
             double now = source.closeAt(source.size() - 1);
-            double top = wicks ? Math.max(sinceHigh, Math.max(anchor, now))
-                    : Math.max(anchor, now);
-            double bottom = wicks ? Math.min(sinceLow, Math.min(anchor, now))
-                    : Math.min(anchor, now);
+            double[] shape = formingAt(
+                    new Carry(anchor, direction, sinceLow, sinceHigh, pending), now);
+            double top = shape[1];
+            double bottom = shape[2];
 
             // ALWAYS, even at no height at all. The first version only drew it
             // when it had grown past a twentieth of a brick, and that was a
