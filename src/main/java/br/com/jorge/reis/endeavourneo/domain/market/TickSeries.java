@@ -93,6 +93,61 @@ public interface TickSeries {
      * is — a trade at the bid, a trade at the ask, a new quote. Eight distinct
      * values appear in January 2021. Dropping them would make the file smaller
      * and the book impossible to rebuild.</p>
+     *
+     * <p>Zero from a source that has no such column. The tape is one: it
+     * carries the {@link Aggressor} instead, which is the same question
+     * answered better.</p>
      */
     int flagsAt(int index);
+
+    // ------------------------------------------------------------ the tape
+    //
+    // Defaults that say "no", so a source that does not carry these needs no
+    // code at all to decline them -- and so anything reading a series can ASK
+    // rather than having to know which source it was handed. That is the whole
+    // seam between the two formats: renko, bars and replay only ever want the
+    // traded price, and what wants the difference asks for it.
+
+    /** @return whether the row names who bought */
+    default boolean hasBuyer(int index) {
+        return false;
+    }
+
+    /** @return the buying broker's code; see {@link #brokerName} */
+    default int buyerAt(int index) {
+        throw new IllegalStateException("this source does not name the buyer");
+    }
+
+    /** @return whether the row names who sold */
+    default boolean hasSeller(int index) {
+        return false;
+    }
+
+    /** @return the selling broker's code; see {@link #brokerName} */
+    default int sellerAt(int index) {
+        throw new IllegalStateException("this source does not name the seller");
+    }
+
+    /** @return whether the row says which side crossed */
+    default boolean hasAggressor(int index) {
+        return false;
+    }
+
+    /** @return which side crossed the spread */
+    default Aggressor aggressorAt(int index) {
+        throw new IllegalStateException("this source does not say who crossed");
+    }
+
+    /**
+     * @return what that broker code is called, or null if this source does not
+     *         know
+     *
+     * <p>A lookup on the series and not a field on the row, because the name is
+     * the same on every one of five million rows. Kept once at the end of the
+     * file and read back into a map; storing it per trade would be a hundred
+     * megabytes of the same thirty-one strings.</p>
+     */
+    default String brokerName(int code) {
+        return null;
+    }
 }
