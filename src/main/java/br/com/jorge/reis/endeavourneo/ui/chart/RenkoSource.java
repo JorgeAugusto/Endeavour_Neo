@@ -23,7 +23,9 @@ import br.com.jorge.reis.endeavourneo.domain.market.TickLibrary;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -106,14 +108,44 @@ final class RenkoSource {
         return true;
     }
 
-    /** @return the instrument without the scale: winfut-1m names winfut sessions */
-    static String rootOf(String name) {
-        if (name == null) {
-            return "";
+    /**
+     * @return the sessions the series covers, in order
+     *
+     * <p>Walked once, and the calendar is only asked where the day changes: a
+     * conversion per bar would be 825 thousand of them on the full source.</p>
+     */
+    static List<LocalDate> sessionsIn(PriceSeries series) {
+        List<LocalDate> days = new ArrayList<>();
+
+        if (series == null) {
+            return days;
         }
 
-        int dash = name.indexOf('-');
+        ZoneId zone = ZoneId.systemDefault();
+        LocalDate seen = null;
 
-        return dash > 0 ? name.substring(0, dash) : name;
+        for (int i = 0; i < series.size(); i++) {
+            LocalDate day = Instant.ofEpochMilli(series.timeAt(i)).atZone(zone).toLocalDate();
+
+            if (!day.equals(seen)) {
+                seen = day;
+
+                days.add(day);
+            }
+        }
+
+        return days;
+    }
+
+    /**
+     * @return the market whose tick sessions to look for
+     *
+     * <p>The market and not the export: {@code winfull-1m}, {@code winn-1m} and
+     * {@code winfut-1m} all read {@code win-2021-01-04.bin}, because the ticks
+     * of a day are what the exchange printed and not what one export stitched.
+     * </p>
+     */
+    static String rootOf(String name) {
+        return br.com.jorge.reis.endeavourneo.platform.Bases.groupOf(name);
     }
 }

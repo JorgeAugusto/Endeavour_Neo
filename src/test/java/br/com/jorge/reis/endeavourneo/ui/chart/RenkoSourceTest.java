@@ -44,7 +44,7 @@ class RenkoSourceTest {
 
     private static void session(Path folder, LocalDate date) throws IOException {
         try (TickFile.Writer writer = new TickFile.Writer(
-                MetaTraderTicks.fileFor(folder, "winfut", date), date)) {
+                MetaTraderTicks.fileFor(folder, "win", date), date)) {
 
             writer.add(9 * 3_600_000, 0, 0, 118_000, 1, 88,
                     TickFile.Writer.mask(false, false, true, true));
@@ -103,7 +103,7 @@ class RenkoSourceTest {
     void fillingInAllowsAnything(@TempDir Path folder) {
         // The default, and it has to be: one month of the base has ticks and
         // eight years do not.
-        TickLibrary library = new TickLibrary(folder, "winfut");
+        TickLibrary library = new TickLibrary(folder, "win");
 
         try {
             assertTrue(RenkoSource.allows(over(LocalDate.of(2024, 5, 6)), library, true));
@@ -115,7 +115,7 @@ class RenkoSourceTest {
     @Test
     @DisplayName("with filling in turned off, a day with no export refuses renko")
     void withoutTicksItIsRefused(@TempDir Path folder) {
-        TickLibrary library = new TickLibrary(folder, "winfut");
+        TickLibrary library = new TickLibrary(folder, "win");
 
         try {
             assertFalse(RenkoSource.allows(over(LocalDate.of(2024, 5, 6)), library, false),
@@ -134,7 +134,7 @@ class RenkoSourceTest {
         session(folder, LocalDate.of(2021, 1, 4));
         session(folder, LocalDate.of(2021, 1, 5));
 
-        TickLibrary library = new TickLibrary(folder, "winfut");
+        TickLibrary library = new TickLibrary(folder, "win");
 
         try {
             assertTrue(RenkoSource.allows(
@@ -150,12 +150,14 @@ class RenkoSourceTest {
     }
 
     @Test
-    @DisplayName("the sessions are found by instrument, without the scale")
-    void theScaleIsNotPartOfTheName() {
-        // winfut-1m is the chart; winfut-2021-01-04.bin is the session. Getting
-        // this wrong makes every day look unexported.
-        assertEquals("winfut", RenkoSource.rootOf("winfut-1m"));
-        assertEquals("winn", RenkoSource.rootOf("winn-1m"));
+    @DisplayName("the sessions are found by market, not by which export is on screen")
+    void theSessionsBelongToTheMarket() {
+        // win-2021-01-04.bin is read by a chart of winfull, of winn or of
+        // winfut alike: the ticks of a day belong to the exchange, not to the
+        // export that stitched them.
+        assertEquals("win", RenkoSource.rootOf("winfull-1m"));
+        assertEquals("win", RenkoSource.rootOf("winn-1m"));
+        assertEquals("win", RenkoSource.rootOf("winfut-1m"));
         assertEquals("", RenkoSource.rootOf(null));
     }
 
@@ -165,7 +167,7 @@ class RenkoSourceTest {
         // A series of no bars trivially has ticks for every session it shows,
         // which is true and useless. Refusing is the answer that cannot be read
         // as "yes, this is built from ticks".
-        TickLibrary library = new TickLibrary(folder, "winfut");
+        TickLibrary library = new TickLibrary(folder, "win");
 
         try {
             assertFalse(RenkoSource.allows(over(), library, false));

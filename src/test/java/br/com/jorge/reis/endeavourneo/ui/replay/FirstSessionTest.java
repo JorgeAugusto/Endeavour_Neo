@@ -48,7 +48,7 @@ class FirstSessionTest {
 
     private static void session(Path folder, LocalDate date) throws IOException {
         try (TickFile.Writer writer = new TickFile.Writer(
-                MetaTraderTicks.fileFor(folder, "winfut", date), date)) {
+                MetaTraderTicks.fileFor(folder, "win", date), date)) {
 
             for (int i = 0; i < 200; i++) {
                 writer.add(9 * 3_600_000 + i * 100, 0, 0, 118_000 + i % 7, 1, 88,
@@ -118,14 +118,20 @@ class FirstSessionTest {
     }
 
     @Test
-    @DisplayName("the tick files are named after the instrument, not the scale")
-    void theScaleIsNotPartOfTheName() {
-        // The chart calls its series winfut-1m; the sessions are
-        // winfut-2021-01-04.bin. Getting this wrong means every day looks
-        // unexported and the replay is silently synthetic for ever.
-        assertEquals("winfut", ReplaySession.rootOf("winfut-1m"));
-        assertEquals("winn", ReplaySession.rootOf("winn-1m"));
-        assertEquals("winfut", ReplaySession.rootOf("winfut"));
+    @DisplayName("the tick files are named after the MARKET, not after the export")
+    void theSessionsBelongToTheMarket() {
+        // The ticks of a day are what the exchange printed. Three exports of
+        // the WIN read the same win-2021-01-04.bin, because none of them owns
+        // those ticks.
+        //
+        // The first version cut the name at the first dash, which gave
+        // "winfut" -- right by accident while the only base with ticks was
+        // called that, and wrong the moment the source was renamed to
+        // winfull-1m. Every day would then look unexported and the replay
+        // would be synthetic for ever, in silence.
+        assertEquals("win", ReplaySession.rootOf("winfull-1m"));
+        assertEquals("win", ReplaySession.rootOf("winn-1m"));
+        assertEquals("win", ReplaySession.rootOf("winfut-1m"));
         assertEquals("", ReplaySession.rootOf(null));
     }
 

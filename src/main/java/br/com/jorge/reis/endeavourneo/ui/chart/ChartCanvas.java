@@ -275,6 +275,14 @@ public final class ChartCanvas extends JComponent {
     /** What this chart shows, so its tick sessions can be found by name. */
     private transient String instrument;
 
+    /**
+     * Whether what is on screen was built from recorded ticks.
+     *
+     * <p>Worth showing the reader. A renko of candles and a renko of ticks wear
+     * the same name and the same brick size and are not the same chart.</p>
+     */
+    private transient boolean fromTicks;
+
     private int firstBar;
 
     /**
@@ -749,6 +757,103 @@ public final class ChartCanvas extends JComponent {
         setPeriod(choice.aggregation(), choice.title(), choice.code());
     }
 
+    /**
+     * Builds the renko from the exchange's own ticks, if it can, off this thread.
+     *
+     * <p>Only when EVERY session on screen has ticks: a renko built partly from
+     * ticks and partly from candles would change density halfway across and
+     * look like the market did it. Measured, the two differ by two to eleven
+     * times — see {@link RenkoSource}.</p>
+     *
+     * <p>The result is dropped if the period changed while it was being built.
+     * A reader who types 11 and then 55 must not be shown the eleven, arriving
+     * late and looking authoritative.</p>
+     */
+    private void rebuildFromTicks() {
+        if (!(period instanceof br.com.jorge.reis.endeavourneo.domain.market.Renko renko)
+                || instrument == null || base == null || base.size() == 0) {
+            return;
+        }
+
+        br.com.jorge.reis.endeavourneo.domain.market.TickLibrary library =
+                new br.com.jorge.reis.endeavourneo.domain.market.TickLibrary(
+                        br.com.jorge.reis.endeavourneo.platform.Bases.folder().resolve("ticks"),
+                        RenkoSource.rootOf(instrument));
+
+        if (!RenkoSource.allows(base, library, false)) {
+            // "false" and not the setting: this asks whether the ticks are
+            // THERE, which is a fact. What the setting decides is whether a
+            // renko may be drawn without them, and that is decided elsewhere.
+            library.close();
+
+            return;
+        }
+
+        java.util.List<java.time.LocalDate> days = RenkoSource.sessionsIn(base);
+        Object asked = period;
+
+        new javax.swing.SwingWorker<PriceSeries, Void>() {
+
+            @Override
+            protected PriceSeries doInBackground() throws Exception {
+                try {
+                    return br.com.jorge.reis.endeavourneo.domain.market.TickRenko
+                            .over(renko, library, days);
+                } finally {
+                    library.close();
+                }
+            }
+
+            @Override
+            protected void done() {
+                if (asked != period) {
+                    return;
+                }
+
+                try {
+                    PriceSeries bricks = get();
+
+                    if (bricks == null || bricks.size() == 0) {
+                        return;
+                    }
+
+                    show(bricks);
+                } catch (java.util.concurrent.ExecutionException
+                        | InterruptedException e) {
+                    // A session that will not read leaves the candle renko on
+                    // screen, which is what was already drawn. Interrupting the
+                    // reader with a dialog over an indicator would be worse
+                    // than the indicator being the coarser of the two.
+                    if (e instanceof InterruptedException) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+            }
+        }.execute();
+    }
+
+    /** Puts a freshly built series on screen, keeping the reader where they were. */
+    private void show(PriceSeries bricks) {
+        int wasFromRight = Math.max(0, this.series.size() - firstBar);
+
+        this.series = bricks;
+        this.fromTicks = true;
+
+        for (Overlay overlay : overlays) {
+            overlay.calculate(this.series);
+        }
+
+        this.firstBar = clampFirstBar(bricks.size() - wasFromRight);
+
+        repaint();
+        onSeriesChanged.run();
+    }
+
+    /** @return whether what is drawn came from the exchange's own ticks */
+    public boolean isFromTicks() {
+        return fromTicks;
+    }
+
     /** @return whether a renko may be built for what this chart is showing */
     private boolean renkoAllowed() {
         return RenkoSource.allows(series,
@@ -789,7 +894,14 @@ public final class ChartCanvas extends JComponent {
     }
 
     private void refold() {
+        // The candles first, always. They are instant, so the chart is never
+        // blank; when the ticks are available the bricks arrive a moment later
+        // and replace them. Waiting for the ticks instead would freeze the
+        // interface for a fifth of a second per session.
         this.series = period.apply(base);
+        this.fromTicks = false;
+
+        rebuildFromTicks();
 
         // Recalculated here, not lazily on the next paint: an overlay still
         // holding values from the previous series would draw a line that

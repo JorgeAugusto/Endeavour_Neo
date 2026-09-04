@@ -320,20 +320,21 @@ public final class ReplaySession {
     }
 
     /**
-     * @return the instrument the tick files are named after
+     * @return the market the tick files are named after
      *
-     * <p>The chart calls its series {@code winfut-1m}; the tick sessions are
-     * {@code winfut-2021-01-04.bin}. The scale belongs to the candles, not to
-     * the instrument, so it comes off.</p>
+     * <p>The MARKET, not the export. The chart may be showing {@code
+     * winfull-1m}, {@code winn-1m} or {@code winfut-1m}, and the ticks of a
+     * given day are the same ticks for all three: they are what the exchange
+     * printed, not what one export happened to stitch. So the sessions are
+     * {@code win-2021-01-04.bin} and the lookup goes through the same declared
+     * mapping the tree groups by.</p>
+     *
+     * <p>The first version cut the name at the first dash, which gave {@code
+     * winfut} — right by accident while the only base with ticks was called
+     * that, and wrong the moment the source was renamed.</p>
      */
     static String rootOf(String instrument) {
-        if (instrument == null) {
-            return "";
-        }
-
-        int dash = instrument.indexOf('-');
-
-        return dash > 0 ? instrument.substring(0, dash) : instrument;
+        return br.com.jorge.reis.endeavourneo.platform.Bases.groupOf(instrument);
     }
 
     public String instrument() {
