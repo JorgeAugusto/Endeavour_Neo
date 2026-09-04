@@ -89,9 +89,15 @@ final class ReplayBase {
             stamps[i] = times.get(i);
         }
 
-        Files.createDirectories(folder);
-        MarketFile.write(folder.resolve("winfull-1m.bin"), walk(stamps), 1);
         SeriesCatalog.useFolderForTest(folder);
+
+        // Through fileOf: the folders are the tree now, and one rule says
+        // where a series goes. A fixture with a path of its own would go on
+        // passing the day that rule moved.
+        Path file = SeriesCatalog.fileOf("winfull-1m");
+
+        Files.createDirectories(file.getParent());
+        MarketFile.write(file, walk(stamps), 1);
         SeriesCatalog.forget();
 
         return "winfull-1m";

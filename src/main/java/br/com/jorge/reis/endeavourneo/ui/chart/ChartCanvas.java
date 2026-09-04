@@ -776,7 +776,8 @@ public final class ChartCanvas extends JComponent {
 
         br.com.jorge.reis.endeavourneo.domain.market.TickLibrary library =
                 new br.com.jorge.reis.endeavourneo.domain.market.TickLibrary(
-                        br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.folder().resolve("ticks"),
+                        br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.ticksOf(
+                                RenkoSource.rootOf(instrument)),
                         RenkoSource.rootOf(instrument),
                         br.com.jorge.reis.endeavourneo.domain.market.TickSource.METATRADER);
 
@@ -858,7 +859,8 @@ public final class ChartCanvas extends JComponent {
     private boolean renkoAllowed() {
         return RenkoSource.allows(series,
                 new br.com.jorge.reis.endeavourneo.domain.market.TickLibrary(
-                        br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.folder().resolve("ticks"),
+                        br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.ticksOf(
+                                RenkoSource.rootOf(instrument)),
                         RenkoSource.rootOf(instrument),
                         br.com.jorge.reis.endeavourneo.domain.market.TickSource.METATRADER),
                 ChartPreferences.syntheticTicks());

@@ -66,7 +66,12 @@ class NavigatorTreeTest {
 
         buffer.putDouble(10);
 
-        Files.write(folder.resolve(name + ".bin"), buffer.array());
+        SeriesCatalog.useFolderForTest(folder);
+
+        Path file = SeriesCatalog.fileOf(name);
+
+        Files.createDirectories(file.getParent());
+        Files.write(file, buffer.array());
     }
 
     /** Every leaf under the tree, with its label and what it would open. */
@@ -245,13 +250,11 @@ class NavigatorTreeTest {
         // "ticks" it would be the one thing worth knowing that the tree hides.
         base(folder, "winfull-1m");
 
-        Path ticks = folder.resolve("ticks");
+        Path ticks = SeriesCatalog.ticksOf("win");
 
         tickSession(ticks, "win", java.time.LocalDate.of(2021, 1, 4), TickSource.METATRADER);
         tickSession(ticks, "win", java.time.LocalDate.of(2026, 9, 1), TickSource.PROFIT);
         tickSession(ticks, "win", java.time.LocalDate.of(2026, 9, 2), TickSource.PROFIT);
-
-        SeriesCatalog.useFolderForTest(folder);
 
         List<String> lines = leaves(Navigator.treeModel()).stream()
                 .map(each -> each[0])
@@ -285,10 +288,9 @@ class NavigatorTreeTest {
         // every instrument would be a standing reminder of nothing.
         base(folder, "winfull-1m");
 
-        Path ticks = folder.resolve("ticks");
+        Path ticks = SeriesCatalog.ticksOf("win");
 
         tickSession(ticks, "win", java.time.LocalDate.of(2021, 1, 4), TickSource.METATRADER);
-        SeriesCatalog.useFolderForTest(folder);
 
         List<String> lines = leaves(Navigator.treeModel()).stream()
                 .map(each -> each[0])

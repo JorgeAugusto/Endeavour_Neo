@@ -436,13 +436,32 @@ public final class SeriesCatalog {
         Settings.settings().put(RETIRED_KEY, String.join(",", names));
     }
 
-    /** @return the series in that folder, by name, sorted */
+    /**
+     * @return the series in that folder, by name, sorted
+     *
+     * <p>Walks, because the folders ARE the tree: instrument, then scale, then
+     * the files. Three levels is the whole of it, and stopping there keeps a
+     * folder of raw exports underneath from being read as series.</p>
+     *
+     * <p>A file counts only when it sits where {@link #fileOf} would put it.
+     * That is what makes the listing and the opening answer the same question,
+     * and it is what lets the instrument and the scale be read off the path at
+     * all: a file somewhere else would claim a market it is not filed under.</p>
+     */
     public static List<String> namesIn(Path folder) {
         if (!Files.isDirectory(folder)) {
             return List.of();
         }
 
-        try (Stream<Path> files = Files.list(folder)) {
+        Path was = SeriesCatalog.folder;
+
+        try (Stream<Path> files = Files.walk(folder, 3)) {
+            // fileOf asks for the current folder, and the caller may be asking
+            // about a different one -- a settings page previewing another
+            // directory. Pointing at it for the length of the walk is what
+            // keeps that comparison about the folder being listed.
+            SeriesCatalog.folder = folder;
+
             return files
                     .filter(file -> file.getFileName().toString().endsWith(SUFFIX))
                     .filter(MarketFile::isSeries)
@@ -452,10 +471,14 @@ public final class SeriesCatalog {
                         return name.substring(0, name.length() - SUFFIX.length());
                     })
                     .filter(name -> !retired().contains(name))
+                    .filter(name -> Files.isRegularFile(fileOf(name)))
+                    .distinct()
                     .sorted()
                     .toList();
         } catch (IOException e) {
             return List.of();
+        } finally {
+            SeriesCatalog.folder = was;
         }
     }
 
@@ -475,8 +498,39 @@ public final class SeriesCatalog {
         return MarketFile.isSeries(fileOf(name));
     }
 
+    /**
+     * Where a series lives: {@code <data>/win/1m/winfull-1m.bin}.
+     *
+     * <p>The folders are the tree the reader sees, and for the same reason:
+     * what gets picked is always "this market, at this resolution". It also
+     * turns the market and the scale into FACTS of where a file is rather than
+     * guesses about what it is called.</p>
+     *
+     * <p>A series whose name says no scale sits straight under its instrument,
+     * exactly as it hangs straight off the instrument in the tree.</p>
+     *
+     * <p>The name still carries both, redundantly and on purpose: a file that
+     * is moved, copied or mailed still says what it is. Same reason the date
+     * stays in a tick file's name.</p>
+     *
+     * <p><b>Computed, never searched.</b></p>
+     */
     public static Path fileOf(String name) {
-        return folder().resolve(name + SUFFIX);
+        String scale = scaleOf(name);
+        Path under = folder().resolve(groupOf(name));
+
+        return (scale.isEmpty() ? under : under.resolve(scale)).resolve(name + SUFFIX);
+    }
+
+    /**
+     * @return where that instrument's tick sessions live
+     *
+     * <p>Beside its series rather than in one pile at the top, so everything
+     * about a market is under the market. Each source gets a folder of its own
+     * inside; see {@link br.com.jorge.reis.endeavourneo.domain.market.TickSource}.</p>
+     */
+    public static Path ticksOf(String instrument) {
+        return folder().resolve(instrument).resolve("ticks");
     }
 
     /**

@@ -64,7 +64,15 @@ class SeriesCatalogTest {
         buffer.putDouble(close);
         buffer.putDouble(10);
 
-        Files.write(folder.resolve(name + ".bin"), buffer.array());
+        // Written through fileOf, because the folders are now the tree and
+        // there is exactly one rule for where a series goes. A fixture that
+        // built the path itself would keep passing the day that rule changed.
+        SeriesCatalog.useFolderForTest(folder);
+
+        Path file = SeriesCatalog.fileOf(name);
+
+        Files.createDirectories(file.getParent());
+        Files.write(file, buffer.array());
     }
 
     @Test
@@ -124,7 +132,7 @@ class SeriesCatalogTest {
         assertEquals(List.of("winn-1m"), SeriesCatalog.names(),
                 "the retired base was offered in the listing");
 
-        assertTrue(Files.isRegularFile(folder.resolve("win-1m.bin")),
+        assertTrue(Files.isRegularFile(SeriesCatalog.fileOf("win-1m")),
                 "the file was deleted; it was only meant to be hidden");
 
         // Asked for by name it still opens, so a workspace that remembers it is

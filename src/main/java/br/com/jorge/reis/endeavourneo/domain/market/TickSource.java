@@ -98,8 +98,9 @@ public enum TickSource {
     /**
      * Where one session of this source lives.
      *
-     * <p>{@code <folder>/2021/01/win-2021-01-04.bin} for MetaTrader,
-     * {@code .tape} for Profit — so both sources can hold the same session of
+     * <p>{@code <win>/ticks/metatrader/2021/01/win-2021-01-04.bin}, and
+     * {@code <win>/ticks/profit/2026/09/win-2026-09-01.tape} -- a folder per
+     * source and a different extension — so both sources can hold the same session of
      * the same instrument without one standing on the other. They do not
      * overlap today, and the day somebody exports 2021 from Profit they would;
      * a path that collided would silently keep whichever was written last.</p>
@@ -110,6 +111,7 @@ public enum TickSource {
      */
     public Path fileFor(Path folder, String instrument, LocalDate date) {
         return folder
+                .resolve(key())
                 .resolve(String.format("%04d", date.getYear()))
                 .resolve(String.format("%02d", date.getMonthValue()))
                 .resolve(instrument + "-" + date + "." + suffix);

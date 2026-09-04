@@ -162,7 +162,7 @@ public final class ReplaySession {
      */
     public ReplaySession(String instrument, LocalDate date, LocalDate until, int historyDays) {
         this(instrument, date, until, historyDays,
-                br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.folder().resolve("ticks"));
+                br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.ticksOf(rootOf(instrument)));
     }
 
     /**

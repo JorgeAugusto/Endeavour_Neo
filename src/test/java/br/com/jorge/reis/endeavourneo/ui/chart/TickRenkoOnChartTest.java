@@ -96,8 +96,13 @@ class TickRenkoOnChartTest {
     private static void session(Path folder) throws IOException {
         int[] prices = path();
 
+        // Pointed at the folder before asking where the ticks go: ticksOf
+        // answers about the CURRENT folder, and a fixture that wrote before
+        // saying which folder would write into the reader's own data.
+        SeriesCatalog.useFolderForTest(folder);
+
         try (TickFile.Writer writer = new TickFile.Writer(
-                TickSource.METATRADER.fileFor(folder.resolve("ticks"), "win", DAY), DAY)) {
+                TickSource.METATRADER.fileFor(SeriesCatalog.ticksOf("win"), "win", DAY), DAY)) {
 
             for (int i = 0; i < prices.length; i++) {
                 writer.add(9 * 3_600_000 + i * 1_000, 0, 0, prices[i], 1, 88,

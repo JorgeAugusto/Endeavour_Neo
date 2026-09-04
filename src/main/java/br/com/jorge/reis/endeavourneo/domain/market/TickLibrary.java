@@ -279,7 +279,8 @@ public final class TickLibrary {
 
         List<LocalDate> days = new ArrayList<>();
 
-        try (var files = Files.walk(folder, 3)) {
+        // Four: the source, the year, the month, the file.
+        try (var files = Files.walk(folder, 4)) {
             files.filter(file -> file.getFileName().toString()
                             .startsWith(instrument + "-"))
                     .forEach(file -> {

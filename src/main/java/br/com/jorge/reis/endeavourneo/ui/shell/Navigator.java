@@ -264,7 +264,7 @@ public final class Navigator extends JPanel {
      * not a chart of its own.</p>
      */
     private static DefaultMutableTreeNode tickSessions(String instrument) {
-        java.nio.file.Path folder = SeriesCatalog.folder().resolve("ticks");
+        java.nio.file.Path folder = SeriesCatalog.ticksOf(instrument);
 
         if (!java.nio.file.Files.isDirectory(folder)) {
             return null;

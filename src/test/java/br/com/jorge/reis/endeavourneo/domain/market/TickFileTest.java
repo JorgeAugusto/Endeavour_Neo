@@ -161,22 +161,27 @@ class TickFileTest {
         // states the layout, and asserting it with the same expression that
         // builds it would agree with any layout at all.
         assertTrue(Files.isRegularFile(
-                ticks.resolve("2021").resolve("01").resolve("winfut-2021-01-04.bin")),
+                ticks.resolve("metatrader").resolve("2021").resolve("01")
+                        .resolve("winfut-2021-01-04.bin")),
                 "the session is not under its year and month");
         assertTrue(Files.isRegularFile(
-                ticks.resolve("2021").resolve("01").resolve("winfut-2021-01-05.bin")));
+                ticks.resolve("metatrader").resolve("2021").resolve("01")
+                        .resolve("winfut-2021-01-05.bin")));
 
         assertEquals(LocalDate.of(2021, 1, 5), TickFile.dateOf(
-                ticks.resolve("2021").resolve("01").resolve("winfut-2021-01-05.bin")));
+                ticks.resolve("metatrader").resolve("2021").resolve("01")
+                        .resolve("winfut-2021-01-05.bin")));
 
         // The date stays in the name as well as in the path, so a file that
         // gets moved by hand still says which session it is.
-        assertEquals(ticks.resolve("2021").resolve("01").resolve("winfut-2021-01-05.bin"),
+        assertEquals(ticks.resolve("metatrader").resolve("2021").resolve("01")
+                        .resolve("winfut-2021-01-05.bin"),
                 TickSource.METATRADER.fileFor(ticks, "winfut", LocalDate.of(2021, 1, 5)));
 
         // A month is a folder, not a prefix: December must not land beside
         // January because both start with a "1".
-        assertEquals(ticks.resolve("2021").resolve("12").resolve("winfut-2021-12-23.bin"),
+        assertEquals(ticks.resolve("metatrader").resolve("2021").resolve("12")
+                        .resolve("winfut-2021-12-23.bin"),
                 TickSource.METATRADER.fileFor(ticks, "winfut", LocalDate.of(2021, 12, 23)));
     }
 
