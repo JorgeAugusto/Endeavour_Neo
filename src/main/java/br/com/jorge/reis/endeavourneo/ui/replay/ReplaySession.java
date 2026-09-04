@@ -225,7 +225,7 @@ public final class ReplaySession {
         int before = 0;
 
         for (LocalDate day : sessionsBefore(date, historyDays)) {
-            PriceSeries session = feed.isTicks() ? foldedFromTicks(day) : dayOf(day);
+            PriceSeries session = dayOf(day);
 
             parts.add(session);
             before += session.size();
@@ -260,12 +260,7 @@ public final class ReplaySession {
         // frozen animation -- but here the reader is already standing still,
         // waiting to press play, and starting on invented ticks without saying
         // so would be a lie told in the one moment it is easy to avoid.
-        // Nothing to wait for on a tick feed: its bars could not have been
-        // built without the session already being read. On a bar feed the
-        // ticks only animate the inside, and THAT is worth waiting for --
-        // starting on an invented path and swapping it for the real one a
-        // quarter of a second later is a difference nobody could see.
-        this.preparing = !feed.isTicks() && ticks.has(date);
+        this.preparing = ticks.has(date);
 
         ticks.onLoaded(() -> javax.swing.SwingUtilities.invokeLater(() -> {
             if (preparing && ticks.at(this.date) != null) {
@@ -354,7 +349,7 @@ public final class ReplaySession {
      */
     private PriceSeries dayOf(LocalDate day) {
         if (feed.isTicks()) {
-            return barsFromTicks(day);
+            return foldedFromTicks(day);
         }
 
         PriceSeries whole = baseSeries();
@@ -368,38 +363,25 @@ public final class ReplaySession {
     }
 
     /**
-     * @return that session folded into bars, or nothing if it was not exported
+     * @return a session as minute candles, built from its own ticks
      *
-     * <p>Blocking, and deliberately so: the bars cannot exist before the
-     * session is read, and a transport that opened on an empty chart and filled
-     * it in later would let the reader start deciding on half a day. Measured
-     * at around a fifth of a second a session.</p>
+     * <p><b>Every day of a tick feed, not only the ones already over.</b> The
+     * first version handed the day being played to the chart as one bar per
+     * TRADE, and that is not a scale a chart can draw: five million bars where
+     * five hundred belong. Worse, it looked like nothing was happening --
+     * {@code Timeframe.apply} takes a shortcut at one minute and hands the
+     * source straight back, so 13.229 trades got drawn inside the first minute
+     * of screen and the reader saw a flat line.</p>
      *
-     * <p>The ticks are left in the library rather than dropped. It keeps three
-     * and evicts by distance from the day being played, so the history days
-     * fold and fall out on their own.</p>
-     */
-    private PriceSeries barsFromTicks(LocalDate day) {
-        try {
-            TickSeries session = ticks.load(day);
-
-            return session == null ? PriceSeries.empty()
-                    : br.com.jorge.reis.endeavourneo.domain.market.TickBars.of(session);
-        } catch (java.io.IOException e) {
-            // A session that will not read is a day with no bars, which the
-            // transport already knows how to show. The alternative is a window
-            // of prices that came from nowhere.
-            return PriceSeries.empty();
-        }
-    }
-
-    /**
-     * @return a past session as minute candles, built from its own ticks
+     * <p>Folded, the day is 567 bars. The trades are still what moves it: the
+     * ticks of the session being played stay resident and animate the bar that
+     * is forming, which is the whole difference between this and reading the
+     * candle file — every bar here came from a print, and so did every wiggle
+     * inside the last one.</p>
      *
-     * <p>The loading phase. A day that is over is a day to LOOK at: it is not
-     * animated, so it does not need its ticks after the candles exist — and
-     * five hundred and sixty-five bars are twenty-seven kilobytes where the
-     * ticks were ninety megabytes.</p>
+     * <p>A day already over is not animated at all, so it does not need its
+     * ticks after the candles exist — and 567 bars are twenty-seven kilobytes
+     * where the ticks were ninety megabytes.</p>
      *
      * <p>Read straight from the file and NOT through the library, on purpose.
      * The library caches, and a cache is the one thing that would keep alive

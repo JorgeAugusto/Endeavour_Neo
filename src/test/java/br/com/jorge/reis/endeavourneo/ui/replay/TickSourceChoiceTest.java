@@ -208,6 +208,15 @@ class TickSourceChoiceTest {
                 assertEquals(200, playing.series().closeAt(0),
                         "the bars came from the candle file, not from the tape");
                 assertFalse(playing.isEmpty(), "the tape session produced no bars at all");
+
+                // And they are CANDLES, not one bar per trade. Seven trades
+                // inside one minute are one bar, not seven: a chart cannot draw
+                // five million bars where five hundred belong, and the version
+                // that handed it trades looked like nothing was happening.
+                playing.step(100);
+
+                assertEquals(1, playing.series().size(),
+                        "the tape day was handed over at trade resolution");
             } finally {
                 playing.stop();
             }

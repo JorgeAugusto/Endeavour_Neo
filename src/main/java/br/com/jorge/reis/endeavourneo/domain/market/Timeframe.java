@@ -208,7 +208,7 @@ public final class Timeframe implements Aggregation {
                 currentBucket = bucket;
                 out++;
 
-                times[out] = source.timeAt(i);
+                times[out] = startOf(source.timeAt(i), at);
                 opens[out] = source.openAt(i);
                 highs[out] = source.highAt(i);
                 lows[out] = source.lowAt(i);
@@ -253,6 +253,34 @@ public final class Timeframe implements Aggregation {
      * <p>Built from local calendar fields, never from the epoch — that is the
      * whole point of this class. See the two failures described above.</p>
      */
+    /**
+     * @return when the bucket holding that instant begins
+     *
+     * <p>What a candle's timestamp means: 09:00, not 09:00:59 because that is
+     * when the first trade of the minute happened. It used to be the source
+     * bar's own time, which is the same thing whenever the source is already
+     * aligned to this scale — and quietly is not when it comes from TICKS. A
+     * session folded from trades came out with every candle stamped up to 59
+     * seconds late, and nothing lined up with the minute base.</p>
+     *
+     * <p><b>Only for scales inside a day.</b> A day, week or month bucket
+     * begins at midnight, and midnight is not a moment this market existed; the
+     * first bar's time is the session's open, which is what a daily candle
+     * should carry. So those keep it.</p>
+     */
+    private long startOf(long millis, ZoneId zone) {
+        if (minutes <= 0) {
+            return millis;
+        }
+
+        ZonedDateTime local = Instant.ofEpochMilli(millis).atZone(zone);
+        long sinceMidnight = local.toLocalTime().toSecondOfDay() / 60L;
+        long slot = sinceMidnight / minutes * minutes;
+
+        return local.toLocalDate().atStartOfDay(zone).toInstant().toEpochMilli()
+                + slot * 60_000L;
+    }
+
     long bucketOf(long millis, ZoneId zone) {
         ZonedDateTime local = Instant.ofEpochMilli(millis).atZone(zone);
 
