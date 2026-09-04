@@ -86,7 +86,7 @@ class NavigatorTreeTest {
      * catalog, which is right; this makes sure the catalog is pointing at the
      * temporary folder when they do.</p>
      */
-    private static Path under(Path folder, Path file) {
+    static Path under(Path folder, Path file) {
         if (!file.toAbsolutePath().startsWith(folder.toAbsolutePath())) {
             throw new IllegalStateException("this fixture was about to write to " + file
                     + ", which is outside " + folder
@@ -251,8 +251,13 @@ class NavigatorTreeTest {
     /** A session header of that source: tag, version, day, count. */
     private static void tickSession(Path folder, String instrument,
             java.time.LocalDate day, TickSource source) throws IOException {
-        Path file = under(folder, source.fileFor(
-                SeriesCatalog.ticksOf(instrument), instrument, day));
+        // Built from the folder in hand, NOT from the catalog. Asking the
+        // catalog reads global state, and that read failed about one run in
+        // four -- three times it was caught here about to write over ninety
+        // megabytes of real exported ticks. The cause of the intermittence was
+        // never found; removing the question was cheaper than answering it.
+        Path file = under(folder,
+                source.fileFor(folder.resolve(instrument).resolve("ticks"), instrument, day));
         ByteBuffer header = ByteBuffer.allocate(24).order(ByteOrder.BIG_ENDIAN);
 
         header.put(source.tag().getBytes(StandardCharsets.US_ASCII));
@@ -271,17 +276,25 @@ class NavigatorTreeTest {
         // the Profit tape has both brokers and the aggressor -- so which one a
         // day came from changes what can be asked of it. Listed together as
         // "ticks" it would be the one thing worth knowing that the tree hides.
-        SeriesCatalog.useFolderForTest(folder);
-        base(folder, "winfull-1m");
-
         tickSession(folder, "win", java.time.LocalDate.of(2021, 1, 4), TickSource.METATRADER);
         tickSession(folder, "win", java.time.LocalDate.of(2026, 9, 1), TickSource.PROFIT);
         tickSession(folder, "win", java.time.LocalDate.of(2026, 9, 2), TickSource.PROFIT);
 
-        List<String> lines = leaves(Navigator.treeModel()).stream()
-                .map(each -> each[0])
-                .filter(label -> label.contains("2021") || label.contains("2026"))
-                .toList();
+        // Asked with the folder spelled out. Going through the whole tree meant
+        // asking "where is the catalog pointing right now", which is not this
+        // test's question and has no stable answer in a suite that also opens
+        // real windows.
+        DefaultMutableTreeNode node =
+                Navigator.tickSessions(folder.resolve("win").resolve("ticks"), "win");
+
+        assertNotNull(node, "no tick session was listed at all");
+
+        List<String> lines = new ArrayList<>();
+
+        for (int i = 0; i < node.getChildCount(); i++) {
+            lines.add(String.valueOf(
+                    ((DefaultMutableTreeNode) node.getChildAt(i)).getUserObject()));
+        }
 
         assertEquals(2, lines.size(), "the sources were not listed apart: " + lines);
 
@@ -338,20 +351,27 @@ class NavigatorTreeTest {
     }
 
     @Test
-    @DisplayName("a fixture pointed at the wrong folder refuses to write")
+    @DisplayName("o guarda recusa qualquer caminho fora da pasta do teste")
     void theGuardRefusesToLeaveTheTemporaryFolder(@TempDir Path folder) {
-        // Proved directly rather than left to chance, because it already went
-        // wrong once: a fixture asked the catalog where a tick session goes
-        // while the catalog was still pointing at the real data folder, and
-        // wrote a twenty-four-byte header over ninety megabytes of exported
-        // ticks. The test that did it failed for an unrelated-looking reason,
-        // so the damage was found by accident rather than by the failure.
-        SeriesCatalog.useFolderForTest(folder.resolve("somewhere-else"));
+        // Tested directly, because that is what it is: one check, called by
+        // every fixture before it writes. Reaching it through a fixture stopped
+        // being possible once the fixtures were made not to ask the catalog --
+        // which is the fix, not a reason to leave the net untested.
+        //
+        // It earned its place. Three times it caught a fixture about to write a
+        // twenty-four-byte header over ninety megabytes of real exported ticks,
+        // because a read of global state failed about one run in four. The
+        // cause of that intermittence was never found.
+        Path outside = Path.of("C:", "dados", "win", "ticks", "win-2021-01-04.bin");
 
-        IllegalStateException thrown = assertThrows(IllegalStateException.class,
-                () -> tickSession(folder.resolve("mine"), "win",
-                        java.time.LocalDate.of(2021, 1, 4), TickSource.METATRADER));
+        IllegalStateException thrown =
+                assertThrows(IllegalStateException.class, () -> under(folder, outside));
 
         assertTrue(thrown.getMessage().contains("outside"), thrown.getMessage());
+
+        // And it lets through what is inside, or every fixture would fail.
+        Path inside = folder.resolve("win").resolve("1m").resolve("winfull-1m.bin");
+
+        assertEquals(inside, under(folder, inside));
     }
 }

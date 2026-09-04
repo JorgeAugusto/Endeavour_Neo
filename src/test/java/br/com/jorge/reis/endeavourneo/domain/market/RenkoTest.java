@@ -372,12 +372,28 @@ class RenkoTest {
     @Test
     @DisplayName("the ruler starts at the first OPEN, the one price that never moves")
     void anchoredOnTheFirstOpen() {
-        // Not on a rounded grid the series never touched: starting at 137 with
-        // ten-point bricks, the first brick top is 147, not 140.
-        assertEquals(147.0, Renko.of(10).apply(closes(137, 148)).closeAt(0));
+        // On the GRID, and this test used to say the opposite -- "not on a
+        // rounded grid the series never touched". It was a deliberate choice,
+        // and it was wrong: measured against the reference product on
+        // 04/09/2026, four sizes on one instrument, every brick boundary is a
+        // whole multiple of the brick.
+        //
+        //     6R   brick  25   opens 187.875   = 7.515 x 25
+        //     11R  brick  50   opens 187.950   = 3.759 x 50
+        //     21R  brick 100   opens 188.000   = 1.880 x 100
+        //     41R  brick 200   opens 188.200   =   941 x 200
+        //
+        // Anchoring on the first price instead offset the whole ruler by
+        // whatever that price happened to be, so two charts of the same
+        // instrument and the same brick, opened on different days, drew
+        // different bricks. Starting at 137 with ten-point bricks, the ruler
+        // begins at 130 and the first brick tops at 140.
+        assertEquals(140.0, Renko.of(10).apply(closes(137, 148)).closeAt(0));
 
         // The OPEN and not the close: while a bar forms its close moves, and a
         // ruler that moves with it measures every brick from a shifting origin.
+        // Still true -- the grid decides WHERE the ruler starts, the open
+        // decides WHICH price picks the cell.
         assertEquals(100.0, Renko.of(10).apply(ohlc(new double[]{100, 130, 100, 125})).openAt(0),
                 "the ruler started somewhere other than the first open");
     }
@@ -403,5 +419,50 @@ class RenkoTest {
     void label() {
         assertEquals("30 renko", Renko.of(30).label());
         assertEquals("2.5 renko", Renko.of(2.5).label());
+    }
+    @Test
+    @DisplayName("toda fronteira cai na grade, nos quatro tamanhos lidos do Profit")
+    void everyBoundaryIsOnTheGrid() {
+        // The four bricks read off the reference product on 04/09/2026, with
+        // the price band they were showing. Each one asserts the whole rule at
+        // once: the size is (n-1) x tick, and the boundary is a whole multiple
+        // of that size.
+        int tick = 5;
+        double[][] read = {
+            //  n     abertura   fechamento
+            {  6,     187_875,   187_850},
+            { 11,     187_950,   188_000},
+            { 21,     188_000,   187_900},
+            { 41,     188_200,   188_000},
+        };
+
+        for (double[] each : read) {
+            int name = (int) each[0];
+            double brick = (name - 1) * tick;
+            double open = each[1];
+            double close = each[2];
+
+            assertEquals(brick, Math.abs(close - open), 1e-9,
+                    name + "R: o tijolo lido nao mede (n-1) x tick");
+            assertEquals(0.0, open % brick, 1e-9,
+                    name + "R: a abertura " + open + " nao cai na grade de " + brick);
+            assertEquals(0.0, close % brick, 1e-9,
+                    name + "R: o fechamento " + close + " nao cai na grade de " + brick);
+        }
+
+        // And the ruler this program builds lands on that same grid, wherever
+        // the data begins. Measured on the tape of 03/09/2026, which opens at
+        // 189.480: every one of 7.063 bricks at 25 points, 1.643 at 50, 365 at
+        // 100 and 91 at 200.
+        for (int name : new int[]{6, 11, 21, 41}) {
+            double brick = (name - 1) * tick;
+            PriceSeries laid = Renko.of(brick).apply(closes(189_480, 189_480 + 20 * brick));
+
+            for (int i = 0; i < laid.size(); i++) {
+                assertEquals(0.0, laid.openAt(i) % brick, 1e-9,
+                        name + "R: tijolo " + i + " abre em " + laid.openAt(i)
+                                + ", fora da grade de " + brick);
+            }
+        }
     }
 }

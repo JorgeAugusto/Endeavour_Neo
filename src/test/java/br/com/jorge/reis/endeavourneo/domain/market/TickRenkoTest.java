@@ -378,13 +378,16 @@ class TickRenkoTest {
             long first = ticks.timeAt(0);
             long last = ticks.timeAt(ticks.size() - 1);
 
-            int moved = 0;
-            int laid = 0;
+            int movedWithoutClosing = 0;
             double before = Double.NaN;
             int settled = 0;
 
-            for (int i = 1; i <= 40; i++) {
-                renko.advance(DAY, first + (last - first + 1) * i / 40 + 1);
+            // Two hundred frames over a walk that moves four points a step,
+            // with ten-point bricks: most frames bring a trade or two and close
+            // nothing. Forty frames covered twenty-four points each and closed
+            // a brick every time, which left nothing for this test to see.
+            for (int i = 1; i <= 200; i++) {
+                renko.advance(DAY, first + (last - first + 1) * i / 200 + 1);
 
                 PriceSeries live = renko.live();
 
@@ -393,20 +396,21 @@ class TickRenkoTest {
 
                 double now = live.closeAt(live.size() - 1);
 
-                if (!Double.isNaN(before) && now != before) {
-                    moved++;
-                }
-
-                if (renko.size() > settled) {
-                    laid++;
+                if (!Double.isNaN(before) && now != before && renko.size() == settled) {
+                    movedWithoutClosing++;
                 }
 
                 before = now;
                 settled = renko.size();
             }
 
-            assertTrue(moved > laid, "the edge moved " + moved + " times and "
-                    + laid + " bricks closed -- it is only moving when one does");
+            // Moved at least once on a frame where nothing closed. Comparing
+            // the two totals was fragile: a fixture that happens to close a
+            // brick almost every frame fails it while the edge is working
+            // perfectly, which is a test about the fixture and not the code.
+            assertTrue(movedWithoutClosing > 0,
+                    "the edge never moved on a frame that closed no brick -- "
+                            + "it is only moving when one does");
         } finally {
             library.close();
         }

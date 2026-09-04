@@ -261,6 +261,35 @@ public final class Renko implements Aggregation {
      * same bricks as running it over the whole. That is the property the
      * session-by-session build rests on, and it is a test.</p>
      */
+    /**
+     * @return the grid level at or below that price
+     *
+     * <p><b>Brick boundaries sit on an absolute price grid</b>, at multiples of
+     * the brick size, and not wherever the data happens to begin. Measured
+     * against the reference product on 04/09/2026, three sizes and one
+     * instrument:</p>
+     *
+     * <table>
+     *   <caption>Bricks read off a Profit chart</caption>
+     *   <tr><th></th><th>brick</th><th>open</th><th>open / brick</th></tr>
+     *   <tr><td>11R</td><td>50</td><td>187.950</td><td>3.759</td></tr>
+     *   <tr><td>21R</td><td>100</td><td>188.000</td><td>1.880</td></tr>
+     *   <tr><td>6R</td><td>25</td><td>187.875</td><td>7.515</td></tr>
+     * </table>
+     *
+     * <p>Every one a whole multiple. This program anchored on the first bar's
+     * open instead, so its grid was offset by whatever that price happened to
+     * be -- and two charts of the same instrument and the same brick, started
+     * on different days, drew different bricks. Measured on the tape of
+     * 03/09/2026 at 50 points: NONE of 1.651 openings landed on the grid.</p>
+     *
+     * <p>Only the first anchor needs this. Every brick after it moves exactly
+     * one brick size, so a ruler that starts on the grid stays on it.</p>
+     */
+    private double gridUnder(double price) {
+        return Math.floor(price / brick) * brick;
+    }
+
     public Continued applyFrom(PriceSeries source, Carry from) {
         if (source == null || source.size() == 0) {
             return new Continued(PriceSeries.empty(),
@@ -279,7 +308,7 @@ public final class Renko implements Aggregation {
         // every brick was measured from a shifting origin. Instrumented: the
         // same bar, the same high and the same low, and the completed bricks
         // going from four to two because the close had moved eighteen points.
-        double anchor = from == null ? source.openAt(0) : from.anchor();
+        double anchor = from == null ? gridUnder(source.openAt(0)) : from.anchor();
         int direction = from == null ? 0 : from.direction();
         double pending = from == null ? 0.0 : from.pending();
         boolean anyVolume = false;
