@@ -243,7 +243,20 @@ public final class TickLibrary {
         }
     }
 
-    /** @return the sessions exported for that instrument, by date, sorted */
+    /**
+     * @return the sessions exported for that instrument, by date, sorted
+     *
+     * <p>Walks, because the sessions are filed under a year and a month rather
+     * than heaped in one directory. Three levels is the whole of it, and
+     * refusing to go deeper keeps a folder of unrelated exports underneath from
+     * being read as tick sessions.</p>
+     *
+     * <p>A file is kept only when it sits where its own date says it should.
+     * That is what makes this listing and {@link #has} answer the same
+     * question: a session offered here is one the replay can open, and a
+     * misplaced file cannot become a day in the tree that nothing will
+     * play.</p>
+     */
     public List<LocalDate> exported() {
         if (!Files.isDirectory(folder)) {
             return List.of();
@@ -251,13 +264,18 @@ public final class TickLibrary {
 
         List<LocalDate> days = new ArrayList<>();
 
-        try (var files = Files.list(folder)) {
+        try (var files = Files.walk(folder, 3)) {
             files.filter(file -> file.getFileName().toString()
                             .startsWith(instrument + "-"))
                     .filter(TickFile::isTicks)
                     .forEach(file -> {
                         try {
-                            days.add(TickFile.dateOf(file));
+                            LocalDate day = TickFile.dateOf(file);
+
+                            if (fileFor(day).toAbsolutePath()
+                                    .equals(file.toAbsolutePath())) {
+                                days.add(day);
+                            }
                         } catch (IOException ignored) {
                             // Listed and then unreadable: it was deleted between
                             // the two, which is not worth a message.

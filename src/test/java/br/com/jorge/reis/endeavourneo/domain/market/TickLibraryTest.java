@@ -25,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -342,5 +343,28 @@ class TickLibraryTest {
                 return 118_011;
             }
         };
+    }
+    @Test
+    @DisplayName("a session filed in the wrong month is not offered")
+    void aMisplacedSessionIsNotListed(@TempDir Path folder) throws IOException {
+        // Otherwise the tree would show a day the replay cannot open: the
+        // listing walks the folders and the lookup computes the path, and the
+        // two would be answering different questions. One offered session is
+        // one playable session.
+        session(folder, LocalDate.of(2021, 1, 4), 118_000);
+
+        TickLibrary library = new TickLibrary(folder, "winfut");
+
+        assertEquals(List.of(LocalDate.of(2021, 1, 4)), library.exported());
+
+        Path where = MetaTraderTicks.fileFor(folder, "winfut", LocalDate.of(2021, 1, 4));
+        Path wrong = folder.resolve("2021").resolve("02").resolve(where.getFileName());
+
+        Files.createDirectories(wrong.getParent());
+        Files.move(where, wrong);
+
+        assertTrue(library.exported().isEmpty(),
+                "a session under the wrong month was offered as playable");
+        assertFalse(library.has(LocalDate.of(2021, 1, 4)));
     }
 }

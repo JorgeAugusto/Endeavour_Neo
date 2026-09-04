@@ -160,6 +160,13 @@ class NavigatorTreeTest {
         // What the reader asked for: WIN, and beneath it the resolutions. Two
         // series of one market at one scale share a heading; one at another
         // scale gets its own.
+        //
+        // The 1s file here is a FIXTURE, not a claim. There is no second scale
+        // on disk today and there will not be for a while -- only 1m and the
+        // ticks -- and the tree shows only the scales that exist, so nothing
+        // invents a "1 second" heading over an empty folder. It takes two
+        // scales to prove nesting and ordering at all, and inventing the one we
+        // already know is coming beats inventing one nobody will ever write.
         base(folder, "winfull-1m");
         base(folder, "winn-1m");
         base(folder, "winfull-1s");
