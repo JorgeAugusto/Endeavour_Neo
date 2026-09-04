@@ -603,6 +603,7 @@ public final class MainWindow extends JFrame {
         view.add(item("action.closeCharts", 0, this::closeCharts));
 
         JMenu tools = menu("menu.tools");
+        tools.add(item("action.series", 0, this::openSeries));
         tools.add(item("action.replay", 0, this::openReplay));
 
         JMenu run = menu("menu.run");
@@ -726,6 +727,11 @@ public final class MainWindow extends JFrame {
         MainWindow fresh = new MainWindow(Messages.get("app.title"), jobs);
 
         fresh.setVisible(true);
+    }
+
+    /** Opens the window where a series is divided into segments. */
+    private void openSeries() {
+        br.com.jorge.reis.endeavourneo.ui.series.SeriesWindow.open(this);
     }
 
     private void openPreferences() {
