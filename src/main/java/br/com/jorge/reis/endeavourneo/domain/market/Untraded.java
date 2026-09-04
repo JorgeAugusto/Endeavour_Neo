@@ -37,15 +37,24 @@ package br.com.jorge.reis.endeavourneo.domain.market;
  *
  * <h2>What counts as traded</h2>
  *
- * <p>A brick is traded when the price range of the bar that laid it — or
- * anything seen since the previous brick — <b>touches its body, edges
- * included</b>. The edge has to count: over ticks every brick is laid by a
- * trade sitting exactly on its close, so a rule that asked for the interior
- * alone would call the whole chart untraded.</p>
+ * <p><b>A brick is a band of price. It is traded when somebody traded inside
+ * that band, and untraded when nobody did.</b> That is the whole rule. Not how
+ * far the bar moved, not which extreme laid the brick, not how many bricks
+ * arrived at once — the reference product answers it as a count, and the brick
+ * it draws grey reads <i>Contratos Neg: 0,00</i>.</p>
  *
- * <p>This says nothing about volume. Volume is spread across a batch of bricks
- * by a convention that the data does not support (see {@link Renko}); this is
- * measured from the prices themselves, which the data does support.</p>
+ * <p>A band owns its bottom edge and not its top, because every boundary is
+ * shared by two bricks and a price on one has to belong to exactly one of
+ * them. On this instrument prices move in fives and bricks in twenty-fives, so
+ * a trade landing on a boundary is one in twenty, not a corner case.</p>
+ *
+ * <p>The prices that can put a trade in a band are those traded since the
+ * previous brick was laid, and the range of the bar laying this one.</p>
+ *
+ * <p>This is measured from prices, not from volume. Volume is spread across a
+ * batch of bricks by a convention the data does not support (see {@link
+ * Renko}), so a grey brick can still show a share of it — the count is what is
+ * measured and the share is what is guessed.</p>
  */
 public interface Untraded {
 

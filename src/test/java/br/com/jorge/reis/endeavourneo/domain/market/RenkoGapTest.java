@@ -128,18 +128,18 @@ class RenkoGapTest {
     @Test
     @DisplayName("the gap is marked, and the brick holding the first trade is not")
     void openingGapUp() {
-        // Yesterday closed on the level; the first print of the day is 1.100
-        // higher. Eleven bricks bridge it. The first starts on the level that
-        // WAS traded yesterday and the eleventh ends on the first print, so
-        // nine of them are the gap itself.
+        // Yesterday traded at 187.000 and the first print of the day is 1.100
+        // higher. Eleven bricks bridge it: the first one holds yesterday's
+        // price, the other ten cover levels nobody paid. The band that holds
+        // the new print is the twelfth, and it is coloured.
         PriceSeries bricks = new Renko(100, 2, false)
                 .apply(trades(187_000, 188_100, 188_200));
 
-        assertEquals("#.........##", marks(bricks));
+        assertEquals("#..........#", marks(bricks));
 
-        assertEquals(188_000, bricks.openAt(10), 1e-9);
-        assertEquals(188_100, bricks.closeAt(10), 1e-9,
-                "the first traded brick has to close on the first trade");
+        assertEquals(188_100, bricks.openAt(11), 1e-9);
+        assertEquals(188_200, bricks.closeAt(11), 1e-9,
+                "the first coloured brick is the one whose band holds the print");
     }
 
     @Test
@@ -148,7 +148,10 @@ class RenkoGapTest {
         PriceSeries bricks = new Renko(100, 2, false)
                 .apply(trades(188_000, 186_950, 186_900));
 
-        assertEquals("#.........#", marks(bricks));
+        // Every band from 187.900 down to 187.000 is empty: the 188.000 print
+        // belongs to the band ABOVE the first of them, and the 186.950 print
+        // is below the last.
+        assertEquals("..........#", marks(bricks));
     }
 
     @Test
@@ -197,7 +200,7 @@ class RenkoGapTest {
         Renko.Continued second = renko.applyFrom(trades(188_100, 188_200), first.carry());
 
         assertEquals("#", marks(first.bricks()));
-        assertEquals("#........##", marks(second.bricks()),
+        assertEquals("#.........#", marks(second.bricks()),
                 "the night is a gap even though each session is folded on its own");
     }
 
@@ -214,6 +217,25 @@ class RenkoGapTest {
                 trades(188_500, 188_300, 187_200), head.carry());
 
         assertEquals(marks(whole), marks(head.bricks()) + marks(tail.bricks()));
+    }
+
+    @Test
+    @DisplayName("a price on a boundary belongs to the band above it")
+    void aPriceOnTheEdgeGoesUp() {
+        // 188.000 is the top of one band and the bottom of the next, and it has
+        // to be counted in exactly one. On this instrument prices move in fives
+        // and bricks in twenty-fives, so this is one trade in twenty and not a
+        // corner case.
+        PriceSeries below = new Renko(100, 2, false).apply(trades(187_000, 188_000));
+
+        assertEquals("#.........", marks(below).substring(0, 10),
+                "the band ending at 188.000 was not traded in");
+
+        PriceSeries above = new Renko(100, 2, false)
+                .apply(trades(187_000, 188_000, 188_100));
+
+        assertFalse(Untraded.at(above, above.size() - 1),
+                "the band starting at 188.000 was");
     }
 
     @Test

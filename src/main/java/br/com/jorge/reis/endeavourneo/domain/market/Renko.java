@@ -215,9 +215,19 @@ public final class Renko implements Aggregation {
      * @param sinceLow how far price ran down since that brick
      * @param sinceHigh how far price ran up since that brick
      * @param pending volume accumulated and not yet given to a brick
+     * @param coverLow the lowest price actually TRADED since the last brick
+     * @param coverHigh the highest
+     *
+     * <p>The traded hull is not {@code sinceLow}/{@code sinceHigh}. Those two
+     * are reset to the anchor whenever a brick is laid, because they are the
+     * tail of the NEXT brick; this pair is reset to the range of the bar that
+     * laid it, because it answers a different question -- where were there
+     * trades. Reusing the tail for it threw away the price that laid the last
+     * brick and called its own level untraded. See {@link Untraded}.</p>
      */
     public record Carry(double anchor, int direction,
-                        double sinceLow, double sinceHigh, double pending) { }
+                        double sinceLow, double sinceHigh, double pending,
+                        double coverLow, double coverHigh) { }
 
     /**
      * @param bricks what was laid
@@ -299,7 +309,7 @@ public final class Renko implements Aggregation {
     public Continued applyFrom(PriceSeries source, Carry from) {
         if (source == null || source.size() == 0) {
             return new Continued(PriceSeries.empty(),
-                    from == null ? new Carry(0, 0, 0, 0, 0) : from);
+                    from == null ? new Carry(0, 0, 0, 0, 0, 0, 0) : from);
         }
 
         List<double[]> bricks = new ArrayList<>();
@@ -325,13 +335,21 @@ public final class Renko implements Aggregation {
         double sinceLow = from == null ? anchor : from.sinceLow();
         double sinceHigh = from == null ? anchor : from.sinceHigh();
 
+        // Where there were trades since the last brick. Apart from the two
+        // above on purpose: those are reset to the anchor when a brick is laid,
+        // and the anchor is a level on the grid rather than a price anybody
+        // paid. This pair is reset to the range of the bar that laid the brick,
+        // which is where the money actually changed hands.
+        double coverLow = from == null ? source.openAt(0) : from.coverLow();
+        double coverHigh = from == null ? source.openAt(0) : from.coverHigh();
+
         for (int i = 0; i < source.size(); i++) {
-            // The envelope of everything traded since the last brick, as it
-            // stood BEFORE this bar was folded in. Bricks laid above it and
-            // below this bar's own range are the shape of a gap: nobody traded
-            // in them. See Untraded, and markGap below.
-            double seenLow = sinceLow;
-            double seenHigh = sinceHigh;
+            // Where there were trades before this bar arrived. A brick laid
+            // now covers a band of price; if neither this pair nor this bar's
+            // own range reaches into that band, nobody traded at those levels.
+            // See Untraded, and markGap below.
+            double coverBeforeLow = coverLow;
+            double coverBeforeHigh = coverHigh;
 
             double volume = source.volumeAt(i);
 
@@ -397,8 +415,9 @@ public final class Renko implements Aggregation {
                     // Before the tail is widened below: the body is what the
                     // question is about, and open-to-close is the body whether
                     // or not a tail was hung on it.
-                    markGap(bricks, untraded, at, +1,
-                            source.lowAt(i), source.highAt(i), seenLow, seenHigh);
+                    markGap(bricks, untraded, at,
+                            source.lowAt(i), source.highAt(i),
+                            coverBeforeLow, coverBeforeHigh);
 
                     if (wicks) {
                         // Only the FIRST of a batch wears a tail: how far price
@@ -416,8 +435,9 @@ public final class Renko implements Aggregation {
                     direction = -1;
                     made += count;
 
-                    markGap(bricks, untraded, at, -1,
-                            source.lowAt(i), source.highAt(i), seenLow, seenHigh);
+                    markGap(bricks, untraded, at,
+                            source.lowAt(i), source.highAt(i),
+                            coverBeforeLow, coverBeforeHigh);
 
                     if (wicks) {
                         bricks.get(at)[1] = Math.max(bricks.get(at)[1], sinceHigh);
@@ -438,13 +458,22 @@ public final class Renko implements Aggregation {
                 }
 
                 pending = 0.0;
+
+                // This bar laid the last brick, so the trades that count from
+                // here on are its own and whatever comes after.
+                coverLow = source.lowAt(i);
+                coverHigh = source.highAt(i);
+            } else {
+                coverLow = Math.min(coverLow, source.lowAt(i));
+                coverHigh = Math.max(coverHigh, source.highAt(i));
             }
         }
 
         if (forming) {
             double now = source.closeAt(source.size() - 1);
             double[] shape = formingAt(
-                    new Carry(anchor, direction, sinceLow, sinceHigh, pending), now);
+                    new Carry(anchor, direction, sinceLow, sinceHigh, pending,
+                            coverLow, coverHigh), now);
             double top = shape[1];
             double bottom = shape[2];
 
@@ -469,7 +498,8 @@ public final class Renko implements Aggregation {
         // brick appended just above is provisional and must not become the
         // starting point of the next stretch.
         return new Continued(assemble(bricks, stamps, untraded, anyVolume),
-                new Carry(anchor, direction, sinceLow, sinceHigh, pending));
+                new Carry(anchor, direction, sinceLow, sinceHigh, pending,
+                        coverLow, coverHigh));
     }
 
     /**
@@ -499,47 +529,64 @@ public final class Renko implements Aggregation {
     }
 
     /**
-     * Marks the bricks of one batch that no trade ever went through.
+     * Marks the bricks of one batch at whose prices nothing was traded.
      *
      * @param at where this batch starts in {@code bricks}
-     * @param step which way the batch went
      * @param barLow the low of the bar that laid it
      * @param barHigh its high
-     * @param seenLow the lowest price seen since the previous brick, before
-     *                this bar
-     * @param seenHigh the highest
+     * @param coverLow the lowest price traded since the previous brick
+     * @param coverHigh the highest
      *
-     * <p><b>A brick is traded when something touches its body, edges
-     * included.</b> The edges have to count: over ticks a bar IS one trade, so
-     * every brick is laid by a price sitting exactly on its close, and a rule
-     * that asked for the interior alone would grey out the entire chart.</p>
+     * <p><b>A brick is a band of price, and the question is whether anybody
+     * traded inside that band.</b> Nothing else: not how far the bar moved,
+     * not which extreme laid the brick, not how many bricks came at once. A
+     * night that reopens 1.300 points higher lays thirteen bricks and there
+     * were trades at the levels of one of them; a minute that ran 1.300 points
+     * lays the same thirteen and there were trades at every level on the way.
+     * Only the prices tell them apart.</p>
      *
-     * <p>So an upward brick is a gap only when it closes strictly below
-     * everything this bar traded AND opens strictly above everything seen
-     * before it. That leaves exactly the bricks between the two, which is the
-     * gap. Downward is the mirror.</p>
+     * <p>Two sets of prices can put a trade inside a band: what was traded
+     * since the last brick was laid, and the range of the bar laying this one.
+     * A band no trade fell into is the shape of a gap.</p>
      *
-     * <p>This is why the mark cannot be read off the batch size: a minute that
-     * ran 400 points lays four bricks and traded through all of them, while a
-     * night that reopens 400 points higher lays the same four and traded
-     * through one. Only the prices tell them apart.</p>
+     * <p>The reference product answers the same question and shows it as a
+     * count: the brick it draws grey reads <i>Contratos Neg: 0,00</i>.</p>
      */
-    private void markGap(List<double[]> bricks, List<Boolean> untraded, int at, int step,
-                         double barLow, double barHigh, double seenLow, double seenHigh) {
-        // Prices land on the grid by repeated addition, so the comparisons are
-        // against values that should be equal and may be a bit-width apart.
-        double eps = brick * 1e-9;
-
+    private void markGap(List<double[]> bricks, List<Boolean> untraded, int at,
+                         double barLow, double barHigh,
+                         double coverLow, double coverHigh) {
         for (int b = at; b < bricks.size(); b++) {
             double open = bricks.get(b)[0];
             double close = bricks.get(b)[3];
 
-            boolean gap = step > 0
-                    ? close < barLow - eps && open > seenHigh + eps
-                    : close > barHigh + eps && open < seenLow - eps;
+            double low = Math.min(open, close);
+            double high = Math.max(open, close);
 
-            untraded.set(b, gap);
+            untraded.set(b, empty(low, high, coverLow, coverHigh)
+                    && empty(low, high, barLow, barHigh));
         }
+    }
+
+    /**
+     * @param low the bottom of a brick's band
+     * @param high its top
+     * @param from the lowest of a set of traded prices
+     * @param to the highest
+     * @return whether no price in that set falls inside that band
+     *
+     * <p><b>A band owns its bottom edge and not its top</b>, exactly as {@link
+     * #gridUnder} cuts the grid. Every brick boundary is shared by two bricks,
+     * so a price sitting on one has to belong to one of them and not both --
+     * and the lower brick is the one that already closed. Without the rule,
+     * a trade landing on a round number would colour the brick above it as
+     * well, and on this instrument prices are multiples of five while bricks
+     * are multiples of twenty-five: landing on a boundary is not a corner
+     * case, it is one trade in twenty.</p>
+     */
+    private boolean empty(double low, double high, double from, double to) {
+        double eps = brick * 1e-9;
+
+        return to < low - eps || from >= high - eps;
     }
 
     private static PriceSeries assemble(List<double[]> bricks, List<Long> stamps,
