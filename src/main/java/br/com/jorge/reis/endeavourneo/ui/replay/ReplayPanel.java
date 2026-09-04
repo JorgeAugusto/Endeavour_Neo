@@ -84,6 +84,15 @@ public final class ReplayPanel extends JPanel {
 
     private final JButton forward = new JButton();
 
+    /**
+     * Ends the session without closing the transport.
+     *
+     * <p>What closing already did, minus the closing. The reader who has just
+     * watched a day and wants to set up another one had to close the window and
+     * open it again, which threw away everything typed into it.</p>
+     */
+    private final JButton stop = new JButton();
+
     private final JComboBox<Integer> speed = new JComboBox<>();
 
     private final transient Runnable refresh = this::refresh;
@@ -101,6 +110,7 @@ public final class ReplayPanel extends JPanel {
         add(transport(), BorderLayout.CENTER);
 
         request.addActionListener(e -> requestDay());
+        stop.addActionListener(e -> stopSession());
         play.addActionListener(e -> withSession(ReplaySession::toggle));
         back.addActionListener(e -> withSession(s -> {
             s.pause();
@@ -115,7 +125,13 @@ public final class ReplayPanel extends JPanel {
             speed.addItem(each);
         }
 
-        speed.setSelectedItem(1);
+        // The speed the reader left it at. Everything else in this window is
+        // remembered, and having one control reset itself on every launch reads
+        // as a bug rather than as a default.
+        speed.setSelectedItem(rememberedSpeed());
+
+        speed.addActionListener(e -> br.com.jorge.reis.endeavourneo.platform.Settings.workspace()
+                .put("replay.speed", String.valueOf(speed.getSelectedItem())));
         speed.addActionListener(e -> withSession(s -> s.setSpeed((Integer) speed.getSelectedItem())));
 
         // The end follows the start rather than waiting to be refused: moving
@@ -150,6 +166,36 @@ public final class ReplayPanel extends JPanel {
         refresh();
     }
 
+    /**
+     * @return the speed left in the workspace, or the slowest
+     *
+     * <p>One times, when nothing was remembered: a replay that starts at sixty
+     * on a reader who did not ask for it has gone past the thing they opened it
+     * to look at before they can react.</p>
+     */
+    private static int rememberedSpeed() {
+        String stored = br.com.jorge.reis.endeavourneo.platform.Settings.workspace()
+                .get("replay.speed", null);
+
+        if (stored == null) {
+            return 1;
+        }
+
+        try {
+            int wanted = Integer.parseInt(stored.trim());
+
+            for (int each : ReplaySession.SPEEDS) {
+                if (each == wanted) {
+                    return each;
+                }
+            }
+        } catch (NumberFormatException e) {
+            // A hand-edited file, or one from a version with other speeds.
+        }
+
+        return 1;
+    }
+
     /** @return a date remembered in the workspace, or the fallback */
     private static LocalDate readDate(String key, LocalDate fallback) {
         try {
@@ -164,6 +210,18 @@ public final class ReplayPanel extends JPanel {
     }
 
     /** Ends whatever is playing and gives every chart following it back. */
+    /**
+     * Ends the session and hands every chart its own data back.
+     *
+     * <p>Exactly what closing does, minus the closing. Which is the point: the
+     * reader who has watched a day and wants another one used to have to close
+     * the transport and open it again, throwing away everything typed into
+     * it.</p>
+     */
+    private void stopSession() {
+        release();
+    }
+
     public void release() {
         if (session != null) {
             session.forget(refresh);
@@ -207,7 +265,13 @@ public final class ReplayPanel extends JPanel {
             instrument.addItem(each);
         }
 
-        instrument.setSelectedItem(
+        String rememberedSeries = br.com.jorge.reis.endeavourneo.platform.Settings.workspace()
+                .get("replay.series", null);
+
+        instrument.setSelectedItem(rememberedSeries != null
+                && br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.has(rememberedSeries)
+                ? rememberedSeries
+                : 
                 br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.defaultName());
 
         left.add(labelled(Messages.get("replay.series"), instrument));
@@ -258,13 +322,17 @@ public final class ReplayPanel extends JPanel {
         play.setIcon(ReplayIcons.play(18));
         forward.setIcon(ReplayIcons.forward(16));
 
-        for (JButton button : new JButton[]{back, play, forward}) {
+        stop.setIcon(ReplayIcons.stop(14));
+        stop.setToolTipText(Messages.get("replay.stop"));
+
+        for (JButton button : new JButton[]{back, play, forward, stop}) {
             button.setFocusable(false);
         }
 
         back.setToolTipText(Messages.get("replay.back"));
         forward.setToolTipText(Messages.get("replay.forward"));
 
+        buttons.add(stop);
         buttons.add(back);
         buttons.add(play);
         buttons.add(forward);
@@ -395,6 +463,18 @@ public final class ReplayPanel extends JPanel {
 
         for (Component each : new Component[]{play, back, forward, scrubber, speed}) {
             each.setEnabled(ready && !waiting && !nothingToPlay);
+        }
+
+        // Stop is enabled whenever there IS a session, playing or paused or
+        // even one with nothing to play: it is the way out of any of them.
+        stop.setEnabled(ready);
+
+        // FROZEN while a session exists. Changing the series or the dates
+        // underneath a running replay would leave the transport describing one
+        // thing and the charts showing another, and nothing would say which was
+        // which. Stop unfreezes them, which is what stop is for.
+        for (Component each : new Component[]{instrument, date, until, request}) {
+            each.setEnabled(!ready);
         }
 
         play.setIcon(ready && session.isPlaying()

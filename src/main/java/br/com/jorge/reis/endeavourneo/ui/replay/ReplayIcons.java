@@ -53,6 +53,20 @@ final class ReplayIcons {
         });
     }
 
+    /**
+     * A square, because stopping is not a smaller pause.
+     *
+     * <p>The universal transport symbol, and worth keeping universal: a reader
+     * who has to work out what a button does before pressing it will not press
+     * it.</p>
+     */
+    static Icon stop(int size) {
+        return new Painted(size, (g, w, h, colour) -> {
+            g.setColor(colour);
+            g.fillRect(3, 3, w - 6, h - 6);
+        });
+    }
+
     static Icon back(int size) {
         return new Painted(size, (g, w, h, colour) -> {
             g.setColor(colour);

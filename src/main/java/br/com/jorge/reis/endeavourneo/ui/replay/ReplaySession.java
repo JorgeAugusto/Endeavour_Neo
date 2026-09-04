@@ -534,7 +534,23 @@ public final class ReplaySession {
      * itself back would otherwise still be subscribed to a clock that no longer
      * runs, and would sit there waiting for a tick that never comes.</p>
      */
+    /**
+     * @return whether this session has been stopped for good
+     *
+     * <p>Apart from paused. A paused session is still a session: the chart is
+     * still showing its day and pressing play carries on from where it was.
+     * A stopped one is over, the charts have their own data back, and the
+     * transport is free to be set up for another one.</p>
+     */
+    public boolean isStopped() {
+        return stopped;
+    }
+
+    private boolean stopped;
+
     public void stop() {
+        stopped = true;
+
         timer.stop();
 
         // Three sessions of ticks are 340 MB. Holding them after the replay is
