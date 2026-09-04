@@ -62,6 +62,11 @@ public final class ChartHeader extends JComponent {
         this.name = name;
 
         setOpaque(true);
+
+        // Rebuilt on every hover rather than set once: the series changes under
+        // this component -- period, replay, the bricks arriving from the ticks
+        // -- and a summary frozen at construction would describe a chart that
+        // is no longer on screen.
         setToolTipText(Messages.get("period.hint"));
 
         Mouse mouse = new Mouse();
@@ -123,8 +128,15 @@ public final class ChartHeader extends JComponent {
 
         @Override
         public void mouseMoved(MouseEvent e) {
+            boolean overTheName = hot.contains(e.getPoint());
+
             setCursor(Cursor.getPredefinedCursor(
-                    hot.contains(e.getPoint()) ? Cursor.HAND_CURSOR : Cursor.DEFAULT_CURSOR));
+                    overTheName ? Cursor.HAND_CURSOR : Cursor.DEFAULT_CURSOR));
+
+            setToolTipText(overTheName
+                    ? SeriesSummary.html(canvas.series(), name, canvas.periodLabel(),
+                            canvas.isFromTicks())
+                    : Messages.get("period.hint"));
         }
 
         @Override

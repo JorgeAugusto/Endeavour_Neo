@@ -1,0 +1,172 @@
+/*
+ * Endeavour Neo -- a desktop application shell in Swing.
+ * Copyright (C) 2026  Jorge Reis
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, see <https://www.gnu.org/licenses/>.
+ */
+package br.com.jorge.reis.endeavourneo.ui.chart;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.List;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+/**
+ * The few lines that say what a series is.
+ */
+@DisplayName("Series summary")
+class SeriesSummaryTest {
+
+    private static final ZoneId ZONE = ZoneId.systemDefault();
+
+    /** Bars every minute of the trading hours, over the given dates. */
+    private static PriceSeries over(int perDay, LocalDate... days) {
+        long[] times = new long[days.length * perDay];
+        int at = 0;
+
+        for (LocalDate day : days) {
+            long open = LocalDateTime.of(day, java.time.LocalTime.of(9, 0))
+                    .atZone(ZONE).toInstant().toEpochMilli();
+
+            for (int i = 0; i < perDay; i++) {
+                times[at++] = open + i * 60_000L;
+            }
+        }
+
+        return new PriceSeries() {
+
+            @Override
+            public int size() {
+                return times.length;
+            }
+
+            @Override
+            public long timeAt(int index) {
+                return times[index];
+            }
+
+            @Override
+            public double openAt(int index) {
+                return 100_000;
+            }
+
+            @Override
+            public double highAt(int index) {
+                return 100_100;
+            }
+
+            @Override
+            public double lowAt(int index) {
+                return 99_900;
+            }
+
+            @Override
+            public double closeAt(int index) {
+                return 100_050;
+            }
+        };
+    }
+
+    private static String valueOf(List<String[]> rows, String label) {
+        for (String[] row : rows) {
+            if (row[0].equals(br.com.jorge.reis.endeavourneo.platform.Messages.get(label))) {
+                return row[1];
+            }
+        }
+
+        return null;
+    }
+
+    @Test
+    @DisplayName("it counts sessions, not bars")
+    void sessionsAreDaysNotBars() {
+        // Three days of five hundred bars each is three sessions, and the
+        // difference is the whole reason the line exists: 1.494 sessions and
+        // 824.881 bars say different things about the same series.
+        PriceSeries series = over(500,
+                LocalDate.of(2021, 1, 4), LocalDate.of(2021, 1, 5), LocalDate.of(2021, 1, 6));
+
+        assertEquals(3, SeriesSummary.sessionsIn(series));
+
+        List<String[]> rows = SeriesSummary.rowsFor(series, "winfull-1m", "1m", false);
+
+        assertEquals("3", valueOf(rows, "summary.sessions"));
+        assertEquals("1.500", valueOf(rows, "summary.bars"));
+    }
+
+    @Test
+    @DisplayName("the span is written in the parts that are not zero")
+    void theSpanSkipsTheEmptyParts() {
+        // "6 anos, 0 meses e 0 dias" reads as a form to be filled in rather
+        // than as an answer.
+        assertEquals("6 anos", SeriesSummary.spanBetween(
+                LocalDate.of(2020, 9, 1), LocalDate.of(2026, 9, 1)));
+        assertEquals("6 anos, 3 dias", SeriesSummary.spanBetween(
+                LocalDate.of(2020, 9, 1), LocalDate.of(2026, 9, 4)));
+        assertEquals("2 meses, 10 dias", SeriesSummary.spanBetween(
+                LocalDate.of(2021, 1, 4), LocalDate.of(2021, 3, 14)));
+
+        // And never nothing at all: one day is "0 dias", not an empty line.
+        assertEquals("0 dias", SeriesSummary.spanBetween(
+                LocalDate.of(2021, 1, 4), LocalDate.of(2021, 1, 4)));
+    }
+
+    @Test
+    @DisplayName("it says whether the bricks came from ticks or from candles")
+    void theSourceIsStated() {
+        // The line that matters most. Measured on WINFUT, brick 55, one day:
+        // 477 bricks from candles against 2.563 from ticks. Nothing else on
+        // screen tells the two apart.
+        PriceSeries series = over(100, LocalDate.of(2021, 1, 4));
+
+        String ticks = valueOf(SeriesSummary.rowsFor(series, "winfull-1m", "55R", true),
+                "summary.source");
+        String candles = valueOf(SeriesSummary.rowsFor(series, "winfull-1m", "55R", false),
+                "summary.source");
+
+        assertTrue(ticks != null && !ticks.equals(candles),
+                "a chart built from ticks and one built from candles read the same");
+    }
+
+    @Test
+    @DisplayName("an empty series says so instead of inventing dates")
+    void anEmptySeriesIsHonest() {
+        List<String[]> rows = SeriesSummary.rowsFor(PriceSeries.empty(), "vazia", "1m", false);
+
+        assertEquals("0", valueOf(rows, "summary.bars"));
+        assertEquals(null, valueOf(rows, "summary.from"),
+                "an empty series was given a first date");
+    }
+
+    @Test
+    @DisplayName("a name with a bracket does not cut the tooltip in half")
+    void theTooltipSurvivesAnAwkwardName() {
+        // No instrument is called this today. One typed by the reader tomorrow
+        // could be, and a tooltip that swallows half of itself is a defect
+        // nobody would connect to a name.
+        PriceSeries series = over(10, LocalDate.of(2021, 1, 4));
+        String html = SeriesSummary.html(series, "win<b>&", "1m", false);
+
+        assertTrue(html.contains("win&lt;b&gt;&amp;"), "the name went in raw: " + html);
+        assertFalse(html.contains("win<b>&amp;"), "a tag from the name reached the tooltip");
+    }
+}
