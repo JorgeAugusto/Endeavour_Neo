@@ -121,6 +121,17 @@ public final class ReplaySession {
 
     private final String instrument;
 
+    /**
+     * What is playing: a bar series, or one market's ticks from one export.
+     *
+     * <p>The whole point of naming it in one place. A replay used to be told a
+     * series AND a tick source, which left "what is on screen" unanswerable:
+     * minute bars out of the candle file, animated inside by real ticks where
+     * they existed and by an invented walk where they did not. Now the choice
+     * IS the answer.</p>
+     */
+    private final transient ReplayFeed feed;
+
     private final LocalDate date;
 
     private final LocalDate until;
@@ -162,22 +173,9 @@ public final class ReplaySession {
      * skipped, so "Monday to Monday" is six sessions and not eight.</p>
      */
     public ReplaySession(String instrument, LocalDate date, LocalDate until, int historyDays) {
-        this(instrument, date, until, historyDays, TickSource.METATRADER);
-    }
-
-    /**
-     * @param source which export the ticks come from
-     *
-     * <p>Chosen and never guessed. The two sources cover different years today
-     * and hold different things always -- one has the book, the other has the
-     * counterparties -- so a replay that picked one on its own would be
-     * answering a question the reader is the only one who can answer.</p>
-     */
-    public ReplaySession(String instrument, LocalDate date, LocalDate until,
-            int historyDays, TickSource source) {
-        this(instrument, date, until, historyDays,
-                br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.ticksOf(rootOf(instrument)),
-                source);
+        this(ReplayFeed.of(instrument), date, until, historyDays,
+                br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.ticksOf(
+                        rootOf(instrument)));
     }
 
     /**
@@ -189,21 +187,46 @@ public final class ReplaySession {
      */
     ReplaySession(String instrument, LocalDate date, LocalDate until, int historyDays,
                   java.nio.file.Path tickFolder) {
-        this(instrument, date, until, historyDays, tickFolder, TickSource.METATRADER);
+        this(ReplayFeed.of(instrument), date, until, historyDays, tickFolder);
     }
 
-    ReplaySession(String instrument, LocalDate date, LocalDate until, int historyDays,
-                  java.nio.file.Path tickFolder, TickSource source) {
-        this.instrument = instrument;
+    /**
+     * @param feed what to play: a bar series, or a market's ticks from an export
+     *
+     * <p>The one constructor that does the work. Everything else names a feed
+     * for it.</p>
+     */
+    ReplaySession(ReplayFeed feed, LocalDate date, LocalDate until, int historyDays,
+                  java.nio.file.Path tickFolder) {
+        this.feed = feed;
+        this.instrument = feed.isTicks() ? feed.instrument() : feed.series();
         this.date = date;
         this.until = until == null || until.isBefore(date) ? date : until;
+
+        // Before the days, because a tick feed builds its days OUT of the
+        // library: every bar on screen is folded from the trades that printed,
+        // the sessions before the chosen one included.
+        this.ticks = new TickLibrary(tickFolder, feed.instrument(),
+                feed.isTicks() ? feed.source() : TickSource.METATRADER);
+
         // The days before, already drawn, so the chart does not open on an empty
         // screen -- and so the first decision of the session is taken with the
         // same context the reader would have had that morning.
+        //
+        // NONE of them on a tick feed, and the arithmetic is why. Its bars are
+        // a view over the session's ticks, so every day kept on screen keeps
+        // its ninety megabytes alive -- the library's cap of three cannot evict
+        // what the concatenation is still holding. Five days of context would
+        // be half a gigabyte of it. Drawing that context from the candle file
+        // instead is the one thing this whole change exists to stop: bricks
+        // laid from candles and from ticks differ by 8% to 27%, so the chart
+        // would change density halfway across and look like the market did it.
+        //
+        // So a tick feed shows the session asked for and nothing before it.
         List<PriceSeries> parts = new ArrayList<>();
         int before = 0;
 
-        for (LocalDate day : sessionsBefore(date, historyDays)) {
+        for (LocalDate day : sessionsBefore(date, feed.isTicks() ? 0 : historyDays)) {
             PriceSeries session = dayOf(day);
 
             parts.add(session);
@@ -224,12 +247,6 @@ public final class ReplaySession {
             parts.add(dayOf(date));
         }
 
-        // The exchange's own ticks where they exist, and a synthetic walk where
-        // they do not -- which is most days, with one month of ticks against
-        // eight years of candles. Seeded by the date, like the day itself: the
-        // same session has to replay the same way, wiggles included.
-        this.ticks = new TickLibrary(tickFolder, rootOf(instrument), source);
-
         // The synthetic walk is consulted through the setting, not captured, so
         // turning it off takes effect on a replay already open instead of on
         // the next one.
@@ -245,7 +262,12 @@ public final class ReplaySession {
         // frozen animation -- but here the reader is already standing still,
         // waiting to press play, and starting on invented ticks without saying
         // so would be a lie told in the one moment it is easy to avoid.
-        this.preparing = ticks.has(date);
+        // Nothing to wait for on a tick feed: its bars could not have been
+        // built without the session already being read. On a bar feed the
+        // ticks only animate the inside, and THAT is worth waiting for --
+        // starting on an invented path and swapping it for the real one a
+        // quarter of a second later is a difference nobody could see.
+        this.preparing = !feed.isTicks() && ticks.has(date);
 
         ticks.onLoaded(() -> javax.swing.SwingUtilities.invokeLater(() -> {
             if (preparing && ticks.at(this.date) != null) {
@@ -333,6 +355,10 @@ public final class ReplaySession {
      * than a day that never traded.</p>
      */
     private PriceSeries dayOf(LocalDate day) {
+        if (feed.isTicks()) {
+            return barsFromTicks(day);
+        }
+
         PriceSeries whole = baseSeries();
 
         if (whole == null || whole.size() == 0) {
@@ -341,6 +367,32 @@ public final class ReplaySession {
 
         return SegmentedSeries.of(whole, new Segment(instrument, day, day),
                 ZoneId.systemDefault());
+    }
+
+    /**
+     * @return that session folded into bars, or nothing if it was not exported
+     *
+     * <p>Blocking, and deliberately so: the bars cannot exist before the
+     * session is read, and a transport that opened on an empty chart and filled
+     * it in later would let the reader start deciding on half a day. Measured
+     * at around a fifth of a second a session.</p>
+     *
+     * <p>The ticks are left in the library rather than dropped. It keeps three
+     * and evicts by distance from the day being played, so the history days
+     * fold and fall out on their own.</p>
+     */
+    private PriceSeries barsFromTicks(LocalDate day) {
+        try {
+            TickSeries session = ticks.load(day);
+
+            return session == null ? PriceSeries.empty()
+                    : br.com.jorge.reis.endeavourneo.domain.market.TickBars.of(session);
+        } catch (java.io.IOException e) {
+            // A session that will not read is a day with no bars, which the
+            // transport already knows how to show. The alternative is a window
+            // of prices that came from nowhere.
+            return PriceSeries.empty();
+        }
     }
 
     /**

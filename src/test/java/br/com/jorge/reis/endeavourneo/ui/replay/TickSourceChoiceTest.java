@@ -20,6 +20,8 @@ package br.com.jorge.reis.endeavourneo.ui.replay;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import br.com.jorge.reis.endeavourneo.domain.market.Aggressor;
@@ -28,6 +30,7 @@ import br.com.jorge.reis.endeavourneo.domain.market.TickFile;
 import br.com.jorge.reis.endeavourneo.domain.market.TickLibrary;
 import br.com.jorge.reis.endeavourneo.domain.market.TickSeries;
 import br.com.jorge.reis.endeavourneo.domain.market.TickSource;
+import br.com.jorge.reis.endeavourneo.platform.SeriesCatalog;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -149,11 +152,11 @@ class TickSourceChoiceTest {
         quotes(ticks);
         tape(ticks);
 
-        String series = ReplayBase.at(folder.resolve("data"), DAY);
+        ReplayBase.at(folder.resolve("data"), DAY);
 
         try {
-            ReplaySession playing = new ReplaySession(series, DAY, DAY, 0, ticks,
-                    TickSource.PROFIT);
+            ReplaySession playing = new ReplaySession(
+                    ReplayFeed.of("win", TickSource.PROFIT), DAY, DAY, 0, ticks);
 
             try {
                 long deadline = System.nanoTime()
@@ -173,6 +176,117 @@ class TickSourceChoiceTest {
             } finally {
                 playing.stop();
             }
+        } finally {
+            ReplayBase.release();
+        }
+    }
+    @Test
+    @DisplayName("a tick feed builds its bars from the trades, not from the candle file")
+    void aTickFeedIsMadeOfTicks(@TempDir Path folder) throws Exception {
+        // The promise the single list makes. Choosing the tape must mean the
+        // bars on screen ARE the tape -- otherwise the reader picks "Profit"
+        // and still watches candles from a file, which is the confusion the
+        // two combo boxes created in the first place.
+        //
+        // The candle fixture walks around 100.000 and the tape prints at 200,
+        // so which one built the bars cannot be mistaken.
+        Path ticks = folder.resolve("ticks");
+
+        tape(ticks);
+
+        String series = ReplayBase.at(folder.resolve("data"), DAY);
+
+        try {
+            ReplaySession playing = new ReplaySession(
+                    ReplayFeed.of("win", TickSource.PROFIT), DAY, DAY, 0, ticks);
+
+            try {
+                // Stepped first: the replay hides what has not played yet, which
+                // is the point of it.
+                playing.step(1);
+
+                assertEquals(200, playing.series().closeAt(0),
+                        "the bars came from the candle file, not from the tape");
+                assertFalse(playing.isEmpty(), "the tape session produced no bars at all");
+            } finally {
+                playing.stop();
+            }
+
+            // And the bar feed of the same day is the candle file, untouched by
+            // the tape sitting right beside it.
+            ReplaySession bars = new ReplaySession(
+                    ReplayFeed.of(series), DAY, DAY, 0, ticks);
+
+            try {
+                bars.step(1);
+
+                assertTrue(bars.series().closeAt(0) > 1_000,
+                        "the bar feed picked up the tape's prices");
+            } finally {
+                bars.stop();
+            }
+        } finally {
+            ReplayBase.release();
+        }
+    }
+
+    @Test
+    @DisplayName("only feeds that have something to play are offered")
+    void emptyFeedsAreNotOffered(@TempDir Path folder) throws Exception {
+        // A source with no export is not a choice, it is a dead end with a
+        // name. The tree makes the same call for the same reason.
+        String series = ReplayBase.at(folder, DAY);
+
+        try {
+            tape(SeriesCatalog.ticksOf("win"));
+
+            java.util.List<ReplayFeed> feeds = ReplayFeed.available();
+
+            assertTrue(feeds.stream().anyMatch(each -> series.equals(each.series())),
+                    "the bar series is not offered: " + feeds);
+            assertTrue(feeds.stream().anyMatch(each -> each.source() == TickSource.PROFIT),
+                    "the exported tape is not offered: " + feeds);
+            assertFalse(feeds.stream().anyMatch(each -> each.source() == TickSource.METATRADER),
+                    "a source with nothing exported was offered: " + feeds);
+        } finally {
+            ReplayBase.release();
+        }
+    }
+
+    @Test
+    @DisplayName("a feed is a series or a source, never both and never neither")
+    void aFeedIsOneOrTheOther() {
+        // The record enforces it, because the whole value of the type is that
+        // holding one answers "what is playing" outright.
+        assertThrows(IllegalArgumentException.class,
+                () -> new ReplayFeed("win", "winfull-1m", TickSource.PROFIT));
+        assertThrows(IllegalArgumentException.class,
+                () -> new ReplayFeed("win", null, null));
+    }
+
+    @Test
+    @DisplayName("the chosen feed survives being written down and read back")
+    void aFeedRoundTrips(@TempDir Path folder) throws Exception {
+        // How the transport opens where it was left. Told apart by the prefix
+        // rather than guessed from the rest: a market may be called anything,
+        // including something shaped like a series name.
+        ReplayBase.at(folder, DAY);
+
+        try {
+            tape(SeriesCatalog.ticksOf("win"));
+
+            ReplayFeed tapeFeed = ReplayFeed.of("win", TickSource.PROFIT);
+
+            assertEquals(tapeFeed, ReplayFeed.read(tapeFeed.saved()));
+
+            ReplayFeed barFeed = ReplayFeed.of("winfull-1m");
+
+            assertEquals(barFeed, ReplayFeed.read(barFeed.saved()));
+
+            // And a feed that is no longer on disk comes back as nothing rather
+            // than as something that cannot play.
+            assertNull(ReplayFeed.read("ticks:win:METATRADER"));
+            assertNull(ReplayFeed.read("series:que-nao-existe-1m"));
         } finally {
             ReplayBase.release();
         }

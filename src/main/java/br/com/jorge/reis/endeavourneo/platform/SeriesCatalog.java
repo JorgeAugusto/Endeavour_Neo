@@ -453,15 +453,7 @@ public final class SeriesCatalog {
             return List.of();
         }
 
-        Path was = SeriesCatalog.folder;
-
         try (Stream<Path> files = Files.walk(folder, 3)) {
-            // fileOf asks for the current folder, and the caller may be asking
-            // about a different one -- a settings page previewing another
-            // directory. Pointing at it for the length of the walk is what
-            // keeps that comparison about the folder being listed.
-            SeriesCatalog.folder = folder;
-
             return files
                     .filter(file -> file.getFileName().toString().endsWith(SUFFIX))
                     .filter(MarketFile::isSeries)
@@ -471,14 +463,27 @@ public final class SeriesCatalog {
                         return name.substring(0, name.length() - SUFFIX.length());
                     })
                     .filter(name -> !retired().contains(name))
-                    .filter(name -> Files.isRegularFile(fileOf(name)))
+                    // Against the folder being LISTED, which is not always the
+                    // current one -- a settings page may be previewing another.
+                    //
+                    // The first version answered that by pointing the catalog
+                    // at it for the length of the walk and putting it back
+                    // afterwards. That is a race, and it cost real data: the
+                    // interface thread listing series at the same moment read
+                    // the field, was interrupted, and restored a folder that
+                    // had since been changed. A test then wrote a
+                    // twenty-four-byte header over ninety megabytes of exported
+                    // ticks -- because it asked where a file goes and was told
+                    // the wrong place.
+                    //
+                    // So nothing global moves. The path is built from the
+                    // folder in hand.
+                    .filter(name -> Files.isRegularFile(folder.resolve(relativeTo(name))))
                     .distinct()
                     .sorted()
                     .toList();
         } catch (IOException e) {
             return List.of();
-        } finally {
-            SeriesCatalog.folder = was;
         }
     }
 
@@ -516,8 +521,19 @@ public final class SeriesCatalog {
      * <p><b>Computed, never searched.</b></p>
      */
     public static Path fileOf(String name) {
+        return folder().resolve(relativeTo(name));
+    }
+
+    /**
+     * @return the instrument, the scale and the file name, below the data folder
+     *
+     * <p>Separate from {@link #fileOf} so a folder that is not the current one
+     * can be asked about without pointing the whole program at it. That used to
+     * be how it was done, and it was a race that destroyed data.</p>
+     */
+    private static Path relativeTo(String name) {
         String scale = scaleOf(name);
-        Path under = folder().resolve(groupOf(name));
+        Path under = Path.of(groupOf(name));
 
         return (scale.isEmpty() ? under : under.resolve(scale)).resolve(name + SUFFIX);
     }

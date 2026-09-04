@@ -58,39 +58,17 @@ public final class ReplayPanel extends JPanel {
     private final JLabel chip = new JLabel();
 
     /**
-     * Which series is replayed.
+     * What is replayed: a bar series, or a market's ticks from one export.
      *
-     * <p>Until today the replay played a random walk seeded by the date, and
-     * the chip said "WINFUT" — a name that belongs to no base here. It animated
-     * invented candles, and where ticks existed it animated them over the top,
-     * which is two markets in one window and nothing on screen said so.</p>
-     *
-     * <p>One combo for now. The segment goes beside it when segments exist;
-     * this one does not have to change for that.</p>
+     * <p>ONE list, where there were two. Asking separately for a series and a
+     * tick source left the only question that matters unanswered -- what is on
+     * screen. "winfull-1m" plus "Profit" meant minute bars out of the candle
+     * file, animated inside by the tape where it existed and by an invented
+     * walk where it did not, and nothing said so. Here the choice is the
+     * answer: pick the minutes and minutes play; pick a tape and every bar on
+     * screen is folded from trades that printed.</p>
      */
-    private final javax.swing.JComboBox<String> instrument = new javax.swing.JComboBox<>();
-
-    /**
-     * Which export the ticks come from.
-     *
-     * <p>Chosen, never guessed. The two sources hold different things -- the
-     * MetaTrader export has the bid and the ask, the Profit tape has both
-     * brokers and who crossed -- and today they cover different years as well.
-     * A replay that picked one on its own would be answering the one question
-     * only the reader can answer.</p>
-     *
-     * <p>Every source is offered, with how many sessions it has for the chosen
-     * market beside it. A source with none is shown saying zero rather than
-     * left out: "why can I not pick Profit" is a question the picker should
-     * answer, not raise.</p>
-     */
-    private final JComboBox<br.com.jorge.reis.endeavourneo.domain.market.TickSource> ticks =
-            new JComboBox<>();
-
-    /** How many sessions each source has, for the market now chosen. */
-    private final transient java.util.Map<
-            br.com.jorge.reis.endeavourneo.domain.market.TickSource, Integer> exported =
-            new java.util.EnumMap<>(br.com.jorge.reis.endeavourneo.domain.market.TickSource.class);
+    private final JComboBox<ReplayFeed> feed = new JComboBox<>();
 
     private final JLabel clock = new JLabel("--:--:--");
 
@@ -283,58 +261,19 @@ public final class ReplayPanel extends JPanel {
         JPanel left = new JPanel();
 
         left.setLayout(new BoxLayout(left, BoxLayout.Y_AXIS));
-        for (String each : br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.names()) {
-            instrument.addItem(each);
+        for (ReplayFeed each : ReplayFeed.available()) {
+            feed.addItem(each);
         }
 
-        String rememberedSeries = br.com.jorge.reis.endeavourneo.platform.Settings.workspace()
-                .get("replay.series", null);
+        ReplayFeed remembered = ReplayFeed.read(
+                br.com.jorge.reis.endeavourneo.platform.Settings.workspace()
+                        .get("replay.feed", null));
 
-        instrument.setSelectedItem(rememberedSeries != null
-                && br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.has(rememberedSeries)
-                ? rememberedSeries
-                : 
-                br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.defaultName());
-
-        for (br.com.jorge.reis.endeavourneo.domain.market.TickSource each
-                : br.com.jorge.reis.endeavourneo.domain.market.TickSource.values()) {
-            ticks.addItem(each);
+        if (remembered != null) {
+            feed.setSelectedItem(remembered);
         }
 
-        ticks.setRenderer(new javax.swing.DefaultListCellRenderer() {
-
-            private static final long serialVersionUID = 1L;
-
-            @Override
-            public Component getListCellRendererComponent(javax.swing.JList<?> list,
-                    Object value, int index, boolean chosen, boolean focused) {
-                super.getListCellRendererComponent(list, value, index, chosen, focused);
-
-                if (value instanceof br.com.jorge.reis.endeavourneo.domain.market.TickSource
-                        source) {
-                    setText(Messages.orElse("navigator.tickSource." + source.key(), source.key())
-                            + " (" + exported.getOrDefault(source, 0) + ")");
-                }
-
-                return this;
-            }
-        });
-
-        String rememberedTicks = br.com.jorge.reis.endeavourneo.platform.Settings.workspace()
-                .get("replay.ticks", null);
-
-        for (br.com.jorge.reis.endeavourneo.domain.market.TickSource each
-                : br.com.jorge.reis.endeavourneo.domain.market.TickSource.values()) {
-            if (each.name().equals(rememberedTicks)) {
-                ticks.setSelectedItem(each);
-            }
-        }
-
-        countExports();
-        instrument.addActionListener(e -> countExports());
-
-        left.add(labelled(Messages.get("replay.series"), instrument));
-        left.add(labelled(Messages.get("replay.ticks"), ticks));
+        left.add(labelled(Messages.get("replay.series"), feed));
         left.add(labelled(Messages.get("replay.instrument"), chip));
         left.add(Box.createVerticalStrut(6));
         left.add(labelled(Messages.get("replay.from"), date));
@@ -348,38 +287,6 @@ public final class ReplayPanel extends JPanel {
         row.add(left);
 
         return row;
-    }
-
-    /**
-     * Counts what each source has for the market now chosen.
-     *
-     * <p>Recounted when the market changes, because the answer is per market:
-     * the tape of one instrument says nothing about another.</p>
-     */
-    private void countExports() {
-        Object chosen = instrument.getSelectedItem();
-
-        if (chosen == null) {
-            return;
-        }
-
-        java.nio.file.Path folder = br.com.jorge.reis.endeavourneo.platform.SeriesCatalog
-                .ticksOf(ReplaySession.rootOf(String.valueOf(chosen)));
-
-        for (br.com.jorge.reis.endeavourneo.domain.market.TickSource each
-                : br.com.jorge.reis.endeavourneo.domain.market.TickSource.values()) {
-            br.com.jorge.reis.endeavourneo.domain.market.TickLibrary library =
-                    new br.com.jorge.reis.endeavourneo.domain.market.TickLibrary(
-                            folder, ReplaySession.rootOf(String.valueOf(chosen)), each);
-
-            try {
-                exported.put(each, library.exported().size());
-            } finally {
-                library.close();
-            }
-        }
-
-        ticks.repaint();
     }
 
     private static JPanel labelled(String text, Component field) {
@@ -515,22 +422,17 @@ public final class ReplayPanel extends JPanel {
         workspace.put("replay.from", day.toString());
         workspace.put("replay.to", (last == null ? day : last).toString());
 
-        String chosen = instrument.getSelectedItem() == null
-                ? br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.defaultName()
-                : String.valueOf(instrument.getSelectedItem());
+        ReplayFeed chosen = feed.getSelectedItem() == null
+                ? ReplayFeed.of(br.com.jorge.reis.endeavourneo.platform.SeriesCatalog
+                        .defaultName())
+                : (ReplayFeed) feed.getSelectedItem();
 
-        workspace.put("replay.series", chosen);
-
-        br.com.jorge.reis.endeavourneo.domain.market.TickSource source =
-                ticks.getSelectedItem() == null
-                        ? br.com.jorge.reis.endeavourneo.domain.market.TickSource.METATRADER
-                        : (br.com.jorge.reis.endeavourneo.domain.market.TickSource)
-                                ticks.getSelectedItem();
-
-        workspace.put("replay.ticks", source.name());
+        workspace.put("replay.feed", chosen.saved());
 
         session = new ReplaySession(chosen, day, last == null ? day : last,
-                ReplayPreferences.historyDays(), source);
+                ReplayPreferences.historyDays(),
+                br.com.jorge.reis.endeavourneo.platform.SeriesCatalog
+                        .ticksOf(chosen.instrument()));
 
         session.watch(refresh);
         refresh();
@@ -573,7 +475,7 @@ public final class ReplayPanel extends JPanel {
         // underneath a running replay would leave the transport describing one
         // thing and the charts showing another, and nothing would say which was
         // which. Stop unfreezes them, which is what stop is for.
-        for (Component each : new Component[]{instrument, ticks, date, until, request}) {
+        for (Component each : new Component[]{feed, date, until, request}) {
             each.setEnabled(!ready);
         }
 
