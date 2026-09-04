@@ -118,6 +118,12 @@ public final class MainWindow extends JFrame {
 
     private final StatusBar status = new StatusBar();
 
+    /** The log, which folds down to its caption. */
+    private final transient CollapsiblePane consolePane;
+
+    /** Where the divider was before the log was folded, to put it back. */
+    private transient int consoleWasAt = -1;
+
     private final JSplitPane leftDivider;
 
     private final JSplitPane bottomDivider;
@@ -161,10 +167,15 @@ public final class MainWindow extends JFrame {
 
         desktop.setBackground(java.awt.Color.DARK_GRAY);
 
-        bottomDivider = new JSplitPane(JSplitPane.VERTICAL_SPLIT,
-                desktop, titled(Messages.get("view.console"), console));
+        consolePane = new CollapsiblePane(Messages.get("view.console"), console, "console");
+
+        bottomDivider = new JSplitPane(JSplitPane.VERTICAL_SPLIT, desktop, consolePane);
         bottomDivider.setResizeWeight(1.0);
         bottomDivider.setBorder(null);
+
+        // The pane says it folded; moving the divider is this window's job,
+        // because only this window knows the pane is in a split at all.
+        consolePane.onToggle(this::followConsoleFold);
 
         leftDivider = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT,
                 titled(Messages.get("view.navigator"), navigator), bottomDivider);
@@ -889,6 +900,28 @@ public final class MainWindow extends JFrame {
     }
 
     /** A titled panel, standing in for an Eclipse view tab. */
+    /**
+     * Moves the divider so a folded log shows only its caption.
+     *
+     * <p>And puts it back where the reader had it. A fold that reopened at some
+     * default height would cost them the size they chose every time they peeked
+     * at the desktop -- which is most of the reason to fold it at all.</p>
+     */
+    private void followConsoleFold() {
+        if (consolePane.isFolded()) {
+            consoleWasAt = bottomDivider.getDividerLocation();
+
+            consoleWasAt = PREFS.getInt(BOTTOM_DIVIDER, -1);
+            bottomDivider.setDividerLocation(bottomDivider.getHeight()
+                    - consolePane.foldedHeight() - bottomDivider.getDividerSize());
+
+            return;
+        }
+
+        bottomDivider.setDividerLocation(consoleWasAt > 0
+                ? consoleWasAt : (int) (getHeight() * 0.68));
+    }
+
     private static JComponent titled(String title, JComponent content) {
         JPanel panel = new JPanel(new BorderLayout());
 
