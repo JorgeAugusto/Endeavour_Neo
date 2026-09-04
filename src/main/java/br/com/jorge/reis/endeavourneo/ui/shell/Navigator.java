@@ -142,7 +142,7 @@ public final class Navigator extends JPanel {
     }
 
     /**
-     * @return the tree as it stands: the bases on disk, grouped and labelled
+     * @return the tree as it stands: instrument, then scale, then the files
      *
      * <p>Package-visible so a test can read it without opening a window. It was
      * called {@code sampleModel} while it really was a sample, and the name
@@ -154,41 +154,32 @@ public final class Navigator extends JPanel {
         DefaultMutableTreeNode series =
                 new DefaultMutableTreeNode(Messages.get("navigator.series"));
 
-        // Grouped by instrument and labelled by ROLE, because the role is what
-        // changes a decision: winn is where every hypothesis was mined, so no
-        // number from it proves anything alone, and winfut covers the years
-        // those hypotheses never saw. Five files listed flat says none of that,
-        // and opening the wrong one is the expensive mistake.
+        // Instrument, then SCALE, then the files. The ticks of an instrument
+        // are one of its scales -- the finest one -- and not a heading of their
+        // own sitting beside every instrument at once. What gets picked here is
+        // always "this market, at this resolution", and a tree shaped like that
+        // sentence is one level deeper and one question shorter.
         List<String> available = SeriesCatalog.names();
-        java.util.Map<String, DefaultMutableTreeNode> groups = new java.util.LinkedHashMap<>();
+        java.util.Map<String, java.util.Map<String, List<String>>> byInstrument =
+                new java.util.LinkedHashMap<>();
 
         for (String name : available) {
-            String group = SeriesCatalog.groupOf(name);
-            DefaultMutableTreeNode under = groups.computeIfAbsent(group, key -> {
-                DefaultMutableTreeNode node = new DefaultMutableTreeNode(
-                        Messages.orElse("navigator.group." + key, key));
+            byInstrument
+                    .computeIfAbsent(SeriesCatalog.groupOf(name),
+                            key -> new java.util.LinkedHashMap<>())
+                    .computeIfAbsent(SeriesCatalog.scaleOf(name),
+                            key -> new java.util.ArrayList<>())
+                    .add(name);
+        }
 
-                series.add(node);
-
-                return node;
-            });
-
-            String role = SeriesCatalog.roleOf(name);
-            String label = role == null
-                    ? name : name + "  ·  " + Messages.orElse("navigator.role." + role, role);
-
-            under.add(new DefaultMutableTreeNode(new Leaf(name, label)));
+        for (java.util.Map.Entry<String, java.util.Map<String, List<String>>> each
+                : byInstrument.entrySet()) {
+            series.add(instrumentNode(each.getKey(), each.getValue()));
         }
 
         if (available.isEmpty()) {
             series.add(new DefaultMutableTreeNode(new Leaf(null,
                     Messages.get("navigator.noSeries", SeriesCatalog.folder().toString()))));
-        }
-
-        DefaultMutableTreeNode ticks = tickSessions();
-
-        if (ticks != null) {
-            series.add(ticks);
         }
 
         DefaultMutableTreeNode studies =
@@ -202,56 +193,90 @@ public final class Navigator extends JPanel {
     }
 
     /**
-     * @return the exported tick sessions, or null when there are none
+     * @param instrument the market, as {@link SeriesCatalog#groupOf} gives it
+     * @param byScale its series, by the scale each is stored at
+     * @return that instrument with its scales beneath it
+     */
+    private static DefaultMutableTreeNode instrumentNode(
+            String instrument, java.util.Map<String, List<String>> byScale) {
+        DefaultMutableTreeNode node = new DefaultMutableTreeNode(
+                Messages.orElse("navigator.group." + instrument, instrument));
+
+        List<String> scales = new java.util.ArrayList<>(byScale.keySet());
+
+        scales.sort(SeriesCatalog.coarsestFirst());
+
+        for (String scale : scales) {
+            // A series whose name does not say its scale hangs straight off the
+            // instrument. A heading invented for it would be a word in the tree
+            // that nothing on disk agrees with.
+            DefaultMutableTreeNode under = scale.isEmpty() ? node
+                    : new DefaultMutableTreeNode(
+                            Messages.orElse("navigator.scale." + scale, scale));
+
+            if (under != node) {
+                node.add(under);
+            }
+
+            for (String name : byScale.get(scale)) {
+                under.add(new DefaultMutableTreeNode(new Leaf(name, labelOf(name))));
+            }
+        }
+
+        DefaultMutableTreeNode ticks = tickSessions(instrument);
+
+        if (ticks != null) {
+            node.add(ticks);
+        }
+
+        return node;
+    }
+
+    /**
+     * @return the name, and what the series is FOR when that is known
+     *
+     * <p>The role is what changes a decision: winn is where every hypothesis
+     * was mined, so no number from it proves anything alone, and winfut covers
+     * the years those hypotheses never saw. A file name says none of that, and
+     * opening the wrong one is the expensive mistake.</p>
+     */
+    private static String labelOf(String name) {
+        String role = SeriesCatalog.roleOf(name);
+
+        return role == null
+                ? name : name + "  ·  " + Messages.orElse("navigator.role." + role, role);
+    }
+
+    /**
+     * @return that instrument's exported tick sessions, or null when it has none
      *
      * <p>Listed because they are the difference between a renko that means
      * something and one built from candles, and there is no other way to see
-     * which days have them. They open nothing: a tick session is what a base is
-     * replayed FROM, not a chart of its own.</p>
+     * which days have them. They open nothing: a tick session is what a series
+     * is replayed FROM, not a chart of its own.</p>
      */
-    private static DefaultMutableTreeNode tickSessions() {
+    private static DefaultMutableTreeNode tickSessions(String instrument) {
         java.nio.file.Path folder = SeriesCatalog.folder().resolve("ticks");
 
         if (!java.nio.file.Files.isDirectory(folder)) {
             return null;
         }
 
+        List<java.time.LocalDate> days =
+                new br.com.jorge.reis.endeavourneo.domain.market.TickLibrary(
+                        folder, instrument).exported();
+
+        if (days.isEmpty()) {
+            return null;
+        }
+
         DefaultMutableTreeNode node =
                 new DefaultMutableTreeNode(Messages.get("navigator.ticks"));
 
-        for (String name : SeriesCatalog.names()) {
-            String instrument = SeriesCatalog.groupOf(name);
+        node.add(new DefaultMutableTreeNode(new Leaf(null,
+                Messages.get("navigator.tickSessions", String.valueOf(days.size()),
+                        days.get(0).toString(), days.get(days.size() - 1).toString()))));
 
-            if (node.getChildCount() > 0 && alreadyListed(node, instrument)) {
-                continue;
-            }
-
-            List<java.time.LocalDate> days =
-                    new br.com.jorge.reis.endeavourneo.domain.market.TickLibrary(
-                            folder, instrument).exported();
-
-            if (days.isEmpty()) {
-                continue;
-            }
-
-            node.add(new DefaultMutableTreeNode(new Leaf(null,
-                    Messages.get("navigator.tickSessions", instrument,
-                            String.valueOf(days.size()),
-                            days.get(0).toString(), days.get(days.size() - 1).toString()))));
-        }
-
-        return node.getChildCount() == 0 ? null : node;
-    }
-
-    private static boolean alreadyListed(DefaultMutableTreeNode node, String instrument) {
-        for (int i = 0; i < node.getChildCount(); i++) {
-            Object each = ((DefaultMutableTreeNode) node.getChildAt(i)).getUserObject();
-
-            if (each instanceof Leaf leaf && leaf.label().startsWith(instrument)) {
-                return true;
-            }
-        }
-
-        return false;
+        return node;
     }
 }

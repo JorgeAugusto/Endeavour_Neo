@@ -130,15 +130,62 @@ class NavigatorTreeTest {
             DefaultMutableTreeNode group = (DefaultMutableTreeNode) series.getChildAt(i);
             String heading = String.valueOf(group.getUserObject());
 
+            // Counted by descending, not by getChildCount. The scales sit
+            // between the instrument and its files, so the instrument's own
+            // children are headings; a count of them would say "1" for the two
+            // WIN bases and pass for the wrong reason.
             if (heading.equals(Messages.orElse("navigator.group.win", "win"))) {
-                win = group.getChildCount();
+                win = under(group);
             } else if (heading.equals(Messages.orElse("navigator.group.btcusdt", "btcusdt"))) {
-                bitcoin = group.getChildCount();
+                bitcoin = under(group);
             }
         }
 
         assertEquals(2, win, "the two WIN bases were not put together");
         assertEquals(1, bitcoin);
+    }
+
+    /** @return how many leaves hang anywhere below that node */
+    private static int under(DefaultMutableTreeNode node) {
+        List<String[]> found = new ArrayList<>();
+
+        walk(node, found);
+
+        return found.size();
+    }
+
+    @Test
+    @DisplayName("the scale sits between the instrument and its files")
+    void scaleIsTheMiddleLevel(@TempDir Path folder) throws IOException {
+        // What the reader asked for: WIN, and beneath it the resolutions. Two
+        // series of one market at one scale share a heading; one at another
+        // scale gets its own.
+        base(folder, "winfull-1m");
+        base(folder, "winn-1m");
+        base(folder, "winfull-1s");
+        SeriesCatalog.useFolderForTest(folder);
+
+        DefaultMutableTreeNode root = (DefaultMutableTreeNode) Navigator.treeModel().getRoot();
+        DefaultMutableTreeNode series = (DefaultMutableTreeNode) root.getChildAt(0);
+        DefaultMutableTreeNode win = (DefaultMutableTreeNode) series.getChildAt(0);
+
+        assertEquals(2, win.getChildCount(), "WIN did not come back with two scales");
+
+        DefaultMutableTreeNode minutes = (DefaultMutableTreeNode) win.getChildAt(0);
+        DefaultMutableTreeNode seconds = (DefaultMutableTreeNode) win.getChildAt(1);
+
+        // Coarsest first. Reading down the tree is zooming in, and the reverse
+        // would make the everyday scale the one that has to be hunted for.
+        assertEquals(Messages.orElse("navigator.scale.1m", "1m"),
+                String.valueOf(minutes.getUserObject()));
+        assertEquals(Messages.orElse("navigator.scale.1s", "1s"),
+                String.valueOf(seconds.getUserObject()));
+
+        assertEquals(2, minutes.getChildCount(), "the two minute series were split up");
+        assertEquals(1, seconds.getChildCount());
+        assertEquals("winfull-1s",
+                Navigator.nameOf((DefaultMutableTreeNode) seconds.getChildAt(0)),
+                "the leaf under a scale stopped being openable");
     }
 
     @Test

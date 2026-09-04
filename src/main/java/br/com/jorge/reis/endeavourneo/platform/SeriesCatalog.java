@@ -25,6 +25,7 @@ import java.lang.ref.SoftReference;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -230,17 +231,29 @@ public final class SeriesCatalog {
 
     /** @return the role of each series, by name; a series may have none */
     public static Map<String, String> roles() {
-        Map<String, String> roles = new LinkedHashMap<>();
+        return stated(ROLES_KEY, ROLES_BY_DEFAULT);
+    }
 
-        for (String each : Settings.settings().get(ROLES_KEY, ROLES_BY_DEFAULT).split(",")) {
+    /**
+     * @return a {@code name=value,name=value} setting, read into a map
+     *
+     * <p>Three things are said about a series rather than derived from it --
+     * its role, its market, its scale -- and they are all said the same way.
+     * One parser, because three copies of it means the third one is where the
+     * trim gets forgotten.</p>
+     */
+    private static Map<String, String> stated(String key, String fallback) {
+        Map<String, String> pairs = new LinkedHashMap<>();
+
+        for (String each : Settings.settings().get(key, fallback).split(",")) {
             int equals = each.indexOf('=');
 
             if (equals > 0) {
-                roles.put(each.substring(0, equals).trim(), each.substring(equals + 1).trim());
+                pairs.put(each.substring(0, equals).trim(), each.substring(equals + 1).trim());
             }
         }
 
-        return roles;
+        return pairs;
     }
 
     /** @return the role of that series, or null when it has none */
@@ -259,24 +272,21 @@ public final class SeriesCatalog {
      * three exports of one. The test caught it. So it is stated, and a series
      * nobody stated falls back to that prefix — which is right for a name like
      * {@code ouro-1m} and harmless for anything else.</p>
+     *
+     * <p><b>Stated by FAMILY, not by file.</b> The first version of this listed
+     * whole names, {@code winfull-1m=win}, and it survived only while every
+     * market had exactly one scale. The day {@code winfull-1s} arrived it fell
+     * out of the map, derived its own market from its own prefix, and appeared
+     * in the tree as a second WIN sitting beside the first — with the same
+     * label, so it read as a duplicate rather than as a bug. Keyed by the
+     * family, a new scale of a known market needs no new setting at all.</p>
      */
     private static final String GROUPS_BY_DEFAULT =
-            "winn-1m=win,winfut-1m=win,winfull-1m=win,win-1m=win,"
-                    + "btcusdt-1m=btcusdt,btcusdt-1m-1y=btcusdt";
+            "winn=win,winfut=win,winfull=win,win=win,btcusdt=btcusdt";
 
     /** @return which market each series belongs to, by name */
     public static Map<String, String> groups() {
-        Map<String, String> groups = new LinkedHashMap<>();
-
-        for (String each : Settings.settings().get(GROUPS_KEY, GROUPS_BY_DEFAULT).split(",")) {
-            int equals = each.indexOf('=');
-
-            if (equals > 0) {
-                groups.put(each.substring(0, equals).trim(), each.substring(equals + 1).trim());
-            }
-        }
-
-        return groups;
+        return stated(GROUPS_KEY, GROUPS_BY_DEFAULT);
     }
 
     /**
@@ -290,15 +300,119 @@ public final class SeriesCatalog {
             return "";
         }
 
-        String stated = groups().get(name);
+        Map<String, String> stated = groups();
+        String byName = stated.get(name);
+
+        if (byName != null) {
+            return byName;
+        }
+
+        int dash = name.indexOf('-');
+        String family = dash > 0 ? name.substring(0, dash) : name;
+        String byFamily = stated.get(family);
+
+        return byFamily == null ? family : byFamily;
+    }
+
+    private static final String SCALES_KEY = "data.scales";
+
+    /**
+     * The pseudo-scale of the tick sessions, finer than any bar.
+     *
+     * <p>Not a file on disk and not a suffix on any name. It is here so ticks
+     * can be SORTED with the scales instead of listed beside them: under an
+     * instrument the ticks are the finest scale that instrument has, not a
+     * different kind of thing.</p>
+     */
+    public static final String TICKS = "ticks";
+
+    /**
+     * The scale a series is stored at, as a code: {@code 1m}, {@code 1s}.
+     *
+     * <p>Read from the name, because it genuinely is in there -- and the FIRST
+     * such part, never the last. {@code btcusdt-1m-1y} is a year of minutes, so
+     * reading the last part would file it under a scale of "one year", which is
+     * a recorte and not a scale at all.</p>
+     *
+     * <p>Stated in the settings when a name does not carry it, the same way the
+     * market is. Empty when neither says, and empty is honest: such a series
+     * hangs straight off its instrument, where inventing a heading for it would
+     * put a word in the tree that nothing on disk agrees with.</p>
+     */
+    public static String scaleOf(String name) {
+        if (name == null) {
+            return "";
+        }
+
+        String stated = stated(SCALES_KEY, "").get(name);
 
         if (stated != null) {
             return stated;
         }
 
-        int dash = name.indexOf('-');
+        for (String part : name.split("-")) {
+            if (isScale(part)) {
+                return part;
+            }
+        }
 
-        return dash > 0 ? name.substring(0, dash) : name;
+        return "";
+    }
+
+    /** @return whether that is a count of seconds, minutes, hours or days */
+    private static boolean isScale(String part) {
+        if (part.length() < 2 || "smhd".indexOf(part.charAt(part.length() - 1)) < 0) {
+            return false;
+        }
+
+        for (int i = 0; i < part.length() - 1; i++) {
+            if (!Character.isDigit(part.charAt(i))) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @return how many seconds one bar of that scale spans
+     *
+     * <p>{@link #TICKS} is zero, since a tick spans no time at all, and a code
+     * that cannot be read is -1 -- which keeps it out of the ordering rather
+     * than letting it claim to be finer than a tick.</p>
+     */
+    public static long secondsOf(String scale) {
+        if (TICKS.equals(scale)) {
+            return 0;
+        }
+
+        if (scale == null || !isScale(scale)) {
+            return -1;
+        }
+
+        long count = Long.parseLong(scale.substring(0, scale.length() - 1));
+
+        return switch (scale.charAt(scale.length() - 1)) {
+            case 's' -> count;
+            case 'm' -> count * 60;
+            case 'h' -> count * 3_600;
+            default -> count * 86_400;
+        };
+    }
+
+    /**
+     * @return coarsest first, ticks last, and the unreadable after even those
+     *
+     * <p>Reading down the list is zooming in, which is the order the scales get
+     * spoken in and the only one where the tree does not have to be scanned to
+     * find the coarse one.</p>
+     */
+    public static Comparator<String> coarsestFirst() {
+        return Comparator.comparingLong(scale -> {
+            long seconds = secondsOf(scale);
+
+            return seconds < 0 ? Long.MAX_VALUE : -seconds;
+        });
     }
 
     /** @return the names not offered, which the reader may change */

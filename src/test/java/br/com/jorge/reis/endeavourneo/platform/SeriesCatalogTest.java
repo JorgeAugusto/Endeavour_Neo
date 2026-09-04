@@ -156,4 +156,72 @@ class SeriesCatalogTest {
         assertEquals("winfull-1m", SeriesCatalog.defaultName());
         assertFalse(SeriesCatalog.has("winfull-1m"));
     }
+    @Test
+    @DisplayName("the scale is read from the name, and it is the FIRST part")
+    void theScaleComesFromTheName() {
+        assertEquals("1m", SeriesCatalog.scaleOf("winfull-1m"));
+        assertEquals("1s", SeriesCatalog.scaleOf("winfull-1s"));
+
+        // The one that made this worth writing down. A year of minutes: taking
+        // the last part would file it under a scale of "one year", which is a
+        // recorte, not a scale. And 1y is not a scale code at all, so a reader
+        // that scanned for the last MATCH would still get it wrong the day
+        // somebody writes winfull-1m-2d.
+        assertEquals("1m", SeriesCatalog.scaleOf("btcusdt-1m-1y"));
+    }
+
+    @Test
+    @DisplayName("a name that says no scale gets none, rather than a guess")
+    void anUnnamedScaleStaysEmpty() {
+        // Empty hangs the series straight off its instrument in the tree. A
+        // guess would put a heading there that nothing on disk agrees with.
+        assertEquals("", SeriesCatalog.scaleOf("winfull"));
+        assertEquals("", SeriesCatalog.scaleOf("win-diario"));
+        assertEquals("", SeriesCatalog.scaleOf(null));
+    }
+
+    @Test
+    @DisplayName("scales sort coarsest first, with the ticks last")
+    void coarsestFirst() {
+        List<String> scales = new java.util.ArrayList<>(
+                List.of(SeriesCatalog.TICKS, "1s", "1d", "", "5m", "1m", "1h"));
+
+        scales.sort(SeriesCatalog.coarsestFirst());
+
+        // Reading down is zooming in, which is the order the reader listed them
+        // in. The unreadable one goes after even the ticks: it is not finer
+        // than a tick, it is unknown, and last is where unknown belongs.
+        assertEquals(List.of("1d", "1h", "5m", "1m", "1s", SeriesCatalog.TICKS, ""), scales);
+    }
+
+    @Test
+    @DisplayName("a minute is sixty seconds and a tick is none")
+    void secondsPerBar() {
+        assertEquals(1, SeriesCatalog.secondsOf("1s"));
+        assertEquals(300, SeriesCatalog.secondsOf("5m"));
+        assertEquals(3_600, SeriesCatalog.secondsOf("1h"));
+        assertEquals(86_400, SeriesCatalog.secondsOf("1d"));
+        assertEquals(0, SeriesCatalog.secondsOf(SeriesCatalog.TICKS));
+        assertEquals(-1, SeriesCatalog.secondsOf("1y"));
+    }
+    @Test
+    @DisplayName("a new scale of a known market is not a new market")
+    void aScaleIsNotAMarket() {
+        // What the tree caught. The markets used to be stated by whole file
+        // name, which held only while every market had one scale: winfull-1s
+        // fell out of the map, derived "winfull" from its own prefix, and
+        // appeared as a second WIN beside the first -- with the same label, so
+        // it read as a duplicate rather than as a bug.
+        assertEquals("win", SeriesCatalog.groupOf("winfull-1m"));
+        assertEquals("win", SeriesCatalog.groupOf("winfull-1s"));
+        assertEquals("win", SeriesCatalog.groupOf("winn-1m"));
+        assertEquals("win", SeriesCatalog.groupOf("winfut-1m"));
+
+        // And the three exports still do not become three markets, which is
+        // the older mistake this map exists to prevent.
+        assertEquals(SeriesCatalog.groupOf("winn-1m"), SeriesCatalog.groupOf("winfut-1m"));
+
+        // A market nobody stated is still its own prefix.
+        assertEquals("ouro", SeriesCatalog.groupOf("ouro-1m"));
+    }
 }
