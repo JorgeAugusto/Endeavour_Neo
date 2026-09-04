@@ -29,7 +29,7 @@ package br.com.jorge.reis.endeavourneo.domain.market;
  * package-private on purpose: only the aggregations build these, and they build
  * them freshly. Nobody outside holds a reference to write through.</p>
  */
-final class ArraySeries implements PriceSeries {
+final class ArraySeries implements PriceSeries, Untraded {
 
     private final long[] times;
 
@@ -43,14 +43,37 @@ final class ArraySeries implements PriceSeries {
 
     private final double[] volumes;
 
+    /**
+     * Which bars hold no trade at all, or null when the question does not
+     * arise.
+     *
+     * <p>Null for everything but renko. A time-cut bar cannot be untraded --
+     * a minute with no trade is simply absent -- so carrying an all-false
+     * array of half a million entries for every fold would be paying for an
+     * answer nobody asks. See {@link Untraded}.</p>
+     */
+    private final boolean[] untraded;
+
     ArraySeries(long[] times, double[] opens, double[] highs,
                 double[] lows, double[] closes, double[] volumes) {
+        this(times, opens, highs, lows, closes, volumes, null);
+    }
+
+    ArraySeries(long[] times, double[] opens, double[] highs,
+                double[] lows, double[] closes, double[] volumes,
+                boolean[] untraded) {
         this.times = times;
         this.opens = opens;
         this.highs = highs;
         this.lows = lows;
         this.closes = closes;
         this.volumes = volumes;
+        this.untraded = untraded;
+    }
+
+    @Override
+    public boolean untradedAt(int index) {
+        return untraded != null && untraded[index];
     }
 
     @Override

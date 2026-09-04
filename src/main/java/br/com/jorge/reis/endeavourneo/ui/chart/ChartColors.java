@@ -82,4 +82,21 @@ public final class ChartColors {
     public static Color down() {
         return dark() ? new Color(0xE05252) : new Color(0xC62828);
     }
+
+    /**
+     * @return the colour of a bar nothing traded inside
+     *
+     * <p>Grey, and deliberately colourless: up and down carry meaning, and a
+     * brick laid across an overnight gap did not go up or down -- the market
+     * was shut. Painting it green because its close is above its open would be
+     * the chart claiming a rally that nobody took part in.</p>
+     *
+     * <p>Neutral rather than faint. It has to survive being surrounded by
+     * fourteen of its own kind and still read as a brick; a wash would look
+     * like a rendering fault. See {@link
+     * br.com.jorge.reis.endeavourneo.domain.market.Untraded}.</p>
+     */
+    public static Color untraded() {
+        return dark() ? new Color(0x8C8C8C) : new Color(0x9E9E9E);
+    }
 }

@@ -63,6 +63,12 @@ import java.util.List;
  * simply not drawn. The first version drew them, and a brick that ended a little
  * beyond its close read as wrong to a reader who knew the Profit's.</p>
  *
+ * <p><b>A brick laid over a gap is marked, not hidden.</b> When the market
+ * reopens 1.400 points above where it closed, the ruler has to lay fourteen
+ * bricks at 100 points and thirteen of them cover prices nobody traded. They
+ * are drawn in a flat grey, as the reference product draws them, so the first
+ * brick that was really traded can be seen — see {@link Untraded}.</p>
+ *
  * <p>Volume is accumulated between bricks and split equally among however many
  * complete at once. That split is a convention, not a measurement: the data does
  * not say which part of a minute's volume belonged to which brick.</p>
@@ -298,6 +304,7 @@ public final class Renko implements Aggregation {
 
         List<double[]> bricks = new ArrayList<>();
         List<Long> stamps = new ArrayList<>();
+        List<Boolean> untraded = new ArrayList<>();
 
         // The level the last brick closed at. It starts at the first bar's OPEN,
         // which is the one price in a bar that never moves.
@@ -319,6 +326,13 @@ public final class Renko implements Aggregation {
         double sinceHigh = from == null ? anchor : from.sinceHigh();
 
         for (int i = 0; i < source.size(); i++) {
+            // The envelope of everything traded since the last brick, as it
+            // stood BEFORE this bar was folded in. Bricks laid above it and
+            // below this bar's own range are the shape of a gap: nobody traded
+            // in them. See Untraded, and markGap below.
+            double seenLow = sinceLow;
+            double seenHigh = sinceHigh;
+
             double volume = source.volumeAt(i);
 
             if (Double.isFinite(volume)) {
@@ -375,9 +389,16 @@ public final class Renko implements Aggregation {
                     int count = (int) Math.floor((price - anchor) / brick);
                     int at = bricks.size();
 
-                    anchor = laydown(bricks, stamps, anchor, count, +1, source.timeAt(i));
+                    anchor = laydown(bricks, stamps, untraded, anchor, count, +1,
+                            source.timeAt(i));
                     direction = +1;
                     made += count;
+
+                    // Before the tail is widened below: the body is what the
+                    // question is about, and open-to-close is the body whether
+                    // or not a tail was hung on it.
+                    markGap(bricks, untraded, at, +1,
+                            source.lowAt(i), source.highAt(i), seenLow, seenHigh);
 
                     if (wicks) {
                         // Only the FIRST of a batch wears a tail: how far price
@@ -390,9 +411,13 @@ public final class Renko implements Aggregation {
                     int count = (int) Math.floor((anchor - price) / brick);
                     int at = bricks.size();
 
-                    anchor = laydown(bricks, stamps, anchor, count, -1, source.timeAt(i));
+                    anchor = laydown(bricks, stamps, untraded, anchor, count, -1,
+                            source.timeAt(i));
                     direction = -1;
                     made += count;
+
+                    markGap(bricks, untraded, at, -1,
+                            source.lowAt(i), source.highAt(i), seenLow, seenHigh);
 
                     if (wicks) {
                         bricks.get(at)[1] = Math.max(bricks.get(at)[1], sinceHigh);
@@ -435,12 +460,15 @@ public final class Renko implements Aggregation {
             // one that is always meaningful.
             bricks.add(new double[]{anchor, top, bottom, now, pending});
             stamps.add(source.timeAt(source.size() - 1));
+
+            // Never a gap: the forming brick is where the price IS.
+            untraded.add(Boolean.FALSE);
         }
 
         // The carry is taken from the state, not from the bricks: the forming
         // brick appended just above is provisional and must not become the
         // starting point of the next stretch.
-        return new Continued(assemble(bricks, stamps, anyVolume),
+        return new Continued(assemble(bricks, stamps, untraded, anyVolume),
                 new Carry(anchor, direction, sinceLow, sinceHigh, pending));
     }
 
@@ -452,6 +480,7 @@ public final class Renko implements Aggregation {
      * move as a length rather than as a number to read off an axis.</p>
      */
     private double laydown(List<double[]> bricks, List<Long> stamps,
+                           List<Boolean> untraded,
                            double anchor, int count, int step, long time) {
         double level = anchor;
 
@@ -461,6 +490,7 @@ public final class Renko implements Aggregation {
 
             bricks.add(new double[]{open, Math.max(open, close), Math.min(open, close), close, 0.0});
             stamps.add(time);
+            untraded.add(Boolean.FALSE);
 
             level = close;
         }
@@ -468,8 +498,52 @@ public final class Renko implements Aggregation {
         return level;
     }
 
+    /**
+     * Marks the bricks of one batch that no trade ever went through.
+     *
+     * @param at where this batch starts in {@code bricks}
+     * @param step which way the batch went
+     * @param barLow the low of the bar that laid it
+     * @param barHigh its high
+     * @param seenLow the lowest price seen since the previous brick, before
+     *                this bar
+     * @param seenHigh the highest
+     *
+     * <p><b>A brick is traded when something touches its body, edges
+     * included.</b> The edges have to count: over ticks a bar IS one trade, so
+     * every brick is laid by a price sitting exactly on its close, and a rule
+     * that asked for the interior alone would grey out the entire chart.</p>
+     *
+     * <p>So an upward brick is a gap only when it closes strictly below
+     * everything this bar traded AND opens strictly above everything seen
+     * before it. That leaves exactly the bricks between the two, which is the
+     * gap. Downward is the mirror.</p>
+     *
+     * <p>This is why the mark cannot be read off the batch size: a minute that
+     * ran 400 points lays four bricks and traded through all of them, while a
+     * night that reopens 400 points higher lays the same four and traded
+     * through one. Only the prices tell them apart.</p>
+     */
+    private void markGap(List<double[]> bricks, List<Boolean> untraded, int at, int step,
+                         double barLow, double barHigh, double seenLow, double seenHigh) {
+        // Prices land on the grid by repeated addition, so the comparisons are
+        // against values that should be equal and may be a bit-width apart.
+        double eps = brick * 1e-9;
+
+        for (int b = at; b < bricks.size(); b++) {
+            double open = bricks.get(b)[0];
+            double close = bricks.get(b)[3];
+
+            boolean gap = step > 0
+                    ? close < barLow - eps && open > seenHigh + eps
+                    : close > barHigh + eps && open < seenLow - eps;
+
+            untraded.set(b, gap);
+        }
+    }
+
     private static PriceSeries assemble(List<double[]> bricks, List<Long> stamps,
-                                        boolean anyVolume) {
+                                        List<Boolean> untraded, boolean anyVolume) {
         int size = bricks.size();
 
         long[] times = new long[size];
@@ -478,11 +552,13 @@ public final class Renko implements Aggregation {
         double[] lows = new double[size];
         double[] closes = new double[size];
         double[] volumes = new double[size];
+        boolean[] gaps = new boolean[size];
 
         for (int i = 0; i < size; i++) {
             double[] one = bricks.get(i);
 
             times[i] = stamps.get(i);
+            gaps[i] = untraded.get(i);
             opens[i] = one[0];
             highs[i] = one[1];
             lows[i] = one[2];
@@ -490,6 +566,6 @@ public final class Renko implements Aggregation {
             volumes[i] = anyVolume ? one[4] : Double.NaN;
         }
 
-        return new ArraySeries(times, opens, highs, lows, closes, volumes);
+        return new ArraySeries(times, opens, highs, lows, closes, volumes, gaps);
     }
 }

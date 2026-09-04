@@ -196,6 +196,15 @@ final class BarReadout {
             rows.add(new String[]{Messages.get("readout.volume"), format(0).format(volume)});
         }
 
+        // Only ever true on a renko brick laid across a gap, and worth saying
+        // out loud: the reader is looking at a bar whose open and close are as
+        // real as any other and whose SHAPE was drawn by arithmetic, because
+        // the market was shut. See Untraded.
+        if (br.com.jorge.reis.endeavourneo.domain.market.Untraded.at(series, index)) {
+            rows.add(new String[]{Messages.get("readout.untraded"),
+                    Messages.get("readout.untraded.none")});
+        }
+
         return rows;
     }
 

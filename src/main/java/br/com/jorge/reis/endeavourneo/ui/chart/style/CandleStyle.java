@@ -18,6 +18,7 @@
 package br.com.jorge.reis.endeavourneo.ui.chart.style;
 
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
+import br.com.jorge.reis.endeavourneo.domain.market.Untraded;
 
 import br.com.jorge.reis.endeavourneo.ui.chart.ChartColors;
 import br.com.jorge.reis.endeavourneo.ui.chart.ChartStyle;
@@ -83,7 +84,14 @@ public final class CandleStyle implements ChartStyle {
             double close = series.closeAt(i);
             boolean rising = close >= open;
 
-            g.setColor(rising ? ChartColors.up() : ChartColors.down());
+            // A brick laid over a gap: nobody traded anywhere inside it, so it
+            // gets neither colour. Only renko ever answers yes -- see Untraded
+            // -- and the point of the grey is that the FIRST brick that was
+            // really traded can be picked out of a run of them.
+            boolean gap = Untraded.at(series, i);
+
+            g.setColor(gap ? ChartColors.untraded()
+                    : rising ? ChartColors.up() : ChartColors.down());
 
             double centre = viewport.x(i);
             int x = (int) Math.round(centre);
@@ -118,7 +126,11 @@ public final class CandleStyle implements ChartStyle {
             // guards the case where the two roundings disagree.
             int drawHeight = Math.max(1, (int) Math.round(bottom) - first + 1);
 
-            if (hollow() && rising && drawHeight > 2) {
+            if (hollow() && rising && !gap && drawHeight > 2) {
+                // Solid when it is a gap, whichever way it points. Hollow says
+                // "this one rose"; a gap brick did not rise, and outlining it
+                // would also make it the faintest thing on screen exactly where
+                // the reader is counting bricks.
                 // Outlined, with the background showing through. Below three
                 // pixels the outline and the fill are the same thing, so a tiny
                 // body stays solid rather than becoming an invisible ring.

@@ -60,6 +60,17 @@ public final class TickRenko {
 
     private final List<Long> stamps = new ArrayList<>();
 
+    /**
+     * Which of those bricks no trade went through.
+     *
+     * <p>Carried alongside rather than folded into the row: a row is what the
+     * chart reads as prices, and a sixth number in it that is really a flag is
+     * the kind of thing that ends up drawn. Over ticks this matters more than
+     * anywhere else -- the overnight gap is the one place a tick renko lays
+     * bricks nobody traded. See {@link Untraded}.</p>
+     */
+    private final java.util.BitSet untraded = new java.util.BitSet();
+
     /** Which sessions are already in, so folding one twice is impossible. */
     private final Set<LocalDate> folded = new LinkedHashSet<>();
 
@@ -222,7 +233,13 @@ public final class TickRenko {
         double[] edge = forming;
         long when = formingStamp;
 
-        return new PriceSeries() {
+        return new Marked() {
+
+            @Override
+            public boolean untradedAt(int index) {
+                // The forming brick is where the price IS, so never a gap.
+                return index < settled.size() && Untraded.at(settled, index);
+            }
 
             @Override
             public int size() {
@@ -288,6 +305,8 @@ public final class TickRenko {
         PriceSeries laid = made.bricks();
 
         for (int i = 0; i < laid.size(); i++) {
+            untraded.set(bricks.size(), Untraded.at(laid, i));
+
             bricks.add(new double[]{laid.openAt(i), laid.highAt(i),
                     laid.lowAt(i), laid.closeAt(i), laid.volumeAt(i)});
             stamps.add(laid.timeAt(i));
@@ -314,7 +333,14 @@ public final class TickRenko {
             times[i] = stamps.get(i);
         }
 
-        return new PriceSeries() {
+        java.util.BitSet gaps = (java.util.BitSet) untraded.clone();
+
+        return new Marked() {
+
+            @Override
+            public boolean untradedAt(int index) {
+                return gaps.get(index);
+            }
 
             @Override
             public int size() {
@@ -352,6 +378,9 @@ public final class TickRenko {
             }
         };
     }
+
+    /** A series that also answers which of its bars hold no trade. */
+    private interface Marked extends PriceSeries, Untraded { }
 
     /**
      * @param days the sessions to cover, in order
