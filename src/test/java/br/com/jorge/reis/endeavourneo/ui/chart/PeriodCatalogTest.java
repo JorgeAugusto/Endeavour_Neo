@@ -50,11 +50,16 @@ class PeriodCatalogTest {
     }
 
     @Test
-    @DisplayName("renko runs from two ticks to a hundred and one")
+    @DisplayName("renko vai de 3R a 101R")
     void renkoBounds() {
+        // The bottom moved when the sizing was corrected to the reference
+        // product's formula, (n x tick) - tick. 2R is one tick by that formula,
+        // and a one-tick brick lays one on every price change -- the tape drawn
+        // as boxes. So the smallest offered is 3R, which is two ticks.
         assertFalse(offersRenko("1"),
                 "a one-tick brick lays one on every price change, which is the tape as boxes");
-        assertTrue(offersRenko("2"));
+        assertFalse(offersRenko("2"), "2R e um tijolo de um tick");
+        assertTrue(offersRenko("3"));
         assertTrue(offersRenko("101"));
         assertFalse(offersRenko("102"));
         assertFalse(offersRenko("500"));
@@ -94,8 +99,11 @@ class PeriodCatalogTest {
         assertTrue(six.get(0).aggregation() instanceof Timeframe,
                 "minutes come first: it is what a bare number usually means");
         assertTrue(six.get(1).aggregation() instanceof Renko);
-        assertTrue(six.get(1).description().contains("30 pts"),
-                "six ticks is thirty points, and the list has to say so: "
+        // 6R is (6 x 5) - 5 = 25 points, not 30. This test used to say 30 and
+        // was right about the code and wrong about the product: it pinned the
+        // off-by-one-tick that made every renko here disagree with Profit.
+        assertTrue(six.get(1).description().contains("25 pts"),
+                "6R mede 25 pontos, e a lista tem que dizer isso: "
                         + six.get(1).description());
     }
 
@@ -142,5 +150,44 @@ class PeriodCatalogTest {
         assertNull(Timeframe.ofMinutes(Timeframe.MOST_MINUTES + 1));
         assertEquals(Timeframe.FIVE_MINUTES, Timeframe.ofMinutes(5),
                 "a known scale must come back as the shared one, not a copy");
+    }
+    @Test
+    @DisplayName("nR mede um tick a MENOS que o nome sugere, como no Profit")
+    void theBrickIsOneTickSmallerThanItsName() {
+        // The reference product's own formula:
+        //
+        //     tamanho = (n x tick) - tick
+        //
+        // On the mini index a tick is five points, so 5R is (5 x 5) - 5 = 20 --
+        // four ticks, not five. This program computed n x tick and was one tick
+        // too big at every size. Nothing on screen would have shown it: a
+        // 55-point renko is a perfectly good chart, it is simply not the one
+        // "11R" asks for, and every count taken from it disagreed with Profit
+        // by an amount nobody could see.
+        assertEquals(20.0, PeriodCatalog.brickOf(5), 1e-9, "5R deveria medir 20 pontos");
+        assertEquals(50.0, PeriodCatalog.brickOf(11), 1e-9, "11R deveria medir 50 pontos");
+        assertEquals(10.0, PeriodCatalog.brickOf(3), 1e-9, "3R deveria medir 10 pontos");
+
+        // And it reaches the chart, not just the arithmetic.
+        PeriodCatalog.Choice eleven = PeriodCatalog.byCode("11R");
+
+        assertNotNull(eleven, "11R nao esta no catalogo");
+        assertTrue(eleven.aggregation() instanceof Renko,
+                "11R nao produziu um renko");
+        assertEquals(50.0, ((Renko) eleven.aggregation()).brick(), 1e-9,
+                "o renko de 11R nao foi construido com 50 pontos");
+        assertTrue(eleven.title().contains("50"),
+                "o titulo nao diz o tamanho certo: " + eleven.title());
+    }
+
+    @Test
+    @DisplayName("2R nao e oferecido, porque seria um tijolo de um tick")
+    void theOneTickBrickIsNotOffered() {
+        // By the formula, 2R is (2 x 5) - 5 = 5 points -- one tick, a brick on
+        // every price change. That is the tick tape drawn as boxes, which is
+        // the one thing renko exists not to be.
+        assertEquals(5.0, PeriodCatalog.brickOf(2), 1e-9);
+        assertNull(PeriodCatalog.byCode("2R"), "2R foi oferecido");
+        assertNotNull(PeriodCatalog.byCode("3R"), "3R deveria ser o menor oferecido");
     }
 }

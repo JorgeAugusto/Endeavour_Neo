@@ -51,15 +51,39 @@ public final class PeriodCatalog {
     public static final double TICK = 5.0;
 
     /**
-     * The smallest brick worth offering, in ticks.
+     * How many points a brick called <code>nR</code> actually measures.
      *
-     * <p>Two, not one. A one-tick brick lays a brick on every price change, so
-     * nothing is filtered and the chart is the tick tape drawn as boxes — which
-     * is the one thing renko exists not to be.</p>
+     * <p><b>One tick less than the name suggests</b>, which is the reference
+     * product's own formula:</p>
+     *
+     * <pre>
+     * tamanho = (n x tick) - tick
+     * </pre>
+     *
+     * <p>So on the mini index, where a tick is five points, 5R is
+     * (5 x 5) - 5 = 20 points and 11R is 50 -- not 25 and 55. This program
+     * computed n x tick and was one tick too big at every size, which makes
+     * every brick, every count and every comparison against a Profit chart
+     * quietly wrong. Nothing on screen would have shown it: a 55-point renko is
+     * a perfectly good chart, it is simply not the one the reader asked for.</p>
+     *
+     * <p>Note what the formula means at the bottom: 2R is one tick, which lays
+     * a brick on every price change -- the tick tape drawn as boxes, and the one
+     * thing renko exists not to be. That is why the smallest offered is 3R.</p>
      */
-    public static final int SMALLEST_BRICK = 2;
+    public static double brickOf(int name) {
+        return (name - 1) * TICK;
+    }
 
-    /** The largest brick worth offering, in ticks: 101 is 505 points on the mini. */
+    /**
+     * The smallest brick worth offering, by name.
+     *
+     * <p>Three, so the brick is two ticks. 2R is one tick by the formula above,
+     * and a one-tick brick filters nothing.</p>
+     */
+    public static final int SMALLEST_BRICK = 3;
+
+    /** The largest brick worth offering: 101R is 500 points on the mini. */
     public static final int LARGEST_BRICK = 101;
 
     /** One offer in the list: what it is called and what it builds. */
@@ -116,13 +140,13 @@ public final class PeriodCatalog {
             choices.add(new Choice(minutes.label(), describe(minutes), minutes));
         }
 
-        // Bricks are named in TICKS, as the reference product names them: six
-        // ticks is thirty points on the mini index. Naming them in points would
-        // be more direct and would stop matching what the reader types.
+        // Named the way the reference product names them, and sized the way it
+        // sizes them -- see brickOf. Naming bricks in points would be more
+        // direct and would stop matching what the reader types.
         if (number >= SMALLEST_BRICK && number <= LARGEST_BRICK) {
             choices.add(new Choice(number + "R",
-                    number + " ticks (renko " + trim(number * TICK) + " pts)",
-                    Renko.of(number * TICK).withForming(true)));
+                    number + "R (renko " + trim(brickOf(number)) + " pts)",
+                    Renko.of(brickOf(number)).withForming(true)));
         }
 
         return choices;
@@ -166,10 +190,10 @@ public final class PeriodCatalog {
             choices.add(new Choice(frame.label(), describe(frame), frame));
         }
 
-        for (int ticks : new int[]{2, 3, 4, 5, 6, 10, 20}) {
-            choices.add(new Choice(ticks + "R",
-                    ticks + " ticks (renko " + trim(ticks * TICK) + " pts)",
-                    Renko.of(ticks * TICK).withForming(true)));
+        for (int name : new int[]{3, 4, 5, 6, 11, 21}) {
+            choices.add(new Choice(name + "R",
+                    name + "R (renko " + trim(brickOf(name)) + " pts)",
+                    Renko.of(brickOf(name)).withForming(true)));
         }
 
         return choices;
