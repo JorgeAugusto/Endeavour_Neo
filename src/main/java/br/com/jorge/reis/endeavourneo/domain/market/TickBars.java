@@ -147,6 +147,17 @@ public final class TickBars implements PriceSeries {
      * on every frame.</p>
      */
     public TickBars until(long when) {
+        return range(0, countUntil(when));
+    }
+
+    /**
+     * @return how many bars happened strictly before that instant
+     *
+     * <p>Apart from {@link #until} because a replay does not want the head of
+     * the session again on every frame -- it wants what arrived since the last
+     * one. This gives the boundary; {@link #range} gives the slice.</p>
+     */
+    public int countUntil(long when) {
         int low = 0;
         int high = trades.length - 1;
         int found = 0;
@@ -162,10 +173,24 @@ public final class TickBars implements PriceSeries {
             }
         }
 
-        int[] head = new int[found];
+        return found;
+    }
 
-        System.arraycopy(trades, 0, head, 0, found);
+    /**
+     * @param from the first bar, inclusive
+     * @param to one past the last
+     * @return that stretch of the session
+     *
+     * <p>Still a view of the ticks -- only the index of traded rows is copied,
+     * which is four bytes a bar against the twenty-two the tick costs.</p>
+     */
+    public TickBars range(int from, int to) {
+        int first = Math.max(0, Math.min(from, trades.length));
+        int last = Math.max(first, Math.min(to, trades.length));
+        int[] slice = new int[last - first];
 
-        return new TickBars(ticks, head);
+        System.arraycopy(trades, first, slice, 0, slice.length);
+
+        return new TickBars(ticks, slice);
     }
 }

@@ -497,6 +497,17 @@ public final class ReplaySession {
     }
 
     /** @return whether this day is replayed from the exchange's own ticks */
+    /**
+     * @return the export being played, or null when bars are
+     *
+     * <p>So the chart's bricks come from the same export the transport is
+     * playing. Working it out again in the chart would let it answer a question
+     * this already answered -- and answer it differently.</p>
+     */
+    public TickSource playing() {
+        return feed.isTicks() ? feed.source() : null;
+    }
+
     public boolean isRecorded() {
         return ticks.has(date);
     }

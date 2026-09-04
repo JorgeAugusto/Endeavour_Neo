@@ -65,6 +65,13 @@ public final class TickRenko {
 
     private Renko.Carry carry;
 
+    /** The session being advanced through, and how far into it. */
+    private LocalDate advancing;
+
+    private TickBars advancingBars;
+
+    private int advanced;
+
     /**
      * @param renko the brick size and reversal; its forming brick is ignored
      * @param library where the sessions come from
@@ -126,6 +133,68 @@ public final class TickRenko {
      * clock. The session is NOT marked as folded, because the rest of it is
      * still to come — call {@link #add} once the day is over.</p>
      */
+    /**
+     * Lays whatever the market has printed since the last call.
+     *
+     * @param day the session being played
+     * @param when the replay's clock, in epoch milliseconds
+     * @return whether any brick was laid
+     * @throws IOException if the session exists and will not read
+     *
+     * <p>What a replay needs, and the reason {@link #addUpTo} is not it.
+     * Measured on the tape of 01/09/2026 -- 5,8 million trades -- folding the
+     * session again costs 0,105 s, so redoing it every frame would want 315% of
+     * a core at thirty frames a second. This folds only the trades that arrived
+     * since the last frame, and carries the ruler across so the bricks line up
+     * with the ones already laid.</p>
+     *
+     * <p>The session's bars are held while it is being advanced through, since
+     * finding the traded rows in 5,8 million is 0,056 s and doing that per
+     * frame would be the same mistake one layer down.</p>
+     */
+    public boolean advance(LocalDate day, long when) throws IOException {
+        if (!day.equals(advancing)) {
+            if (advancing != null && day.isBefore(advancing)) {
+                // Backwards would carry the ruler back with it, and nothing in
+                // the result would show that it happened.
+                throw new IllegalArgumentException(day + " comes before " + advancing
+                        + ", which this renko is already advancing through");
+            }
+
+            TickSeries session = library.load(day);
+
+            advancing = day;
+            advanced = 0;
+            advancingBars = session == null || session.size() == 0
+                    ? null : TickBars.of(session);
+
+            // Marked as folded so a later add() of the same day cannot lay it
+            // a second time on top of what advance() already laid.
+            folded.add(day);
+        }
+
+        if (advancingBars == null) {
+            return false;
+        }
+
+        int upTo = advancingBars.countUntil(when);
+
+        if (upTo <= advanced) {
+            return false;
+        }
+
+        boolean laid = fold(advancingBars.range(advanced, upTo));
+
+        advanced = upTo;
+
+        return laid;
+    }
+
+    /** @return the session being advanced through, or null before the first */
+    public LocalDate advancing() {
+        return advancing;
+    }
+
     public boolean addUpTo(LocalDate day, long when) throws IOException {
         TickSeries session = library.load(day);
 

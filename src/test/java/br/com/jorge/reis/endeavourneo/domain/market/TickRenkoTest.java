@@ -39,6 +39,29 @@ class TickRenkoTest {
 
     private static final ZoneId ZONE = ZoneId.systemDefault();
 
+    private static final LocalDate DAY = LocalDate.of(2021, 1, 4);
+
+    /**
+     * A walk that lays bricks in both directions, several times.
+     *
+     * <p>Both directions and several times on purpose: a slice boundary that
+     * fell only on a run of up bricks would never test the reversal, which is
+     * where a lost carry shows.</p>
+     */
+    private static final int[] WALK = walk();
+
+    private static int[] walk() {
+        int[] prices = new int[240];
+        int at = 118_000;
+
+        for (int i = 0; i < prices.length; i++) {
+            at += (i / 20) % 2 == 0 ? 4 : -4;
+            prices[i] = at;
+        }
+
+        return prices;
+    }
+
     /** A session whose trades walk through the prices given, one a second. */
     private static void session(Path folder, LocalDate date, int... prices) throws IOException {
         try (TickFile.Writer writer = new TickFile.Writer(
@@ -245,5 +268,95 @@ class TickRenkoTest {
                 return prices[index];
             }
         };
+    }
+    @Test
+    @DisplayName("avancar em pedacos da o mesmo renko que dobrar de uma vez")
+    void advancingInPiecesIsTheSameRenko(@TempDir Path folder) throws IOException {
+        // The property the whole replay rests on. If folding in slices differed
+        // from folding at once -- by one brick, at one boundary -- the chart
+        // would disagree with itself depending on whether the reader watched
+        // the session or opened it afterwards. Nothing on screen would say so.
+        session(folder, DAY, WALK);
+
+        TickLibrary library = new TickLibrary(folder, "winfut", TickSource.METATRADER);
+
+        try {
+            TickRenko whole = new TickRenko(new Renko(10, 2), library);
+
+            whole.add(DAY);
+
+            TickSeries ticks = library.load(DAY);
+            long first = ticks.timeAt(0);
+            long last = ticks.timeAt(ticks.size() - 1);
+
+            TickRenko piecemeal = new TickRenko(new Renko(10, 2), library);
+
+            // Twenty frames across the session, which is what a replay does.
+            for (int i = 1; i <= 20; i++) {
+                piecemeal.advance(DAY, first + (last - first + 1) * i / 20 + 1);
+            }
+
+            assertEquals(whole.size(), piecemeal.size(),
+                    "the piecemeal renko laid a different number of bricks");
+
+            PriceSeries one = whole.bricks();
+            PriceSeries many = piecemeal.bricks();
+
+            for (int i = 0; i < one.size(); i++) {
+                assertEquals(one.openAt(i), many.openAt(i), "brick " + i + " opens elsewhere");
+                assertEquals(one.closeAt(i), many.closeAt(i), "brick " + i + " closes elsewhere");
+                assertEquals(one.timeAt(i), many.timeAt(i), "brick " + i + " is at another time");
+            }
+        } finally {
+            library.close();
+        }
+    }
+
+    @Test
+    @DisplayName("um quadro que nao trouxe negocio novo nao poe tijolo")
+    void aFrameWithNothingNewLaysNothing(@TempDir Path folder) throws IOException {
+        // A replay asks many times a second and the market does not print that
+        // often. Laying anything for an empty frame would grow the chart out of
+        // nothing.
+        session(folder, DAY, WALK);
+
+        TickLibrary library = new TickLibrary(folder, "winfut", TickSource.METATRADER);
+
+        try {
+            TickRenko renko = new TickRenko(new Renko(10, 2), library);
+            TickSeries ticks = library.load(DAY);
+            long end = ticks.timeAt(ticks.size() - 1) + 1;
+
+            assertTrue(renko.advance(DAY, end), "the first frame laid nothing at all");
+
+            int after = renko.size();
+
+            assertFalse(renko.advance(DAY, end), "an empty frame said it laid a brick");
+            assertEquals(after, renko.size(), "an empty frame grew the renko");
+        } finally {
+            library.close();
+        }
+    }
+
+    @Test
+    @DisplayName("avancar para tras e recusado, nao aceito em silencio")
+    void advancingBackwardsIsRefused(@TempDir Path folder) throws IOException {
+        // Backwards carries the ruler back with it, and nothing in the bricks
+        // would show that it happened.
+        session(folder, DAY, WALK);
+        session(folder, DAY.plusDays(1), WALK);
+
+        TickLibrary library = new TickLibrary(folder, "winfut", TickSource.METATRADER);
+
+        try {
+            TickRenko renko = new TickRenko(new Renko(10, 2), library);
+
+            renko.advance(DAY.plusDays(1), Long.MAX_VALUE);
+
+            assertThrows(IllegalArgumentException.class,
+                    () -> renko.advance(DAY, Long.MAX_VALUE));
+        } finally {
+            library.close();
+        }
     }
 }

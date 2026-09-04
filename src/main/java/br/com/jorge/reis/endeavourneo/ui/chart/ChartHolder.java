@@ -199,6 +199,23 @@ public final class ChartHolder {
      * flicker between two days.</p>
      */
     public void attachReplay(String label, PriceSeries live, Runnable detach) {
+        attachReplay(label, live, detach, null);
+    }
+
+    /**
+     * @param ticks the export the replay is playing, or null for a bar feed
+     *
+     * <p>Passed on so the chart's bricks come from the export the reader chose
+     * in the transport. Working it out again here would let the chart answer a
+     * question the transport already asked -- and answer it differently.</p>
+     */
+    public void attachReplay(String label, PriceSeries live, Runnable detach,
+            br.com.jorge.reis.endeavourneo.domain.market.TickSource ticks) {
+        canvas.setTickSource(ticks);
+        attach(label, live, detach);
+    }
+
+    private void attach(String label, PriceSeries live, Runnable detach) {
         detachReplay.run();
 
         // Only the FIRST time: a second replay dropped on a chart already
@@ -239,6 +256,7 @@ public final class ChartHolder {
         detachReplay = () -> { };
         replayLabel = null;
 
+        canvas.setTickSource(null);
         canvas.setSeries(beforeReplay);
         beforeReplay = null;
 

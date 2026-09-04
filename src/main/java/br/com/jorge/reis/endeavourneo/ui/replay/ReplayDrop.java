@@ -84,7 +84,7 @@ public final class ReplayDrop {
         Runnable follow = () -> holder.canvas().seriesGrew();
 
         holder.attachReplay(session.instrument() + " " + session.rangeText(),
-                session.series(), () -> session.forget(follow));
+                session.series(), () -> session.forget(follow), session.playing());
 
         session.watch(follow);
         session.whenEnded(holder::detachReplay);

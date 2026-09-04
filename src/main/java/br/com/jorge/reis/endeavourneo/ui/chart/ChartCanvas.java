@@ -768,9 +768,100 @@ public final class ChartCanvas extends JComponent {
      * A reader who types 11 and then 55 must not be shown the eleven, arriving
      * late and looking authoritative.</p>
      */
+    /**
+     * Which export the bricks come from, and the renko growing out of it.
+     *
+     * <p>Set when a replay is dropped on this chart, because the replay already
+     * asked the reader which export to play and answering that twice would be
+     * the confusion the single list removed. Null on an ordinary chart, where
+     * the source is worked out from what is on screen.</p>
+     */
+    private transient br.com.jorge.reis.endeavourneo.domain.market.TickSource playing;
+
+    /**
+     * The tick renko of a replay, extended rather than rebuilt.
+     *
+     * <p>Measured on the tape of 01/09/2026: folding the session again costs
+     * 0,105 s, so rebuilding every frame would want 315% of a core at thirty
+     * frames a second. Extending costs 0,018 ms a frame -- 0,1% of one -- and
+     * lays exactly the same 1.090 bricks.</p>
+     */
+    private transient br.com.jorge.reis.endeavourneo.domain.market.TickRenko growing;
+
+    /** The library the growing renko reads from; closed when the replay ends. */
+    private transient br.com.jorge.reis.endeavourneo.domain.market.TickLibrary growingFrom;
+
+    /**
+     * @param source the export a replay is playing, or null for an ordinary chart
+     */
+    public void setTickSource(br.com.jorge.reis.endeavourneo.domain.market.TickSource source) {
+        this.playing = source;
+
+        stopGrowing();
+    }
+
+    private void stopGrowing() {
+        growing = null;
+
+        if (growingFrom != null) {
+            growingFrom.close();
+            growingFrom = null;
+        }
+    }
+
+    /**
+     * @return the export whose ticks should build this chart's bricks
+     *
+     * <p>What a replay is playing, when there is one. Otherwise the export that
+     * has EVERY session on screen -- and the tape first, because it is the
+     * trades themselves rather than a quote stream. A chart half of whose days
+     * came from one export and half from another would change density in the
+     * middle, which is the same mistake as mixing candles with ticks.</p>
+     */
+    private br.com.jorge.reis.endeavourneo.domain.market.TickSource sourceForBricks(
+            java.util.List<java.time.LocalDate> days) {
+        if (playing != null) {
+            return playing;
+        }
+
+        java.nio.file.Path folder = br.com.jorge.reis.endeavourneo.platform.SeriesCatalog
+                .ticksOf(RenkoSource.rootOf(instrument));
+
+        for (br.com.jorge.reis.endeavourneo.domain.market.TickSource each
+                : new br.com.jorge.reis.endeavourneo.domain.market.TickSource[]{
+                    br.com.jorge.reis.endeavourneo.domain.market.TickSource.PROFIT,
+                    br.com.jorge.reis.endeavourneo.domain.market.TickSource.METATRADER}) {
+            br.com.jorge.reis.endeavourneo.domain.market.TickLibrary library =
+                    new br.com.jorge.reis.endeavourneo.domain.market.TickLibrary(
+                            folder, RenkoSource.rootOf(instrument), each);
+
+            try {
+                if (RenkoSource.allows(source, library, false)) {
+                    return each;
+                }
+            } finally {
+                library.close();
+            }
+        }
+
+        return null;
+    }
+
     private void rebuildFromTicks() {
         if (!(period instanceof br.com.jorge.reis.endeavourneo.domain.market.Renko renko)
                 || instrument == null || source == null || source.size() == 0) {
+            return;
+        }
+
+        java.util.List<java.time.LocalDate> onScreen = RenkoSource.sessionsIn(source);
+        br.com.jorge.reis.endeavourneo.domain.market.TickSource which =
+                sourceForBricks(onScreen);
+
+        if (which == null) {
+            // No export holds every session on screen. "Every" and not "some":
+            // bricks laid from ticks and bricks laid from candles differ by 12%
+            // to 22% on the tape, so a chart built half one way would change
+            // density in the middle and look like the market did it.
             return;
         }
 
@@ -778,8 +869,7 @@ public final class ChartCanvas extends JComponent {
                 new br.com.jorge.reis.endeavourneo.domain.market.TickLibrary(
                         br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.ticksOf(
                                 RenkoSource.rootOf(instrument)),
-                        RenkoSource.rootOf(instrument),
-                        br.com.jorge.reis.endeavourneo.domain.market.TickSource.METATRADER);
+                        RenkoSource.rootOf(instrument), which);
 
         if (!RenkoSource.allows(source, library, false)) {
             // "false" and not the setting: this asks whether the ticks are
@@ -790,29 +880,64 @@ public final class ChartCanvas extends JComponent {
             return;
         }
 
-        java.util.List<java.time.LocalDate> days = RenkoSource.sessionsIn(source);
+        java.util.List<java.time.LocalDate> days = onScreen;
         Object asked = period;
 
-        new javax.swing.SwingWorker<PriceSeries, Void>() {
+        // A replay KEEPS its renko, so the next frame can extend it instead of
+        // folding the whole session again -- 0,018 ms against 0,105 s. An
+        // ordinary chart has no next frame, so it folds once and lets go.
+        boolean replaying = playing != null;
+
+        stopGrowing();
+
+        new javax.swing.SwingWorker<
+                br.com.jorge.reis.endeavourneo.domain.market.TickRenko, Void>() {
 
             @Override
-            protected PriceSeries doInBackground() throws Exception {
-                try {
-                    return br.com.jorge.reis.endeavourneo.domain.market.TickRenko
-                            .over(renko, library, days);
-                } finally {
-                    library.close();
+            protected br.com.jorge.reis.endeavourneo.domain.market.TickRenko
+                    doInBackground() throws Exception {
+                br.com.jorge.reis.endeavourneo.domain.market.TickRenko built =
+                        new br.com.jorge.reis.endeavourneo.domain.market.TickRenko(
+                                renko, library);
+
+                // Every session but the last, folded whole. The last one is
+                // where the replay is standing: folding it whole would lay
+                // bricks for trades that have not happened on screen yet.
+                int upTo = replaying ? days.size() - 1 : days.size();
+
+                for (int i = 0; i < upTo; i++) {
+                    built.add(days.get(i));
                 }
+
+                return built;
             }
 
             @Override
             protected void done() {
                 if (asked != period) {
+                    library.close();
+
                     return;
                 }
 
                 try {
-                    PriceSeries bricks = get();
+                    br.com.jorge.reis.endeavourneo.domain.market.TickRenko built = get();
+
+                    if (replaying) {
+                        growing = built;
+                        growingFrom = library;
+
+                        // The session in progress is carried in by the next
+                        // frame, which is a fortieth of a second away.
+                        extendBricks();
+                        repaint();
+
+                        return;
+                    }
+
+                    library.close();
+
+                    PriceSeries bricks = built.bricks();
 
                     if (bricks == null || bricks.size() == 0) {
                         return;
@@ -825,6 +950,8 @@ public final class ChartCanvas extends JComponent {
                     // screen, which is what was already drawn. Interrupting the
                     // reader with a dialog over an indicator would be worse
                     // than the indicator being the coarser of the two.
+                    library.close();
+
                     if (e instanceof InterruptedException) {
                         Thread.currentThread().interrupt();
                     }
@@ -884,6 +1011,24 @@ public final class ChartCanvas extends JComponent {
      * right, which is what watching a market do something looks like.</p>
      */
     public void seriesGrew() {
+        if (growing != null && extendBricks()) {
+            // The bricks grew from the ticks themselves. Falling through to the
+            // candle fold below would throw them away and replace them with a
+            // renko of the replay's bars, which is the mixing this exists to
+            // stop.
+            for (Overlay overlay : overlays) {
+                overlay.calculate(this.series);
+            }
+
+            this.visibleBars = Math.max(1, Math.min(visibleBars,
+                    Math.max(1, this.series.size())));
+            this.firstBar = clampFirstBar(this.series.size() - visibleBars + rightMargin);
+
+            repaint();
+
+            return;
+        }
+
         this.series = period.apply(source);
 
         for (Overlay overlay : overlays) {
@@ -894,6 +1039,47 @@ public final class ChartCanvas extends JComponent {
         this.firstBar = clampFirstBar(this.series.size() - visibleBars + rightMargin);
 
         repaint();
+    }
+
+    /**
+     * @return whether the growing renko could be carried to the replay's clock
+     *
+     * <p>Only what printed since the last frame is folded. The ruler carries
+     * across, so the bricks line up with the ones already laid -- that property
+     * is what makes the cheap path give the same answer as the expensive
+     * one.</p>
+     */
+    private boolean extendBricks() {
+        if (source == null || source.size() == 0) {
+            return false;
+        }
+
+        long now = source.timeAt(source.size() - 1);
+        java.time.LocalDate day = java.time.Instant.ofEpochMilli(now)
+                .atZone(java.time.ZoneId.systemDefault()).toLocalDate();
+
+        try {
+            if (growing.advancing() != null && day.isBefore(growing.advancing())) {
+                // The replay was stopped and started somewhere earlier. The
+                // renko cannot walk backwards, so it is built again from
+                // scratch rather than carried into a past it already left.
+                return false;
+            }
+
+            growing.advance(day, now + 1);
+        } catch (java.io.IOException | IllegalArgumentException e) {
+            // A session that will not read, or an order this renko cannot take.
+            // Dropping back to the candle fold is wrong-but-visible; carrying
+            // on with bricks that skipped a day would be wrong and invisible.
+            stopGrowing();
+
+            return false;
+        }
+
+        this.series = growing.bricks();
+        this.fromTicks = true;
+
+        return true;
     }
 
     private void refold() {
