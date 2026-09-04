@@ -21,6 +21,8 @@ import br.com.jorge.reis.endeavourneo.domain.market.ConcatSeries;
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
 import br.com.jorge.reis.endeavourneo.domain.market.ReplaySeries;
 import br.com.jorge.reis.endeavourneo.domain.market.RecordedTicks;
+import br.com.jorge.reis.endeavourneo.domain.market.Segment;
+import br.com.jorge.reis.endeavourneo.domain.market.SegmentedSeries;
 import br.com.jorge.reis.endeavourneo.domain.market.SyntheticTicks;
 import br.com.jorge.reis.endeavourneo.domain.market.TickLibrary;
 import br.com.jorge.reis.endeavourneo.ui.chart.RandomWalkSeries;
@@ -101,6 +103,9 @@ public final class ReplaySession {
      * </p>
      */
     private volatile boolean preparing;
+
+    /** The base being replayed, read on first use. */
+    private transient PriceSeries base;
 
     private static final DateTimeFormatter CLOCK = DateTimeFormatter.ofPattern("HH:mm:ss");
 
@@ -292,10 +297,64 @@ public final class ReplaySession {
         return days;
     }
 
-    private static PriceSeries dayOf(LocalDate day) {
-        long first = day.atTime(OPEN).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+    /**
+     * @return that session's bars, from the base being replayed
+     *
+     * <p>Until 03/09/2026 this returned a random walk seeded by the date, with
+     * a comment saying it would be replaced when a real loader existed. The
+     * loader had existed for a while, and nobody noticed: the replay animated
+     * INVENTED candles, and on the twenty days that have ticks it animated the
+     * exchange's real ticks over the top of them. Two markets in one window,
+     * with nothing on screen saying so.</p>
+     *
+     * <p>An empty series when the base has no such session — a Saturday, a
+     * holiday, a day outside its range. The caller draws nothing for it rather
+     * than a day that never traded.</p>
+     */
+    private PriceSeries dayOf(LocalDate day) {
+        PriceSeries whole = baseSeries();
 
-        return new RandomWalkSeries(MINUTES, 135_000.0, first, day.toEpochDay());
+        if (whole == null || whole.size() == 0) {
+            return PriceSeries.empty();
+        }
+
+        return SegmentedSeries.of(whole, new Segment(instrument, day, day),
+                ZoneId.systemDefault());
+    }
+
+    /**
+     * @return the whole base, read once for this session
+     *
+     * <p>Held for as long as the replay lives. It is the same object {@link
+     * br.com.jorge.reis.endeavourneo.platform.Bases} hands to every chart, so
+     * this costs nothing beyond the reference.</p>
+     */
+    private PriceSeries baseSeries() {
+        if (base == null) {
+            try {
+                base = br.com.jorge.reis.endeavourneo.platform.Bases.open(instrument)
+                        .orElse(PriceSeries.empty());
+            } catch (java.io.IOException e) {
+                // A base that will not read leaves an empty replay, which the
+                // transport shows as a session with no bars. Better than a
+                // window of prices that came from nowhere.
+                base = PriceSeries.empty();
+            }
+        }
+
+        return base;
+    }
+
+    /**
+     * @return whether the range holds no session at all
+     *
+     * <p>A Saturday, a holiday, or dates outside what the base covers. The
+     * transport says so rather than showing a play button that would do
+     * nothing — and rather than the old answer, which was to invent a session
+     * that never happened.</p>
+     */
+    public boolean isEmpty() {
+        return live.total() == 0;
     }
 
     /** @return whether the first session's ticks are still being read */

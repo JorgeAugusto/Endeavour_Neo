@@ -38,8 +38,24 @@ class ReplayRangeTest {
 
     private static final LocalDate MONDAY = LocalDate.of(2026, 8, 31);
 
+    /** The base these tests play; see ReplayBase. */
+    @org.junit.jupiter.api.io.TempDir
+    static java.nio.file.Path folder;
+
+    private static String base;
+
+    @org.junit.jupiter.api.BeforeAll
+    static void writeTheBase() throws java.io.IOException {
+        base = ReplayBase.at(folder, MONDAY);
+    }
+
+    @org.junit.jupiter.api.AfterAll
+    static void putTheFolderBack() {
+        ReplayBase.release();
+    }
+
     private static ReplaySession over(LocalDate from, LocalDate to) {
-        return new ReplaySession("WINFUT", from, to, 0);
+        return new ReplaySession(base, from, to, 0);
     }
 
     /** @return how many bars the whole playable stretch holds */
@@ -85,11 +101,18 @@ class ReplayRangeTest {
 
     @Test
     @DisplayName("a range of weekend only still plays the day asked for")
-    void weekendOnlyStillPlays() {
+    void weekendOnlyHasNothingToPlay() {
+        // It used to have something: the replay answered every date with a
+        // random walk, so a Saturday came back with a full session that never
+        // happened. The old comment here said an empty transport with no reason
+        // given is the worst answer -- and it is, but the fix is to GIVE the
+        // reason, not to invent a market.
         LocalDate saturday = MONDAY.plusDays(5);
+        ReplaySession weekend = over(saturday, saturday.plusDays(1));
 
-        assertTrue(barsOf(over(saturday, saturday.plusDays(1))) > 0,
-                "an empty transport with no reason given is the worst answer");
+        assertEquals(0, barsOf(weekend),
+                "a Saturday was replayed; the base has no session on one");
+        assertTrue(weekend.isEmpty(), "the transport has to be able to say it has nothing");
     }
 
     @Test

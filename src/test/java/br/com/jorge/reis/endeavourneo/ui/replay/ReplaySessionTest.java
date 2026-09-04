@@ -37,9 +37,30 @@ import org.junit.jupiter.api.Test;
 @DisplayName("Replay session")
 class ReplaySessionTest {
 
+    /**
+     * The base these tests play.
+     *
+     * <p>Needed since the replay stopped inventing its candles: it reads the
+     * source now, and a test with no source replays nothing.</p>
+     */
+    @org.junit.jupiter.api.io.TempDir
+    static java.nio.file.Path folder;
+
+    private static String base;
+
+    @org.junit.jupiter.api.BeforeAll
+    static void writeTheBase() throws java.io.IOException {
+        base = ReplayBase.at(folder, LocalDate.of(2026, 9, 2));
+    }
+
+    @org.junit.jupiter.api.AfterAll
+    static void putTheFolderBack() {
+        ReplayBase.release();
+    }
+
     /** No history, so the assertions below are about the session alone. */
     private static ReplaySession session() {
-        return new ReplaySession("WINFUT", LocalDate.of(2026, 9, 2), 0);
+        return new ReplaySession(base, LocalDate.of(2026, 9, 2), 0);
     }
 
     @Test
@@ -69,7 +90,7 @@ class ReplaySessionTest {
         assertEquals(first.series().closeAt(19), second.series().closeAt(19));
 
         // And a different day is a different market.
-        ReplaySession other = new ReplaySession("WINFUT", LocalDate.of(2026, 9, 3), 0);
+        ReplaySession other = new ReplaySession(base, LocalDate.of(2026, 9, 3), 0);
 
         other.step(20);
 

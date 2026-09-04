@@ -57,6 +57,19 @@ public final class ReplayPanel extends JPanel {
 
     private final JLabel chip = new JLabel();
 
+    /**
+     * Which series is replayed.
+     *
+     * <p>Until today the replay played a random walk seeded by the date, and
+     * the chip said "WINFUT" — a name that belongs to no base here. It animated
+     * invented candles, and where ticks existed it animated them over the top,
+     * which is two markets in one window and nothing on screen said so.</p>
+     *
+     * <p>One combo for now. The segment goes beside it when segments exist;
+     * this one does not have to change for that.</p>
+     */
+    private final javax.swing.JComboBox<String> instrument = new javax.swing.JComboBox<>();
+
     private final JLabel clock = new JLabel("--:--:--");
 
     private final JLabel ends = new JLabel();
@@ -190,6 +203,14 @@ public final class ReplayPanel extends JPanel {
         JPanel left = new JPanel();
 
         left.setLayout(new BoxLayout(left, BoxLayout.Y_AXIS));
+        for (String each : br.com.jorge.reis.endeavourneo.platform.Bases.names()) {
+            instrument.addItem(each);
+        }
+
+        instrument.setSelectedItem(
+                br.com.jorge.reis.endeavourneo.platform.Bases.defaultName());
+
+        left.add(labelled(Messages.get("replay.series"), instrument));
         left.add(labelled(Messages.get("replay.instrument"), chip));
         left.add(Box.createVerticalStrut(6));
         left.add(labelled(Messages.get("replay.from"), date));
@@ -334,7 +355,13 @@ public final class ReplayPanel extends JPanel {
         workspace.put("replay.from", day.toString());
         workspace.put("replay.to", (last == null ? day : last).toString());
 
-        session = new ReplaySession("WINFUT", day, last == null ? day : last,
+        String chosen = instrument.getSelectedItem() == null
+                ? br.com.jorge.reis.endeavourneo.platform.Bases.defaultName()
+                : String.valueOf(instrument.getSelectedItem());
+
+        workspace.put("replay.series", chosen);
+
+        session = new ReplaySession(chosen, day, last == null ? day : last,
                 ReplayPreferences.historyDays());
 
         session.watch(refresh);
@@ -357,11 +384,17 @@ public final class ReplayPanel extends JPanel {
         // inherit.
         boolean waiting = ready && session.isPreparing();
 
+        // A range the base has no session for: a Saturday, a holiday, dates
+        // outside what it covers. Said out loud, because the alternative the
+        // reader sees is a play button that does nothing -- and the alternative
+        // this program used to offer was a session that never happened.
+        boolean nothingToPlay = ready && session.isEmpty();
+
         chip.setText(ready ? session.instrument() : Messages.get("replay.noSession"));
         chip.setEnabled(ready);
 
         for (Component each : new Component[]{play, back, forward, scrubber, speed}) {
-            each.setEnabled(ready && !waiting);
+            each.setEnabled(ready && !waiting && !nothingToPlay);
         }
 
         play.setIcon(ready && session.isPlaying()
@@ -371,6 +404,13 @@ public final class ReplayPanel extends JPanel {
             clock.setText(Messages.get("replay.loading"));
             ends.setText("");
             chip.setEnabled(true);
+
+            return;
+        }
+
+        if (nothingToPlay) {
+            clock.setText(Messages.get("replay.nothing"));
+            ends.setText(session.rangeText());
 
             return;
         }
