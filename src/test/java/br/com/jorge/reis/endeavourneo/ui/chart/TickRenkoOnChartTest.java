@@ -25,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import br.com.jorge.reis.endeavourneo.domain.market.TickSource;
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
 import br.com.jorge.reis.endeavourneo.domain.market.Renko;
+import br.com.jorge.reis.endeavourneo.domain.market.Timeframe;
 import br.com.jorge.reis.endeavourneo.domain.market.TickFile;
 import br.com.jorge.reis.endeavourneo.platform.SeriesCatalog;
 
@@ -348,5 +349,47 @@ class TickRenkoOnChartTest {
         SwingUtilities.invokeAndWait(() -> { });
 
         assertFalse(canvas.isFromTicks(), "a five-minute chart went looking for ticks");
+    }
+    @Test
+    @DisplayName("sair do renko devolve o grafico aos minutos")
+    void leavingRenkoGoesBackToMinutes(@TempDir Path folder) throws Exception {
+        // Reported: "in minutes it works, 1, 5, 10, all fine; go to renko and
+        // it stops -- and then it will not go back to minutes."
+        //
+        // The cause was one early return. Leaving renko for minutes returned
+        // from the tick rebuild before dropping the renko that was still
+        // growing, so every frame afterwards took the extend path and put its
+        // BRICKS on screen while the chart was set to minutes. Nothing on
+        // screen said the chart was showing something the period did not ask
+        // for.
+        session(folder);
+
+        ChartCanvas canvas = showing(folder);
+
+        canvas.setPeriod(new Renko(55, 2), "55R", "55R");
+        settle(canvas);
+
+        assertTrue(canvas.isFromTicks(), "the renko never came from the ticks");
+
+        int bricks = canvas.series().size();
+
+        canvas.setPeriod(Timeframe.ONE_MINUTE, "1m", "1m");
+
+        assertFalse(canvas.isFromTicks(),
+                "the chart still claims tick bricks after going back to minutes");
+
+        int minutes = canvas.series().size();
+
+        assertNotEquals(bricks, minutes,
+                "the chart kept showing the bricks after the period changed");
+        assertEquals(MINUTES, minutes,
+                "the chart did not come back to the minute bars it was given");
+
+        // And it keeps moving: the frame after the change must not be served
+        // from a renko that no longer belongs to this period.
+        canvas.seriesGrew();
+
+        assertFalse(canvas.isFromTicks(), "a later frame put the bricks back");
+        assertEquals(MINUTES, canvas.series().size());
     }
 }

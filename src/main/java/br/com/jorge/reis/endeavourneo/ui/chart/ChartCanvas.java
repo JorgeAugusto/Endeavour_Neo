@@ -848,6 +848,15 @@ public final class ChartCanvas extends JComponent {
     }
 
     private void rebuildFromTicks() {
+        // Dropped FIRST, on every path out of here. It used to be dropped only
+        // where a new one was about to be built, so leaving renko for minutes
+        // returned early and left the old one growing -- and every frame after
+        // that took the extend path and put its BRICKS on screen while the
+        // chart was set to minutes. The chart never came back, which is exactly
+        // how it was reported: "go to renko and it stops, and then it will not
+        // go back to minutes".
+        stopGrowing();
+
         if (!(period instanceof br.com.jorge.reis.endeavourneo.domain.market.Renko renko)
                 || instrument == null || source == null || source.size() == 0) {
             return;
@@ -898,8 +907,6 @@ public final class ChartCanvas extends JComponent {
         // moved into the next one and never came back. A whole session of
         // bricks went missing without a mark.
         java.time.LocalDate standing = replaying ? dayOfClock() : null;
-
-        stopGrowing();
 
         new javax.swing.SwingWorker<
                 br.com.jorge.reis.endeavourneo.domain.market.TickRenko, Void>() {
