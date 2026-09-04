@@ -52,7 +52,7 @@ import java.util.Set;
  * <h2>The rule</h2>
  *
  * <p>Allowed while the reader lets missing ticks be filled in, which is the
- * default and has to be: one month of the base has ticks and eight years do
+ * default and has to be: one month of the series has ticks and eight years do
  * not. With that off, allowed only when <b>every</b> session on screen was
  * exported — a renko built partly from ticks and partly from candles would
  * change density halfway across, and look like the market did it.</p>
@@ -87,7 +87,7 @@ final class RenkoSource {
         ZoneId zone = ZoneId.systemDefault();
 
         // Walked once, and the calendar is only asked where the day changes. A
-        // conversion per bar would be 693 thousand of them on the full base, on
+        // conversion per bar would be 693 thousand of them on the full series, on
         // the interface thread, for one keystroke.
         LocalDate seen = null;
 
@@ -146,6 +146,6 @@ final class RenkoSource {
      * </p>
      */
     static String rootOf(String name) {
-        return br.com.jorge.reis.endeavourneo.platform.Bases.groupOf(name);
+        return br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.groupOf(name);
     }
 }

@@ -250,7 +250,7 @@ public final class ChartCanvas extends JComponent {
      * 1m→5m→15m and be quietly wrong for anything else — renko over five-minute
      * bars is not renko over the trades that made them.</p>
      */
-    private transient PriceSeries base = PriceSeries.empty();
+    private transient PriceSeries source = PriceSeries.empty();
 
     private transient Aggregation period = Timeframe.ONE_MINUTE;
 
@@ -650,7 +650,7 @@ public final class ChartCanvas extends JComponent {
      * arranged the window for.</p>
      */
     public void setSeries(PriceSeries newSeries) {
-        this.base = newSeries == null ? PriceSeries.empty() : newSeries;
+        this.source = newSeries == null ? PriceSeries.empty() : newSeries;
 
         refold();
     }
@@ -692,8 +692,8 @@ public final class ChartCanvas extends JComponent {
     }
 
     /** @return the bars as stored, before the period is applied */
-    public PriceSeries base() {
-        return base;
+    public PriceSeries source() {
+        return source;
     }
 
     public Aggregation period() {
@@ -771,16 +771,16 @@ public final class ChartCanvas extends JComponent {
      */
     private void rebuildFromTicks() {
         if (!(period instanceof br.com.jorge.reis.endeavourneo.domain.market.Renko renko)
-                || instrument == null || base == null || base.size() == 0) {
+                || instrument == null || source == null || source.size() == 0) {
             return;
         }
 
         br.com.jorge.reis.endeavourneo.domain.market.TickLibrary library =
                 new br.com.jorge.reis.endeavourneo.domain.market.TickLibrary(
-                        br.com.jorge.reis.endeavourneo.platform.Bases.folder().resolve("ticks"),
+                        br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.folder().resolve("ticks"),
                         RenkoSource.rootOf(instrument));
 
-        if (!RenkoSource.allows(base, library, false)) {
+        if (!RenkoSource.allows(source, library, false)) {
             // "false" and not the setting: this asks whether the ticks are
             // THERE, which is a fact. What the setting decides is whether a
             // renko may be drawn without them, and that is decided elsewhere.
@@ -789,7 +789,7 @@ public final class ChartCanvas extends JComponent {
             return;
         }
 
-        java.util.List<java.time.LocalDate> days = RenkoSource.sessionsIn(base);
+        java.util.List<java.time.LocalDate> days = RenkoSource.sessionsIn(source);
         Object asked = period;
 
         new javax.swing.SwingWorker<PriceSeries, Void>() {
@@ -858,7 +858,7 @@ public final class ChartCanvas extends JComponent {
     private boolean renkoAllowed() {
         return RenkoSource.allows(series,
                 new br.com.jorge.reis.endeavourneo.domain.market.TickLibrary(
-                        br.com.jorge.reis.endeavourneo.platform.Bases.folder().resolve("ticks"),
+                        br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.folder().resolve("ticks"),
                         RenkoSource.rootOf(instrument)),
                 ChartPreferences.syntheticTicks());
     }
@@ -881,7 +881,7 @@ public final class ChartCanvas extends JComponent {
      * right, which is what watching a market do something looks like.</p>
      */
     public void seriesGrew() {
-        this.series = period.apply(base);
+        this.series = period.apply(source);
 
         for (Overlay overlay : overlays) {
             overlay.calculate(this.series);
@@ -898,7 +898,7 @@ public final class ChartCanvas extends JComponent {
         // blank; when the ticks are available the bricks arrive a moment later
         // and replace them. Waiting for the ticks instead would freeze the
         // interface for a fifth of a second per session.
-        this.series = period.apply(base);
+        this.series = period.apply(source);
         this.fromTicks = false;
 
         rebuildFromTicks();

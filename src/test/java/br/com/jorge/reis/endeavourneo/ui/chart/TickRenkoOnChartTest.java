@@ -25,7 +25,7 @@ import br.com.jorge.reis.endeavourneo.domain.market.MetaTraderTicks;
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
 import br.com.jorge.reis.endeavourneo.domain.market.Renko;
 import br.com.jorge.reis.endeavourneo.domain.market.TickFile;
-import br.com.jorge.reis.endeavourneo.platform.Bases;
+import br.com.jorge.reis.endeavourneo.platform.SeriesCatalog;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -55,7 +55,7 @@ class TickRenkoOnChartTest {
 
     @AfterEach
     void stopPointingAtTheTemporaryFolder() {
-        Bases.useFolderForTest(null);
+        SeriesCatalog.useFolderForTest(null);
     }
 
     /** Forty ticks a minute, for two hours, from ONE price path. */
@@ -170,7 +170,7 @@ class TickRenkoOnChartTest {
     }
 
     private static ChartCanvas showing(Path folder) {
-        Bases.useFolderForTest(folder);
+        SeriesCatalog.useFolderForTest(folder);
 
         ChartCanvas canvas = new ChartCanvas();
 
@@ -235,7 +235,7 @@ class TickRenkoOnChartTest {
 
         ChartCanvas canvas = new ChartCanvas();
 
-        Bases.useFolderForTest(folder);
+        SeriesCatalog.useFolderForTest(folder);
         canvas.setInstrument("winfull-1m");
         canvas.setSeries(twoDays());
         canvas.setSize(900, 500);

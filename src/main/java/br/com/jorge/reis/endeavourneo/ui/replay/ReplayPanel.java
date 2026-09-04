@@ -203,12 +203,12 @@ public final class ReplayPanel extends JPanel {
         JPanel left = new JPanel();
 
         left.setLayout(new BoxLayout(left, BoxLayout.Y_AXIS));
-        for (String each : br.com.jorge.reis.endeavourneo.platform.Bases.names()) {
+        for (String each : br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.names()) {
             instrument.addItem(each);
         }
 
         instrument.setSelectedItem(
-                br.com.jorge.reis.endeavourneo.platform.Bases.defaultName());
+                br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.defaultName());
 
         left.add(labelled(Messages.get("replay.series"), instrument));
         left.add(labelled(Messages.get("replay.instrument"), chip));
@@ -356,7 +356,7 @@ public final class ReplayPanel extends JPanel {
         workspace.put("replay.to", (last == null ? day : last).toString());
 
         String chosen = instrument.getSelectedItem() == null
-                ? br.com.jorge.reis.endeavourneo.platform.Bases.defaultName()
+                ? br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.defaultName()
                 : String.valueOf(instrument.getSelectedItem());
 
         workspace.put("replay.series", chosen);

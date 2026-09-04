@@ -204,7 +204,7 @@ public final class ChartHolder {
         // Only the FIRST time: a second replay dropped on a chart already
         // playing one must not remember the first replay as "before".
         if (beforeReplay == null) {
-            beforeReplay = canvas.base();
+            beforeReplay = canvas.source();
         }
 
         this.replayLabel = label;

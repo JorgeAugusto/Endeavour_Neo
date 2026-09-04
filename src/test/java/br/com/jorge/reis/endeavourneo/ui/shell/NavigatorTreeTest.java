@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import br.com.jorge.reis.endeavourneo.platform.Bases;
+import br.com.jorge.reis.endeavourneo.platform.SeriesCatalog;
 import br.com.jorge.reis.endeavourneo.platform.Messages;
 
 import java.io.IOException;
@@ -47,7 +47,7 @@ class NavigatorTreeTest {
 
     @AfterEach
     void stopPointingAtTheTemporaryFolder() {
-        Bases.useFolderForTest(null);
+        SeriesCatalog.useFolderForTest(null);
     }
 
     private static void base(Path folder, String name) throws IOException {
@@ -97,7 +97,7 @@ class NavigatorTreeTest {
         // and a double click still asks for the file. Showing the role by
         // renaming the node would break opening it, silently.
         base(folder, "winfull-1m");
-        Bases.useFolderForTest(folder);
+        SeriesCatalog.useFolderForTest(folder);
 
         List<String[]> leaves = leaves(Navigator.treeModel());
         String[] winn = leaves.stream()
@@ -118,7 +118,7 @@ class NavigatorTreeTest {
         base(folder, "winn-1m");
         base(folder, "winfut-1m");
         base(folder, "btcusdt-1m");
-        Bases.useFolderForTest(folder);
+        SeriesCatalog.useFolderForTest(folder);
 
         DefaultMutableTreeNode root = (DefaultMutableTreeNode) Navigator.treeModel().getRoot();
         DefaultMutableTreeNode series = (DefaultMutableTreeNode) root.getChildAt(0);
@@ -148,7 +148,7 @@ class NavigatorTreeTest {
         // not a defect, and rendering it as !navigator.group.ouro! would make
         // the tree unreadable for a file that is perfectly fine.
         base(folder, "ouro-1m");
-        Bases.useFolderForTest(folder);
+        SeriesCatalog.useFolderForTest(folder);
 
         List<String[]> leaves = leaves(Navigator.treeModel());
         String[] gold = leaves.stream()

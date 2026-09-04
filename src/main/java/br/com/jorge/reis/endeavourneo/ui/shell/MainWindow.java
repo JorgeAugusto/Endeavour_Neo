@@ -26,7 +26,7 @@ import java.awt.event.KeyEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
-import br.com.jorge.reis.endeavourneo.platform.Bases;
+import br.com.jorge.reis.endeavourneo.platform.SeriesCatalog;
 import br.com.jorge.reis.endeavourneo.platform.JobService;
 import br.com.jorge.reis.endeavourneo.ui.chart.ChartHolder;
 import br.com.jorge.reis.endeavourneo.ui.chart.RandomWalkSeries;
@@ -315,33 +315,33 @@ public final class MainWindow extends JFrame {
     }
 
     /**
-     * @param name a base's name
+     * @param name a series's name
      * @param title what the window will be called, for the message if it fails
      * @return the bars to draw
      *
-     * <p>The synthetic walk is the answer only when there is no base at all —
+     * <p>The synthetic walk is the answer only when there is no series at all —
      * on a machine where the data folder has not been found yet, the
      * application still opens and still draws. It is never the answer when a
-     * base exists and fails to read: that says so out loud, because prices that
+     * series exists and fails to read: that says so out loud, because prices that
      * are not the market's, drawn without a word, are the one thing a chart
      * must never do.</p>
      */
     private PriceSeries seriesFor(String name, String title) {
         try {
-            java.util.Optional<PriceSeries> base = Bases.open(name);
+            java.util.Optional<PriceSeries> series = SeriesCatalog.open(name);
 
-            if (base.isPresent()) {
-                console.write(Messages.get("console.baseLoaded", name,
-                        String.valueOf(base.get().size())));
+            if (series.isPresent()) {
+                console.write(Messages.get("console.seriesLoaded", name,
+                        String.valueOf(series.get().size())));
 
-                return base.get();
+                return series.get();
             }
         } catch (java.io.IOException e) {
-            console.write(Messages.get("console.baseFailed", name, String.valueOf(e.getMessage())));
-            status.say(Messages.get("console.baseFailed", name, String.valueOf(e.getMessage())));
+            console.write(Messages.get("console.seriesFailed", name, String.valueOf(e.getMessage())));
+            status.say(Messages.get("console.seriesFailed", name, String.valueOf(e.getMessage())));
         }
 
-        console.write(Messages.get("console.baseMissing", Bases.folder().toString()));
+        console.write(Messages.get("console.seriesMissing", SeriesCatalog.folder().toString()));
 
         return new RandomWalkSeries(2_000, 135_000.0);
     }
@@ -360,17 +360,17 @@ public final class MainWindow extends JFrame {
     }
 
     /**
-     * @param series a base's name, or any name at all
+     * @param series a series's name, or any name at all
      * @return the title the chart ended up with, which is NOT always what was
      *         asked for -- see below
      */
     public String open(String series) {
-        // A name that is not a base opens the default one instead, and is
-        // titled after it. Workspaces written before there was a base hold
+        // A name that is not a series opens the default one instead, and is
+        // titled after it. Workspaces written before there was a series hold
         // names like "Sem título", and showing prices under a title that names
         // no instrument is worse than quietly correcting it -- which also
         // repairs the entry, since what is open is what gets remembered.
-        String name = Bases.has(series) ? series : Bases.defaultName();
+        String name = SeriesCatalog.has(series) ? series : SeriesCatalog.defaultName();
 
         // ALWAYS a new chart, never fronting an existing one. A terminal is
         // expected to show the same instrument at several timeframes at once,
@@ -378,7 +378,7 @@ public final class MainWindow extends JFrame {
         // zoom levels. Fronting instead -- the semantics of an IDE tab, one
         // editor per file -- is wrong for a chart and was the previous
         // behaviour.
-        String title = uniqueTitle(Bases.has(name) ? name : series);
+        String title = uniqueTitle(SeriesCatalog.has(name) ? name : series);
         ChartHolder holder = new ChartHolder(title, desktop, this, () -> {
             charts.remove(title);
             rememberCharts();
@@ -409,7 +409,7 @@ public final class MainWindow extends JFrame {
         status.say(title);
 
         // The title, because the caller cannot work it out: it depends on
-        // whether the name was a base and on what was already open. Restoring a
+        // whether the name was a series and on what was already open. Restoring a
         // workspace looked the chart up by the name it asked for, and quietly
         // found nothing the moment that name stopped being the title.
         return title;
@@ -530,14 +530,14 @@ public final class MainWindow extends JFrame {
         // and two rows, two on top and one below. A fixed grid would put three
         // in a 2x2 and leave a quadrant empty, which is a visible hole rather
         // than a layout.
-        int base = count / rows;
+        int series = count / rows;
         int extra = count % rows;
 
         int row = 0;
         int before = 0;
 
         while (row < rows) {
-            int inThisRow = base + (row < extra ? 1 : 0);
+            int inThisRow = series + (row < extra ? 1 : 0);
 
             if (index < before + inThisRow) {
                 break;
@@ -547,7 +547,7 @@ public final class MainWindow extends JFrame {
             row++;
         }
 
-        int columns = base + (row < extra ? 1 : 0);
+        int columns = series + (row < extra ? 1 : 0);
         int column = index - before;
 
         int cellWidth = width / columns;
@@ -588,7 +588,7 @@ public final class MainWindow extends JFrame {
         JMenuBar bar = new JMenuBar();
 
         JMenu file = menu("menu.file");
-        file.add(item("action.new", KeyEvent.VK_N, () -> open(Bases.defaultName())));
+        file.add(item("action.new", KeyEvent.VK_N, () -> open(SeriesCatalog.defaultName())));
         file.addSeparator();
         file.add(item("action.preferences", KeyEvent.VK_COMMA, this::openPreferences));
         file.addSeparator();
@@ -788,7 +788,7 @@ public final class MainWindow extends JFrame {
         bar.setFloatable(false);
         bar.setBorder(BorderFactory.createEmptyBorder(2, 4, 2, 4));
 
-        bar.add(button("action.new", () -> open(Bases.defaultName())));
+        bar.add(button("action.new", () -> open(SeriesCatalog.defaultName())));
         bar.addSeparator();
         bar.add(iconButton("action.tileCharts", Icons.tile(16), this::tileCharts));
         bar.addSeparator();

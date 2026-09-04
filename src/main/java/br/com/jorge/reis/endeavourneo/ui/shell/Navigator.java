@@ -20,7 +20,7 @@ package br.com.jorge.reis.endeavourneo.ui.shell;
 import br.com.jorge.reis.endeavourneo.platform.Messages;
 
 import java.awt.BorderLayout;
-import br.com.jorge.reis.endeavourneo.platform.Bases;
+import br.com.jorge.reis.endeavourneo.platform.SeriesCatalog;
 
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -159,11 +159,11 @@ public final class Navigator extends JPanel {
         // number from it proves anything alone, and winfut covers the years
         // those hypotheses never saw. Five files listed flat says none of that,
         // and opening the wrong one is the expensive mistake.
-        List<String> bases = Bases.names();
+        List<String> available = SeriesCatalog.names();
         java.util.Map<String, DefaultMutableTreeNode> groups = new java.util.LinkedHashMap<>();
 
-        for (String name : bases) {
-            String group = Bases.groupOf(name);
+        for (String name : available) {
+            String group = SeriesCatalog.groupOf(name);
             DefaultMutableTreeNode under = groups.computeIfAbsent(group, key -> {
                 DefaultMutableTreeNode node = new DefaultMutableTreeNode(
                         Messages.orElse("navigator.group." + key, key));
@@ -173,16 +173,16 @@ public final class Navigator extends JPanel {
                 return node;
             });
 
-            String role = Bases.roleOf(name);
+            String role = SeriesCatalog.roleOf(name);
             String label = role == null
                     ? name : name + "  ·  " + Messages.orElse("navigator.role." + role, role);
 
             under.add(new DefaultMutableTreeNode(new Leaf(name, label)));
         }
 
-        if (bases.isEmpty()) {
+        if (available.isEmpty()) {
             series.add(new DefaultMutableTreeNode(new Leaf(null,
-                    Messages.get("navigator.noBases", Bases.folder().toString()))));
+                    Messages.get("navigator.noSeries", SeriesCatalog.folder().toString()))));
         }
 
         DefaultMutableTreeNode ticks = tickSessions();
@@ -210,7 +210,7 @@ public final class Navigator extends JPanel {
      * replayed FROM, not a chart of its own.</p>
      */
     private static DefaultMutableTreeNode tickSessions() {
-        java.nio.file.Path folder = Bases.folder().resolve("ticks");
+        java.nio.file.Path folder = SeriesCatalog.folder().resolve("ticks");
 
         if (!java.nio.file.Files.isDirectory(folder)) {
             return null;
@@ -219,8 +219,8 @@ public final class Navigator extends JPanel {
         DefaultMutableTreeNode node =
                 new DefaultMutableTreeNode(Messages.get("navigator.ticks"));
 
-        for (String name : Bases.names()) {
-            String instrument = Bases.groupOf(name);
+        for (String name : SeriesCatalog.names()) {
+            String instrument = SeriesCatalog.groupOf(name);
 
             if (node.getChildCount() > 0 && alreadyListed(node, instrument)) {
                 continue;

@@ -40,13 +40,13 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * Finding the bases and reading one without reading it twice.
  */
-@DisplayName("Bases")
-class BasesTest {
+@DisplayName("SeriesCatalog")
+class SeriesCatalogTest {
 
     @AfterEach
     void stopPointingAtTheTemporaryFolder() {
-        Bases.useFolderForTest(null);
-        Bases.forget();
+        SeriesCatalog.useFolderForTest(null);
+        SeriesCatalog.forget();
     }
 
     /** A base of one bar, written the way the first Endeavour writes it. */
@@ -76,9 +76,9 @@ class BasesTest {
         Files.write(folder.resolve("broken.bin"), "not a base either, but named like one"
                 .getBytes(StandardCharsets.UTF_8));
 
-        Bases.useFolderForTest(folder);
+        SeriesCatalog.useFolderForTest(folder);
 
-        assertEquals(List.of("winfut-1m", "winn-1m"), Bases.names(),
+        assertEquals(List.of("winfut-1m", "winn-1m"), SeriesCatalog.names(),
                 "a file that is not a base must not be offered as one");
     }
 
@@ -88,10 +88,10 @@ class BasesTest {
         // Several windows on one instrument is the ordinary case, and reading
         // thirty megabytes for each of them is not.
         base(folder, "winn-1m", 136_000);
-        Bases.useFolderForTest(folder);
+        SeriesCatalog.useFolderForTest(folder);
 
-        PriceSeries first = Bases.open("winn-1m").orElseThrow();
-        PriceSeries again = Bases.open("winn-1m").orElseThrow();
+        PriceSeries first = SeriesCatalog.open("winn-1m").orElseThrow();
+        PriceSeries again = SeriesCatalog.open("winn-1m").orElseThrow();
 
         assertSame(first, again, "the base was read a second time");
         assertEquals(136_000.0, first.closeAt(0), 1e-9);
@@ -101,13 +101,13 @@ class BasesTest {
     @DisplayName("asking for a base that is not there is an answer, not a failure")
     void anAbsentBaseIsEmpty(@TempDir Path folder) throws IOException {
         base(folder, "winn-1m", 136_000);
-        Bases.useFolderForTest(folder);
+        SeriesCatalog.useFolderForTest(folder);
 
-        Optional<PriceSeries> missing = Bases.open("does-not-exist");
+        Optional<PriceSeries> missing = SeriesCatalog.open("does-not-exist");
 
         assertTrue(missing.isEmpty());
-        assertFalse(Bases.has("does-not-exist"));
-        assertTrue(Bases.has("winn-1m"));
+        assertFalse(SeriesCatalog.has("does-not-exist"));
+        assertTrue(SeriesCatalog.has("winn-1m"));
     }
 
     @Test
@@ -119,9 +119,9 @@ class BasesTest {
         // taken on the wrong base by accident.
         base(folder, "winn-1m", 136_000);
         base(folder, "win-1m", 130_000);
-        Bases.useFolderForTest(folder);
+        SeriesCatalog.useFolderForTest(folder);
 
-        assertEquals(List.of("winn-1m"), Bases.names(),
+        assertEquals(List.of("winn-1m"), SeriesCatalog.names(),
                 "the retired base was offered in the listing");
 
         assertTrue(Files.isRegularFile(folder.resolve("win-1m.bin")),
@@ -129,8 +129,8 @@ class BasesTest {
 
         // Asked for by name it still opens, so a workspace that remembers it is
         // not silently handed a different instrument.
-        assertTrue(Bases.has("win-1m"));
-        assertEquals(130_000.0, Bases.open("win-1m").orElseThrow().closeAt(0), 1e-9);
+        assertTrue(SeriesCatalog.has("win-1m"));
+        assertEquals(130_000.0, SeriesCatalog.open("win-1m").orElseThrow().closeAt(0), 1e-9);
     }
 
     @Test
@@ -142,18 +142,18 @@ class BasesTest {
         base(folder, "btcusdt-1m", 60_000);
         base(folder, "winn-1m", 136_000);
         base(folder, "winfull-1m", 136_000);
-        Bases.useFolderForTest(folder);
+        SeriesCatalog.useFolderForTest(folder);
 
-        assertEquals("winfull-1m", Bases.defaultName());
+        assertEquals("winfull-1m", SeriesCatalog.defaultName());
     }
 
     @Test
     @DisplayName("with no base at all, the default still names something")
     void theDefaultSurvivesAnEmptyFolder(@TempDir Path folder) {
-        Bases.useFolderForTest(folder);
+        SeriesCatalog.useFolderForTest(folder);
 
-        assertTrue(Bases.names().isEmpty());
-        assertEquals("winfull-1m", Bases.defaultName());
-        assertFalse(Bases.has("winfull-1m"));
+        assertTrue(SeriesCatalog.names().isEmpty());
+        assertEquals("winfull-1m", SeriesCatalog.defaultName());
+        assertFalse(SeriesCatalog.has("winfull-1m"));
     }
 }

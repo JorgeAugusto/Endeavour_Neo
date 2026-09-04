@@ -19,7 +19,7 @@ package br.com.jorge.reis.endeavourneo.ui.replay;
 
 import br.com.jorge.reis.endeavourneo.domain.market.MarketFile;
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
-import br.com.jorge.reis.endeavourneo.platform.Bases;
+import br.com.jorge.reis.endeavourneo.platform.SeriesCatalog;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -59,7 +59,7 @@ final class ReplayBase {
     }
 
     /**
-     * Writes a base of weekday sessions and points {@link Bases} at it.
+     * Writes a base of weekday sessions and points {@link SeriesCatalog} at it.
      *
      * @param folder where to write; a temporary directory
      * @param around a date the range should contain
@@ -91,16 +91,16 @@ final class ReplayBase {
 
         Files.createDirectories(folder);
         MarketFile.write(folder.resolve("winfull-1m.bin"), walk(stamps), 1);
-        Bases.useFolderForTest(folder);
-        Bases.forget();
+        SeriesCatalog.useFolderForTest(folder);
+        SeriesCatalog.forget();
 
         return "winfull-1m";
     }
 
     /** Puts everything back, so the next test does not inherit this folder. */
     static void release() {
-        Bases.useFolderForTest(null);
-        Bases.forget();
+        SeriesCatalog.useFolderForTest(null);
+        SeriesCatalog.forget();
     }
 
     /** A gentle zig-zag, so bars differ from one another without being noise. */

@@ -89,7 +89,7 @@ public final class ReplaySession {
      */
     private static final int FRAME = 40;
 
-    /** The smallest step the instrument moves in; goes with the base one day. */
+    /** The smallest step the instrument moves in; goes with the series one day. */
     private static final double TICK = 5.0;
 
     /** The sessions of real ticks, at most three of them in memory. */
@@ -104,8 +104,8 @@ public final class ReplaySession {
      */
     private volatile boolean preparing;
 
-    /** The base being replayed, read on first use. */
-    private transient PriceSeries base;
+    /** The series being replayed, read on first use. */
+    private transient PriceSeries series;
 
     private static final DateTimeFormatter CLOCK = DateTimeFormatter.ofPattern("HH:mm:ss");
 
@@ -161,7 +161,7 @@ public final class ReplaySession {
      */
     public ReplaySession(String instrument, LocalDate date, LocalDate until, int historyDays) {
         this(instrument, date, until, historyDays,
-                br.com.jorge.reis.endeavourneo.platform.Bases.folder().resolve("ticks"));
+                br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.folder().resolve("ticks"));
     }
 
     /**
@@ -298,7 +298,7 @@ public final class ReplaySession {
     }
 
     /**
-     * @return that session's bars, from the base being replayed
+     * @return that session's bars, from the series being replayed
      *
      * <p>Until 03/09/2026 this returned a random walk seeded by the date, with
      * a comment saying it would be replaced when a real loader existed. The
@@ -307,7 +307,7 @@ public final class ReplaySession {
      * exchange's real ticks over the top of them. Two markets in one window,
      * with nothing on screen saying so.</p>
      *
-     * <p>An empty series when the base has no such session — a Saturday, a
+     * <p>An empty series when the series has no such session — a Saturday, a
      * holiday, a day outside its range. The caller draws nothing for it rather
      * than a day that never traded.</p>
      */
@@ -323,32 +323,32 @@ public final class ReplaySession {
     }
 
     /**
-     * @return the whole base, read once for this session
+     * @return the whole series, read once for this session
      *
      * <p>Held for as long as the replay lives. It is the same object {@link
-     * br.com.jorge.reis.endeavourneo.platform.Bases} hands to every chart, so
+     * br.com.jorge.reis.endeavourneo.platform.SeriesCatalog} hands to every chart, so
      * this costs nothing beyond the reference.</p>
      */
     private PriceSeries baseSeries() {
-        if (base == null) {
+        if (series == null) {
             try {
-                base = br.com.jorge.reis.endeavourneo.platform.Bases.open(instrument)
+                series = br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.open(instrument)
                         .orElse(PriceSeries.empty());
             } catch (java.io.IOException e) {
-                // A base that will not read leaves an empty replay, which the
+                // A series that will not read leaves an empty replay, which the
                 // transport shows as a session with no bars. Better than a
                 // window of prices that came from nowhere.
-                base = PriceSeries.empty();
+                series = PriceSeries.empty();
             }
         }
 
-        return base;
+        return series;
     }
 
     /**
      * @return whether the range holds no session at all
      *
-     * <p>A Saturday, a holiday, or dates outside what the base covers. The
+     * <p>A Saturday, a holiday, or dates outside what the series covers. The
      * transport says so rather than showing a play button that would do
      * nothing — and rather than the old answer, which was to invent a session
      * that never happened.</p>
@@ -389,11 +389,11 @@ public final class ReplaySession {
      * mapping the tree groups by.</p>
      *
      * <p>The first version cut the name at the first dash, which gave {@code
-     * winfut} — right by accident while the only base with ticks was called
+     * winfut} — right by accident while the only series with ticks was called
      * that, and wrong the moment the source was renamed.</p>
      */
     static String rootOf(String instrument) {
-        return br.com.jorge.reis.endeavourneo.platform.Bases.groupOf(instrument);
+        return br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.groupOf(instrument);
     }
 
     public String instrument() {
