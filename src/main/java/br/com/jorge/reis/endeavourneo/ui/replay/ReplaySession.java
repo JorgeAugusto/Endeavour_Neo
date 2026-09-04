@@ -213,21 +213,19 @@ public final class ReplaySession {
         // screen -- and so the first decision of the session is taken with the
         // same context the reader would have had that morning.
         //
-        // NONE of them on a tick feed, and the arithmetic is why. Its bars are
-        // a view over the session's ticks, so every day kept on screen keeps
-        // its ninety megabytes alive -- the library's cap of three cannot evict
-        // what the concatenation is still holding. Five days of context would
-        // be half a gigabyte of it. Drawing that context from the candle file
-        // instead is the one thing this whole change exists to stop: bricks
-        // laid from candles and from ticks differ by 8% to 27%, so the chart
-        // would change density halfway across and look like the market did it.
+        // On a tick feed these come from the TICKS too, folded into minute
+        // candles and kept as a copy. Nothing about them is animated -- a day
+        // already over is a day to look at, and the copy is what lets its
+        // ninety megabytes of ticks go the moment the fold is done.
         //
-        // So a tick feed shows the session asked for and nothing before it.
+        // Drawing them from the candle file instead would be cheaper and wrong
+        // in a way nobody would see: it is a different measurement of the same
+        // hours, and the chart would be showing two of them side by side.
         List<PriceSeries> parts = new ArrayList<>();
         int before = 0;
 
-        for (LocalDate day : sessionsBefore(date, feed.isTicks() ? 0 : historyDays)) {
-            PriceSeries session = dayOf(day);
+        for (LocalDate day : sessionsBefore(date, historyDays)) {
+            PriceSeries session = feed.isTicks() ? foldedFromTicks(day) : dayOf(day);
 
             parts.add(session);
             before += session.size();
@@ -391,6 +389,45 @@ public final class ReplaySession {
             // A session that will not read is a day with no bars, which the
             // transport already knows how to show. The alternative is a window
             // of prices that came from nowhere.
+            return PriceSeries.empty();
+        }
+    }
+
+    /**
+     * @return a past session as minute candles, built from its own ticks
+     *
+     * <p>The loading phase. A day that is over is a day to LOOK at: it is not
+     * animated, so it does not need its ticks after the candles exist — and
+     * five hundred and sixty-five bars are twenty-seven kilobytes where the
+     * ticks were ninety megabytes.</p>
+     *
+     * <p>Read straight from the file and NOT through the library, on purpose.
+     * The library caches, and a cache is the one thing that would keep alive
+     * exactly what this method exists to let go: one session is held at a time,
+     * and it is garbage before the next is read.</p>
+     *
+     * <p>Minute candles and not the ticks themselves, because at one minute
+     * there is nothing to argue about — a minute folded from the trades IS that
+     * minute. The 8%-to-27% disagreement that makes candles and ticks
+     * incomparable is a renko effect, and it comes from reading a bar as "the
+     * high, then the low". A bar is not read that way here.</p>
+     */
+    private PriceSeries foldedFromTicks(LocalDate day) {
+        java.nio.file.Path file = ticks.fileFor(day);
+
+        if (!day.equals(ticks.source().sessionIn(file))) {
+            // Not exported. An empty day rather than a day drawn from somewhere
+            // else: a tick feed shows ticks, and where there are none it shows
+            // nothing.
+            return PriceSeries.empty();
+        }
+
+        try {
+            return br.com.jorge.reis.endeavourneo.domain.market.Timeframe.ONE_MINUTE.fold(
+                    br.com.jorge.reis.endeavourneo.domain.market.TickBars.of(
+                            ticks.source().read(file)),
+                    ZoneId.systemDefault());
+        } catch (java.io.IOException e) {
             return PriceSeries.empty();
         }
     }

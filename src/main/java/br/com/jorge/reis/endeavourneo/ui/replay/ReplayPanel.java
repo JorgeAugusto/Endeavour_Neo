@@ -102,6 +102,16 @@ public final class ReplayPanel extends JPanel {
     /** Guards against the scrubber answering its own programmatic move. */
     private boolean adjusting;
 
+    /**
+     * True while a session is being read.
+     *
+     * <p>A tick feed folds every past day out of its own ticks -- four seconds
+     * for five of them -- and that happens off this thread. Without the flag
+     * the window looks idle while it works, and idle is what a reader presses
+     * again.</p>
+     */
+    private boolean building;
+
     public ReplayPanel() {
         setLayout(new BorderLayout(0, 8));
         setBorder(BorderFactory.createEmptyBorder(10, 12, 12, 12));
@@ -429,13 +439,49 @@ public final class ReplayPanel extends JPanel {
 
         workspace.put("replay.feed", chosen.saved());
 
-        session = new ReplaySession(chosen, day, last == null ? day : last,
-                ReplayPreferences.historyDays(),
-                br.com.jorge.reis.endeavourneo.platform.SeriesCatalog
-                        .ticksOf(chosen.instrument()));
-
-        session.watch(refresh);
+        // Off the interface thread, because building a tick feed READS. Five
+        // sessions of past fold into candles in about four seconds, measured on
+        // the exported tape, and four seconds of frozen window is how an
+        // application teaches people not to press a button.
+        //
+        // The controls stay frozen and the clock says so, which is the same
+        // state the first session's ticks already put the transport in.
+        building = true;
         refresh();
+
+        LocalDate first = day;
+        LocalDate end = last == null ? day : last;
+
+        new javax.swing.SwingWorker<ReplaySession, Void>() {
+
+            @Override
+            protected ReplaySession doInBackground() {
+                return new ReplaySession(chosen, first, end,
+                        ReplayPreferences.historyDays(),
+                        br.com.jorge.reis.endeavourneo.platform.SeriesCatalog
+                                .ticksOf(chosen.instrument()));
+            }
+
+            @Override
+            protected void done() {
+                building = false;
+
+                try {
+                    session = get();
+
+                    session.watch(refresh);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } catch (java.util.concurrent.ExecutionException e) {
+                    // A session that will not build leaves the transport with
+                    // none, which it already knows how to show. Better than a
+                    // window of prices that came from nowhere.
+                    session = null;
+                }
+
+                refresh();
+            }
+        }.execute();
     }
 
     private void withSession(java.util.function.Consumer<ReplaySession> what) {
@@ -446,6 +492,23 @@ public final class ReplayPanel extends JPanel {
 
     private void refresh() {
         boolean ready = session != null;
+
+        if (building) {
+            // Everything off, and the clock says why. The selections stay
+            // frozen for the same reason they freeze while playing: changing
+            // the feed underneath a session being read would leave the
+            // transport describing one thing and the charts showing another.
+            for (Component each : new Component[]{
+                    feed, date, until, request, play, back, forward, scrubber, speed, stop}) {
+                each.setEnabled(false);
+            }
+
+            chip.setText(Messages.get("replay.noSession"));
+            clock.setText(Messages.get("replay.loading"));
+            ends.setText("");
+
+            return;
+        }
 
         // The first session's ticks are read before play is offered, and the
         // transport says so. Offering a play button that starts on invented

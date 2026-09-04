@@ -166,6 +166,28 @@ public final class Timeframe implements Aggregation {
             return source;
         }
 
+        return fold(source, zone);
+    }
+
+    /**
+     * @return the source folded into this scale, always as a copy
+     *
+     * <p>What {@link #apply} does, minus the shortcut it takes at one minute.
+     * Two callers need the fold to happen even there.</p>
+     *
+     * <p>One is correctness: a series of TICKS is not a series of minute bars,
+     * so handing it back unfolded would leave five million bars where five
+     * hundred belong.</p>
+     *
+     * <p>The other is memory, and it is why this says COPY out loud. Tick bars
+     * are a view over the session that made them, so anything holding them
+     * holds its ninety megabytes. The copy is what lets the ticks go.</p>
+     */
+    public PriceSeries fold(PriceSeries source, ZoneId zone) {
+        if (source == null || source.size() == 0) {
+            return PriceSeries.empty();
+        }
+
         ZoneId at = zone == null ? defaultZone() : zone;
         int total = source.size();
 

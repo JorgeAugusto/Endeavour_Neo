@@ -264,8 +264,19 @@ public final class Navigator extends JPanel {
      * not a chart of its own.</p>
      */
     private static DefaultMutableTreeNode tickSessions(String instrument) {
-        java.nio.file.Path folder = SeriesCatalog.ticksOf(instrument);
+        return tickSessions(SeriesCatalog.ticksOf(instrument), instrument);
+    }
 
+    /**
+     * @param folder where that instrument's tick sessions are
+     *
+     * <p>Package-visible with the folder spelled out, so a test can ask this
+     * question without the answer depending on where the catalog happens to be
+     * pointing. That dependence produced a test that failed about one run in
+     * four and passed the other three, which is the kind of failure that gets
+     * re-run rather than read.</p>
+     */
+    static DefaultMutableTreeNode tickSessions(java.nio.file.Path folder, String instrument) {
         if (!java.nio.file.Files.isDirectory(folder)) {
             return null;
         }

@@ -306,21 +306,37 @@ class NavigatorTreeTest {
     @Test
     @DisplayName("a source with nothing exported is not listed as empty")
     void anEmptySourceIsSilent(@TempDir Path folder) throws IOException {
-        // There is no tape on disk today, and a permanent "Profit: 0" under
+        // There is no tape in this folder, and a permanent "Profit: 0" under
         // every instrument would be a standing reminder of nothing.
+        //
+        // Asked with the folder spelled out rather than through the catalog.
+        // The version that read the catalog failed about one run in four --
+        // it was really asking "where is the catalog pointing right now",
+        // which is not this test's question and not a question with a stable
+        // answer in a suite that also opens real windows.
         SeriesCatalog.useFolderForTest(folder);
-        base(folder, "winfull-1m");
+
+        Path ticks = folder.resolve("win").resolve("ticks");
 
         tickSession(folder, "win", java.time.LocalDate.of(2021, 1, 4), TickSource.METATRADER);
 
-        List<String> lines = leaves(Navigator.treeModel()).stream()
-                .map(each -> each[0])
-                .filter(label -> label.startsWith(
-                        Messages.orElse("navigator.tickSource.profit", "profit")))
-                .toList();
+        DefaultMutableTreeNode node = Navigator.tickSessions(ticks, "win");
 
-        assertTrue(lines.isEmpty(), "an empty source was listed: " + lines);
+        assertNotNull(node, "the exported MetaTrader session was not listed at all");
+
+        List<String> lines = new ArrayList<>();
+
+        for (int i = 0; i < node.getChildCount(); i++) {
+            lines.add(String.valueOf(
+                    ((DefaultMutableTreeNode) node.getChildAt(i)).getUserObject()));
+        }
+
+        assertEquals(1, lines.size(), "an empty source was listed: " + lines);
+        assertTrue(lines.get(0).startsWith(
+                        Messages.orElse("navigator.tickSource.metatrader", "metatrader")),
+                lines.get(0));
     }
+
     @Test
     @DisplayName("a fixture pointed at the wrong folder refuses to write")
     void theGuardRefusesToLeaveTheTemporaryFolder(@TempDir Path folder) {
