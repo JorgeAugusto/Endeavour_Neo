@@ -486,6 +486,17 @@ public final class ReplaySession {
      * playing. Working it out again in the chart would let it answer a question
      * this already answered -- and answer it differently.</p>
      */
+    /**
+     * @return how the feed being played names itself
+     *
+     * <p>For the chart's own header, which otherwise goes on naming the series
+     * the chart was opened with -- "winfull-1m" while every bar on screen came
+     * from the Profit tape.</p>
+     */
+    public String feedLabel() {
+        return feed.label();
+    }
+
     public TickSource playing() {
         return feed.isTicks() ? feed.source() : null;
     }

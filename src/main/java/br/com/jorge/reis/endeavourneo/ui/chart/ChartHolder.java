@@ -169,7 +169,15 @@ public final class ChartHolder {
             legend.repaint();
         });
 
-        canvas.onSeriesChanged(this::retitle);
+        canvas.onSeriesChanged(() -> {
+            retitle();
+
+            // The header too. It paints the period every time it paints, but
+            // nothing repainted it when the period changed -- so it sat showing
+            // "1m" while the title bar already said "11R - 55 pts". Two labels
+            // reading the same field and disagreeing is worse than one label.
+            chartHeader.repaint();
+        });
 
         JPanel stack = new JPanel();
 
@@ -211,7 +219,16 @@ public final class ChartHolder {
      */
     public void attachReplay(String label, PriceSeries live, Runnable detach,
             br.com.jorge.reis.endeavourneo.domain.market.TickSource ticks) {
+        attachReplay(label, live, detach, ticks, null);
+    }
+
+    /**
+     * @param feed how what is playing names itself, for the chart's own header
+     */
+    public void attachReplay(String label, PriceSeries live, Runnable detach,
+            br.com.jorge.reis.endeavourneo.domain.market.TickSource ticks, String feed) {
         canvas.setTickSource(ticks);
+        chartHeader.showing(feed);
         attach(label, live, detach);
     }
 
@@ -257,6 +274,7 @@ public final class ChartHolder {
         replayLabel = null;
 
         canvas.setTickSource(null);
+        chartHeader.showing(null);
         canvas.setSeries(beforeReplay);
         beforeReplay = null;
 

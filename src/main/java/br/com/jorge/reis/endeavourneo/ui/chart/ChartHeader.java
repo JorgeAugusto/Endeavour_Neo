@@ -54,6 +54,18 @@ public final class ChartHeader extends JComponent {
 
     private final transient String name;
 
+    /**
+     * What is actually on screen, when that is not this chart's own series.
+     *
+     * <p>A replay dropped here plays something else -- another market, another
+     * export, bars folded from trades rather than read from the candle file --
+     * and the header went on naming the series the chart was OPENED with. It
+     * said "winfull-1m" while every bar came from the Profit tape. The one
+     * label that exists to say what you are looking at was the one saying
+     * something else.</p>
+     */
+    private transient String showing;
+
     /** Where the text actually is, so only the text answers the pointer. */
     private final transient Rectangle hot = new Rectangle();
 
@@ -73,6 +85,21 @@ public final class ChartHeader extends JComponent {
 
         addMouseListener(mouse);
         addMouseMotionListener(mouse);
+    }
+
+    /**
+     * @param source what is on screen now, or null to go back to this chart's
+     *               own series
+     */
+    public void showing(String source) {
+        this.showing = source;
+
+        repaint();
+    }
+
+    /** @return the name to draw: what is playing, or what the chart holds */
+    private String source() {
+        return showing == null ? name : showing;
     }
 
     @Override
@@ -99,9 +126,11 @@ public final class ChartHeader extends JComponent {
             int baseline = (getHeight() + bold.getAscent()) / 2 - 2;
 
             g.setColor(ChartColors.foreground());
-            g.drawString(name, PADDING, baseline);
+            String source = source();
 
-            int x = PADDING + bold.stringWidth(name) + 8;
+            g.drawString(source, PADDING, baseline);
+
+            int x = PADDING + bold.stringWidth(source) + 8;
 
             g.setFont(base);
 
@@ -114,7 +143,7 @@ public final class ChartHeader extends JComponent {
             g.drawString(period, x, baseline);
 
             hot.setBounds(PADDING - 3, 0,
-                    bold.stringWidth(name) + 8 + plain.stringWidth(period) + 6, getHeight());
+                    bold.stringWidth(source) + 8 + plain.stringWidth(period) + 6, getHeight());
         } finally {
             g.dispose();
         }
@@ -134,7 +163,7 @@ public final class ChartHeader extends JComponent {
                     overTheName ? Cursor.HAND_CURSOR : Cursor.DEFAULT_CURSOR));
 
             setToolTipText(overTheName
-                    ? SeriesSummary.html(canvas.series(), name, canvas.periodLabel(),
+                    ? SeriesSummary.html(canvas.series(), source(), canvas.periodLabel(),
                             canvas.isFromTicks())
                     : Messages.get("period.hint"));
         }
