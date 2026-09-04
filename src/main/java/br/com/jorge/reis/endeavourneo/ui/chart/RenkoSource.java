@@ -117,26 +117,11 @@ final class RenkoSource {
      * conversion per bar would be 825 thousand of them on the full source.</p>
      */
     static List<LocalDate> sessionsIn(PriceSeries series) {
-        List<LocalDate> days = new ArrayList<>();
-
-        if (series == null) {
-            return days;
-        }
-
-        ZoneId zone = ZoneId.systemDefault();
-        LocalDate seen = null;
-
-        for (int i = 0; i < series.size(); i++) {
-            LocalDate day = Instant.ofEpochMilli(series.timeAt(i)).atZone(zone).toLocalDate();
-
-            if (!day.equals(seen)) {
-                seen = day;
-
-                days.add(day);
-            }
-        }
-
-        return days;
+        // The walk itself moved to the domain: the transport greys out the days
+        // a feed cannot play using the same answer, and two copies of one walk
+        // is where the second one forgets that a holiday is not a weekend.
+        return new ArrayList<>(
+                br.com.jorge.reis.endeavourneo.domain.market.Sessions.of(series));
     }
 
     /**

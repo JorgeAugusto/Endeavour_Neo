@@ -22,8 +22,14 @@ import br.com.jorge.reis.endeavourneo.domain.market.TickSource;
 import br.com.jorge.reis.endeavourneo.platform.Messages;
 import br.com.jorge.reis.endeavourneo.platform.SeriesCatalog;
 
+import java.time.LocalDate;
+
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.NavigableSet;
+import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * One thing the replay can play, named the way the tree names it.
@@ -120,6 +126,75 @@ public record ReplayFeed(String instrument, String series, TickSource source) {
         }
 
         return feeds;
+    }
+
+    /**
+     * Which days each feed can play, worked out once.
+     *
+     * <p>Measured: walking the six-year source for its 1.494 sessions costs
+     * 39-102 ms, and listing an export's sessions costs about 50. Once, that is
+     * nothing; on every repaint of a calendar it is a stutter. So it is
+     * remembered, and {@link #warm} fills it at startup off the interface
+     * thread so the first calendar opens instantly.</p>
+     */
+    private static final Map<String, NavigableSet<LocalDate>> KNOWN = new ConcurrentHashMap<>();
+
+    /**
+     * @return the days this feed has something to play
+     *
+     * <p>Holidays fall out for free: a day the market did not trade has no bars
+     * and no ticks, so it is simply absent. More accurate than any list of
+     * holidays, and it never goes out of date.</p>
+     */
+    public NavigableSet<LocalDate> sessions() {
+        return KNOWN.computeIfAbsent(saved(), key -> {
+            if (isTicks()) {
+                TickLibrary library =
+                        new TickLibrary(SeriesCatalog.ticksOf(instrument), instrument, source);
+
+                try {
+                    return new TreeSet<>(library.exported());
+                } finally {
+                    library.close();
+                }
+            }
+
+            try {
+                return br.com.jorge.reis.endeavourneo.domain.market.Sessions.of(
+                        SeriesCatalog.open(series).orElse(null));
+            } catch (java.io.IOException e) {
+                // A series that will not read has no playable days, which the
+                // calendar shows as everything greyed. Better than a calendar
+                // that offers days nothing can play.
+                return new TreeSet<>();
+            }
+        });
+    }
+
+    /**
+     * Works out every feed's days, for the calendar to be instant later.
+     *
+     * <p><b>Never on the interface thread.</b> Call it from a background job at
+     * startup: it opens each series and walks it, which is a tenth of a second
+     * each and would be a visible stall if it happened when a combo changed.</p>
+     *
+     * @return how many feeds were worked out
+     */
+    public static int warm() {
+        int done = 0;
+
+        for (ReplayFeed each : available()) {
+            each.sessions();
+
+            done++;
+        }
+
+        return done;
+    }
+
+    /** Drops what is remembered, for when the series on disk change. */
+    public static void forget() {
+        KNOWN.clear();
     }
 
     /**

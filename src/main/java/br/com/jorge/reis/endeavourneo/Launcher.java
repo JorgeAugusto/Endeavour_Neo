@@ -82,6 +82,12 @@ public final class Launcher {
         // be asked to stop before the process disappears.
         Runtime.getRuntime().addShutdownHook(new Thread(jobs::close, "jobs-shutdown"));
 
+        // Off the interface thread, before anyone opens a calendar. Walking the
+        // six-year source for its 1.494 sessions costs a tenth of a second, and
+        // a tenth of a second is a stutter if it happens when a combo changes.
+        jobs.submit("sessions", progress ->
+                Integer.valueOf(br.com.jorge.reis.endeavourneo.ui.replay.ReplayFeed.warm()));
+
         SwingUtilities.invokeLater(() -> {
             // Before the first label is read: every window builds its text once.
             br.com.jorge.reis.endeavourneo.platform.Language.install();

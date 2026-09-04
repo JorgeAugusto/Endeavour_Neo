@@ -283,6 +283,9 @@ public final class ReplayPanel extends JPanel {
             feed.setSelectedItem(remembered);
         }
 
+        feed.addActionListener(e -> followFeed());
+        followFeed();
+
         left.add(labelled(Messages.get("replay.series"), feed));
         left.add(labelled(Messages.get("replay.instrument"), chip));
         left.add(Box.createVerticalStrut(6));
@@ -297,6 +300,47 @@ public final class ReplayPanel extends JPanel {
         row.add(left);
 
         return row;
+    }
+
+    /**
+     * Points the calendars at what the chosen feed can actually play.
+     *
+     * <p>And moves the dates when they no longer can be. Switching from six
+     * years of minutes to a tape of eight sessions leaves both pickers holding
+     * a day that feed has never heard of; landing on the feed's LAST session is
+     * where the reader was going anyway, and it is one click instead of
+     * hunting through a calendar that is almost entirely grey.</p>
+     */
+    private void followFeed() {
+        Object chosen = feed.getSelectedItem();
+
+        if (!(chosen instanceof ReplayFeed picked)) {
+            return;
+        }
+
+        java.util.NavigableSet<LocalDate> days = picked.sessions();
+
+        // Empty means the feed could not be read at all. Leaving the calendars
+        // open is better than greying every day of a fault the reader cannot
+        // see: the transport already says "nothing to play" when asked.
+        java.util.NavigableSet<LocalDate> playable = days.isEmpty() ? null : days;
+
+        date.setSessions(playable);
+        until.setSessions(playable);
+
+        if (playable == null) {
+            return;
+        }
+
+        LocalDate last = playable.last();
+
+        if (date.date() == null || !playable.contains(date.date())) {
+            date.setDate(last);
+        }
+
+        if (until.date() == null || !playable.contains(until.date())) {
+            until.setDate(last);
+        }
     }
 
     private static JPanel labelled(String text, Component field) {

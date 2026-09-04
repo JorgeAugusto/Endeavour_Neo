@@ -73,6 +73,15 @@ public final class DatePicker extends JPanel {
 
     private transient Runnable onChange = () -> { };
 
+    /**
+     * The days this picker will accept, or null for "any weekday".
+     *
+     * <p>Null is not "none" -- it is the state before anything said which feed
+     * is chosen, and greying out the whole calendar then would be a lie about
+     * the data rather than a fact about it.</p>
+     */
+    private transient java.util.NavigableSet<java.time.LocalDate> sessions;
+
     public DatePicker(LocalDate initial) {
         super(new BorderLayout(2, 0));
 
@@ -97,6 +106,29 @@ public final class DatePicker extends JPanel {
 
     public void setDate(LocalDate date) {
         field.setText(date.format(TYPED));
+    }
+
+    /**
+     * @param days the sessions that exist, or null to fall back to weekdays
+     *
+     * <p>What turns the calendar from a date widget into something that says
+     * what the chosen feed HAS. A tape of eight sessions greys out six years of
+     * the calendar, and that is the honest picture: those days cannot be
+     * played, and finding out by pressing Requisitar and getting an empty
+     * transport is finding out the hard way.</p>
+     */
+    public void setSessions(java.util.NavigableSet<java.time.LocalDate> days) {
+        this.sessions = days;
+    }
+
+    /** @return whether that day is one this picker will accept */
+    public boolean accepts(java.time.LocalDate day) {
+        if (sessions != null) {
+            return sessions.contains(day);
+        }
+
+        return day.getDayOfWeek() != DayOfWeek.SATURDAY
+                && day.getDayOfWeek() != DayOfWeek.SUNDAY;
     }
 
     /** @param listener told whenever the date changes, typed or picked */
@@ -210,12 +242,10 @@ public final class DatePicker extends JPanel {
         button.setMargin(new Insets(2, 2, 2, 2));
         button.setPreferredSize(new Dimension(30, 24));
 
-        boolean weekend = day.getDayOfWeek() == DayOfWeek.SATURDAY
-                || day.getDayOfWeek() == DayOfWeek.SUNDAY;
-
-        if (weekend) {
-            // Dimmed rather than removed: a weekend has no session, but hiding
-            // it would leave a hole in the grid and make the columns lie.
+        if (!accepts(day)) {
+            // Dimmed rather than removed: a day with no session is still a day,
+            // and hiding it would leave a hole in the grid and make the columns
+            // lie about which weekday a date falls on.
             button.setEnabled(false);
         }
 
