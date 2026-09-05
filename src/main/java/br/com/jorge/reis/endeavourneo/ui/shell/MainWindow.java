@@ -418,7 +418,11 @@ public final class MainWindow extends JFrame {
         // editor per file -- is wrong for a chart and was the previous
         // behaviour.
         String title = uniqueTitle(SeriesCatalog.has(name) ? series : series);
-        ChartHolder holder = new ChartHolder(title, desktop, this, () -> {
+
+        // The NAME, not the key. See ChartHolder.label.
+        String shown = SeriesCatalog.displayOf(name)
+                + (segment == null ? "" : "  \u00b7  " + segment.name());
+        ChartHolder holder = new ChartHolder(title, shown, desktop, this, () -> {
             charts.remove(title);
             rememberCharts();
         });

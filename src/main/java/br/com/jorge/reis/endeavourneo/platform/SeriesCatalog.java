@@ -295,6 +295,45 @@ public final class SeriesCatalog {
      * <p>What lets the tree put the exports of one market together instead of
      * listing five files flat.</p>
      */
+    /**
+     * @param name a series as it is stored, which is a file name
+     * @return how it is NAMED on screen
+     *
+     * <p>{@code winfull-1m} is read under WINFUT and under "1 minuto", so
+     * repeating either is saying it three times. What is left is what actually
+     * tells this series from its neighbours -- {@code full} -- and it is read
+     * with the market: <b>WINFUT-FULL</b>.</p>
+     *
+     * <p>A series named after its market and nothing else keeps just the
+     * market's name; there is nothing to distinguish it from.</p>
+     *
+     * <p>Here rather than in the tree because the tree is not the only place a
+     * series is named: the chart's own title bar showed the file name until
+     * this existed, so the same series read two ways in one window.</p>
+     */
+    public static String displayOf(String name) {
+        if (name == null || name.isBlank()) {
+            return "";
+        }
+
+        String instrument = groupOf(name);
+        String scale = scaleOf(name);
+        String rest = name;
+
+        if (!scale.isEmpty() && rest.endsWith("-" + scale)) {
+            rest = rest.substring(0, rest.length() - scale.length() - 1);
+        }
+
+        if (rest.startsWith(instrument)) {
+            rest = rest.substring(instrument.length());
+        }
+
+        String market = br.com.jorge.reis.endeavourneo.platform.Messages.market(instrument);
+
+        return rest.isBlank() ? market
+                : market + "-" + rest.replace("-", "").toUpperCase(java.util.Locale.ROOT);
+    }
+
     public static String groupOf(String name) {
         if (name == null) {
             return "";

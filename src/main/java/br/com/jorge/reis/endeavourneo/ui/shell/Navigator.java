@@ -305,22 +305,7 @@ public final class Navigator extends JPanel {
      * market's name. There is nothing to distinguish it from.</p>
      */
     private static String displayOf(String name) {
-        String instrument = SeriesCatalog.groupOf(name);
-        String scale = SeriesCatalog.scaleOf(name);
-        String rest = name;
-
-        if (!scale.isEmpty() && rest.endsWith("-" + scale)) {
-            rest = rest.substring(0, rest.length() - scale.length() - 1);
-        }
-
-        if (rest.startsWith(instrument)) {
-            rest = rest.substring(instrument.length());
-        }
-
-        String market = Messages.market(instrument);
-
-        return rest.isBlank() ? market
-                : market + "-" + rest.replace("-", "").toUpperCase(java.util.Locale.ROOT);
+        return SeriesCatalog.displayOf(name);
     }
 
     /**

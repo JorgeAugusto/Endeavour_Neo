@@ -90,6 +90,17 @@ public final class ChartHolder {
 
     private final String name;
 
+    /**
+     * What the window CALLS itself, which is not what it is keyed by.
+     *
+     * <p>The key has to survive being written to the workspace and read back --
+     * {@code winfull-1m#Estudos} -- and that is a file name and a separator,
+     * not something to put in a title bar. The two were the same string until a
+     * chart opened on a segment and announced itself as
+     * {@code winfull-1m#Estudos - Treinamento}.</p>
+     */
+    private final String label;
+
     private final String key;
 
     private final ChartCanvas canvas = new ChartCanvas();
@@ -162,16 +173,18 @@ public final class ChartHolder {
     private JFrame floating;
 
     /**
-     * @param name the title, and the key under which geometry is remembered
+     * @param name the key: what the workspace stores and reads back
+     * @param label what the window calls itself, or null to use the key
      * @param desktop where a docked chart goes
      * @param owner the window a floating chart cascades from
      * @param onClosed called when the chart is closed in either mode
      */
-    public ChartHolder(String name, JDesktopPane desktop, Window owner, Runnable onClosed) {
+    public ChartHolder(String name, String label, JDesktopPane desktop, Window owner, Runnable onClosed) {
         this.name = name;
+        this.label = label == null || label.isBlank() ? name : label;
         this.key = name.replaceAll("[^A-Za-z0-9]+", "_");
         this.legend = new OverlayLegend(canvas, this.key);
-        this.chartHeader = new ChartHeader(canvas, name);
+        this.chartHeader = new ChartHeader(canvas, this.label);
 
         // The legend reads the overlays off the canvas; nothing else tells it
         // they are gone. Without this, switching layout leaves the old list on
@@ -309,7 +322,7 @@ public final class ChartHolder {
             // there IS no previous close in a session played on its own, and a
             // percentage measured against the first bar of the day would look
             // like the real thing and not be it.
-            return name + "  " + canvas.periodLabel()
+            return label + "  " + canvas.periodLabel()
                     + "   " + Messages.get("replay.inTitle", replayLabel);
         }
 
@@ -319,7 +332,7 @@ public final class ChartHolder {
         String change = Sessions.formatChange(
                 Sessions.changeOnDay(canvas.series(), java.time.ZoneId.systemDefault()));
 
-        return change.isEmpty() ? name + scale : name + scale + "   " + change;
+        return change.isEmpty() ? label + scale : label + scale + "   " + change;
     }
 
     private void retitle() {

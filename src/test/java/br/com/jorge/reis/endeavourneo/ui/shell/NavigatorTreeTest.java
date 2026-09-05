@@ -159,6 +159,19 @@ class NavigatorTreeTest {
                 "the lock took the segments with it");
     }
 
+    @Test
+    @DisplayName("o nome de tela sai do catalogo, para a arvore e o titulo dizerem o mesmo")
+    void oneNameForBothPlaces() {
+        // The bug this fixes: the tree said WINFUT-FULL and the chart's own
+        // title bar said winfull-1m#Estudos, in the same window.
+        assertEquals("WINFUT-FULL", SeriesCatalog.displayOf("winfull-1m"));
+        assertEquals("", SeriesCatalog.displayOf(null));
+        assertEquals("", SeriesCatalog.displayOf("  "));
+
+        // A market with nothing to tell it from keeps just the market's name.
+        assertEquals("ouro", SeriesCatalog.displayOf("ouro-1m"));
+    }
+
     private static List<String[]> leaves(TreeModel model) {
         List<String[]> found = new ArrayList<>();
 
