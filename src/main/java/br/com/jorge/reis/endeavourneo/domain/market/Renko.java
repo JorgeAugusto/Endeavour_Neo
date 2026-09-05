@@ -227,7 +227,30 @@ public final class Renko implements Aggregation {
      */
     public record Carry(double anchor, int direction,
                         double sinceLow, double sinceHigh, double pending,
-                        double coverLow, double coverHigh) { }
+                        double coverLow, double coverHigh) {
+
+        /**
+         * @return the same ruler, with nothing counted as traded yet
+         *
+         * <p><b>Called when a new session starts, and only then.</b> The ruler
+         * carries across the night -- it has to, or the bricks would not line
+         * up -- but the TRADES do not. A brick drawn this morning by the first
+         * print of the day was created in one instant and nobody traded inside
+         * it; that yesterday's price passed through the same band, hours
+         * earlier, does not make it a traded brick.</p>
+         *
+         * <p>Read off the reference product on 03/09/2026 at 100 points: it
+         * draws <b>fifteen</b> grey bricks from 187.900 up to 189.400 and the
+         * first one it colours is 189.400 -&gt; 189.500. Carrying the hull
+         * across the night coloured the first two of those, because 02/09 went
+         * on trading between 187.800 and 188.100 for an hour after its last
+         * brick.</p>
+         */
+        public Carry atNewSession() {
+            return new Carry(anchor, direction, sinceLow, sinceHigh, pending,
+                    Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY);
+        }
+    }
 
     /**
      * @param bricks what was laid
