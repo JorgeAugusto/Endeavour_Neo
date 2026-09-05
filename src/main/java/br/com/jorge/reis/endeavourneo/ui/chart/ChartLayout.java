@@ -82,8 +82,7 @@ public record ChartLayout(String name, List<Entry> entries, List<Pane> panes) {
 
             for (Entry entry : entries) {
                 br.com.jorge.reis.endeavourneo.ui.chart.Overlay study =
-                        br.com.jorge.reis.endeavourneo.ui.chart.study.StudyCatalog
-                                .build(entry.kindKey(), entry.parameters());
+                        OverlayCatalog.build(entry.kindKey(), entry.parameters());
 
                 if (study != null) {
                     study.applyAppearance(entry.appearance());

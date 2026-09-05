@@ -194,7 +194,7 @@ public final class ChartHolder {
             legend.repaint();
         });
 
-        canvas.onStudyWanted(body::show);
+        canvas.onInsertWanted(this::insertIndicator);
         canvas.onSeriesChanged(() -> {
             // Before anything reads them: a study still holding the values of
             // the series before would draw a shape that never happened.
@@ -371,6 +371,30 @@ public final class ChartHolder {
         }
 
         return layoutBar;
+    }
+
+    /**
+     * Asks where an indicator goes, and puts it there.
+     *
+     * <p>Here because this is the one object holding both the price and the
+     * panes: the canvas cannot offer a panel it does not know about, and the
+     * stack cannot offer the price.</p>
+     */
+    private void insertIndicator() {
+        InsertOverlayDialog.Placement placement = InsertOverlayDialog.ask(
+                javax.swing.SwingUtilities.getWindowAncestor(canvas), body.panes());
+
+        if (placement == null) {
+            return;
+        }
+
+        if (placement.onPrice()) {
+            canvas.addOverlay(placement.indicator());
+        } else if (placement.inNewPane()) {
+            body.show(placement.indicator());
+        } else {
+            body.addTo(placement.pane(), placement.indicator());
+        }
     }
 
     public boolean isFloating() {

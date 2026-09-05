@@ -18,6 +18,8 @@
 package br.com.jorge.reis.endeavourneo.ui.chart;
 
 import br.com.jorge.reis.endeavourneo.platform.Messages;
+import br.com.jorge.reis.endeavourneo.ui.chart.study.StudyPane;
+import br.com.jorge.reis.endeavourneo.ui.chart.study.StudyStack;
 
 import java.awt.BorderLayout;
 import java.awt.Component;
@@ -30,12 +32,15 @@ import java.util.ArrayList;
 import java.util.List;
 import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
+import javax.swing.Box;
 import javax.swing.BoxLayout;
+import javax.swing.ButtonGroup;
 import javax.swing.JButton;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JPanel;
+import javax.swing.JRadioButton;
 import javax.swing.JRootPane;
 import javax.swing.JScrollPane;
 import javax.swing.JSpinner;
@@ -44,11 +49,30 @@ import javax.swing.ListSelectionModel;
 import javax.swing.SpinnerNumberModel;
 
 /**
- * Picks an indicator and its parameters.
+ * Picks an indicator, its parameters, and where it goes.
  *
- * <p>The list on the left, the parameters on the right, changing as the
- * selection changes — the shape every "insert something" dialog has, because it
- * lets the reader browse without committing.</p>
+ * <p>The list on the left, the parameters and the destination on the right,
+ * both changing as the selection changes — the shape every "insert something"
+ * dialog has, because it lets the reader browse without committing.</p>
+ *
+ * <h2>One list, and the destination is a question</h2>
+ *
+ * <p>There used to be two menu items and two lists, and which one an indicator
+ * was in decided where it could go. That made a moving average in a panel
+ * impossible to ask for, and it made a stochastic on the price impossible to
+ * refuse for any reason better than "it is in the other list".</p>
+ *
+ * <p>Now the destination is picked here and each indicator answers for itself:
+ * {@link Overlay#fitsOnPrice()} for the price, and {@link StudyStack#fits} for
+ * joining a panel that already holds something.</p>
+ *
+ * <h2>The reason sits under the option, not behind the click</h2>
+ *
+ * <p>A destination that will not take this indicator is <b>disabled with the
+ * reason written under it</b>, before anything is chosen. The alternative —
+ * accepting the click and then showing an alert — is a message the reader gets
+ * only after deciding, which is the point at which they are least willing to
+ * read it.</p>
  *
  * <p><b>The parameters are spinners with real bounds, not free text.</b> A
  * moving average of period zero divides by zero and one of 500.000 allocates a
@@ -60,32 +84,70 @@ public final class InsertOverlayDialog extends JDialog {
 
     private static final long serialVersionUID = 1L;
 
+    /**
+     * An indicator and where it was sent.
+     *
+     * @param indicator what to place
+     * @param pane the pane to join, or null for the price or a new one
+     * @param onPrice whether it goes on the price
+     */
+    public record Placement(Overlay indicator, StudyPane pane, boolean onPrice) {
+
+        /** @return whether this asks for a pane of its own */
+        public boolean inNewPane() {
+            return !onPrice && pane == null;
+        }
+    }
+
     private final transient List<JSpinner> spinners = new ArrayList<>();
 
     private final JPanel parameters = new JPanel();
 
+    private final JPanel destination = new JPanel();
+
     private final JList<OverlayCatalog.Kind> kinds =
             new JList<>(OverlayCatalog.kinds().toArray(new OverlayCatalog.Kind[0]));
 
-    private transient Overlay chosen;
+    /** The panes already on this chart, in the order they are stacked. */
+    private final transient List<StudyPane> panes;
 
-    private InsertOverlayDialog(Window owner, Overlay editing) {
+    private final JRadioButton onPrice = new JRadioButton(Messages.get("overlay.where.price"));
+
+    private final JRadioButton newPane = new JRadioButton(Messages.get("overlay.where.newPane"));
+
+    private final transient List<JRadioButton> joins = new ArrayList<>();
+
+    private transient Placement chosen;
+
+    private InsertOverlayDialog(Window owner, Overlay editing, List<StudyPane> panes) {
         super(owner, Messages.get(editing == null ? "overlay.insertTitle" : "overlay.editTitle"),
                 ModalityType.APPLICATION_MODAL);
 
+        this.panes = List.copyOf(panes);
+
         kinds.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        kinds.addListSelectionListener(e -> showParametersFor(kinds.getSelectedValue()));
+        kinds.addListSelectionListener(e -> showKind(kinds.getSelectedValue()));
 
         parameters.setLayout(new BoxLayout(parameters, BoxLayout.Y_AXIS));
-        parameters.setBorder(BorderFactory.createEmptyBorder(4, 12, 4, 4));
+
+        destination.setLayout(new BoxLayout(destination, BoxLayout.Y_AXIS));
+        destination.setBorder(BorderFactory.createEmptyBorder(10, 0, 0, 0));
+
+        JPanel right = new JPanel();
+
+        right.setLayout(new BoxLayout(right, BoxLayout.Y_AXIS));
+        right.setBorder(BorderFactory.createEmptyBorder(4, 12, 4, 4));
+        right.add(parameters);
+        right.add(destination);
+        right.add(Box.createVerticalGlue());
 
         JScrollPane left = new JScrollPane(kinds);
-        left.setPreferredSize(new Dimension(180, 200));
+        left.setPreferredSize(new Dimension(180, 240));
 
         JPanel body = new JPanel(new BorderLayout(8, 0));
         body.setBorder(BorderFactory.createEmptyBorder(12, 12, 8, 12));
         body.add(left, BorderLayout.WEST);
-        body.add(parameters, BorderLayout.CENTER);
+        body.add(new JScrollPane(right), BorderLayout.CENTER);
 
         add(body, BorderLayout.CENTER);
         add(buttons(), BorderLayout.SOUTH);
@@ -94,16 +156,17 @@ public final class InsertOverlayDialog extends JDialog {
 
         selectFor(editing);
 
-        setSize(new Dimension(460, 300));
+        setSize(new Dimension(520, 380));
         setLocationRelativeTo(owner);
     }
 
     /**
      * @param owner the window to centre on
-     * @return the overlay to add, or null when the dialog was cancelled
+     * @param panes the panes already under this chart, offered as destinations
+     * @return where to put what, or null when the dialog was cancelled
      */
-    public static Overlay ask(Window owner) {
-        InsertOverlayDialog dialog = new InsertOverlayDialog(owner, null);
+    public static Placement ask(Window owner, List<StudyPane> panes) {
+        InsertOverlayDialog dialog = new InsertOverlayDialog(owner, null, panes);
 
         dialog.setVisible(true);
 
@@ -119,13 +182,17 @@ public final class InsertOverlayDialog extends JDialog {
      * changing a period means recomputing everything anyway, and building a new
      * one keeps it impossible to end up with parameters that no longer match the
      * numbers.</p>
+     *
+     * <p>No destination here: the indicator is already somewhere, and editing
+     * its period is not a request to move it.</p>
      */
     public static Overlay edit(Window owner, Overlay overlay) {
-        InsertOverlayDialog dialog = new InsertOverlayDialog(owner, overlay);
+        InsertOverlayDialog dialog = new InsertOverlayDialog(owner, overlay, List.of());
 
+        dialog.destination.setVisible(false);
         dialog.setVisible(true);
 
-        return dialog.chosen;
+        return dialog.chosen == null ? null : dialog.chosen.indicator();
     }
 
     /**
@@ -159,6 +226,11 @@ public final class InsertOverlayDialog extends JDialog {
         kinds.setSelectedIndex(0);
     }
 
+    private void showKind(OverlayCatalog.Kind kind) {
+        showParametersFor(kind);
+        showDestinationsFor(kind);
+    }
+
     private void showParametersFor(OverlayCatalog.Kind kind) {
         parameters.removeAll();
         spinners.clear();
@@ -170,11 +242,7 @@ public final class InsertOverlayDialog extends JDialog {
             return;
         }
 
-        JLabel heading = new JLabel(Messages.get("overlay.periods"));
-
-        heading.setAlignmentX(Component.LEFT_ALIGNMENT);
-        heading.setBorder(BorderFactory.createEmptyBorder(0, 0, 6, 0));
-        parameters.add(heading);
+        parameters.add(heading(Messages.get("overlay.periods")));
 
         for (int value : kind.defaults()) {
             JSpinner spinner = new JSpinner(new SpinnerNumberModel(
@@ -185,12 +253,118 @@ public final class InsertOverlayDialog extends JDialog {
 
             spinners.add(spinner);
             parameters.add(spinner);
-            parameters.add(javax.swing.Box.createVerticalStrut(4));
+            parameters.add(Box.createVerticalStrut(4));
         }
 
-        parameters.add(javax.swing.Box.createVerticalGlue());
         parameters.revalidate();
         parameters.repaint();
+    }
+
+    /**
+     * The places this indicator could go, and why it cannot go to the others.
+     *
+     * <p>Rebuilt on every selection because the answers are the indicator's,
+     * not the chart's: a stochastic and a moving average offered the same three
+     * destinations would be a dialog that had not asked either of them.</p>
+     */
+    private void showDestinationsFor(OverlayCatalog.Kind kind) {
+        destination.removeAll();
+        joins.clear();
+
+        if (kind == null) {
+            destination.revalidate();
+            destination.repaint();
+
+            return;
+        }
+
+        Overlay sample = build(kind);
+        ButtonGroup group = new ButtonGroup();
+
+        destination.add(heading(Messages.get("overlay.where")));
+
+        onPrice.setEnabled(sample != null && sample.fitsOnPrice());
+        add(group, onPrice, onPrice.isEnabled() ? null
+                : Messages.get("overlay.where.notOnPrice", kind.label()));
+
+        newPane.setEnabled(true);
+        add(group, newPane, null);
+
+        for (StudyPane pane : panes) {
+            JRadioButton join = new JRadioButton(
+                    Messages.get("overlay.where.pane", pane.title()));
+
+            join.setEnabled(sample != null && StudyStack.fits(pane.studies(), sample));
+
+            joins.add(join);
+            add(group, join, join.isEnabled() ? null
+                    : Messages.get("overlay.where.notThisPane"));
+        }
+
+        // Whatever is possible, preferring the price for something that belongs
+        // there. Landing on a disabled option would be a dialog whose Insert
+        // button does nothing.
+        (onPrice.isEnabled() ? onPrice : newPane).setSelected(true);
+
+        destination.revalidate();
+        destination.repaint();
+    }
+
+    private void add(ButtonGroup group, JRadioButton button, String why) {
+        button.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        group.add(button);
+        destination.add(button);
+
+        if (why == null) {
+            return;
+        }
+
+        // Under the option it explains, and indented past it, so it reads as
+        // that option's reason and not as a warning about the dialog.
+        // The width is written into the html because that is the only thing a
+        // label wraps on. Left free, it lays itself out on one line as wide as
+        // the sentence and the dialog clips it mid-word.
+        JLabel reason = new JLabel("<html><body style='width:250px'>" + why + "</body></html>");
+
+        reason.setAlignmentX(Component.LEFT_ALIGNMENT);
+        reason.setBorder(BorderFactory.createEmptyBorder(0, 22, 4, 0));
+        reason.setForeground(ChartColors.foreground());
+        reason.setFont(reason.getFont().deriveFont(reason.getFont().getSize2D() - 1f));
+        reason.setEnabled(false);
+
+        destination.add(reason);
+    }
+
+    private static JLabel heading(String text) {
+        JLabel label = new JLabel(text);
+
+        label.setAlignmentX(Component.LEFT_ALIGNMENT);
+        label.setBorder(BorderFactory.createEmptyBorder(0, 0, 6, 0));
+
+        return label;
+    }
+
+    /** @return one built from what the spinners currently say */
+    private Overlay build(OverlayCatalog.Kind kind) {
+        int[] values = new int[spinners.size()];
+
+        for (int i = 0; i < values.length; i++) {
+            values[i] = (Integer) spinners.get(i).getValue();
+        }
+
+        return kind.factory().apply(values.length == 0
+                ? toArray(kind.defaults()) : values);
+    }
+
+    private static int[] toArray(List<Integer> numbers) {
+        int[] values = new int[numbers.size()];
+
+        for (int i = 0; i < values.length; i++) {
+            values[i] = numbers.get(i);
+        }
+
+        return values;
     }
 
     private JPanel buttons() {
@@ -204,13 +378,7 @@ public final class InsertOverlayDialog extends JDialog {
             OverlayCatalog.Kind kind = kinds.getSelectedValue();
 
             if (kind != null) {
-                int[] values = new int[spinners.size()];
-
-                for (int i = 0; i < values.length; i++) {
-                    values[i] = (Integer) spinners.get(i).getValue();
-                }
-
-                chosen = kind.factory().apply(values);
+                chosen = new Placement(build(kind), joined(), onPrice.isSelected());
             }
 
             dispose();
@@ -222,6 +390,17 @@ public final class InsertOverlayDialog extends JDialog {
         getRootPane().setDefaultButton(insert);
 
         return row;
+    }
+
+    /** @return the pane whose option is selected, or null for none */
+    private StudyPane joined() {
+        for (int i = 0; i < joins.size() && i < panes.size(); i++) {
+            if (joins.get(i).isSelected()) {
+                return panes.get(i);
+            }
+        }
+
+        return null;
     }
 
     private void closeOnEscape() {

@@ -24,7 +24,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import br.com.jorge.reis.endeavourneo.ui.chart.overlay.BollingerBands;
 import br.com.jorge.reis.endeavourneo.ui.chart.overlay.MovingAverage;
-import br.com.jorge.reis.endeavourneo.ui.chart.study.StudyCatalog;
 import br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic.SlowStochastic;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -84,30 +83,73 @@ class PlacementTest {
     }
 
     @Test
-    @DisplayName("tudo que a lista do preco oferece cabe no preco")
-    void everythingOfferedForThePrice() {
+    @DisplayName("a lista e uma so, e cada um responde por si")
+    void oneListAndEachAnswersForItself() {
+        java.util.Map<String, Boolean> answers = new java.util.HashMap<>();
+
         for (OverlayCatalog.Kind kind : OverlayCatalog.kinds()) {
             int[] numbers = kind.defaults().stream().mapToInt(Integer::intValue).toArray();
             Overlay built = kind.factory().apply(numbers);
 
             assertNotNull(built, kind.nameKey() + " is offered and cannot be built");
-            assertTrue(built.fitsOnPrice(),
-                    kind.nameKey() + " is offered for the price and does not go there");
+
+            answers.put(kind.nameKey(), built.fitsOnPrice());
+        }
+
+        // One list holding both kinds is the whole point: before this, which
+        // list an indicator was in decided where it could go, and a moving
+        // average in a panel was impossible to even ask for.
+        assertEquals(Boolean.TRUE, answers.get("overlay.movingAverage"));
+        assertEquals(Boolean.TRUE, answers.get("overlay.bollinger"));
+        assertEquals(Boolean.FALSE, answers.get("study.stochastic"));
+        assertEquals(Boolean.FALSE, answers.get("study.rsi"));
+    }
+
+    @Test
+    @DisplayName("um layout nao consegue por um indicador de painel no preco")
+    void aLayoutCannotSmuggleOneIn() {
+        // One catalogue means a stored layout CAN name a panel indicator among
+        // the price ones -- a file edited by hand, or one written before the
+        // two lists became one.
+        canvas.setOverlays(java.util.List.of(
+                new MovingAverage(9), new SlowStochastic(8, 3), new MovingAverage(21)));
+
+        assertEquals(2, canvas.overlays().size(),
+                "the stochastic came in with the averages and is a flat line on the floor");
+
+        for (Overlay each : canvas.overlays()) {
+            assertTrue(each.fitsOnPrice());
         }
     }
 
     @Test
-    @DisplayName("nada que a lista do painel oferece cabe no preco")
-    void nothingOfferedForAPanel() {
-        // Not a tautology while both lists exist: the two catalogues are the
-        // one place a new indicator is registered, and putting a panel
-        // indicator in the wrong one is the mistake this catches.
-        for (StudyCatalog.Kind kind : StudyCatalog.kinds()) {
-            Overlay built = StudyCatalog.build(kind.nameKey(), kind.defaults());
+    @DisplayName("os tres destinos sao distintos e um deles e sempre o certo")
+    void thePlacements() {
+        Overlay any = new MovingAverage(9);
 
-            assertNotNull(built, kind.nameKey() + " is offered and cannot be built");
-            assertFalse(built.fitsOnPrice(),
-                    kind.nameKey() + " is offered for a panel and claims the price too");
-        }
+        InsertOverlayDialog.Placement price =
+                new InsertOverlayDialog.Placement(any, null, true);
+        InsertOverlayDialog.Placement fresh =
+                new InsertOverlayDialog.Placement(any, null, false);
+
+        assertTrue(price.onPrice());
+        assertFalse(price.inNewPane(), "on the price is not a pane of its own");
+
+        assertTrue(fresh.inNewPane());
+        assertFalse(fresh.onPrice());
+    }
+
+    @Test
+    @DisplayName("o catalogo reconstroi pelo nome, e devolve nulo para o que nao tem")
+    void buildingByName() {
+        Overlay back = OverlayCatalog.build("study.stochastic", java.util.List.of(21, 5));
+
+        assertNotNull(back);
+        assertEquals(java.util.List.of(21, 5), back.parameters());
+
+        // A workspace written by a later version can name an indicator this
+        // one lacks; refusing to open the chart would turn one missing line
+        // into a lost window.
+        assertEquals(null, OverlayCatalog.build("study.doesNotExist", java.util.List.of(9)));
     }
 }

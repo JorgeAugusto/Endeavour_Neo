@@ -70,7 +70,34 @@ public final class OverlayCatalog {
             // survive a list of integers, and the reference product titles the
             // indicator "[20]" for the same reason.
             new Kind("overlay.bollinger", List.of(20), 1, 2_000,
-                    br.com.jorge.reis.endeavourneo.ui.chart.overlay.BollingerBands::new));
+                    br.com.jorge.reis.endeavourneo.ui.chart.overlay.BollingerBands::new),
+
+            // The ones that live in a panel are in the SAME list. Which of
+            // them can go on the price is not decided by which list they are
+            // in -- each says so itself, in fitsOnPrice, and the insert dialog
+            // asks. Two lists were how the destination used to be decided, and
+            // it meant a moving average could never be put in a panel.
+            new Kind("study.rsi",
+                    List.of(br.com.jorge.reis.endeavourneo.ui.chart.study.rsi
+                            .RelativeStrength.PERIOD), 1, 2_000,
+                    numbers -> new br.com.jorge.reis.endeavourneo.ui.chart.study.rsi
+                            .RelativeStrength(first(numbers, 9))),
+
+            new Kind("study.stochastic",
+                    List.of(br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic
+                            .SlowStochastic.PERIOD,
+                            br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic
+                                    .SlowStochastic.AVERAGE), 1, 2_000,
+                    numbers -> new br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic
+                            .SlowStochastic(first(numbers, 8), second(numbers, 3))));
+
+    private static int first(int[] numbers, int fallback) {
+        return numbers.length > 0 ? numbers[0] : fallback;
+    }
+
+    private static int second(int[] numbers, int fallback) {
+        return numbers.length > 1 ? numbers[1] : fallback;
+    }
 
     private OverlayCatalog() {
         throw new AssertionError("Utility class must not be instantiated");
@@ -79,5 +106,32 @@ public final class OverlayCatalog {
     /** @return everything that can be inserted, in the order it should be listed */
     public static List<Kind> kinds() {
         return KINDS;
+    }
+
+    /**
+     * @param nameKey what a stored line called it
+     * @param parameters the numbers stored beside it
+     * @return that indicator, or null when this version does not have it
+     *
+     * <p>Null rather than an exception. A workspace written by a later version
+     * can name an indicator this one lacks, and refusing to open the chart at
+     * all would turn one missing line into a lost window.</p>
+     */
+    public static Overlay build(String nameKey, List<Integer> parameters) {
+        for (Kind kind : KINDS) {
+            if (!kind.nameKey().equals(nameKey)) {
+                continue;
+            }
+
+            int[] numbers = new int[parameters.size()];
+
+            for (int i = 0; i < numbers.length; i++) {
+                numbers[i] = parameters.get(i);
+            }
+
+            return kind.factory().apply(numbers);
+        }
+
+        return null;
     }
 }

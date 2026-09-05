@@ -251,14 +251,26 @@ public final class ChartCanvas extends JComponent {
     private final transient java.util.List<java.awt.Component> followers =
             new java.util.ArrayList<>();
 
-    /** What happens to a study nobody is listening for: nothing. */
-    private static final java.util.function.Consumer<Overlay> NOBODY_WANTS_A_STUDY =
-            study -> { };
-
-    private transient java.util.function.Consumer<Overlay> onStudyWanted =
-            NOBODY_WANTS_A_STUDY;
-
+    /**
+     * Told when the overlays change in a way that should be WRITTEN DOWN.
+     *
+     * <p>Restored: a careless slice took this field out with the study
+     * listener that sat beside it.</p>
+     */
     private transient Runnable onOverlaysChanged = () -> { };
+
+    /**
+     * Opens the insert dialog and places what comes back.
+     *
+     * <p>The canvas cannot do it itself. A destination may be a panel under
+     * the chart, and the canvas does not know what it is stacked with -- it
+     * does not even know a stack exists. Whoever owns both answers this; see
+     * {@code ChartHolder}.</p>
+     *
+     * <p>The fallback places on the price, which is all a canvas standing on
+     * its own could offer anyway.</p>
+     */
+    private transient Runnable onInsertWanted = this::insertOnPriceOnly;
 
     /** Told when the overlays change in a way that has to be REDRAWN. */
     private transient Runnable onOverlaysRedrawn = () -> { };
@@ -432,37 +444,15 @@ public final class ChartCanvas extends JComponent {
     private javax.swing.JPopupMenu buildContextMenu() {
         javax.swing.JPopupMenu menu = new javax.swing.JPopupMenu();
 
+        // ONE item. Which indicators exist and where each may go are two
+        // different questions now, and the second one is asked in the dialog
+        // rather than answered by which menu entry was clicked.
         javax.swing.JMenuItem insert =
                 new javax.swing.JMenuItem(Messages.get("overlay.insertItem"));
 
-        insert.addActionListener(e -> {
-            Overlay overlay = InsertOverlayDialog.ask(
-                    javax.swing.SwingUtilities.getWindowAncestor(this));
-
-            addOverlay(overlay);
-        });
+        insert.addActionListener(e -> onInsertWanted.run());
 
         menu.add(insert);
-
-        // A study goes UNDER the chart, not on it, so the canvas cannot place
-        // it -- it does not know what it is stacked with. It asks, and whoever
-        // owns the stack answers. See StudyStack.
-        javax.swing.JMenuItem study =
-                new javax.swing.JMenuItem(Messages.get("study.insertItem"));
-
-        study.addActionListener(e -> {
-            SlowStochastic wanted = new SlowStochastic();
-
-            // Asked before it appears, so the period is chosen once instead of
-            // being accepted and then corrected.
-            if (StochasticDialog.edit(javax.swing.SwingUtilities.getWindowAncestor(this),
-                    wanted)) {
-                onStudyWanted.accept(wanted);
-            }
-        });
-        study.setEnabled(onStudyWanted != NOBODY_WANTS_A_STUDY);
-
-        menu.add(study);
 
         javax.swing.JMenu remove = new javax.swing.JMenu(Messages.get("overlay.removeItem"));
 
@@ -577,6 +567,15 @@ public final class ChartCanvas extends JComponent {
         overlays.clear();
 
         for (Overlay overlay : replacements) {
+            if (!overlay.fitsOnPrice()) {
+                // Skipped, not drawn flat and not fatal. One catalogue means a
+                // stored layout CAN name a panel indicator among the price
+                // ones -- a workspace edited by hand, or written before the
+                // two lists became one -- and the check belongs on the way in
+                // rather than being trusted to whoever wrote the file.
+                continue;
+            }
+
             overlay.calculate(series);
             overlays.add(overlay);
         }
@@ -611,9 +610,18 @@ public final class ChartCanvas extends JComponent {
         this.onScaleChanged = listener == null ? () -> { } : listener;
     }
 
-    /** @param listener given a study the reader asked for, to put in a pane */
-    public void onStudyWanted(java.util.function.Consumer<Overlay> listener) {
-        this.onStudyWanted = listener == null ? NOBODY_WANTS_A_STUDY : listener;
+    /** @param listener opens the insert dialog and places the result */
+    public void onInsertWanted(Runnable listener) {
+        this.onInsertWanted = listener == null ? this::insertOnPriceOnly : listener;
+    }
+
+    private void insertOnPriceOnly() {
+        InsertOverlayDialog.Placement placement = InsertOverlayDialog.ask(
+                javax.swing.SwingUtilities.getWindowAncestor(this), java.util.List.of());
+
+        if (placement != null && placement.onPrice()) {
+            addOverlay(placement.indicator());
+        }
     }
 
     /** @param listener told when the bars are replaced */

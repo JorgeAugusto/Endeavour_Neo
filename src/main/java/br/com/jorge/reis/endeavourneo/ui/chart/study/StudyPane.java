@@ -286,6 +286,20 @@ public final class StudyPane extends JComponent {
         addMouseMotionListener(mouse);
     }
 
+    /**
+     * @return how this pane is named where it has to be picked from a list
+     *
+     * <p>What it holds, because that is all it is: the first indicator's name,
+     * and how many others are in there with it. A pane numbered "panel 2"
+     * would make the reader count strips on screen to find out which one that
+     * was.</p>
+     */
+    public String title() {
+        String name = labelOf(studies.get(0));
+
+        return studies.size() == 1 ? name : name + " +" + (studies.size() - 1);
+    }
+
     /** @return what is drawn here, in the order the header lists it */
     public List<Overlay> studies() {
         return List.copyOf(studies);
@@ -590,7 +604,7 @@ public final class StudyPane extends JComponent {
     }
 
     /** @return the indicator's name as the header says it */
-    private String labelOf(Overlay study) {
+    private static String labelOf(Overlay study) {
         String name = Messages.get(study.nameKey()) + " " + study.parameters();
         String scale = study.ownPeriod();
 
