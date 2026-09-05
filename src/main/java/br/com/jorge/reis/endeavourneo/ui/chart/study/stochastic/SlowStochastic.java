@@ -278,6 +278,14 @@ public final class SlowStochastic implements Overlay {
         return "study.stochastic";
     }
 
+    @Override
+    public boolean fitsOnPrice() {
+        // Nought to a hundred. On the price axis of the mini index it would be
+        // a flat line along the floor of the chart -- drawn, listed, and
+        // saying nothing.
+        return false;
+    }
+
     /**
      * @return both periods, always
      *
@@ -290,14 +298,6 @@ public final class SlowStochastic implements Overlay {
      * <p>Showing both in the legend is also the honest reading: the setting
      * exists whether or not the line does.</p>
      */
-    @Override
-    public boolean fitsOnPrice() {
-        // Nought to a hundred. On the price axis of the mini index it would be
-        // a flat line along the floor of the chart -- drawn, listed, and
-        // saying nothing.
-        return false;
-    }
-
     @Override
     public List<Integer> parameters() {
         return List.of(period, average);

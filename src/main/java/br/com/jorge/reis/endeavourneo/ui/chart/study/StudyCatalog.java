@@ -18,6 +18,7 @@
 package br.com.jorge.reis.endeavourneo.ui.chart.study;
 
 import br.com.jorge.reis.endeavourneo.ui.chart.Overlay;
+import br.com.jorge.reis.endeavourneo.ui.chart.study.rsi.RelativeStrength;
 import br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic.SlowStochastic;
 
 import java.util.List;
@@ -48,6 +49,10 @@ public final class StudyCatalog {
                        Function<List<Integer>, Overlay> factory) { }
 
     private static final List<Kind> KINDS = List.of(
+            new Kind("study.rsi",
+                    List.of(RelativeStrength.PERIOD),
+                    numbers -> new RelativeStrength(
+                            numbers.isEmpty() ? RelativeStrength.PERIOD : numbers.get(0))),
             new Kind("study.stochastic",
                     List.of(SlowStochastic.PERIOD, SlowStochastic.AVERAGE),
                     numbers -> new SlowStochastic(

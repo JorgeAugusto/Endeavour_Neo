@@ -206,14 +206,25 @@ public final class StudyStack extends JPanel {
      * to the pane as well as an addition beside it.</p>
      */
     private void settingsFor(Overlay study) {
-        if (!(study instanceof br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic
-                .SlowStochastic stochastic)) {
+        java.awt.Window owner = javax.swing.SwingUtilities.getWindowAncestor(this);
+        boolean changed;
+
+        if (study instanceof br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic
+                .SlowStochastic stochastic) {
+            changed = br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic
+                    .StochasticDialog.edit(owner, stochastic);
+        } else if (study instanceof br.com.jorge.reis.endeavourneo.ui.chart.study.rsi
+                .RelativeStrength rsi) {
+            changed = br.com.jorge.reis.endeavourneo.ui.chart.study.rsi.RsiDialog
+                    .edit(owner, rsi);
+        } else {
+            // An indicator with no dialog of its own yet. Nothing to open, and
+            // nothing broken by asking.
             return;
         }
 
-        if (br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic.StochasticDialog
-                .edit(javax.swing.SwingUtilities.getWindowAncestor(this), stochastic)) {
-            stochastic.calculate(canvas.source());
+        if (changed) {
+            study.calculate(canvas.source());
             relayout();
         }
     }

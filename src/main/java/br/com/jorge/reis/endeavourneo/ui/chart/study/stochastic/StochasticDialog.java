@@ -20,6 +20,7 @@ package br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic;
 import br.com.jorge.reis.endeavourneo.ui.chart.ChartCanvas;
 import br.com.jorge.reis.endeavourneo.ui.chart.ChartColors;
 import br.com.jorge.reis.endeavourneo.ui.chart.Forms;
+import br.com.jorge.reis.endeavourneo.ui.chart.LinePen;
 import br.com.jorge.reis.endeavourneo.ui.chart.Overlay;
 import br.com.jorge.reis.endeavourneo.ui.chart.PeriodCatalog;
 import br.com.jorge.reis.endeavourneo.ui.chart.PeriodDialog;
@@ -96,11 +97,11 @@ public final class StochasticDialog extends JDialog {
 
     // ------------------------------------------------------------ appearance
 
-    private final transient Pen main;
+    private final transient LinePen main;
 
-    private final transient Pen signal;
+    private final transient LinePen signal;
 
-    private final transient Pen levels;
+    private final transient LinePen levels;
 
     private transient boolean accepted;
 
@@ -122,9 +123,11 @@ public final class StochasticDialog extends JDialog {
         periodCode = study.ownPeriod();
         ownPeriod.setSelected(periodCode != null);
 
-        main = new Pen(study.line(), study.colour(), study.width());
-        signal = new Pen(study.averageLine(), study.averageColour(), study.averageWidth());
-        levels = new Pen(study.levelLine(), study.buyColour(), study.levelWidth());
+        main = new LinePen(this, study.line(), study.colour(), study.width());
+        signal = new LinePen(this, study.averageLine(), study.averageColour(),
+                study.averageWidth());
+        levels = new LinePen(this, study.levelLine(), study.buyColour(),
+                study.levelWidth());
 
         JTabbedPane tabs = new JTabbedPane();
 
@@ -274,131 +277,5 @@ public final class StochasticDialog extends JDialog {
         // would be two more decisions for no more meaning.
         study.setBuyColour(levels.colour());
         study.setSellColour(levels.colour());
-    }
-
-    /**
-     * The three controls that describe a line, and the sample under them.
-     *
-     * <p>One class instead of three copies of the same four fields. The dialog
-     * has four lines to describe and they differ only in what they are called;
-     * writing that out four times is four chances for one of them to lose its
-     * sample or forget to repaint.</p>
-     */
-    private final class Pen {
-
-        private final JComboBox<MovingAverage.Line> style =
-                new JComboBox<>(MovingAverage.Line.values());
-
-        private final JSpinner thickness;
-
-        private final JButton swatch = new JButton();
-
-        private final Sample sample = new Sample(this);
-
-        private Color chosen;
-
-        Pen(MovingAverage.Line line, Color colour, float width) {
-            this.chosen = colour;
-
-            style.setRenderer(Forms.lineStyles());
-            style.setSelectedItem(line);
-            thickness = new JSpinner(new SpinnerNumberModel(Math.round(width), 1, 8, 1));
-
-            paintSwatch();
-
-            style.addActionListener(e -> sample.repaint());
-            thickness.addChangeListener(e -> sample.repaint());
-            swatch.addActionListener(e -> {
-                Color picked = JColorChooser.showDialog(StochasticDialog.this,
-                        Messages.get("overlay.ma.colour"), chosen);
-
-                if (picked != null) {
-                    chosen = picked;
-
-                    paintSwatch();
-                    sample.repaint();
-                }
-            });
-        }
-
-        int addTo(JPanel panel, int row, String title) {
-            Forms.group(panel, row++, title);
-            Forms.field(panel, row++, Messages.get("overlay.ma.style"), style);
-            Forms.field(panel, row++, Messages.get("overlay.ma.colour"), swatch);
-            Forms.field(panel, row++, Messages.get("overlay.ma.thickness"), thickness);
-            Forms.across(panel, row++, sample);
-
-            return row;
-        }
-
-        void setEnabled(boolean on) {
-            style.setEnabled(on);
-            thickness.setEnabled(on);
-            swatch.setEnabled(on);
-            sample.setEnabled(on);
-            sample.repaint();
-        }
-
-        MovingAverage.Line line() {
-            MovingAverage.Line picked = (MovingAverage.Line) style.getSelectedItem();
-
-            return picked == null ? MovingAverage.Line.SOLID : picked;
-        }
-
-        Color colour() {
-            return chosen;
-        }
-
-        float width() {
-            return ((Number) thickness.getValue()).floatValue();
-        }
-
-        private void paintSwatch() {
-            swatch.setBackground(chosen);
-            swatch.setOpaque(true);
-            swatch.setBorderPainted(false);
-            swatch.setText(" ");
-        }
-    }
-
-    /** A single stroke of the line as it will be drawn. */
-    private static final class Sample extends JComponent {
-
-        private static final long serialVersionUID = 1L;
-
-        private final transient Pen pen;
-
-        Sample(Pen pen) {
-            this.pen = pen;
-        }
-
-        @Override
-        public Dimension getPreferredSize() {
-            return new Dimension(200, 24);
-        }
-
-        @Override
-        protected void paintComponent(Graphics graphics) {
-            Graphics2D g = (Graphics2D) graphics.create();
-
-            try {
-                g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                        RenderingHints.VALUE_ANTIALIAS_ON);
-
-                setBorder(BorderFactory.createLineBorder(ChartColors.grid()));
-
-                if (!isEnabled()) {
-                    // Nothing drawn. A sample of a line that will not be drawn
-                    // is a picture of something that is not going to happen.
-                    return;
-                }
-
-                g.setColor(pen.colour());
-                g.setStroke(pen.line().stroke(pen.width()));
-                g.drawLine(6, getHeight() / 2, getWidth() - 6, getHeight() / 2);
-            } finally {
-                g.dispose();
-            }
-        }
     }
 }
