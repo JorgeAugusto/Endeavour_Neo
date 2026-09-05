@@ -142,7 +142,7 @@ final class ReplayIcons {
                         RenderingHints.VALUE_ANTIALIAS_ON);
                 g.setStroke(new BasicStroke(1.4f));
 
-                Color ink = on != null && !on.isEnabled() ? disabled() : foreground();
+                Color ink = on != null && !on.isEnabled() ? disabled() : foreground(on);
 
                 glyph.draw(g, size, size, ink);
             } finally {
@@ -150,14 +150,28 @@ final class ReplayIcons {
             }
         }
 
-        private static Color foreground() {
+        /**
+         * @param on the component the icon is being drawn on, or null
+         * @return the ink to draw it in
+         *
+         * <p><b>The component's own colour first.</b> These glyphs used to take
+         * the theme's button colour and nothing else, which is right for a
+         * button and wrong for anything that paints its own ground: the replay
+         * handle is dark with white text in both themes, and a dark-on-dark
+         * arrow would simply not be there.</p>
+         */
+        private static Color foreground(Component on) {
+            if (on != null && on.getForeground() != null) {
+                return on.getForeground();
+            }
+
             Color colour = UIManager.getColor("Button.foreground");
 
             return colour == null ? Color.DARK_GRAY : colour;
         }
 
         private static Color disabled() {
-            Color colour = foreground();
+            Color colour = foreground(null);
 
             return new Color(colour.getRed(), colour.getGreen(), colour.getBlue(), 90);
         }

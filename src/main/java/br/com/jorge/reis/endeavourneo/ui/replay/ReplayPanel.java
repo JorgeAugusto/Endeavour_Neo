@@ -59,6 +59,25 @@ public final class ReplayPanel extends JPanel {
     private final JLabel chip = new JLabel();
 
     /**
+     * The handle's own ground, the same in both themes.
+     *
+     * <p><b>Fixed, and deliberately not from the theme.</b> Everything else on
+     * this panel follows the look and feel, because everything else is a
+     * control the look and feel knows how to draw. This is a plate with a name
+     * stamped on it, and a plate reads as a plate by being one colour
+     * regardless of what surrounds it -- which is why the reference product's
+     * is black on both of its themes too.</p>
+     *
+     * <p>The first version washed the panel colour with yellow instead. On the
+     * light theme it was a gentle highlight; on the night one it was a stain,
+     * and it never looked like the same object twice.</p>
+     */
+    private static final java.awt.Color HANDLE_GROUND = java.awt.Color.BLACK;
+
+    /** White, because the ground is black. The arrow follows it; see ReplayIcons. */
+    private static final java.awt.Color HANDLE_INK = java.awt.Color.WHITE;
+
+    /**
      * What is replayed: a bar series, or a market's ticks from one export.
      *
      * <p>ONE list, where there were two. Asking separately for a series and a
@@ -259,41 +278,10 @@ public final class ReplayPanel extends JPanel {
         chip.setText(ready ? session.name() : Messages.get("replay.noSession"));
         chip.setEnabled(ready);
         chip.setIcon(ready ? ReplayIcons.drag(12) : null);
-        chip.setBackground(ready ? dragTint() : UIManager.getColor("Panel.background"));
+        chip.setBackground(ready ? HANDLE_GROUND : UIManager.getColor("Panel.background"));
+        chip.setForeground(ready ? HANDLE_INK : UIManager.getColor("Label.foreground"));
         chip.setCursor(Cursor.getPredefinedCursor(
                 ready ? Cursor.MOVE_CURSOR : Cursor.DEFAULT_CURSOR));
-    }
-
-    /**
-     * @return the wash of colour that marks the handle
-     *
-     * <p>Mixed into whatever the theme's panel is rather than fixed, for the
-     * usual reason: a colour that reads as a gentle highlight on the light
-     * theme is a glaring block on the night one. The blend is weaker on the
-     * dark theme because the same amount of yellow carries much further
-     * against a dark ground.</p>
-     */
-    private static java.awt.Color dragTint() {
-        java.awt.Color base = UIManager.getColor("Panel.background");
-
-        if (base == null) {
-            base = java.awt.Color.LIGHT_GRAY;
-        }
-
-        // Perceived brightness, not a plain average: the eye weighs green far
-        // more than blue, and a plain average calls some dark themes light.
-        double light = 0.299 * base.getRed() + 0.587 * base.getGreen()
-                + 0.114 * base.getBlue();
-        boolean dark = light < 128.0;
-
-        java.awt.Color yellow = dark ? new java.awt.Color(0xC9A227)
-                : new java.awt.Color(0xFFD54F);
-        float share = dark ? 0.26f : 0.45f;
-
-        return new java.awt.Color(
-                Math.round(base.getRed() + (yellow.getRed() - base.getRed()) * share),
-                Math.round(base.getGreen() + (yellow.getGreen() - base.getGreen()) * share),
-                Math.round(base.getBlue() + (yellow.getBlue() - base.getBlue()) * share));
     }
 
     private JPanel top() {
@@ -308,7 +296,7 @@ public final class ReplayPanel extends JPanel {
         // the handle -- the session is carried to a chart by dragging its name
         // -- and until now it looked exactly like the words beside it. Three
         // marks say so, and not one of them is a sentence: the four-way arrow,
-        // the move cursor, and a wash of colour that lifts it off the panel.
+        // the move cursor, and a ground of its own.
         // The arrow itself goes on and off with the session; see dressChip.
         chip.setHorizontalTextPosition(SwingConstants.LEADING);
         chip.setIconTextGap(8);

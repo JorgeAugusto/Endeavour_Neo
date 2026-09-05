@@ -21,14 +21,19 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import br.com.jorge.reis.endeavourneo.platform.Messages;
 
+import java.awt.Color;
 import java.awt.Component;
 import java.awt.Container;
 import java.awt.Cursor;
+import java.awt.image.BufferedImage;
+import javax.swing.Icon;
 import javax.swing.JLabel;
 import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -86,5 +91,39 @@ class ReplayHandleTest {
         assertEquals(Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR),
                 handle[0].getCursor(),
                 "a control that looks draggable and is not is worse than a label");
+
+        assertNotEquals(Color.BLACK, handle[0].getBackground(),
+                "the plate stayed on with nothing stamped on it");
+        assertEquals(UIManager.getColor("Panel.background"), handle[0].getBackground());
+    }
+
+    @Test
+    @DisplayName("a seta segue a cor do que ela esta desenhada em cima")
+    void theArrowFollowsItsComponent() throws Exception {
+        // The handle is black with white text in BOTH themes, so an arrow that
+        // took the theme's button colour would vanish on the light one.
+        JLabel white = new JLabel();
+
+        white.setForeground(Color.WHITE);
+
+        Icon arrow = ReplayIcons.drag(12);
+        BufferedImage canvas = new BufferedImage(12, 12, BufferedImage.TYPE_INT_ARGB);
+
+        SwingUtilities.invokeAndWait(() ->
+                arrow.paintIcon(white, canvas.getGraphics(), 0, 0));
+
+        boolean anyWhite = false;
+
+        for (int x = 0; x < 12; x++) {
+            for (int y = 0; y < 12; y++) {
+                int pixel = canvas.getRGB(x, y);
+
+                if ((pixel >>> 24) > 200 && (pixel & 0xFFFFFF) == 0xFFFFFF) {
+                    anyWhite = true;
+                }
+            }
+        }
+
+        assertTrue(anyWhite, "the arrow was drawn in some colour of its own");
     }
 }
