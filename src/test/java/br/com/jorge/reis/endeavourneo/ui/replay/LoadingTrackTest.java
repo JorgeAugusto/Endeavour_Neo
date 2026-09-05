@@ -45,11 +45,27 @@ class LoadingTrackTest {
 
     private ReplayPanel panel;
 
+    /**
+     * Everything here runs on the interface thread, as the transport does.
+     *
+     * <p>Not politeness: the look and feel's progress bar reads state from the
+     * thread that changes it, and building this panel off the interface thread
+     * makes it log a warning about an exception it may throw later while
+     * painting. In the running program every call into refresh arrives from a
+     * Swing timer or an invokeLater, so a test that called it from anywhere
+     * else would be testing a situation that does not exist.</p>
+     */
+    private static void onEdt(Runnable action) throws Exception {
+        javax.swing.SwingUtilities.invokeAndWait(action);
+    }
+
     @BeforeEach
-    void setUp() {
-        panel = new ReplayPanel();
-        panel.setSize(420, 260);
-        panel.doLayout();
+    void setUp() throws Exception {
+        onEdt(() -> {
+            panel = new ReplayPanel();
+            panel.setSize(420, 260);
+            panel.doLayout();
+        });
     }
 
     /** @return the first component of a kind anywhere inside, or null */
@@ -99,7 +115,7 @@ class LoadingTrackTest {
 
     @Test
     @DisplayName("os dois existem, no mesmo lugar")
-    void bothExistInOneSlot() {
+    void bothExistInOneSlot() throws Exception {
         assertNotNull(scrubber());
         assertNotNull(loading());
 
@@ -109,7 +125,7 @@ class LoadingTrackTest {
         // is asserted, rather than which container each one happens to be in.
         int idle = panel.getPreferredSize().height;
 
-        panel.showLoading(true);
+        onEdt(() -> panel.showLoading(true));
 
         assertEquals(idle, panel.getPreferredSize().height,
                 "the transport grew or shrank when it started loading");
@@ -124,8 +140,8 @@ class LoadingTrackTest {
 
     @Test
     @DisplayName("carregando, a barra toma o lugar dele")
-    void loadingTakesTheSlot() {
-        panel.showLoading(true);
+    void loadingTakesTheSlot() throws Exception {
+        onEdt(() -> panel.showLoading(true));
 
         assertTrue(onScreen(loading()));
         assertFalse(onScreen(scrubber()), "both were on screen at once");
@@ -135,9 +151,9 @@ class LoadingTrackTest {
 
     @Test
     @DisplayName("e devolve quando termina")
-    void andGivesItBack() {
-        panel.showLoading(true);
-        panel.showLoading(false);
+    void andGivesItBack() throws Exception {
+        onEdt(() -> panel.showLoading(true));
+        onEdt(() -> panel.showLoading(false));
 
         assertTrue(onScreen(scrubber()));
         assertFalse(onScreen(loading()));
@@ -145,9 +161,9 @@ class LoadingTrackTest {
 
     @Test
     @DisplayName("escondida, a barra para de se animar")
-    void hiddenItStopsAnimating() {
-        panel.showLoading(true);
-        panel.showLoading(false);
+    void hiddenItStopsAnimating() throws Exception {
+        onEdt(() -> panel.showLoading(true));
+        onEdt(() -> panel.showLoading(false));
 
         // An indeterminate bar repaints on a timer whether or not anybody can
         // see it, and a transport sitting idle all afternoon would be spending
