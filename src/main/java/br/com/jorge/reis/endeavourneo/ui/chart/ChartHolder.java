@@ -221,6 +221,11 @@ public final class ChartHolder {
         this.onClosed = onClosed == null ? () -> { } : onClosed;
     }
 
+    /** @return what the window CALLS itself, which is not what it is keyed by */
+    public String label() {
+        return label;
+    }
+
     public String name() {
         return name;
     }

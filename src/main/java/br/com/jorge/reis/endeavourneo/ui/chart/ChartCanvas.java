@@ -272,6 +272,16 @@ public final class ChartCanvas extends JComponent {
      */
     private transient Runnable onInsertWanted = this::insertOnPriceOnly;
 
+    /**
+     * Told when the pointer moves over the bars, or leaves them.
+     *
+     * <p>The footer follows the chart the pointer is ON, not the one with
+     * focus. A price under a cursor that is somewhere else is not a reading of
+     * anything, and tracking focus instead would have the bar report a window
+     * the reader is not looking at.</p>
+     */
+    private transient Runnable onCursorChanged = () -> { };
+
     /** Told when the overlays change in a way that has to be REDRAWN. */
     private transient Runnable onOverlaysRedrawn = () -> { };
 
@@ -608,6 +618,45 @@ public final class ChartCanvas extends JComponent {
     /** @param listener told when the vertical scale becomes manual, or automatic again */
     public void onScaleChanged(Runnable listener) {
         this.onScaleChanged = listener == null ? () -> { } : listener;
+    }
+
+    /** @param listener told when the bar under the pointer changes */
+    public void onCursorChanged(Runnable listener) {
+        this.onCursorChanged = listener == null ? () -> { } : listener;
+    }
+
+    /**
+     * @return the bar under the pointer on one line, or empty when there is none
+     *
+     * <p>The time and the close, and nothing else. The full reading -- open,
+     * high, low, change, volume -- is the box that follows the cursor; a footer
+     * repeating it would be the same nine numbers in a place where they are
+     * harder to read.</p>
+     */
+    public String cursorReading() {
+        int bar = hoveredBar();
+
+        if (bar < 0 || bar >= series.size()) {
+            return "";
+        }
+
+        return java.time.Instant.ofEpochMilli(series.timeAt(bar))
+                .atZone(java.time.ZoneId.systemDefault())
+                .format(java.time.format.DateTimeFormatter.ofPattern("dd/MM HH:mm"))
+                + "   " + new java.text.DecimalFormat("#,##0.00",
+                        java.text.DecimalFormatSymbols.getInstance(java.util.Locale.getDefault()))
+                        .format(series.closeAt(bar));
+    }
+
+    /**
+     * @return what the chart is doing, or empty when it is doing the usual thing
+     *
+     * <p>Empty for {@link Mode#PAN}. A section that permanently reads "normal"
+     * is a section that never says anything, and the reader stops seeing it --
+     * including on the day it says something else.</p>
+     */
+    public String modeLabel() {
+        return mode == Mode.MEASURE ? Messages.get("status.mode.measure") : "";
     }
 
     /** @param listener opens the insert dialog and places the result */
@@ -2371,6 +2420,7 @@ public final class ChartCanvas extends JComponent {
         @Override
         public void mouseMoved(MouseEvent e) {
             cursor = e.getPoint();
+            onCursorChanged.run();
 
             // The cursor is the only thing that says the strip is interactive.
             // Without it the area reads as decoration and nobody discovers it.
@@ -2382,6 +2432,7 @@ public final class ChartCanvas extends JComponent {
         @Override
         public void mouseExited(MouseEvent e) {
             cursor = null;
+            onCursorChanged.run();
 
             repaint();
         }
@@ -2486,6 +2537,7 @@ public final class ChartCanvas extends JComponent {
                 measurement = Measurement.between(series, rulerBar, rulerPrice,
                         viewport.barAt(e.getX()), viewport.priceAt(e.getY()));
                 cursor = e.getPoint();
+            onCursorChanged.run();
 
                 repaint();
 
@@ -2545,6 +2597,7 @@ public final class ChartCanvas extends JComponent {
 
             priceOffset = clampOffset(grabbedOffset + slack / (double) height);
             cursor = e.getPoint();
+            onCursorChanged.run();
 
             onScaleChanged.run();
 

@@ -450,6 +450,11 @@ public final class MainWindow extends JFrame {
         charts.put(title, holder);
         rememberCharts();
 
+        // The footer follows the chart the POINTER is on, not the one with
+        // focus: a price under a cursor that is somewhere else is not a
+        // reading of anything.
+        holder.canvas().onCursorChanged(() -> report(holder));
+
         // Opens in whichever mode it was last left in -- docked on first open.
         holder.show();
 
@@ -631,6 +636,37 @@ public final class MainWindow extends JFrame {
 
     public Console getConsole() {
         return console;
+    }
+
+    /**
+     * Writes one chart's state into the footer.
+     *
+     * <p>Here rather than inside the chart because the footer belongs to the
+     * shell: a chart that wrote to it directly would be one of several windows
+     * all writing to the same line, and the last one to move a mouse would
+     * win.</p>
+     */
+    private void report(ChartHolder holder) {
+        var canvas = holder.canvas();
+        String reading = canvas.cursorReading();
+
+        if (reading.isEmpty()) {
+            // The pointer left. The chart's NAME stays -- it is still the one
+            // being looked at, and blanking it would make the bar flicker
+            // every time the mouse crossed the axis.
+            status.chart(identityOf(holder), "", canvas.modeLabel());
+
+            return;
+        }
+
+        status.chart(identityOf(holder), reading, canvas.modeLabel());
+    }
+
+    private static String identityOf(ChartHolder holder) {
+        String scale = holder.canvas().periodLabel();
+
+        return scale == null || scale.isBlank()
+                ? holder.label() : holder.label() + "  ·  " + scale;
     }
 
     public StatusBar getStatus() {
