@@ -24,7 +24,7 @@ package br.com.jorge.reis.endeavourneo.domain.market;
  *
  * <p>A renko built from candles has to GUESS the order in which a bar reached
  * its high and its low, and that guess is most of the answer. Measured on WINFUT over the twenty sessions of January 2021, brick
- * 55: 15.100 bricks from one-minute candles against 11.886 from the exchange's
+ * 55: 9.718 bricks from one-minute candles against 8.076 from the exchange's
  * own ticks. The CANDLES lay 27% MORE, and that is the surprise: reading a bar
  * as "the high then the low", in an order that has to be assumed, manufactures
  * a full swing inside every minute. The real path did not swing that much.</p>
@@ -95,7 +95,7 @@ public final class TickBars implements PriceSeries {
      *
      * <p>The arithmetic gave it away: 566 minutes whose ranges sum to 45.295
      * points cannot hold 2.563 bricks of 55. Corrected, the candles lay MORE
-     * than the ticks, not fewer -- 15.100 against 11.886 over January 2021.</p>
+     * than the ticks, not fewer -- 9.718 against 8.076 over January 2021.</p>
      *
      * <p>Forty-one rows in twenty sessions. Two a day, and they moved the
      * answer by a factor of five.</p>

@@ -40,7 +40,7 @@ import java.util.List;
  * name.</p>
  *
  * <p><b>Where the source line matters most.</b> Measured on WINFUT over January
- * 2021, brick 55: 15.100 bricks from one-minute candles against 11.886 from the
+ * 2021, brick 55: 9.718 bricks from one-minute candles against 8.076 from the
  * exchange's own ticks -- 27% apart, same name, same brick size. Nothing else on
  * screen tells the two apart. This line does.</p>
  */

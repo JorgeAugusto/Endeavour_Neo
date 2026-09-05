@@ -38,9 +38,9 @@ import java.util.Set;
  *
  * <pre>
  * brick   from candles   from ticks   candles are
- *    25         65.999       60.855        1,08x
- *    55         15.100       11.886        1,27x
- *   105          3.372        3.112        1,08x
+ *    25         44.846       36.609        1,23x
+ *    55          9.718        8.076        1,20x
+ *   105          2.390        2.284        1,05x
  * </pre>
  *
  * <p>The candles lay MORE, which is the surprise. Reading a bar as "the high

@@ -743,7 +743,7 @@ public final class ChartCanvas extends JComponent {
         if (choice.aggregation() instanceof br.com.jorge.reis.endeavourneo.domain.market.Renko
                 && !renkoAllowed()) {
             // Refused rather than quietly drawn from candles. See RenkoSource
-            // for the measurement: the two differ by 8% to 27%, and
+            // for the measurement: the two differ by 5% to 23%, and
             // the reader has said in the settings that they would rather be
             // told than shown a chart that is not what it claims.
             javax.swing.JOptionPane.showMessageDialog(owner,
@@ -762,7 +762,7 @@ public final class ChartCanvas extends JComponent {
      *
      * <p>Only when EVERY session on screen has ticks: a renko built partly from
      * ticks and partly from candles would change density halfway across and
-     * look like the market did it. Measured, the two differ by 8% to 27% — see {@link RenkoSource}.</p>
+     * look like the market did it. Measured, the two differ by 5% to 23% — see {@link RenkoSource}.</p>
      *
      * <p>The result is dropped if the period changed while it was being built.
      * A reader who types 11 and then 55 must not be shown the eleven, arriving
@@ -868,7 +868,7 @@ public final class ChartCanvas extends JComponent {
 
         if (which == null) {
             // No export holds every session on screen. "Every" and not "some":
-            // bricks laid from ticks and bricks laid from candles differ by 12%
+            // bricks laid from ticks and bricks laid from candles differ by 5%
             // to 22% on the tape, so a chart built half one way would change
             // density in the middle and look like the market did it.
             return;

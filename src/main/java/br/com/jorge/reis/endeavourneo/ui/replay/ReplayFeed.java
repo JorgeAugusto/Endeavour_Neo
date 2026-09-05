@@ -53,7 +53,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>A tick feed builds the days BEFORE the session from its ticks too, not from
  * the candle file. That is the same rule the renko already follows, and for the
  * same measured reason: bricks laid from candles and bricks laid from ticks
- * differ by 8% to 27%, so a chart holding both changes density halfway across
+ * differ by 5% to 23%, so a chart holding both changes density halfway across
  * and looks like the market did it.</p>
  *
  * <p>It costs something, and the cost is honest: a tick feed can only reach back
