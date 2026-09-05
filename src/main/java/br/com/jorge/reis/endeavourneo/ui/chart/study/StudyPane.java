@@ -15,7 +15,15 @@
  * You should have received a copy of the GNU General Public License along
  * with this program; if not, see <https://www.gnu.org/licenses/>.
  */
-package br.com.jorge.reis.endeavourneo.ui.chart;
+package br.com.jorge.reis.endeavourneo.ui.chart.study;
+
+import br.com.jorge.reis.endeavourneo.ui.chart.ChartCanvas;
+import br.com.jorge.reis.endeavourneo.ui.chart.ChartColors;
+import br.com.jorge.reis.endeavourneo.ui.chart.Forms;
+import br.com.jorge.reis.endeavourneo.ui.chart.Overlay;
+import br.com.jorge.reis.endeavourneo.ui.chart.PeriodCatalog;
+import br.com.jorge.reis.endeavourneo.ui.chart.PeriodDialog;
+import br.com.jorge.reis.endeavourneo.ui.chart.Viewport;
 
 import br.com.jorge.reis.endeavourneo.platform.Messages;
 
@@ -78,6 +86,9 @@ public final class StudyPane extends JComponent {
 
     private final transient Runnable onChanged;
 
+    /** Opens this study's settings; the stack knows which dialog that is. */
+    private transient Runnable onSettings = () -> { };
+
     private int height = 110;
 
     private boolean minimised;
@@ -116,6 +127,12 @@ public final class StudyPane extends JComponent {
                     return;
                 }
 
+                if (settingsAt(e.getX())) {
+                    onSettings.run();
+
+                    return;
+                }
+
                 if (e.getY() <= GRIP && !minimised) {
                     grabbedAt = e.getYOnScreen();
                     grabbedHeight = height;
@@ -139,10 +156,13 @@ public final class StudyPane extends JComponent {
 
             @Override
             public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() == 2 && e.getY() > GRIP && e.getY() < HEADER) {
-                    // The header, double-clicked: the same gesture every title
-                    // bar in this application already answers to.
-                    setMinimised(!minimised);
+                if (e.getClickCount() == 2 && e.getY() > GRIP && e.getY() < HEADER
+                        && !settingsAt(e.getX()) && !minimiseAt(e.getX())
+                        && !closeAt(e.getX())) {
+                    // The name, double-clicked, opens the settings -- the same
+                    // gesture the overlay legend already answers to. Minimising
+                    // has its own button and does not need a second way in.
+                    onSettings.run();
                 }
             }
         };
@@ -153,6 +173,10 @@ public final class StudyPane extends JComponent {
 
     public Study study() {
         return study;
+    }
+
+    public void onSettings(Runnable listener) {
+        onSettings = listener == null ? () -> { } : listener;
     }
 
     /** @return how tall this pane wants to be right now */
@@ -206,12 +230,20 @@ public final class StudyPane extends JComponent {
         return getWidth() - 36;
     }
 
+    private int settingsLeft() {
+        return getWidth() - 54;
+    }
+
     private boolean closeAt(int x) {
         return x >= closeLeft() && x < closeLeft() + 14;
     }
 
     private boolean minimiseAt(int x) {
         return x >= minimiseLeft() && x < minimiseLeft() + 14;
+    }
+
+    private boolean settingsAt(int x) {
+        return x >= settingsLeft() && x < settingsLeft() + 14;
     }
 
     // ----------------------------------------------------------- the drawing
@@ -236,6 +268,7 @@ public final class StudyPane extends JComponent {
             // AFTER the plot, because the scale strip on the right fills its
             // whole column -- drawn before, the two buttons were painted and
             // then covered by it, which is a bug that only shows on screen.
+            paintSettings(g, settingsLeft());
             paintButton(g, minimiseLeft(), minimised);
             paintClose(g, closeLeft());
 
@@ -293,6 +326,27 @@ public final class StudyPane extends JComponent {
         }
 
         g.drawLine(left + 2, middle, left + 12, middle);
+    }
+
+    /**
+     * Three sliders, which is what a settings control looks like everywhere.
+     *
+     * <p>Drawn rather than shipped, like the transport's glyphs: one shape
+     * anybody can describe in a sentence does not need a file per size and a
+     * palette per theme.</p>
+     */
+    private void paintSettings(Graphics2D g, int left) {
+        g.setColor(ChartColors.foreground());
+        g.setStroke(new BasicStroke(1.2f));
+
+        int middle = HEADER / 2;
+
+        for (int row = -1; row <= 1; row++) {
+            int at = middle + row * 4;
+
+            g.drawLine(left + 2, at, left + 12, at);
+            g.fillRect(left + (row == 0 ? 8 : 4), at - 1, 3, 3);
+        }
     }
 
     private void paintClose(Graphics2D g, int left) {

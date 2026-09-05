@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU General Public License along
  * with this program; if not, see <https://www.gnu.org/licenses/>.
  */
-package br.com.jorge.reis.endeavourneo.ui.chart.overlay;
+package br.com.jorge.reis.endeavourneo.ui.chart;
 
 import br.com.jorge.reis.endeavourneo.domain.market.Aggregation;
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
@@ -34,11 +34,16 @@ import br.com.jorge.reis.endeavourneo.ui.chart.PeriodCatalog;
  * another indicator is a second chance to get it wrong. See {@code
  * OwnPeriodTest}, which states it as a property.</p>
  *
+ * <p><b>Shared by overlays and by studies</b>, which is why it sits here and
+ * not inside either. The rule is about reading a coarser scale without reading
+ * the future, and that is true of a moving average drawn on the price and of a
+ * stochastic drawn under it in equal measure.</p>
+ *
  * <p>Interpolation only slopes the line between points that are already
  * closed, so it makes the line smoother without letting it know anything
  * sooner.</p>
  */
-final class OwnScale {
+public final class OwnScale {
 
     private OwnScale() {
         throw new AssertionError("Utility class must not be instantiated");
@@ -53,7 +58,7 @@ final class OwnScale {
      * to fall back to the chart's own scale — a smaller wrong than an
      * indicator listed but invisible.</p>
      */
-    static Aggregation of(String code) {
+    public static Aggregation of(String code) {
         PeriodCatalog.Choice choice = PeriodCatalog.byCode(code);
 
         return choice == null ? null : choice.aggregation();
@@ -66,7 +71,7 @@ final class OwnScale {
      * @return the index in {@code coarse} of the last bar that had CLOSED by
      *         then, or -1 when none had
      */
-    static int indexOfClosed(PriceSeries fine, PriceSeries coarse, int bar) {
+    public static int indexOfClosed(PriceSeries fine, PriceSeries coarse, int bar) {
         long when = fine.timeAt(bar);
         int low = 0;
         int high = coarse.size() - 1;
@@ -95,7 +100,7 @@ final class OwnScale {
      * @param slow one value per coarse bar
      * @param into one value per chart bar; filled with NaN before the first close
      */
-    static void map(PriceSeries fine, PriceSeries coarse, double[] slow, double[] into) {
+    public static void map(PriceSeries fine, PriceSeries coarse, double[] slow, double[] into) {
         if (coarse.size() == 0) {
             java.util.Arrays.fill(into, Double.NaN);
 
@@ -128,7 +133,7 @@ final class OwnScale {
      * the one still forming. That is what keeps it honest: the line is smoother
      * and still says nothing the market had not already said.</p>
      */
-    static void smooth(PriceSeries fine, PriceSeries coarse, double[] slow, double[] into) {
+    public static void smooth(PriceSeries fine, PriceSeries coarse, double[] slow, double[] into) {
         for (int i = 0; i < into.length; i++) {
             int closed = indexOfClosed(fine, coarse, i);
 

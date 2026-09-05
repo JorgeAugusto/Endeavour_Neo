@@ -53,13 +53,13 @@ import javax.swing.UIManager;
  * pixels shorter. The reader notices that without being able to say what is
  * wrong.</p>
  */
-final class Forms {
+public final class Forms {
 
     private Forms() {
         throw new AssertionError("Utility class must not be instantiated");
     }
 
-    static JPanel form() {
+    public static JPanel form() {
         JPanel panel = new JPanel(new GridBagLayout());
 
         panel.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
@@ -68,7 +68,7 @@ final class Forms {
     }
 
     /** A heading with a rule after it, as the reference product draws a group. */
-    static void group(JPanel panel, int row, String text) {
+    public static void group(JPanel panel, int row, String text) {
         GridBagConstraints at = new GridBagConstraints();
 
         at.gridx = 0;
@@ -88,7 +88,7 @@ final class Forms {
         panel.add(label, at);
     }
 
-    static void field(JPanel panel, int row, String text, JComponent editor) {
+    public static void field(JPanel panel, int row, String text, JComponent editor) {
         GridBagConstraints label = new GridBagConstraints();
 
         label.gridx = 0;
@@ -118,7 +118,7 @@ final class Forms {
     }
 
     /** One control spanning both columns, for a checkbox with no label beside it. */
-    static void across(JPanel panel, int row, JComponent control) {
+    public static void across(JPanel panel, int row, JComponent control) {
         GridBagConstraints at = new GridBagConstraints();
 
         at.gridx = 0;
@@ -131,7 +131,7 @@ final class Forms {
     }
 
     /** @param prefix a message key prefix; the enum's own name completes it */
-    static ListCellRenderer<Object> named(String prefix) {
+    public static ListCellRenderer<Object> named(String prefix) {
         return new DefaultListCellRenderer() {
 
             private static final long serialVersionUID = 1L;
@@ -151,7 +151,7 @@ final class Forms {
     }
 
     /** A combo that draws each line style instead of naming it. */
-    static ListCellRenderer<Object> lineStyles() {
+    public static ListCellRenderer<Object> lineStyles() {
         return new DefaultListCellRenderer() {
 
             private static final long serialVersionUID = 1L;
@@ -267,4 +267,5 @@ final class Forms {
             }
         }
     }
+
 }

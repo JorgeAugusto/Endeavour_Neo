@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU General Public License along
  * with this program; if not, see <https://www.gnu.org/licenses/>.
  */
-package br.com.jorge.reis.endeavourneo.ui.chart.overlay;
+package br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;

@@ -15,7 +15,15 @@
  * You should have received a copy of the GNU General Public License along
  * with this program; if not, see <https://www.gnu.org/licenses/>.
  */
-package br.com.jorge.reis.endeavourneo.ui.chart;
+package br.com.jorge.reis.endeavourneo.ui.chart.study;
+
+import br.com.jorge.reis.endeavourneo.ui.chart.ChartCanvas;
+import br.com.jorge.reis.endeavourneo.ui.chart.ChartColors;
+import br.com.jorge.reis.endeavourneo.ui.chart.Forms;
+import br.com.jorge.reis.endeavourneo.ui.chart.Overlay;
+import br.com.jorge.reis.endeavourneo.ui.chart.PeriodCatalog;
+import br.com.jorge.reis.endeavourneo.ui.chart.PeriodDialog;
+import br.com.jorge.reis.endeavourneo.ui.chart.Viewport;
 
 import java.awt.Color;
 import java.awt.Stroke;

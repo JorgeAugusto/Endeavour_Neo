@@ -15,7 +15,15 @@
  * You should have received a copy of the GNU General Public License along
  * with this program; if not, see <https://www.gnu.org/licenses/>.
  */
-package br.com.jorge.reis.endeavourneo.ui.chart;
+package br.com.jorge.reis.endeavourneo.ui.chart.study;
+
+import br.com.jorge.reis.endeavourneo.ui.chart.ChartCanvas;
+import br.com.jorge.reis.endeavourneo.ui.chart.ChartColors;
+import br.com.jorge.reis.endeavourneo.ui.chart.Forms;
+import br.com.jorge.reis.endeavourneo.ui.chart.Overlay;
+import br.com.jorge.reis.endeavourneo.ui.chart.PeriodCatalog;
+import br.com.jorge.reis.endeavourneo.ui.chart.PeriodDialog;
+import br.com.jorge.reis.endeavourneo.ui.chart.Viewport;
 
 import java.awt.Component;
 import java.awt.Container;
@@ -85,11 +93,33 @@ public final class StudyStack extends JPanel {
 
         StudyPane pane = new StudyPane(canvas, study, this::relayout);
 
+        pane.onSettings(() -> settingsFor(study));
         canvas.follow(pane);
         add(pane);
         relayout();
 
         return pane;
+    }
+
+    /**
+     * Opens the settings of one study, and redraws it with what came back.
+     *
+     * <p>The dispatch lives here rather than in the pane because the pane's job
+     * is to draw a {@link Study} and nothing else -- teaching it which dialog
+     * belongs to which implementation would make every new indicator a change
+     * to the pane as well as an addition beside it.</p>
+     */
+    private void settingsFor(Study study) {
+        if (!(study instanceof br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic
+                .SlowStochastic stochastic)) {
+            return;
+        }
+
+        if (br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic.StochasticDialog
+                .edit(javax.swing.SwingUtilities.getWindowAncestor(this), stochastic)) {
+            stochastic.calculate(canvas.source());
+            relayout();
+        }
     }
 
     /** Takes an indicator away, with its pane. */

@@ -17,6 +17,10 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.chart;
 
+import br.com.jorge.reis.endeavourneo.ui.chart.study.Study;
+import br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic.SlowStochastic;
+import br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic.StochasticDialog;
+
 import br.com.jorge.reis.endeavourneo.domain.market.Aggregation;
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
 import br.com.jorge.reis.endeavourneo.domain.market.Timeframe;
@@ -440,8 +444,16 @@ public final class ChartCanvas extends JComponent {
         javax.swing.JMenuItem study =
                 new javax.swing.JMenuItem(Messages.get("study.insertItem"));
 
-        study.addActionListener(e -> onStudyWanted.accept(
-                new br.com.jorge.reis.endeavourneo.ui.chart.overlay.SlowStochastic()));
+        study.addActionListener(e -> {
+            SlowStochastic wanted = new SlowStochastic();
+
+            // Asked before it appears, so the period is chosen once instead of
+            // being accepted and then corrected.
+            if (StochasticDialog.edit(javax.swing.SwingUtilities.getWindowAncestor(this),
+                    wanted)) {
+                onStudyWanted.accept(wanted);
+            }
+        });
         study.setEnabled(onStudyWanted != NOBODY_WANTS_A_STUDY);
 
         menu.add(study);

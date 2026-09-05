@@ -17,6 +17,8 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.chart.overlay;
 
+import br.com.jorge.reis.endeavourneo.ui.chart.OwnScale;
+
 import br.com.jorge.reis.endeavourneo.domain.market.Aggregation;
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
 

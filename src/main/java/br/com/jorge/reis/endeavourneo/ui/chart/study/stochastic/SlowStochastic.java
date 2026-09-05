@@ -15,11 +15,14 @@
  * You should have received a copy of the GNU General Public License along
  * with this program; if not, see <https://www.gnu.org/licenses/>.
  */
-package br.com.jorge.reis.endeavourneo.ui.chart.overlay;
+package br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic;
+
+import br.com.jorge.reis.endeavourneo.ui.chart.OwnScale;
+import br.com.jorge.reis.endeavourneo.ui.chart.overlay.MovingAverage;
 
 import br.com.jorge.reis.endeavourneo.domain.market.Aggregation;
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
-import br.com.jorge.reis.endeavourneo.ui.chart.Study;
+import br.com.jorge.reis.endeavourneo.ui.chart.study.Study;
 
 import java.awt.Color;
 import java.awt.Stroke;
