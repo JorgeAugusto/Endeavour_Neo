@@ -96,6 +96,30 @@ public final class OverlayLegend extends JComponent {
     private int hovered = -1;
 
     /**
+     * How far the pointer has to travel down a row before it counts as
+     * carrying it rather than clicking it.
+     *
+     * <p>Every row here already answers to a click -- three buttons and, on
+     * the fold line, the triangle. Without a threshold a hand that moves one
+     * pixel between press and release would reorder the list instead.</p>
+     */
+    private static final int SLIP = 3;
+
+    /** Which row was pressed, or -1; not yet a carry. */
+    private transient int pressedRow = -1;
+
+    private transient int pressedAt;
+
+    /** Whether that press has travelled far enough to be a carry. */
+    private transient boolean carrying;
+
+    /** Whether the last release ended a carry, so the click is not a click. */
+    private transient boolean carried;
+
+    /** Where it would land, as a gap between rows; -1 when nothing is carried. */
+    private transient int dropAt = -1;
+
+    /**
      * @param canvas the chart this legend describes
      * @param key identifies the chart, so folded or not is remembered
      */
@@ -176,6 +200,8 @@ public final class OverlayLegend extends JComponent {
 
             int bar = canvas.hoveredBar();
 
+            paintDrop(g, overlays.size());
+
             for (int i = 0; i < overlays.size(); i++) {
                 paintRow(g, overlays.get(i), bar, i, i * ROW_HEIGHT + 2);
             }
@@ -184,6 +210,43 @@ public final class OverlayLegend extends JComponent {
         } finally {
             g.dispose();
         }
+    }
+
+    /**
+     * Draws where a carried row would land.
+     *
+     * <p>Before the rows, not after: the mark belongs BEHIND the text, and a
+     * line drawn over a row's letters would look like a strikethrough on the
+     * indicator rather than a gap between two of them.</p>
+     */
+    private void paintDrop(Graphics2D g, int rows) {
+        if (dropAt < 0) {
+            return;
+        }
+
+        int y = Math.min(dropAt, rows) * ROW_HEIGHT + 1;
+
+        g.setColor(ChartColors.up());
+        g.fillRect(0, Math.max(0, Math.min(y, getHeight() - 3)), getWidth(), 3);
+    }
+
+    /**
+     * @param y a pixel down the list
+     * @return which GAP between rows it points at, from zero
+     *
+     * <p>Gaps and not rows: dropping is answering "above which one", and that
+     * answer has to include "below the last", which no row index can say.</p>
+     */
+    private int gapAt(int y) {
+        int rows = canvas.overlays().size();
+
+        for (int i = 0; i < rows; i++) {
+            if (y < i * ROW_HEIGHT + ROW_HEIGHT / 2) {
+                return i;
+            }
+        }
+
+        return rows;
     }
 
     private void paintRow(Graphics2D g, Overlay overlay, int bar, int index, int top) {
@@ -366,14 +429,97 @@ public final class OverlayLegend extends JComponent {
                 repaint();
             }
 
-            boolean clickable = over(e) >= 0 || toggle.contains(e.getPoint());
+            setCursor(Cursor.getPredefinedCursor(cursorFor(e)));
+        }
 
-            setCursor(Cursor.getPredefinedCursor(
-                    clickable ? Cursor.HAND_CURSOR : Cursor.DEFAULT_CURSOR));
+        /** @return which pointer this point deserves */
+        private int cursorFor(MouseEvent e) {
+            if (over(e) >= 0 || toggle.contains(e.getPoint())) {
+                return Cursor.HAND_CURSOR;
+            }
+
+            // A row that can be carried has to LOOK like one before it is
+            // grabbed; there is nothing else on screen saying the list
+            // reorders.
+            return rowAt(e) >= 0 ? Cursor.MOVE_CURSOR : Cursor.DEFAULT_CURSOR;
+        }
+
+        /** @return the row this point can carry, or -1 for anything else */
+        private int rowAt(MouseEvent e) {
+            if (collapsed || over(e) >= 0 || toggle.contains(e.getPoint())) {
+                return -1;
+            }
+
+            int row = e.getY() / ROW_HEIGHT;
+
+            return row >= 0 && row < canvas.overlays().size() ? row : -1;
+        }
+
+        @Override
+        public void mousePressed(MouseEvent e) {
+            pressedRow = rowAt(e);
+            pressedAt = e.getY();
+            carrying = false;
+        }
+
+        @Override
+        public void mouseDragged(MouseEvent e) {
+            if (pressedRow < 0) {
+                return;
+            }
+
+            if (!carrying && Math.abs(e.getY() - pressedAt) < SLIP) {
+                return;
+            }
+
+            if (!carrying) {
+                carrying = true;
+
+                // While a row is in the air the three buttons must not follow
+                // the pointer onto whatever it passes over: they would be
+                // offering to delete a row the reader is only crossing.
+                hovered = -1;
+            }
+
+            int wanted = gapAt(e.getY());
+
+            if (wanted != dropAt) {
+                dropAt = wanted;
+
+                repaint();
+            }
+        }
+
+        @Override
+        public void mouseReleased(MouseEvent e) {
+            int row = pressedRow;
+            int gap = dropAt;
+            boolean was = carrying;
+
+            pressedRow = -1;
+            carrying = false;
+            carried = was;
+            dropAt = -1;
+
+            repaint();
+
+            if (!was || row < 0 || gap < 0 || row >= canvas.overlays().size()) {
+                return;
+            }
+
+            canvas.moveOverlay(canvas.overlays().get(row), gap);
+            revalidate();
+            repaint();
         }
 
         @Override
         public void mouseExited(MouseEvent e) {
+            if (carrying) {
+                // Still being carried; the pointer left the list on its way
+                // somewhere and the drag is not over.
+                return;
+            }
+
             hovered = -1;
 
             setCursor(Cursor.getDefaultCursor());
@@ -382,6 +528,15 @@ public final class OverlayLegend extends JComponent {
 
         @Override
         public void mouseClicked(MouseEvent e) {
+            if (carried) {
+                // The release that ended a carry can still arrive here as a
+                // click, and acting on it would toggle or delete the row that
+                // was just moved.
+                carried = false;
+
+                return;
+            }
+
             // The triangle first: folded, it is the only thing on the line, and
             // the row arithmetic below would still answer "row 0".
             if (toggle.contains(e.getPoint())) {

@@ -224,7 +224,14 @@ public final class ChartCanvas extends JComponent {
 
     private transient ChartStyle style = new CandleStyle();
 
-    /** The overlays drawn on the price, in the order they were added. */
+    /**
+     * The overlays drawn on the price, in the order the reader arranged them.
+     *
+     * <p>The order is theirs and not the order of insertion: it is the order
+     * the legend lists, and it is also the order they are DRAWN in, so the
+     * last one wins where two lines cross. Moving a row in the legend is
+     * therefore also deciding what sits on top.</p>
+     */
     private final transient java.util.List<Overlay> overlays = new java.util.ArrayList<>();
 
     /**
@@ -681,6 +688,31 @@ public final class ChartCanvas extends JComponent {
 
         repaint();
         overlaysChanged();
+    }
+
+    /**
+     * Moves one overlay to a gap in the list.
+     *
+     * @param overlay the one being carried
+     * @param gap where it should land, counted in the gaps BETWEEN overlays
+     * @return whether anything actually moved
+     *
+     * <p>This is the same drop the layout tabs and the indicator panes answer
+     * to, so the arithmetic is {@link Reordering}'s and not another copy.</p>
+     *
+     * <p>It reports the change as storable, which is what puts the new order
+     * in the layout. An arrangement that had to be redone at every launch
+     * would not be worth making.</p>
+     */
+    public boolean moveOverlay(Overlay overlay, int gap) {
+        if (!Reordering.move(overlays, overlays.indexOf(overlay), gap)) {
+            return false;
+        }
+
+        repaint();
+        overlaysChanged();
+
+        return true;
     }
 
     /** @return the overlays, for the legend and the show/hide toggles */
