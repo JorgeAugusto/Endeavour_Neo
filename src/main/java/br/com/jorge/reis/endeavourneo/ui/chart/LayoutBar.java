@@ -62,7 +62,21 @@ public final class LayoutBar extends JComponent {
 
     private final transient String chartKey;
 
-    private final JPanel tabs = new JPanel(new FlowLayout(FlowLayout.LEFT, 3, 2));
+    private final JPanel tabs = new Tabs();
+
+    /**
+     * Which tab is being dragged, or -1 when none is.
+     *
+     * <p>The reorder happens on RELEASE, not while dragging. Moving the list as
+     * the pointer passes over each tab would rebuild the buttons underneath the
+     * gesture -- and the button the drag started on would stop existing halfway
+     * through, which ends the drag. So the bar draws where the tab WOULD land
+     * and commits once.</p>
+     */
+    private transient int dragging = -1;
+
+    /** Where it would land, as a gap between tabs; -1 while nothing is dragged. */
+    private transient int dropAt = -1;
 
     private final transient List<ChartLayout> layouts = new ArrayList<>();
 
@@ -116,6 +130,91 @@ public final class LayoutBar extends JComponent {
         ChartLayouts.save(layouts);
     }
 
+    /**
+     * @param x a pixel across the bar
+     * @return which GAP between tabs it points at, from zero
+     *
+     * <p>Gaps and not tabs: dropping is answering "before which one", and the
+     * answer has to include "after the last", which no tab index can say.</p>
+     */
+    private int gapAt(int x) {
+        int gap = 0;
+
+        for (Component each : tabs.getComponents()) {
+            if (!(each instanceof JToggleButton)) {
+                // The "+" at the end is not a place anything can be dropped
+                // before, and counting it would offer a slot past the end.
+                break;
+            }
+
+            if (x < each.getX() + each.getWidth() / 2) {
+                return gap;
+            }
+
+            gap++;
+        }
+
+        return gap;
+    }
+
+    /**
+     * Moves one layout to a gap, and remembers the new order.
+     *
+     * @param from which layout, by its current index
+     * @param gap where it should sit, counted in gaps between tabs
+     *
+     * <p>The SELECTION follows the layout and not the index. Dragging the tab
+     * you are looking at must leave you looking at it -- the alternative, the
+     * selection staying on whatever slid into that slot, is a chart that
+     * silently changes its indicators because a tab was moved.</p>
+     */
+    private void moveLayout(int from, int gap) {
+        // Read BEFORE the list changes. Reading it after would look up the old
+        // index in the new order and follow whatever slid into that slot.
+        ChartLayout wasSelected = selected >= 0 && selected < layouts.size()
+                ? layouts.get(selected) : null;
+
+        if (!move(layouts, from, gap)) {
+            return;
+        }
+
+        // The selection follows the LAYOUT and not the index. Dragging the tab
+        // you are looking at must leave you looking at it; the alternative is a
+        // chart that silently swaps its indicators because a tab was moved.
+        selected = wasSelected == null ? selected : layouts.indexOf(wasSelected);
+
+        ChartLayouts.save(layouts);
+        rebuild();
+    }
+
+    /**
+     * Moves one item to a gap between items.
+     *
+     * @param gap where it should land, counted in the gaps BEFORE the move
+     * @return whether anything actually moved
+     *
+     * <p>Static, and over a plain list, so the arithmetic can be tested without
+     * a window. The off-by-one is the whole of it: a gap is counted while the
+     * item is still in the list, so dragging to the right lands one slot
+     * earlier once it is taken out. Getting that wrong moves a tab one place
+     * short of where it was dropped, and nothing on screen says why.</p>
+     */
+    static <T> boolean move(java.util.List<T> list, int from, int gap) {
+        if (from < 0 || from >= list.size() || gap < 0 || gap > list.size()) {
+            return false;
+        }
+
+        int to = gap > from ? gap - 1 : gap;
+
+        if (to == from) {
+            return false;
+        }
+
+        list.add(Math.max(0, Math.min(to, list.size() - 1)), list.remove(from));
+
+        return true;
+    }
+
     // ------------------------------------------------------------- the tabs
 
     private void rebuild() {
@@ -137,6 +236,43 @@ public final class LayoutBar extends JComponent {
         tabs.repaint();
     }
 
+    /** The bar itself, so it can draw where a dragged tab would land. */
+    private final class Tabs extends JPanel {
+
+        private static final long serialVersionUID = 1L;
+
+        Tabs() {
+            super(new FlowLayout(FlowLayout.LEFT, 3, 2));
+        }
+
+        @Override
+        protected void paintChildren(java.awt.Graphics graphics) {
+            super.paintChildren(graphics);
+
+            if (dropAt < 0) {
+                return;
+            }
+
+            // A line in the gap, which is the one thing that says "here" without
+            // moving anything: the tabs stay where they are until released, so
+            // this mark is the only feedback the gesture has.
+            int x = 1;
+            int gap = 0;
+
+            for (Component each : getComponents()) {
+                if (gap == dropAt || !(each instanceof JToggleButton)) {
+                    break;
+                }
+
+                x = each.getX() + each.getWidth() + 1;
+                gap++;
+            }
+
+            graphics.setColor(ChartColors.up());
+            graphics.fillRect(x - 1, 2, 3, Math.max(4, getHeight() - 4));
+        }
+    }
+
     private Component tabFor(int index) {
         ChartLayout layout = layouts.get(index);
         JToggleButton tab = new JToggleButton(layout.name());
@@ -146,24 +282,67 @@ public final class LayoutBar extends JComponent {
         tab.setMargin(new java.awt.Insets(1, 8, 1, 8));
         tab.addActionListener(e -> select(index));
 
-        tab.addMouseListener(new MouseAdapter() {
+        java.awt.event.MouseAdapter mouse = new java.awt.event.MouseAdapter() {
 
             @Override
             public void mousePressed(MouseEvent e) {
-                maybeMenu(e);
+                if (maybeMenu(e)) {
+                    return;
+                }
+
+                dragging = index;
+                dropAt = -1;
+            }
+
+            @Override
+            public void mouseDragged(MouseEvent e) {
+                if (dragging < 0) {
+                    return;
+                }
+
+                int wanted = gapAt(javax.swing.SwingUtilities
+                        .convertPoint(tab, e.getPoint(), tabs).x);
+
+                if (wanted != dropAt) {
+                    dropAt = wanted;
+
+                    tabs.repaint();
+                }
             }
 
             @Override
             public void mouseReleased(MouseEvent e) {
-                maybeMenu(e);
+                int from = dragging;
+                int gap = dropAt;
+
+                dragging = -1;
+                dropAt = -1;
+
+                tabs.repaint();
+
+                if (maybeMenu(e) || from < 0 || gap < 0) {
+                    return;
+                }
+
+                moveLayout(from, gap);
             }
 
-            private void maybeMenu(MouseEvent e) {
-                if (e.isPopupTrigger()) {
-                    menuFor(index).show(tab, e.getX(), e.getY());
+            private boolean maybeMenu(MouseEvent e) {
+                if (!e.isPopupTrigger()) {
+                    return false;
                 }
+
+                dragging = -1;
+                dropAt = -1;
+
+                menuFor(index).show(tab, e.getX(), e.getY());
+
+                return true;
             }
-        });
+        };
+
+        tab.addMouseListener(mouse);
+        tab.addMouseMotionListener(mouse);
 
         return tab;
     }
