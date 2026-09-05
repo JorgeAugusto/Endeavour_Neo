@@ -231,6 +231,23 @@ public final class ChartCanvas extends JComponent {
      * has to redraw everything showing the overlays, and must NOT be written
      * down -- the layout bar would capture back what it has just applied.</p>
      */
+    /**
+     * The panes drawn from this chart's viewport.
+     *
+     * <p>Final and built at construction, because {@link #repaint} runs before
+     * a subclass's fields would be assigned -- Swing repaints during
+     * construction, and a null list there is a crash on opening a chart.</p>
+     */
+    private final transient java.util.List<java.awt.Component> followers =
+            new java.util.ArrayList<>();
+
+    /** What happens to a study nobody is listening for: nothing. */
+    private static final java.util.function.Consumer<Study> NOBODY_WANTS_A_STUDY =
+            study -> { };
+
+    private transient java.util.function.Consumer<Study> onStudyWanted =
+            NOBODY_WANTS_A_STUDY;
+
     private transient Runnable onOverlaysChanged = () -> { };
 
     /** Told when the overlays change in a way that has to be REDRAWN. */
@@ -417,6 +434,18 @@ public final class ChartCanvas extends JComponent {
 
         menu.add(insert);
 
+        // A study goes UNDER the chart, not on it, so the canvas cannot place
+        // it -- it does not know what it is stacked with. It asks, and whoever
+        // owns the stack answers. See StudyStack.
+        javax.swing.JMenuItem study =
+                new javax.swing.JMenuItem(Messages.get("study.insertItem"));
+
+        study.addActionListener(e -> onStudyWanted.accept(
+                new br.com.jorge.reis.endeavourneo.ui.chart.overlay.SlowStochastic()));
+        study.setEnabled(onStudyWanted != NOBODY_WANTS_A_STUDY);
+
+        menu.add(study);
+
         javax.swing.JMenu remove = new javax.swing.JMenu(Messages.get("overlay.removeItem"));
 
         // Disabled rather than hidden when there is nothing to remove. Hidden,
@@ -562,6 +591,11 @@ public final class ChartCanvas extends JComponent {
     /** @param listener told when the vertical scale becomes manual, or automatic again */
     public void onScaleChanged(Runnable listener) {
         this.onScaleChanged = listener == null ? () -> { } : listener;
+    }
+
+    /** @param listener given a study the reader asked for, to put in a pane */
+    public void onStudyWanted(java.util.function.Consumer<Study> listener) {
+        this.onStudyWanted = listener == null ? NOBODY_WANTS_A_STUDY : listener;
     }
 
     /** @param listener told when the bars are replaced */
@@ -1180,6 +1214,67 @@ public final class ChartCanvas extends JComponent {
         }
 
         return viewport().barAt(cursor.x);
+    }
+
+    /**
+     * @return where every visible bar sits horizontally, or null before there
+     *         is anything to place
+     *
+     * <p><b>Shared with the panes below.</b> A study draws its own values on
+     * its own vertical scale, but the x of a bar has to be the SAME x, or a
+     * peak in the indicator sits beside the candle that made it instead of
+     * under it. One viewport, handed out, is the only way that stays true
+     * through scrolling, zooming and a window being resized.</p>
+     */
+    public Viewport plotViewport() {
+        return series == null || series.size() == 0 ? null : viewport();
+    }
+
+    /** @return how wide the strip on the right is; the panes leave the same */
+    public int axisWidth() {
+        return AXIS_WIDTH;
+    }
+
+    /** @return the bar under the mouse, or -1 when the mouse is elsewhere */
+    public int barUnderCursor() {
+        return hoveredBar();
+    }
+
+    /** @return the last bar on screen, which is what a legend reads when the mouse is away */
+    public int lastVisibleBar() {
+        return Math.max(0, Math.min(series.size() - 1, firstBar + visibleBars - 1));
+    }
+
+    /**
+     * Repaints this, and anything drawn from this.
+     *
+     * <p>The panes under the chart borrow its viewport, so every reason to
+     * redraw the chart is a reason to redraw them -- scrolling, zooming, a new
+     * series, a replay tick. Catching it HERE rather than at the twenty-three
+     * places that move the view is not laziness: those twenty-three will become
+     * twenty-four, and the one that forgets would leave an indicator drawn
+     * against the wrong bars with nothing on screen admitting it.</p>
+     *
+     * <p>No loop: repainting a sibling does not repaint this.</p>
+     */
+    @Override
+    public void repaint(long delay, int x, int y, int width, int height) {
+        super.repaint(delay, x, y, width, height);
+
+        for (java.awt.Component each : followers) {
+            each.repaint();
+        }
+    }
+
+    /** @param pane redrawn whenever this chart is */
+    public void follow(java.awt.Component pane) {
+        if (pane != null && !followers.contains(pane)) {
+            followers.add(pane);
+        }
+    }
+
+    public void unfollow(java.awt.Component pane) {
+        followers.remove(pane);
     }
 
     private Viewport viewport() {

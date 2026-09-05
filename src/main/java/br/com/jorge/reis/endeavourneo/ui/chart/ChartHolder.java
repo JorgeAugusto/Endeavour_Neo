@@ -93,6 +93,16 @@ public final class ChartHolder {
     private final ChartCanvas canvas = new ChartCanvas();
 
     /**
+     * The canvas and the indicator panes under it, as one component.
+     *
+     * <p>Everything that used to place the canvas places this instead. The
+     * chart does not know what is stacked with it, and the two containers a
+     * chart can live in -- docked and floating -- did not have to learn about
+     * indicator panes at all.</p>
+     */
+    private final StudyStack body = new StudyStack(canvas);
+
+    /**
      * The legend, moved between containers along with the canvas.
      *
      * <p>Built once and re-parented, for the same reason the canvas is: a legend
@@ -169,7 +179,12 @@ public final class ChartHolder {
             legend.repaint();
         });
 
+        canvas.onStudyWanted(body::show);
         canvas.onSeriesChanged(() -> {
+            // Before anything reads them: a study still holding the values of
+            // the series before would draw a shape that never happened.
+            body.recalculate();
+
             retitle();
 
             // The header too. It paints the period every time it paints, but
@@ -193,6 +208,11 @@ public final class ChartHolder {
 
     public String name() {
         return name;
+    }
+
+    /** @return where indicator panes live, under the chart */
+    public StudyStack studies() {
+        return body;
     }
 
     /**
@@ -361,7 +381,7 @@ public final class ChartHolder {
         docked = new JInternalFrame(title(), true, true, true, true);
 
         docked.getContentPane().add(header(), BorderLayout.NORTH);
-        docked.getContentPane().add(canvas, BorderLayout.CENTER);
+        docked.getContentPane().add(body, BorderLayout.CENTER);
         docked.getContentPane().add(layouts(), BorderLayout.SOUTH);
         boolean firstInside = countInside() == 0;
         boolean remembered = PREFS.getInt(key + ".width", -1) > 0;
@@ -425,7 +445,7 @@ public final class ChartHolder {
 
         floating.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         floating.getContentPane().add(header(), BorderLayout.NORTH);
-        floating.getContentPane().add(canvas, BorderLayout.CENTER);
+        floating.getContentPane().add(body, BorderLayout.CENTER);
         floating.getContentPane().add(layouts(), BorderLayout.SOUTH);
         floating.setSize(restoredSize());
         floating.setLocation(restoredLocation());
@@ -516,7 +536,7 @@ public final class ChartHolder {
         Container content = docked.getContentPane();
 
         content.remove(header);
-        content.remove(canvas);
+        content.remove(body);
         content.remove(layouts());
         docked.dispose();
         docked = null;
@@ -530,7 +550,7 @@ public final class ChartHolder {
         storeFloatingBounds();
 
         floating.getContentPane().remove(header);
-        floating.getContentPane().remove(canvas);
+        floating.getContentPane().remove(body);
         floating.getContentPane().remove(layouts());
         floating.dispose();
         floating = null;
