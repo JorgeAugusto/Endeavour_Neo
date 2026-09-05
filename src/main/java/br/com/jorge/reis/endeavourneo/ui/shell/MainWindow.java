@@ -455,6 +455,11 @@ public final class MainWindow extends JFrame {
         // reading of anything.
         holder.canvas().onCursorChanged(() -> report(holder));
 
+        // The same opener the tree uses. A segment picked in the header and one
+        // picked in the tree have to land on the same window, or the reader
+        // ends up with two charts of the same thing.
+        holder.onOpenWanted(this::open);
+
         // Opens in whichever mode it was last left in -- docked on first open.
         holder.show();
 

@@ -34,7 +34,7 @@ import javax.swing.UIManager;
  * that changes hue with the theme cannot be learnt. They are dimmed for the
  * night theme and no more than that.</p>
  */
-final class SeriesColors {
+public final class SeriesColors {
 
     /**
      * The blocks, in the order segments are drawn.
@@ -99,7 +99,7 @@ final class SeriesColors {
     }
 
     /** @param at which segment, from zero; beyond the sixth they repeat */
-    static Color taken(int at) {
+    public static Color taken(int at) {
         Color base = new Color(TAKEN[Math.floorMod(at, TAKEN.length)]);
 
         if (!dark()) {

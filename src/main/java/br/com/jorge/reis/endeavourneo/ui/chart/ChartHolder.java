@@ -184,7 +184,7 @@ public final class ChartHolder {
         this.label = label == null || label.isBlank() ? name : label;
         this.key = name.replaceAll("[^A-Za-z0-9]+", "_");
         this.legend = new OverlayLegend(canvas, this.key);
-        this.chartHeader = new ChartHeader(canvas, this.label);
+        this.chartHeader = new ChartHeader(canvas, this.label, name);
 
         // The legend reads the overlays off the canvas; nothing else tells it
         // they are gone. Without this, switching layout leaves the old list on
@@ -219,6 +219,18 @@ public final class ChartHolder {
         this.desktop = desktop;
         this.owner = owner;
         this.onClosed = onClosed == null ? () -> { } : onClosed;
+    }
+
+    /**
+     * @param listener given the name of another segment to open, or the series
+     *
+     * <p>Forwarded to the header, which is where the choosing happens, and
+     * answered by the shell, which is the only thing that can open a window.
+     * The same listener the tree is wired to: one way in, so a chart opened
+     * from the header and one opened from the tree are the same chart.</p>
+     */
+    public void onOpenWanted(java.util.function.Consumer<String> listener) {
+        chartHeader.onOpen(listener);
     }
 
     /** @return what the window CALLS itself, which is not what it is keyed by */
