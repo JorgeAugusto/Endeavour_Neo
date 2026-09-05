@@ -43,10 +43,14 @@ já está pronto e testado. Mas há uma restrição dura de versão:
 | 0.22.4+ | 25 | `WalkForwardEngine`, `StrategyWalkForwardExecutor`, `PositionSizer` |
 
 Verificado, não suposto: o `ta4j-core-0.17.jar` resolve do Maven Central e seu
-bytecode é **major 55 (Java 11)** — roda no nosso 17. Esta máquina não tem JDK 25,
-e a IDE é de 2023; subir o projeto para 25 por causa do arcabouço de
-andar-para-frente não se paga, porque **fatiar a série e rodar o motor por fatia
-são umas cinquenta linhas nossas**, não um arcabouço.
+bytecode é **major 55 (Java 11)** — roda no nosso 17.
+
+*Atualizado em 05/09/2026:* a máquina passou a ter **JDK 25** (Oracle 25.0.4.1,
+em `02-jdk/jdk-25.0.4.1`; a suíte inteira roda nela). O que continua valendo é a
+conclusão, por outro motivo: a IDE é a 2022.2.3 e não reconhece JDK 25, e de todo
+modo **fatiar a série e rodar o motor por fatia são umas cinquenta linhas
+nossas**, não um arcabouço. O ta4j 0.22.4+ só se paga se quisermos o
+`PositionSizer` junto.
 
 **Proposta: ta4j 0.17 para o motor; o fatiamento e o veredito são nossos.**
 
@@ -162,3 +166,12 @@ A etapa 4 vem **antes** da tela de propósito. Uma tela que mostra um número
 5. **Fatias:** por trimestre? (com 4 anos dá 16 — consistência visível sem virar
    ruído)
 6. **Padrão do "à frente":** `1/3`? (o MetaTrader oferece 1/2, 1/3, 1/4)
+
+---
+
+## Depois disto
+
+A linguagem comum de execução — para que toda estratégia nossa traduza para NTSL
+e MQL5 pelo mesmo caminho — está registrada em
+[EXECUCAO-PORTAVEL.md](EXECUCAO-PORTAVEL.md). Ela vem **depois** do backtest e
+depois de pelo menos uma estratégia portada à mão, de propósito.
