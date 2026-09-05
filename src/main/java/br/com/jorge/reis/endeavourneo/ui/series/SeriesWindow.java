@@ -71,7 +71,8 @@ public final class SeriesWindow extends JDialog {
 
     private static final long serialVersionUID = 1L;
 
-    private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+    /** Shared with the segment dialog, so a date never reads two ways in one window. */
+    static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     private static final ZoneId ZONE = ZoneId.systemDefault();
 
@@ -159,7 +160,22 @@ public final class SeriesWindow extends JDialog {
         JButton add = new JButton(Messages.get("series.add"));
         JButton remove = new JButton(Messages.get("series.remove"));
 
-        add.addActionListener(e -> model.add(suggested()));
+        add.addActionListener(e -> {
+            // The dialog needs the sessions to place anything, so with an
+            // unreadable series the old behaviour stands: a row appears and is
+            // typed into. Refusing to add a segment because a FILE will not
+            // open would be the window losing a job it can still do.
+            if (bars == null || bars.size() == 0) {
+                model.add(suggested());
+
+                return;
+            }
+
+            SegmentDialog.ask(this, editing,
+                            br.com.jorge.reis.endeavourneo.domain.market.Sessions.of(bars),
+                            List.copyOf(model.segments), suggested())
+                    .ifPresent(model::add);
+        });
         remove.addActionListener(e -> {
             int row = table.getSelectedRow();
 

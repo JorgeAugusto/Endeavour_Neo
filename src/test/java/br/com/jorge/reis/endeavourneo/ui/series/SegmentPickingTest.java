@@ -1,0 +1,191 @@
+/*
+ * Endeavour Neo -- a desktop application shell in Swing.
+ * Copyright (C) 2026  Jorge Reis
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, see <https://www.gnu.org/licenses/>.
+ */
+package br.com.jorge.reis.endeavourneo.ui.series;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import br.com.jorge.reis.endeavourneo.domain.market.Segment;
+
+import java.awt.event.KeyEvent;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+/**
+ * Choosing where a segment starts and ends, measured in sessions.
+ */
+@DisplayName("Escolher um segmento")
+class SegmentPickingTest {
+
+    /** Ten sessions: two working weeks, so the weekends are really missing. */
+    private static List<LocalDate> tenSessions() {
+        List<LocalDate> days = new ArrayList<>();
+        LocalDate day = LocalDate.of(2026, 1, 5);
+
+        while (days.size() < 10) {
+            if (day.getDayOfWeek().getValue() <= 5) {
+                days.add(day);
+            }
+
+            day = day.plusDays(1);
+        }
+
+        return days;
+    }
+
+    private static SeriesMap mapped() {
+        SeriesMap map = new SeriesMap();
+
+        map.showSeries(tenSessions(), List.of());
+
+        return map;
+    }
+
+    @Test
+    @DisplayName("conta pregoes, nao dias de calendario")
+    void countsSessions() {
+        SeriesMap map = mapped();
+
+        // Monday to the Friday after next: eleven calendar days, ten sessions.
+        assertEquals(10, map.sessionsBetween(LocalDate.of(2026, 1, 5),
+                LocalDate.of(2026, 1, 16)));
+        assertEquals(5, map.sessionsBetween(LocalDate.of(2026, 1, 5),
+                LocalDate.of(2026, 1, 9)));
+    }
+
+    @Test
+    @DisplayName("um fim de semana inteiro nao vale nenhum pregao")
+    void aWeekendIsWorthNothing() {
+        assertEquals(0, mapped().sessionsBetween(LocalDate.of(2026, 1, 10),
+                LocalDate.of(2026, 1, 11)));
+    }
+
+    @Test
+    @DisplayName("uma data antes da serie comeca no primeiro pregao dela")
+    void beforeTheSeriesStartsAtItsFirst() {
+        assertEquals(10, mapped().sessionsBetween(LocalDate.of(2020, 1, 1),
+                LocalDate.of(2026, 1, 16)));
+    }
+
+    @Test
+    @DisplayName("um fim antes do inicio nao conta nada")
+    void backwardsIsNothing() {
+        assertEquals(0, mapped().sessionsBetween(LocalDate.of(2026, 1, 16),
+                LocalDate.of(2026, 1, 5)));
+    }
+
+    // ------------------------------------------------------------- the handles
+
+    private static RangeBar bar() {
+        RangeBar bar = new RangeBar();
+
+        bar.setSize(520, 30);
+        bar.setRange(10, 2, 6);
+
+        return bar;
+    }
+
+    @Test
+    @DisplayName("as alcas nao se cruzam")
+    void theHandlesDoNotCross() {
+        RangeBar bar = bar();
+
+        bar.setRange(10, 8, 3);
+
+        assertTrue(bar.to() >= bar.from(),
+                "the end went in front of the start, which is not a range");
+    }
+
+    @Test
+    @DisplayName("nenhuma alca sai da serie")
+    void neitherHandleLeavesTheSeries() {
+        RangeBar bar = bar();
+
+        bar.setRange(10, -5, 99);
+
+        assertEquals(0, bar.from());
+        assertEquals(9, bar.to(), "the last session is index nine, not ten");
+    }
+
+    @Test
+    @DisplayName("o teclado move a alca que esta sendo dirigida")
+    void theKeyboardDrivesOneHandle() {
+        RangeBar bar = bar();
+        int[] told = {0};
+
+        bar.onChange(() -> told[0]++);
+
+        // Space chooses which handle; it starts on the first.
+        press(bar, KeyEvent.VK_RIGHT);
+
+        assertEquals(3, bar.from(), "the start should have moved by one session");
+        assertEquals(6, bar.to());
+        assertEquals(1, told[0], "the change went unannounced");
+
+        press(bar, KeyEvent.VK_SPACE);
+        press(bar, KeyEvent.VK_RIGHT);
+
+        assertEquals(3, bar.from());
+        assertEquals(7, bar.to(), "space did not pass the keyboard to the other handle");
+    }
+
+    @Test
+    @DisplayName("o teclado tambem nao deixa cruzar")
+    void theKeyboardCannotCrossEither() {
+        RangeBar bar = bar();
+
+        for (int i = 0; i < 20; i++) {
+            press(bar, KeyEvent.VK_RIGHT);
+        }
+
+        assertEquals(bar.to(), bar.from(),
+                "the start ran past the end instead of stopping on it");
+    }
+
+    private static void press(RangeBar bar, int code) {
+        bar.nudge(code);
+    }
+
+    // ------------------------------------------------------------ the segments
+
+    @Test
+    @DisplayName("o mapa desenha os segmentos que ja existem sem reclamar dos abertos")
+    void anOpenEndedSegmentIsDrawnToTheEnd() {
+        SeriesMap map = new SeriesMap();
+
+        map.showSeries(tenSessions(), List.of(
+                new Segment("treino", LocalDate.of(2026, 1, 5), LocalDate.of(2026, 1, 9)),
+                Segment.from("resto", LocalDate.of(2026, 1, 12))));
+
+        map.setSize(520, 60);
+        map.showFresh(new Segment("novo", LocalDate.of(2026, 1, 6),
+                LocalDate.of(2026, 1, 7)), true);
+
+        // Painting is what would throw, so paint it.
+        java.awt.image.BufferedImage canvas = new java.awt.image.BufferedImage(
+                520, 60, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+
+        map.paint(canvas.getGraphics());
+
+        assertEquals(10, map.days().size());
+    }
+}
