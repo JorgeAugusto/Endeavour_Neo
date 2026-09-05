@@ -311,6 +311,13 @@ public final class BollingerBands implements Overlay {
     }
 
     @Override
+    public boolean fitsOnPrice() {
+        // Three lines in points of the index, and the shading between two of
+        // them. There is nowhere else they could go.
+        return true;
+    }
+
+    @Override
     public List<Integer> parameters() {
         return List.of(period());
     }

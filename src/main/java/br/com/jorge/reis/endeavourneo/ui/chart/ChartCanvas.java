@@ -17,7 +17,6 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.chart;
 
-import br.com.jorge.reis.endeavourneo.ui.chart.study.Study;
 import br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic.SlowStochastic;
 import br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic.StochasticDialog;
 
@@ -253,10 +252,10 @@ public final class ChartCanvas extends JComponent {
             new java.util.ArrayList<>();
 
     /** What happens to a study nobody is listening for: nothing. */
-    private static final java.util.function.Consumer<Study> NOBODY_WANTS_A_STUDY =
+    private static final java.util.function.Consumer<Overlay> NOBODY_WANTS_A_STUDY =
             study -> { };
 
-    private transient java.util.function.Consumer<Study> onStudyWanted =
+    private transient java.util.function.Consumer<Overlay> onStudyWanted =
             NOBODY_WANTS_A_STUDY;
 
     private transient Runnable onOverlaysChanged = () -> { };
@@ -613,7 +612,7 @@ public final class ChartCanvas extends JComponent {
     }
 
     /** @param listener given a study the reader asked for, to put in a pane */
-    public void onStudyWanted(java.util.function.Consumer<Study> listener) {
+    public void onStudyWanted(java.util.function.Consumer<Overlay> listener) {
         this.onStudyWanted = listener == null ? NOBODY_WANTS_A_STUDY : listener;
     }
 
@@ -677,10 +676,20 @@ public final class ChartCanvas extends JComponent {
         }
     }
 
-    /** @param overlay something drawn on the price; calculated immediately */
-    public void addOverlay(Overlay overlay) {
-        if (overlay == null) {
-            return;
+    /**
+     * @param overlay something drawn on the price; calculated immediately
+     * @return whether it went on
+     *
+     * <p>Refused when the indicator says it does not belong on a price axis.
+     * That check is the reason {@link Overlay#fitsOnPrice()} exists: without
+     * it, a stochastic put here would be drawn as a flat line along the floor
+     * of the chart -- present in the legend, present in the layout, and saying
+     * nothing. The type alone cannot stop it, because a panel indicator and a
+     * price indicator are now the same type.</p>
+     */
+    public boolean addOverlay(Overlay overlay) {
+        if (overlay == null || !overlay.fitsOnPrice()) {
+            return false;
         }
 
         overlay.calculate(series);
@@ -688,6 +697,8 @@ public final class ChartCanvas extends JComponent {
 
         repaint();
         overlaysChanged();
+
+        return true;
     }
 
     /**

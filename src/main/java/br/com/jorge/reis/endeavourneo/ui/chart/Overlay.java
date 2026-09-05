@@ -112,6 +112,74 @@ public interface Overlay {
     }
 
     /**
+     * @return whether this can be drawn on the PRICE, and not only in a panel
+     *
+     * <p><b>No default, deliberately.</b> Every indicator has to answer, and
+     * the compiler is what asks: an indicator that forgot to say would inherit
+     * "yes", go onto the price, and draw a flat line along the floor of the
+     * chart — in silence, which is exactly how that mistake looks. Making it a
+     * question the author cannot skip is the whole of the guard.</p>
+     *
+     * <p>Yes for anything measured in price: an average, a band. No for
+     * anything on a scale of its own — a stochastic runs nought to a hundred
+     * whatever the index does, and putting the index on that axis would
+     * flatten the candles instead.</p>
+     *
+     * <p>The reference implementation this was checked against says the same
+     * thing the same way: MotiveWave's {@code @StudyHeader} carries an
+     * {@code overlay} flag with no default value either.</p>
+     */
+    boolean fitsOnPrice();
+
+    /**
+     * @return the fixed vertical range as {@code {low, high}}, or null to fit
+     *         whatever the values happen to be
+     *
+     * <p>Fixed for anything bounded by its own definition — a stochastic is
+     * nought to a hundred whatever the market does, and letting a panel
+     * rescale to the visible values would make eighty look like the top of the
+     * world on a quiet afternoon. Null for the ones that are not bounded, a
+     * MACD being the obvious one, and for everything drawn on the price, which
+     * has the price's own scale and needs none of its own.</p>
+     */
+    default double[] bounds() {
+        return null;
+    }
+
+    /**
+     * @return the horizontal lines that belong to this indicator, if any
+     *
+     * <p>Part of the indicator and not of the panel, because they are part of
+     * what it MEANS: twenty and eighty are where a stochastic says something,
+     * and a panel that drew its own grid instead would be drawing lines that
+     * mean nothing.</p>
+     */
+    default List<Level> levels() {
+        return List.of();
+    }
+
+    /**
+     * @return one stroke per line, in the same order as {@link #valueAt}
+     *
+     * <p>{@link #stroke()} gives one for the whole indicator, which is right
+     * when every line of it is the same kind of thing. An indicator whose
+     * second line is a smoothing of its first wants to say so by drawing them
+     * differently, and one stroke cannot.</p>
+     */
+    default List<java.awt.Stroke> strokes() {
+        return List.of(stroke());
+    }
+
+    /**
+     * A horizontal line at a fixed value.
+     *
+     * @param at where it sits on the indicator's own scale
+     * @param colour how it is drawn
+     * @param stroke thickness and dash
+     */
+    record Level(double at, Color colour, java.awt.Stroke stroke) { }
+
+    /**
      * @return the code of the scale this is computed on, or null to follow the chart
      *
      * <p>Here, and not only on the classes that have the setting, because the

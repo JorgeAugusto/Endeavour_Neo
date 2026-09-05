@@ -70,7 +70,7 @@ public final class ChartLayouts {
             if (name != null) {
                 layouts.add(new ChartLayout(name,
                         parse(PREFS.get("layout." + i + ".entries", "")),
-                        panesOf(i)));
+                        parsePanes(PREFS.get("layout." + i + ".panes", ""))));
             }
         }
 
@@ -93,16 +93,9 @@ public final class ChartLayouts {
             PREFS.put("layout." + i + ".name", layout.name());
             PREFS.put("layout." + i + ".entries", format(layout.entries()));
 
-            // A key of its own rather than more fields on the entry lines. A
-            // layout written before panes existed then loads untouched, and a
-            // reader of the file can tell the two kinds apart at a glance.
-            //
-            // And a SECOND key now that a pane holds several indicators: the
-            // old one had a line per pane and no room for a second indicator
-            // in it. Writing both would mean two truths about the same pane,
-            // so the old key is cleared as the new one is written.
-            PREFS.put("layout." + i + ".panes2", formatPanes(layout.panes()));
-            PREFS.remove("layout." + i + ".panes");
+            // A key of its own rather than more fields on the entry lines,
+            // so a reader of the file can tell the two kinds apart at a glance.
+            PREFS.put("layout." + i + ".panes", formatPanes(layout.panes()));
         }
 
         // Anything past the new end is removed, or a shrinking list would leave
@@ -111,7 +104,6 @@ public final class ChartLayouts {
             PREFS.remove("layout." + i + ".name");
             PREFS.remove("layout." + i + ".entries");
             PREFS.remove("layout." + i + ".panes");
-            PREFS.remove("layout." + i + ".panes2");
         }
 
         PREFS.putInt(COUNT, layouts.size());
@@ -152,22 +144,6 @@ public final class ChartLayouts {
     }
 
     // --------------------------------------------------------------- the text
-
-    /**
-     * @param i which layout, by its slot
-     * @return its panes, from whichever key holds them
-     *
-     * <p>The new key first, then the old one. A workspace written before a
-     * pane could hold more than one indicator still opens, and the first save
-     * afterwards moves it across.</p>
-     */
-    private static List<ChartLayout.Pane> panesOf(int i) {
-        String written = PREFS.get("layout." + i + ".panes2", "");
-
-        return written.isBlank()
-                ? parseOldPanes(PREFS.get("layout." + i + ".panes", ""))
-                : parsePanes(written);
-    }
 
     /**
      * One line per INDICATOR, each saying which pane it belongs to.
@@ -257,29 +233,6 @@ public final class ChartLayouts {
 
         if (!gathering.isEmpty()) {
             panes.add(new ChartLayout.Pane(List.copyOf(gathering), height, minimised));
-        }
-
-        return panes;
-    }
-
-    /** The shape written before a pane could hold more than one indicator. */
-    static List<ChartLayout.Pane> parseOldPanes(String text) {
-        List<ChartLayout.Pane> panes = new ArrayList<>();
-
-        if (text == null || text.isBlank()) {
-            return panes;
-        }
-
-        for (String line : text.split("\n")) {
-            String[] fields = line.split("\\|");
-
-            if (fields.length < 4) {
-                continue;
-            }
-
-            panes.add(new ChartLayout.Pane(fields[0].trim(), numbers(fields[1]),
-                    fields.length > 4 ? fields[4] : "",
-                    number(fields[2], 0), Boolean.parseBoolean(fields[3].trim())));
         }
 
         return panes;

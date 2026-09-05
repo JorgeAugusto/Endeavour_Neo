@@ -76,12 +76,12 @@ public record ChartLayout(String name, List<Entry> entries, List<Pane> panes) {
          * name an indicator this one lacks, and refusing to open the chart
          * would turn one missing line into a lost window.</p>
          */
-        public List<br.com.jorge.reis.endeavourneo.ui.chart.study.Study> build() {
-            List<br.com.jorge.reis.endeavourneo.ui.chart.study.Study> found =
+        public List<br.com.jorge.reis.endeavourneo.ui.chart.Overlay> build() {
+            List<br.com.jorge.reis.endeavourneo.ui.chart.Overlay> found =
                     new ArrayList<>(entries.size());
 
             for (Entry entry : entries) {
-                br.com.jorge.reis.endeavourneo.ui.chart.study.Study study =
+                br.com.jorge.reis.endeavourneo.ui.chart.Overlay study =
                         br.com.jorge.reis.endeavourneo.ui.chart.study.StudyCatalog
                                 .build(entry.kindKey(), entry.parameters());
 
@@ -170,8 +170,8 @@ public record ChartLayout(String name, List<Entry> entries, List<Pane> panes) {
     }
 
     /** @return every study this layout describes, pane by pane */
-    public List<br.com.jorge.reis.endeavourneo.ui.chart.study.Study> studies() {
-        List<br.com.jorge.reis.endeavourneo.ui.chart.study.Study> found = new ArrayList<>();
+    public List<br.com.jorge.reis.endeavourneo.ui.chart.Overlay> studies() {
+        List<br.com.jorge.reis.endeavourneo.ui.chart.Overlay> found = new ArrayList<>();
 
         for (Pane pane : panes) {
             found.addAll(pane.build());

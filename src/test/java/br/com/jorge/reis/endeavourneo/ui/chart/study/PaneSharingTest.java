@@ -24,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
 import br.com.jorge.reis.endeavourneo.ui.chart.ChartCanvas;
 import br.com.jorge.reis.endeavourneo.ui.chart.ChartLayout;
+import br.com.jorge.reis.endeavourneo.ui.chart.Overlay;
 import br.com.jorge.reis.endeavourneo.ui.chart.RandomWalkSeries;
 import br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic.SlowStochastic;
 
@@ -54,7 +55,12 @@ class PaneSharingTest {
      * out of — a test that could only compare stochastics to stochastics would
      * not reach the half of the rule that matters.</p>
      */
-    private record Fake(String nameKey, double[] bounds) implements Study {
+    private record Fake(String nameKey, double[] bounds) implements Overlay {
+
+        @Override
+        public boolean fitsOnPrice() {
+            return false;
+        }
 
         @Override
         public List<Integer> parameters() {
@@ -146,7 +152,7 @@ class PaneSharingTest {
     @Test
     @DisplayName("um indicador tem que caber em TODOS os que ja estao la")
     void everyoneAlreadyInside() {
-        List<Study> present = List.of(
+        List<Overlay> present = List.of(
                 new Fake("study.stochastic", OSCILLATOR),
                 new Fake("study.macd", null));
 

@@ -17,6 +17,7 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.chart.study;
 
+import br.com.jorge.reis.endeavourneo.ui.chart.Overlay;
 import br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic.SlowStochastic;
 
 import java.util.List;
@@ -44,7 +45,7 @@ public final class StudyCatalog {
      * @param factory builds one from a list of parameters
      */
     public record Kind(String nameKey, List<Integer> defaults,
-                       Function<List<Integer>, Study> factory) { }
+                       Function<List<Integer>, Overlay> factory) { }
 
     private static final List<Kind> KINDS = List.of(
             new Kind("study.stochastic",
@@ -67,7 +68,7 @@ public final class StudyCatalog {
      * @param parameters the numbers stored beside it
      * @return that indicator, or null when this version does not have it
      */
-    public static Study build(String nameKey, List<Integer> parameters) {
+    public static Overlay build(String nameKey, List<Integer> parameters) {
         for (Kind kind : KINDS) {
             if (kind.nameKey().equals(nameKey)) {
                 return kind.factory().apply(parameters);

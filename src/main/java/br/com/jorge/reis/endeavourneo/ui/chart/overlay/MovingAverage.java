@@ -256,6 +256,13 @@ public final class MovingAverage implements Overlay {
     }
 
     @Override
+    public boolean fitsOnPrice() {
+        // It IS a price: the average of the closes is measured in points of
+        // the index, so it belongs on the same axis as the candles.
+        return true;
+    }
+
+    @Override
     public List<Integer> parameters() {
         List<Integer> shape = new ArrayList<>(2);
 

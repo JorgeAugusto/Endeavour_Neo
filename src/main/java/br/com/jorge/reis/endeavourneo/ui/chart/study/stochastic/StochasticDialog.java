@@ -23,7 +23,6 @@ import br.com.jorge.reis.endeavourneo.ui.chart.Forms;
 import br.com.jorge.reis.endeavourneo.ui.chart.Overlay;
 import br.com.jorge.reis.endeavourneo.ui.chart.PeriodCatalog;
 import br.com.jorge.reis.endeavourneo.ui.chart.PeriodDialog;
-import br.com.jorge.reis.endeavourneo.ui.chart.study.Study;
 
 import br.com.jorge.reis.endeavourneo.platform.Messages;
 import br.com.jorge.reis.endeavourneo.ui.chart.overlay.MovingAverage;

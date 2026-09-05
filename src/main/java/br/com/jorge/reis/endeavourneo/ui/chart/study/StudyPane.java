@@ -19,6 +19,7 @@ package br.com.jorge.reis.endeavourneo.ui.chart.study;
 
 import br.com.jorge.reis.endeavourneo.ui.chart.ChartCanvas;
 import br.com.jorge.reis.endeavourneo.ui.chart.ChartColors;
+import br.com.jorge.reis.endeavourneo.ui.chart.Overlay;
 import br.com.jorge.reis.endeavourneo.ui.chart.Viewport;
 
 import br.com.jorge.reis.endeavourneo.platform.Messages;
@@ -121,12 +122,12 @@ public final class StudyPane extends JComponent {
      * <p>Never empty: a pane with nothing in it is not a pane, and the one that
      * loses its last indicator asks the stack to take it away.</p>
      */
-    private final transient List<Study> studies = new ArrayList<>();
+    private final transient List<Overlay> studies = new ArrayList<>();
 
     private final transient Runnable onChanged;
 
     /** Opens one study's settings; the stack knows which dialog that is. */
-    private transient Consumer<Study> onSettings = study -> { };
+    private transient Consumer<Overlay> onSettings = study -> { };
 
     private int height = 110;
 
@@ -149,7 +150,7 @@ public final class StudyPane extends JComponent {
     /** Which entry the pointer is on, or -1. */
     private int hovered = -1;
 
-    public StudyPane(ChartCanvas canvas, Study study, Runnable onChanged) {
+    public StudyPane(ChartCanvas canvas, Overlay study, Runnable onChanged) {
         this.canvas = canvas;
         this.onChanged = onChanged == null ? () -> { } : onChanged;
 
@@ -286,12 +287,12 @@ public final class StudyPane extends JComponent {
     }
 
     /** @return what is drawn here, in the order the header lists it */
-    public List<Study> studies() {
+    public List<Overlay> studies() {
         return List.copyOf(studies);
     }
 
     /** @return the first one, which is all of it when a pane holds one */
-    public Study study() {
+    public Overlay study() {
         return studies.get(0);
     }
 
@@ -302,7 +303,7 @@ public final class StudyPane extends JComponent {
      * what it is given. {@link StudyStack#fits} is the one place that answers
      * that, so there is one rule and not one per caller.</p>
      */
-    public void add(Study study) {
+    public void add(Overlay study) {
         if (study == null || studies.contains(study)) {
             return;
         }
@@ -313,7 +314,7 @@ public final class StudyPane extends JComponent {
     }
 
     /** Takes one indicator out, and the pane with it when it was the last. */
-    public void drop(Study study) {
+    public void drop(Overlay study) {
         if (!studies.remove(study)) {
             return;
         }
@@ -332,7 +333,7 @@ public final class StudyPane extends JComponent {
         repaint();
     }
 
-    public void onSettings(Consumer<Study> listener) {
+    public void onSettings(Consumer<Overlay> listener) {
         onSettings = listener == null ? study -> { } : listener;
     }
 
@@ -526,7 +527,7 @@ public final class StudyPane extends JComponent {
         int bar = readAt();
 
         for (int i = 0; i < studies.size(); i++) {
-            Study study = studies.get(i);
+            Overlay study = studies.get(i);
             String name = labelOf(study);
             List<String> numbers = numbersOf(study, bar);
             int wide = metrics.stringWidth(name) + 10 + SLOT;
@@ -589,7 +590,7 @@ public final class StudyPane extends JComponent {
     }
 
     /** @return the indicator's name as the header says it */
-    private String labelOf(Study study) {
+    private String labelOf(Overlay study) {
         String name = Messages.get(study.nameKey()) + " " + study.parameters();
         String scale = study.ownPeriod();
 
@@ -601,7 +602,7 @@ public final class StudyPane extends JComponent {
     }
 
     /** @return the values under the cursor, as they are written */
-    private static List<String> numbersOf(Study study, int bar) {
+    private static List<String> numbersOf(Overlay study, int bar) {
         List<String> found = new ArrayList<>();
 
         for (double each : study.valueAt(bar)) {
@@ -722,7 +723,7 @@ public final class StudyPane extends JComponent {
         double low = Double.MAX_VALUE;
         double high = -Double.MAX_VALUE;
 
-        for (Study study : studies) {
+        for (Overlay study : studies) {
             double[] fixed = study.bounds();
 
             if (fixed != null) {
@@ -752,8 +753,8 @@ public final class StudyPane extends JComponent {
     private void paintLevels(Graphics2D g, int top, int bottom, double low, double high) {
         List<Integer> drawn = new ArrayList<>();
 
-        for (Study study : studies) {
-            for (Study.Level level : study.levels()) {
+        for (Overlay study : studies) {
+            for (Overlay.Level level : study.levels()) {
                 int at = (int) Math.round(y(level.at(), top, bottom, low, high));
 
                 // Two stochastics in one pane both want twenty and eighty, and
@@ -773,7 +774,7 @@ public final class StudyPane extends JComponent {
 
     private void paintLines(Graphics2D g, Viewport viewport,
                             int top, int bottom, double low, double high) {
-        for (Study study : studies) {
+        for (Overlay study : studies) {
             if (!study.isVisible()) {
                 continue;
             }
@@ -833,8 +834,8 @@ public final class StudyPane extends JComponent {
         // The levels first, because they are the ones worth reading: twenty and
         // eighty are where a stochastic says something, and the ends of the
         // scale only say how tall the pane is.
-        for (Study study : studies) {
-            for (Study.Level level : study.levels()) {
+        for (Overlay study : studies) {
+            for (Overlay.Level level : study.levels()) {
                 int at = (int) Math.round(y(level.at(), top, bottom, low, high));
 
                 if (written.contains(at)) {

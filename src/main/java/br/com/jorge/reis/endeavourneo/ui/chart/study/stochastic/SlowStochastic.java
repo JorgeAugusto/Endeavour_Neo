@@ -23,7 +23,6 @@ import br.com.jorge.reis.endeavourneo.ui.chart.overlay.MovingAverage;
 
 import br.com.jorge.reis.endeavourneo.domain.market.Aggregation;
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
-import br.com.jorge.reis.endeavourneo.ui.chart.study.Study;
 
 import java.awt.Color;
 import java.awt.Stroke;
@@ -64,7 +63,7 @@ import java.util.List;
  * its own top rescaled to the loudest thing this week; eighty has to look like
  * eighty on a dead Tuesday.</p>
  */
-public final class SlowStochastic implements Study {
+public final class SlowStochastic implements Overlay {
 
     /** The default this program opens with. */
     public static final int PERIOD = 8;
@@ -291,6 +290,14 @@ public final class SlowStochastic implements Study {
      * <p>Showing both in the legend is also the honest reading: the setting
      * exists whether or not the line does.</p>
      */
+    @Override
+    public boolean fitsOnPrice() {
+        // Nought to a hundred. On the price axis of the mini index it would be
+        // a flat line along the floor of the chart -- drawn, listed, and
+        // saying nothing.
+        return false;
+    }
+
     @Override
     public List<Integer> parameters() {
         return List.of(period, average);

@@ -117,7 +117,7 @@ public final class StudyStack extends JPanel {
      *
      * @return the pane, so the caller can size it or open its settings
      */
-    public StudyPane show(Study study) {
+    public StudyPane show(Overlay study) {
         study.calculate(canvas.source());
 
         StudyPane pane = new StudyPane(canvas, study, this::relayout);
@@ -140,7 +140,7 @@ public final class StudyStack extends JPanel {
      * flattened against an edge, and a line drawn flat is a line that lies
      * about the market rather than about the pane.</p>
      */
-    public boolean addTo(StudyPane pane, Study study) {
+    public boolean addTo(StudyPane pane, Overlay study) {
         if (pane == null || !fits(pane.studies(), study)) {
             return false;
         }
@@ -175,12 +175,12 @@ public final class StudyStack extends JPanel {
      * might agree today and disagree tomorrow, and a rule that depends on the
      * bars on screen is a rule that changes when the reader scrolls.</p>
      */
-    public static boolean fits(List<Study> present, Study wanted) {
+    public static boolean fits(List<Overlay> present, Overlay wanted) {
         if (wanted == null) {
             return false;
         }
 
-        for (Study each : present) {
+        for (Overlay each : present) {
             if (each.nameKey().equals(wanted.nameKey())) {
                 continue;
             }
@@ -205,7 +205,7 @@ public final class StudyStack extends JPanel {
      * belongs to which implementation would make every new indicator a change
      * to the pane as well as an addition beside it.</p>
      */
-    private void settingsFor(Study study) {
+    private void settingsFor(Overlay study) {
         if (!(study instanceof br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic
                 .SlowStochastic stochastic)) {
             return;
@@ -227,7 +227,7 @@ public final class StudyStack extends JPanel {
             List<br.com.jorge.reis.endeavourneo.ui.chart.ChartLayout.Entry> inside =
                     new ArrayList<>();
 
-            for (Study study : pane.studies()) {
+            for (Overlay study : pane.studies()) {
                 inside.add(new br.com.jorge.reis.endeavourneo.ui.chart.ChartLayout.Entry(
                         study.nameKey(), study.parameters(), true, study.appearance()));
             }
@@ -253,7 +253,7 @@ public final class StudyStack extends JPanel {
         }
 
         for (br.com.jorge.reis.endeavourneo.ui.chart.ChartLayout.Pane each : wanted) {
-            List<Study> inside = each.build();
+            List<Overlay> inside = each.build();
 
             if (inside.isEmpty()) {
                 // Every kind in it is one this version does not have. Skipped,
@@ -419,7 +419,7 @@ public final class StudyStack extends JPanel {
      */
     public void recalculate() {
         for (StudyPane pane : panes()) {
-            for (Study study : pane.studies()) {
+            for (Overlay study : pane.studies()) {
                 study.calculate(canvas.source());
             }
         }

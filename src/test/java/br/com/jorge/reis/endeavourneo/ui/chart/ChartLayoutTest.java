@@ -180,22 +180,6 @@ class ChartLayoutTest {
     }
 
     @Test
-    @DisplayName("o formato antigo, um indicador por painel, ainda carrega")
-    void theOldPaneFormatStillLoads() {
-        // Written before a pane could hold more than one. A workspace saved by
-        // the previous version has to open, or the reader loses the panes they
-        // arranged as the price of an upgrade they did not ask for.
-        java.util.List<ChartLayout.Pane> panes = ChartLayouts.parseOldPanes(
-                "study.stochastic|21,5|140|true|");
-
-        assertEquals(1, panes.size());
-        assertEquals(140, panes.get(0).height());
-        assertTrue(panes.get(0).minimised());
-        assertEquals(1, panes.get(0).entries().size());
-        assertEquals(java.util.List.of(21, 5), panes.get(0).entries().get(0).parameters());
-    }
-
-    @Test
     @DisplayName("tres indicadores num painel voltam juntos, na ordem, e em dois paineis")
     void severalInOnePane() {
         ChartLayout.Pane first = new ChartLayout.Pane(java.util.List.of(
