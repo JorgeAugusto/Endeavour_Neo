@@ -165,6 +165,25 @@ class SegmentPickingTest {
         bar.nudge(code);
     }
 
+    @Test
+    @DisplayName("o mapa e o trilho medem a mesma coisa no mesmo lugar")
+    void bothMeasureTheSame() {
+        // The whole promise of putting one under the other. A pixel apart is
+        // enough for a handle to sit beside the edge it is moving instead of on
+        // it, and that reads as a bug in the data.
+        SeriesMap map = mapped();
+        RangeBar bar = new RangeBar();
+
+        map.setSize(520, 60);
+        bar.setSize(520, 30);
+        bar.setRange(10, 0, 9);
+
+        for (int i = 0; i <= 10; i++) {
+            assertEquals(map.edgeOf(i), bar.edgeOf(i),
+                    "session " + i + " is drawn in two places");
+        }
+    }
+
     // ------------------------------------------------------------ the segments
 
     @Test

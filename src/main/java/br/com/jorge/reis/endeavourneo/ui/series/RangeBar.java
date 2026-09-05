@@ -64,7 +64,8 @@ final class RangeBar extends JComponent {
 
     private static final int HEIGHT = 30;
 
-    private static final int SIDE = GRIP + 2;
+    /** Shared with the map, so the two scales are the same one. See SeriesMap. */
+    private static final int SIDE = SeriesMap.SIDE;
 
     /** How many sessions the series has; the track runs from 0 to this less one. */
     private transient int sessions;
@@ -106,7 +107,7 @@ final class RangeBar extends JComponent {
             @Override
             public void mouseDragged(MouseEvent e) {
                 if (dragging) {
-                    move(at(e.getX()));
+                    move(at(e.getX(), tail));
                 }
             }
         });
@@ -167,37 +168,50 @@ final class RangeBar extends JComponent {
         return Math.max(1, getWidth() - SIDE * 2);
     }
 
-    private int x(int index) {
-        if (sessions <= 1) {
+    /**
+     * @param index a session, from zero
+     * @return the LEFT edge of its slot, in pixels
+     *
+     * <p>A session is a slot and not a point, which is how the map draws it: a
+     * segment of one session has width there, so a handle on it has to have
+     * width here. The start handle sits on the left edge of its slot and the
+     * end handle on the right edge of its own -- the two edges of the block
+     * drawn above, exactly.</p>
+     */
+    int edgeOf(int index) {
+        if (sessions <= 0) {
             return SIDE;
         }
 
-        return SIDE + (int) Math.round((double) index / (sessions - 1) * span());
+        return SIDE + (int) Math.round((double) index / sessions * span());
     }
 
-    private int at(int pixel) {
+    /**
+     * @param pixel where the pointer is
+     * @param tailing whether it is the end handle being placed
+     * @return the session that handle should land on
+     */
+    private int at(int pixel, boolean tailing) {
         if (sessions <= 1) {
             return 0;
         }
 
-        return clamp((int) Math.round((double) (pixel - SIDE) / span() * (sessions - 1)));
+        double slots = (double) (pixel - SIDE) / span() * sessions;
+
+        return clamp((int) Math.round(slots) - (tailing ? 1 : 0));
     }
 
     private void grab(int pixel) {
-        int wanted = at(pixel);
+        // The NEARER handle, measured in pixels against where each is actually
+        // drawn -- the two are drawn on different edges of their own slot, so
+        // comparing session indices would favour the start by half a slot.
+        int here = Math.abs(pixel - edgeOf(from));
+        int there = Math.abs(pixel - edgeOf(to + 1));
 
-        // The NEARER handle, and the start when they are the same distance
-        // away: two handles sitting on top of each other would otherwise be
-        // impossible to separate, because one of them would always win.
-        tail = Math.abs(wanted - to) < Math.abs(wanted - from);
-
-        if (from == to) {
-            tail = wanted >= to;
-        }
-
+        tail = there < here;
         dragging = true;
 
-        move(wanted);
+        move(at(pixel, tail));
     }
 
     private void move(int wanted) {
@@ -272,8 +286,8 @@ final class RangeBar extends JComponent {
                 return;
             }
 
-            int left = x(from);
-            int right = x(to);
+            int left = edgeOf(from);
+            int right = edgeOf(to + 1);
 
             g.setColor(clashing ? SeriesColors.clash() : SeriesColors.fresh());
             g.fillRoundRect(left, mid - TRACK / 2, Math.max(2, right - left),

@@ -27,7 +27,9 @@ import java.awt.Dialog;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
-import java.awt.GridLayout;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.awt.Insets;
 import java.awt.Window;
 import java.time.LocalDate;
 import java.time.Period;
@@ -38,8 +40,6 @@ import java.util.NavigableSet;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
 import javax.swing.BorderFactory;
-import javax.swing.Box;
-import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
@@ -99,9 +99,18 @@ public final class SegmentDialog extends JDialog {
     /** Set while the dates are being written FROM the handles, and the reverse. */
     private transient boolean echoing;
 
+    /**
+     * The cells of the summary, left to right.
+     *
+     * <p>The last one is the share of the whole series, and it is the one that
+     * gets used: nobody remembers that a training set was 1.120 sessions, they
+     * remember that it was three quarters. Reading it off two numbers is
+     * arithmetic done while choosing, which is when arithmetic is most
+     * expensive.</p>
+     */
     private static final String[] SUMMARY = {
         "segment.years", "segment.months", "segment.days",
-        "segment.calendar", "segment.sessions"
+        "segment.calendar", "segment.sessions", "segment.share"
     };
 
     private SegmentDialog(Window owner, String series, List<LocalDate> sessions,
@@ -137,8 +146,8 @@ public final class SegmentDialog extends JDialog {
 
         followHandles();
 
-        setMinimumSize(new Dimension(560, 400));
         pack();
+        setMinimumSize(new Dimension(620, getHeight()));
         setLocationRelativeTo(owner);
     }
 
@@ -164,39 +173,55 @@ public final class SegmentDialog extends JDialog {
 
     // ---------------------------------------------------------------- layout
 
+    /**
+     * One column, everything flush left, everything as wide as the window.
+     *
+     * <p><b>Not a BoxLayout, and that was the defect.</b> A vertical BoxLayout
+     * places its children by their own alignmentX, so a column that mixes
+     * defaults -- a label set to the left, a panel left at the centre -- comes
+     * out with each row starting somewhere different, which is exactly how it
+     * looked: title centred, fields centred, and the second date picker pushed
+     * onto a line of its own and clipped.</p>
+     *
+     * <p>A single-column {@code GridBagLayout} has no such rule. Every row
+     * fills the width it is given and starts where the row above starts,
+     * because that is the only thing it knows how to do.</p>
+     */
     private JPanel body(String series) {
-        JPanel panel = new JPanel();
+        JPanel panel = new JPanel(new GridBagLayout());
 
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        panel.setBorder(BorderFactory.createEmptyBorder(12, 14, 6, 14));
+        panel.setBorder(BorderFactory.createEmptyBorder(12, 14, 8, 14));
 
-        panel.add(left(headline(series)));
-        panel.add(Box.createVerticalStrut(10));
-
-        panel.add(left(track(Messages.get("segment.map"))));
-        panel.add(map);
-        panel.add(Box.createVerticalStrut(10));
-
-        panel.add(left(track(Messages.get("segment.range"))));
-        panel.add(range);
-        panel.add(Box.createVerticalStrut(8));
-
-        panel.add(left(fields()));
-        panel.add(Box.createVerticalStrut(10));
-
-        panel.add(summary());
-        panel.add(Box.createVerticalStrut(6));
-        panel.add(left(sentence));
+        stack(panel, headline(series), 12);
+        stack(panel, track(Messages.get("segment.map")), 2);
+        stack(panel, map, 12);
+        stack(panel, track(Messages.get("segment.range")), 2);
+        stack(panel, range, 10);
+        stack(panel, fields(), 12);
+        stack(panel, summary(), 8);
+        stack(panel, sentence, 0);
 
         return panel;
     }
 
-    private static Component left(Component what) {
-        if (what instanceof javax.swing.JComponent piece) {
-            piece.setAlignmentX(Component.LEFT_ALIGNMENT);
-        }
+    /**
+     * @param below how much room to leave under this row
+     *
+     * <p>The gap belongs to the row above it rather than to a strut between
+     * them: a strut is another child with another alignment to get wrong, and
+     * this way the spacing is written where it is read.</p>
+     */
+    private static void stack(JPanel column, Component what, int below) {
+        GridBagConstraints where = new GridBagConstraints();
 
-        return what;
+        where.gridx = 0;
+        where.gridy = column.getComponentCount();
+        where.weightx = 1.0;
+        where.fill = GridBagConstraints.HORIZONTAL;
+        where.anchor = GridBagConstraints.WEST;
+        where.insets = new Insets(0, 0, below, 0);
+
+        column.add(what, where);
     }
 
     private JLabel headline(String series) {
@@ -219,46 +244,99 @@ public final class SegmentDialog extends JDialog {
         return label;
     }
 
+    /**
+     * Name, then the two dates, on one line.
+     *
+     * <p>A {@link FlowLayout} would wrap this line the moment the window got
+     * narrow, and wrapping put half of it under the row below -- which is what
+     * the second date picker did. Here the NAME is the only thing that gives
+     * ground: it is the field that can be short without becoming useless, and a
+     * date picker that shrinks stops showing a date.</p>
+     */
     private JPanel fields() {
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
+        JPanel row = new JPanel(new GridBagLayout());
+        GridBagConstraints where = new GridBagConstraints();
 
-        row.add(new JLabel(Messages.get("segment.name")));
-        row.add(name);
-        row.add(Box.createHorizontalStrut(10));
-        row.add(new JLabel(Messages.get("segment.from")));
-        row.add(from);
-        row.add(Box.createHorizontalStrut(6));
-        row.add(new JLabel(Messages.get("segment.to")));
-        row.add(to);
+        where.anchor = GridBagConstraints.WEST;
+        where.insets = new Insets(0, 0, 0, 6);
+
+        row.add(new JLabel(Messages.get("segment.name")), where);
+
+        where.gridx = 1;
+        where.weightx = 1.0;
+        where.fill = GridBagConstraints.HORIZONTAL;
+        where.insets = new Insets(0, 0, 0, 18);
+        row.add(name, where);
+
+        where.gridx = 2;
+        where.weightx = 0.0;
+        where.fill = GridBagConstraints.NONE;
+        where.insets = new Insets(0, 0, 0, 6);
+        row.add(new JLabel(Messages.get("segment.from")), where);
+
+        where.gridx = 3;
+        where.insets = new Insets(0, 0, 0, 18);
+        row.add(from, where);
+
+        where.gridx = 4;
+        where.insets = new Insets(0, 0, 0, 6);
+        row.add(new JLabel(Messages.get("segment.to")), where);
+
+        where.gridx = 5;
+        where.insets = new Insets(0, 0, 0, 0);
+        row.add(to, where);
 
         return row;
     }
 
+    /**
+     * Five cells of equal width, each a word and a number.
+     *
+     * <p>Divided by a rule between them rather than by a gap: a gap in the
+     * panel's own colour is invisible against the panel, which is what the
+     * first version drew.</p>
+     */
     private JPanel summary() {
-        JPanel row = new JPanel(new GridLayout(1, SUMMARY.length, 1, 0));
+        JPanel row = new JPanel(new GridBagLayout());
 
         row.setBorder(BorderFactory.createLineBorder(SeriesColors.rule()));
 
         for (int i = 0; i < SUMMARY.length; i++) {
-            JPanel cell = new JPanel();
+            JPanel cell = new JPanel(new GridBagLayout());
 
-            cell.setLayout(new BoxLayout(cell, BoxLayout.Y_AXIS));
-            cell.setBorder(BorderFactory.createEmptyBorder(4, 8, 5, 8));
+            cell.setOpaque(false);
+            cell.setBorder(BorderFactory.createCompoundBorder(
+                    BorderFactory.createMatteBorder(0, i == 0 ? 0 : 1, 0, 0,
+                            SeriesColors.rule()),
+                    BorderFactory.createEmptyBorder(5, 9, 6, 9)));
 
             JLabel title = new JLabel(Messages.get(SUMMARY[i]));
 
             title.setFont(title.getFont().deriveFont(title.getFont().getSize2D() - 3f));
             title.setForeground(SeriesMap.hintColour());
-            title.setAlignmentX(Component.LEFT_ALIGNMENT);
 
             counts[i] = new JLabel("0");
             counts[i].setFont(counts[i].getFont().deriveFont(Font.BOLD,
                     counts[i].getFont().getSize2D() + 2f));
-            counts[i].setAlignmentX(Component.LEFT_ALIGNMENT);
 
-            cell.add(title);
-            cell.add(counts[i]);
-            row.add(cell);
+            GridBagConstraints inside = new GridBagConstraints();
+
+            inside.gridx = 0;
+            inside.gridy = 0;
+            inside.weightx = 1.0;
+            inside.fill = GridBagConstraints.HORIZONTAL;
+            inside.anchor = GridBagConstraints.WEST;
+            cell.add(title, inside);
+
+            inside.gridy = 1;
+            cell.add(counts[i], inside);
+
+            GridBagConstraints where = new GridBagConstraints();
+
+            where.gridx = i;
+            where.weightx = 1.0;
+            where.fill = GridBagConstraints.BOTH;
+            row.add(cell, where);
         }
 
         return row;
@@ -363,6 +441,7 @@ public final class SegmentDialog extends JDialog {
         counts[2].setText(String.valueOf(spread.getDays()));
         counts[3].setText(String.format("%,d", calendar));
         counts[4].setText(String.format("%,d", sessions));
+        counts[5].setText(share(sessions));
 
         if (clash) {
             sentence.setForeground(SeriesColors.clash());
@@ -374,7 +453,23 @@ public final class SegmentDialog extends JDialog {
         sentence.setForeground(SeriesMap.hintColour());
         sentence.setText(Messages.get("segment.sentence",
                 now.from().format(SeriesWindow.DAY), now.to().format(SeriesWindow.DAY),
-                String.format("%,d", sessions)));
+                String.format("%,d", sessions), share(sessions)));
+    }
+
+    /**
+     * @param sessions how many the segment holds
+     * @return its share of the whole series
+     *
+     * <p>To one decimal, and no further. The second one would move while the
+     * handle stood still -- a session is a fifteenth of a percent here -- and a
+     * number that trembles is a number nobody trusts.</p>
+     */
+    private String share(int sessions) {
+        if (days.isEmpty()) {
+            return "0,0%";
+        }
+
+        return String.format("%.1f%%", 100.0 * sessions / days.size());
     }
 
     private Segment current() {

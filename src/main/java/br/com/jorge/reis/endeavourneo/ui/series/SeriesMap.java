@@ -62,7 +62,16 @@ final class SeriesMap extends JComponent {
 
     private static final int AXIS = 18;
 
-    private static final int SIDE = 2;
+    /**
+     * The room left at each end, shared with {@link RangeBar}.
+     *
+     * <p>The same number on both, or the two scales are a few pixels apart and
+     * a handle does not sit under the edge it is moving -- which is the one
+     * thing this pair of controls promises. The value is the range bar's,
+     * because there it is not a margin but the radius of a handle that would
+     * otherwise be clipped.</p>
+     */
+    static final int SIDE = 9;
 
     /** Every session the series holds, in order. Empty until one is given. */
     private final transient List<LocalDate> days = new ArrayList<>();
@@ -217,17 +226,21 @@ final class SeriesMap extends JComponent {
         int left = (int) Math.round(x(from));
         int width = Math.max(3, (int) Math.round(x(to + 1)) - left);
 
-        // Hatched rather than filled: what is underneath has to stay readable,
-        // because the whole question being asked is what this lands on.
-        g.setColor(clashing ? SeriesColors.clash() : SeriesColors.fresh());
+        // A WASH AND A BORDER, not a hatch. The first version drew diagonals
+        // every six pixels, and over a range that is most of the bar -- which
+        // the default is -- that is eight hundred pixels of stripes and reads
+        // as a rendering fault rather than as a selection.
+        //
+        // Translucent so what is underneath stays readable, because the whole
+        // question being asked is what this lands on.
+        java.awt.Color mark = clashing ? SeriesColors.clash() : SeriesColors.fresh();
 
-        for (int at = left - BAR; at < left + width; at += 6) {
-            g.drawLine(Math.max(left, at), 2 + BAR,
-                    Math.min(left + width, at + BAR), 2);
-        }
+        g.setColor(new java.awt.Color(mark.getRed(), mark.getGreen(), mark.getBlue(), 60));
+        g.fillRect(left, 2, width, BAR);
 
+        g.setColor(mark);
         g.setStroke(new java.awt.BasicStroke(2f));
-        g.drawRect(left, 3, width - 1, BAR - 2);
+        g.drawRect(left + 1, 3, width - 3, BAR - 3);
     }
 
     private void paintYears(Graphics2D g) {
@@ -252,6 +265,19 @@ final class SeriesMap extends JComponent {
             g.setColor(SeriesColors.faint());
             g.drawString(label, at + 2, 2 + BAR + 4 + metrics.getAscent());
         }
+    }
+
+    /**
+     * @param index a session, from zero
+     * @return the left edge of its slot, rounded to a pixel
+     *
+     * <p>What {@link RangeBar} has to agree with, and the only reason it is
+     * reachable from outside: the promise those two make together is that a
+     * handle sits under the edge it moves, and a promise nothing checks is a
+     * promise that quietly stops being true.</p>
+     */
+    int edgeOf(int index) {
+        return (int) Math.round(x(index));
     }
 
     /** @return how many sessions lie between two days, both included */
