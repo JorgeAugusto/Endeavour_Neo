@@ -68,7 +68,9 @@ public final class ChartLayouts {
             String name = PREFS.get("layout." + i + ".name", null);
 
             if (name != null) {
-                layouts.add(new ChartLayout(name, parse(PREFS.get("layout." + i + ".entries", ""))));
+                layouts.add(new ChartLayout(name,
+                        parse(PREFS.get("layout." + i + ".entries", "")),
+                        parsePanes(PREFS.get("layout." + i + ".panes", ""))));
             }
         }
 
@@ -90,6 +92,11 @@ public final class ChartLayouts {
 
             PREFS.put("layout." + i + ".name", layout.name());
             PREFS.put("layout." + i + ".entries", format(layout.entries()));
+
+            // A key of its own rather than more fields on the entry lines. A
+            // layout written before panes existed then loads untouched, and a
+            // reader of the file can tell the two kinds apart at a glance.
+            PREFS.put("layout." + i + ".panes", formatPanes(layout.panes()));
         }
 
         // Anything past the new end is removed, or a shrinking list would leave
@@ -97,6 +104,7 @@ public final class ChartLayouts {
         for (int i = layouts.size(); i < previous; i++) {
             PREFS.remove("layout." + i + ".name");
             PREFS.remove("layout." + i + ".entries");
+            PREFS.remove("layout." + i + ".panes");
         }
 
         PREFS.putInt(COUNT, layouts.size());
@@ -137,6 +145,78 @@ public final class ChartLayouts {
     }
 
     // --------------------------------------------------------------- the text
+
+    static String formatPanes(List<ChartLayout.Pane> panes) {
+        StringBuilder text = new StringBuilder();
+
+        for (int i = 0; i < panes.size() && i < MAX_ENTRIES; i++) {
+            ChartLayout.Pane pane = panes.get(i);
+
+            if (i > 0) {
+                text.append('\n');
+            }
+
+            text.append(pane.kindKey()).append('|');
+
+            for (int p = 0; p < pane.parameters().size(); p++) {
+                if (p > 0) {
+                    text.append(',');
+                }
+
+                text.append(pane.parameters().get(p));
+            }
+
+            text.append('|').append(pane.height())
+                    .append('|').append(pane.minimised())
+                    .append('|').append(pane.appearance());
+        }
+
+        return text.toString();
+    }
+
+    static List<ChartLayout.Pane> parsePanes(String text) {
+        List<ChartLayout.Pane> panes = new ArrayList<>();
+
+        if (text == null || text.isBlank()) {
+            return panes;
+        }
+
+        for (String line : text.split("\n")) {
+            String[] fields = line.split("\\|");
+
+            if (fields.length < 4) {
+                // Skipped in silence, like a malformed overlay line: one bad
+                // line must not cost the other five.
+                continue;
+            }
+
+            List<Integer> parameters = new ArrayList<>();
+
+            for (String piece : fields[1].split(",")) {
+                try {
+                    parameters.add(Integer.valueOf(piece.trim()));
+                } catch (NumberFormatException e) {
+                    parameters.clear();
+
+                    break;
+                }
+            }
+
+            int height;
+
+            try {
+                height = Integer.parseInt(fields[2].trim());
+            } catch (NumberFormatException e) {
+                height = 0;
+            }
+
+            panes.add(new ChartLayout.Pane(fields[0].trim(), List.copyOf(parameters),
+                    fields.length > 4 ? fields[4] : "",
+                    height, Boolean.parseBoolean(fields[3].trim())));
+        }
+
+        return panes;
+    }
 
     static String format(List<ChartLayout.Entry> entries) {
         StringBuilder text = new StringBuilder();

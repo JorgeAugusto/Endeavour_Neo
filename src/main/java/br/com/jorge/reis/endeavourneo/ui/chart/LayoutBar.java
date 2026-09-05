@@ -66,13 +66,19 @@ public final class LayoutBar extends JComponent {
 
     private final transient List<ChartLayout> layouts = new ArrayList<>();
 
+    /** Where the indicator panes live, or null for a chart that has no stack. */
+    private final transient br.com.jorge.reis.endeavourneo.ui.chart.study.StudyStack studies;
+
     private int selected;
 
     /**
      * @param canvas the chart these layouts drive
      * @param chartKey identifies the chart, so it reopens on the same layout
      */
-    public LayoutBar(ChartCanvas canvas, String chartKey) {
+    public LayoutBar(ChartCanvas canvas,
+                     br.com.jorge.reis.endeavourneo.ui.chart.study.StudyStack studies,
+                     String chartKey) {
+        this.studies = studies;
         this.canvas = canvas;
         this.chartKey = chartKey;
 
@@ -104,7 +110,8 @@ public final class LayoutBar extends JComponent {
             return;
         }
 
-        layouts.set(selected, ChartLayout.of(layouts.get(selected).name(), canvas.overlays()));
+        layouts.set(selected, ChartLayout.of(layouts.get(selected).name(),
+                canvas.overlays(), studies == null ? List.of() : studies.remembered()));
 
         ChartLayouts.save(layouts);
     }
@@ -207,9 +214,16 @@ public final class LayoutBar extends JComponent {
     }
 
     private void apply() {
-        canvas.setOverlays(selected >= 0 && selected < layouts.size()
-                ? layouts.get(selected).build()
-                : List.of());
+        boolean real = selected >= 0 && selected < layouts.size();
+
+        canvas.setOverlays(real ? layouts.get(selected).build() : List.of());
+
+        // The panes go with the overlays. A layout is one answer to "how am I
+        // looking at this", so switching to one without a stochastic takes the
+        // stochastic away exactly as it takes the averages away.
+        if (studies != null) {
+            studies.restore(real ? layouts.get(selected).panes() : List.of());
+        }
     }
 
     private void addLayout() {

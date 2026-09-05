@@ -122,6 +122,55 @@ public final class StudyStack extends JPanel {
         }
     }
 
+    /** @return what is open, in the shape a layout stores */
+    public List<br.com.jorge.reis.endeavourneo.ui.chart.ChartLayout.Pane> remembered() {
+        List<br.com.jorge.reis.endeavourneo.ui.chart.ChartLayout.Pane> found =
+                new ArrayList<>();
+
+        for (StudyPane pane : panes()) {
+            Study study = pane.study();
+
+            found.add(new br.com.jorge.reis.endeavourneo.ui.chart.ChartLayout.Pane(
+                    study.nameKey(), study.parameters(), study.appearance(),
+                    pane.storedHeight(), pane.isMinimised()));
+        }
+
+        return found;
+    }
+
+    /**
+     * Replaces every pane with what a layout describes.
+     *
+     * <p>Replaces, never merges: switching layouts has to leave the chart
+     * showing that layout and nothing else, or two switches would accumulate
+     * indicators nobody asked for.</p>
+     */
+    public void restore(List<br.com.jorge.reis.endeavourneo.ui.chart.ChartLayout.Pane> wanted) {
+        for (StudyPane pane : panes()) {
+            canvas.unfollow(pane);
+            remove(pane);
+        }
+
+        for (br.com.jorge.reis.endeavourneo.ui.chart.ChartLayout.Pane each : wanted) {
+            Study study = each.build();
+
+            if (study == null) {
+                // A kind this version does not have. Skipped, not fatal.
+                continue;
+            }
+
+            StudyPane pane = show(study);
+
+            if (each.height() > 0) {
+                pane.setHeight(each.height());
+            }
+
+            pane.setMinimised(each.minimised());
+        }
+
+        relayout();
+    }
+
     /** Takes an indicator away, with its pane. */
     public void hide(StudyPane pane) {
         canvas.unfollow(pane);

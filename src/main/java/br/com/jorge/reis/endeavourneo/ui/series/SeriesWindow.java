@@ -111,6 +111,17 @@ public final class SeriesWindow extends JDialog {
     private transient java.util.NavigableSet<java.time.LocalDate> days =
             new java.util.TreeSet<>();
 
+    /**
+     * Told whenever the segments on disk change.
+     *
+     * <p>The tree lists them, and a tree built once at start-up shows what was
+     * true at start-up: editing a segment here left the navigator describing
+     * the old one until the application was restarted. That was reported, and
+     * it is the kind of wrong that teaches a reader to distrust the window they
+     * are looking at.</p>
+     */
+    private transient Runnable onChanged = () -> { };
+
     private SeriesWindow(Window owner) {
         super(owner, Messages.get("series.title"), ModalityType.MODELESS);
 
@@ -172,7 +183,15 @@ public final class SeriesWindow extends JDialog {
     }
 
     public static void open(Window owner) {
-        new SeriesWindow(owner).setVisible(true);
+        open(owner, () -> { });
+    }
+
+    /** @param whenChanged run after every write, so a listing elsewhere can follow */
+    public static void open(Window owner, Runnable whenChanged) {
+        SeriesWindow window = new SeriesWindow(owner);
+
+        window.onChanged = whenChanged == null ? () -> { } : whenChanged;
+        window.setVisible(true);
     }
 
     private JComponentPanel header() {
@@ -186,6 +205,10 @@ public final class SeriesWindow extends JDialog {
         segmentsOnly.addActionListener(e -> {
             Segmentation.setSegmentsOnly(editing, segmentsOnly.isSelected());
             refreshWarning();
+
+            // The lock decides whether the series is openable at all, so the
+            // tree is wrong the moment this is ticked and not a moment later.
+            onChanged.run();
         });
 
         JPanel lock = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
@@ -252,7 +275,10 @@ public final class SeriesWindow extends JDialog {
 
             SegmentDialog.ask(this, editing, days,
                             List.copyOf(model.segments), suggested())
-                    .ifPresent(model::add);
+                    .ifPresent(segment -> {
+                        model.add(segment);
+                        save();
+                    });
         });
         remove.addActionListener(e -> removeSelected());
 
@@ -299,7 +325,10 @@ public final class SeriesWindow extends JDialog {
         }
 
         SegmentDialog.revise(this, editing, days, others, chosen)
-                .ifPresent(segment -> model.replace(row, segment));
+                .ifPresent(segment -> {
+                    model.replace(row, segment);
+                    save();
+                });
     }
 
     /**
@@ -327,6 +356,7 @@ public final class SeriesWindow extends JDialog {
 
         if (answer == javax.swing.JOptionPane.YES_OPTION) {
             model.remove(row);
+            save();
         }
     }
 
@@ -374,6 +404,8 @@ public final class SeriesWindow extends JDialog {
     private void save() {
         if (editing != null) {
             Segmentation.set(editing, model.segments);
+
+            onChanged.run();
         }
     }
 

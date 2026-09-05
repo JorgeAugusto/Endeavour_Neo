@@ -18,6 +18,7 @@
 package br.com.jorge.reis.endeavourneo.ui.chart;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -124,5 +125,58 @@ class ChartLayoutTest {
         }
 
         return list;
+    }
+
+    @Test
+    @DisplayName("um painel volta com os ajustes, a altura e o estado dele")
+    void aPaneComesBackWhole() {
+        br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic.SlowStochastic study =
+                new br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic.SlowStochastic(21, 5);
+
+        study.setShowsAverage(false);
+        study.setBuyLevel(15);
+        study.setSellLevel(85);
+        study.setColour(new java.awt.Color(0x123456));
+
+        ChartLayout.Pane stored = new ChartLayout.Pane(study.nameKey(), study.parameters(),
+                study.appearance(), 140, true);
+
+        String text = ChartLayouts.formatPanes(java.util.List.of(stored));
+        java.util.List<ChartLayout.Pane> back = ChartLayouts.parsePanes(text);
+
+        assertEquals(1, back.size());
+        assertEquals(140, back.get(0).height());
+        assertTrue(back.get(0).minimised());
+
+        br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic.SlowStochastic rebuilt =
+                (br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic.SlowStochastic)
+                        back.get(0).build();
+
+        assertEquals(21, rebuilt.period());
+        assertEquals(5, rebuilt.average());
+        assertEquals(15.0, rebuilt.buyLevel());
+        assertEquals(85.0, rebuilt.sellLevel());
+        assertEquals(new java.awt.Color(0x123456), rebuilt.colour());
+        assertFalse(rebuilt.showsAverage(), "the average came back on after being turned off");
+    }
+
+    @Test
+    @DisplayName("um layout gravado antes dos paineis ainda carrega")
+    void anOlderLayoutStillLoads() {
+        // The whole reason the panes went in a key of their own.
+        assertTrue(ChartLayouts.parsePanes("").isEmpty());
+        assertTrue(ChartLayouts.parsePanes(null).isEmpty());
+        assertTrue(ChartLayout.empty("qualquer").panes().isEmpty());
+    }
+
+    @Test
+    @DisplayName("um indicador que esta versao nao tem e pulado, nao explode")
+    void anUnknownPaneIsSkipped() {
+        java.util.List<ChartLayout.Pane> panes = ChartLayouts.parsePanes(
+                "study.doNotExist|9|100|false|");
+
+        assertEquals(1, panes.size());
+        assertNull(panes.get(0).build());
+        assertTrue(new ChartLayout("x", java.util.List.of(), panes).studies().isEmpty());
     }
 }

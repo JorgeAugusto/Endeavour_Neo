@@ -784,7 +784,8 @@ public final class MainWindow extends JFrame {
 
     /** Opens the window where a series is divided into segments. */
     private void openSeries() {
-        br.com.jorge.reis.endeavourneo.ui.series.SeriesWindow.open(this);
+        br.com.jorge.reis.endeavourneo.ui.series.SeriesWindow.open(this,
+                () -> navigator.setModel(Navigator.treeModel()));
     }
 
     private void openPreferences() {

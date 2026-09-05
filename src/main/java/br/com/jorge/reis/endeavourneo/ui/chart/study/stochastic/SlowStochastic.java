@@ -17,6 +17,7 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic;
 
+import br.com.jorge.reis.endeavourneo.ui.chart.Overlay;
 import br.com.jorge.reis.endeavourneo.ui.chart.OwnScale;
 import br.com.jorge.reis.endeavourneo.ui.chart.overlay.MovingAverage;
 
@@ -278,9 +279,21 @@ public final class SlowStochastic implements Study {
         return "study.stochastic";
     }
 
+    /**
+     * @return both periods, always
+     *
+     * <p>Even when the average is not drawn. These are what a layout STORES to
+     * rebuild this indicator, and a list that shrank when a line was hidden
+     * took the average's period with it -- turn the average off, save, reopen,
+     * and it came back as three however it had been set. Caught by the
+     * round-trip test, which is what that test is for.</p>
+     *
+     * <p>Showing both in the legend is also the honest reading: the setting
+     * exists whether or not the line does.</p>
+     */
     @Override
     public List<Integer> parameters() {
-        return showAverage ? List.of(period, average) : List.of(period);
+        return List.of(period, average);
     }
 
     @Override
@@ -335,6 +348,113 @@ public final class SlowStochastic implements Study {
     @Override
     public Stroke stroke() {
         return line.stroke(width);
+    }
+
+    /**
+     * Everything that is not the two periods, as one line.
+     *
+     * <p>The periods travel apart, in {@link #parameters()}, because those are
+     * what the indicator IS and the rest is how it is drawn -- the split
+     * {@link Overlay#appearance()} exists to make. A pane restored in the right
+     * place wearing the wrong colours would be a workspace that only half
+     * worked.</p>
+     */
+    @Override
+    public String appearance() {
+        return kind + ";" + line + ";" + hex(colour) + ";" + width
+                + ";" + averageLine + ";" + hex(averageColour) + ";" + averageWidth
+                + ";" + levelLine + ";" + hex(buyColour) + ";" + levelWidth
+                + ";" + showAverage + ";" + showLevels + ";" + buy + ";" + sell
+                + ";" + (ownPeriod == null ? "chart" : ownPeriod);
+    }
+
+    @Override
+    public void applyAppearance(String text) {
+        if (text == null || text.isBlank()) {
+            return;
+        }
+
+        String[] fields = text.split(";");
+
+        // Field by field, each guarded on its own. A line written by a later
+        // version may carry a value this one cannot read, and losing the colour
+        // because of it would be a second failure caused by the first.
+        setKind(readEnum(MovingAverage.Kind.class, at(fields, 0), MovingAverage.Kind.ARITHMETIC));
+        setLine(readEnum(MovingAverage.Line.class, at(fields, 1), MovingAverage.Line.SOLID));
+        setColour(readColour(at(fields, 2), colour));
+        setWidth(readFloat(at(fields, 3), width));
+
+        setAverageLine(readEnum(MovingAverage.Line.class, at(fields, 4),
+                MovingAverage.Line.SOLID));
+        setAverageColour(readColour(at(fields, 5), averageColour));
+        setAverageWidth(readFloat(at(fields, 6), averageWidth));
+
+        setLevelLine(readEnum(MovingAverage.Line.class, at(fields, 7),
+                MovingAverage.Line.DASHED));
+        setBuyColour(readColour(at(fields, 8), buyColour));
+        setSellColour(buyColour);
+        setLevelWidth(readFloat(at(fields, 9), levelWidth));
+
+        setShowsAverage(readBoolean(at(fields, 10), showAverage));
+        setShowsLevels(readBoolean(at(fields, 11), showLevels));
+        setBuyLevel(readDouble(at(fields, 12), buy));
+        setSellLevel(readDouble(at(fields, 13), sell));
+
+        String scale = at(fields, 14);
+
+        setOwnPeriod(scale == null || "chart".equals(scale) ? null : scale);
+    }
+
+    private static String at(String[] fields, int index) {
+        return index < fields.length ? fields[index].trim() : null;
+    }
+
+    private static String hex(Color value) {
+        return Integer.toHexString(value.getRGB() & 0xFFFFFF);
+    }
+
+    private static <E extends Enum<E>> E readEnum(Class<E> type, String text, E fallback) {
+        if (text == null) {
+            return fallback;
+        }
+
+        try {
+            return Enum.valueOf(type, text);
+        } catch (IllegalArgumentException e) {
+            return fallback;
+        }
+    }
+
+    private static Color readColour(String text, Color fallback) {
+        if (text == null) {
+            return fallback;
+        }
+
+        try {
+            return new Color(Integer.parseInt(text, 16));
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
+
+    private static float readFloat(String text, float fallback) {
+        try {
+            return text == null ? fallback : Float.parseFloat(text);
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
+
+    private static double readDouble(String text, double fallback) {
+        try {
+            return text == null ? fallback : Double.parseDouble(text);
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
+
+    private static boolean readBoolean(String text, boolean fallback) {
+        return text == null ? fallback : Boolean.parseBoolean(text);
     }
 
     // ----------------------------------------------------------- the numbers

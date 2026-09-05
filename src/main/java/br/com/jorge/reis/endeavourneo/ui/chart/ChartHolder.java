@@ -347,7 +347,7 @@ public final class ChartHolder {
      */
     private LayoutBar layouts() {
         if (layoutBar == null) {
-            layoutBar = new LayoutBar(canvas, key);
+            layoutBar = new LayoutBar(canvas, body, key);
 
             canvas.onOverlaysChanged(layoutBar::capture);
         }

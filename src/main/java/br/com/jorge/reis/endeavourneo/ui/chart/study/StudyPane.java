@@ -184,6 +184,16 @@ public final class StudyPane extends JComponent {
         return minimised ? HEADER : Math.max(SHORTEST, height);
     }
 
+    /**
+     * @return the height it would take if it were open
+     *
+     * <p>Not {@link #wantedHeight()}, which is the header alone while
+     * minimised: storing that would restore a pane that unfolds to nothing.</p>
+     */
+    public int storedHeight() {
+        return height;
+    }
+
     public void setHeight(int pixels) {
         int wanted = Math.max(SHORTEST, pixels);
 

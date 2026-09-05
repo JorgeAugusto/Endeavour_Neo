@@ -218,7 +218,11 @@ class SlowStochasticTest {
         assertEquals(1, study.valueAt(19).length);
         assertEquals(1, study.colours().size());
         assertEquals(1, study.strokes().size());
-        assertEquals(1, study.parameters().size(), "the legend still shows the average's period");
+
+        // The PARAMETERS keep both, because a layout stores them to rebuild
+        // this indicator and a list that shrank here would lose the average's
+        // period the moment its line was hidden. Only the drawing shrinks.
+        assertEquals(2, study.parameters().size());
     }
 
     @Test

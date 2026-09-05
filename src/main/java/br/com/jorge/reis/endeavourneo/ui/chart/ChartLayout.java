@@ -38,7 +38,46 @@ import java.util.List;
  * @param name what the tab shows
  * @param entries the indicators, in the order they are drawn
  */
-public record ChartLayout(String name, List<Entry> entries) {
+public record ChartLayout(String name, List<Entry> entries, List<Pane> panes) {
+
+    /** A layout written before panes existed carries none. */
+    public ChartLayout(String name, List<Entry> entries) {
+        this(name, entries, List.of());
+    }
+
+    /**
+     * One indicator in a pane of its own, as a layout remembers it.
+     *
+     * @param kindKey the catalogue key, e.g. {@code study.stochastic}
+     * @param parameters the numbers that decide what is computed
+     * @param appearance everything else, as one line
+     * @param height how tall the pane was
+     * @param minimised whether it was folded away
+     *
+     * <p>The height and the minimised flag belong to the LAYOUT and not to the
+     * chart, for the same reason the indicators do: a layout is a way of
+     * looking at something, and how much room the stochastic got is part of
+     * that way.</p>
+     */
+    public record Pane(String kindKey, List<Integer> parameters, String appearance,
+                       int height, boolean minimised) {
+
+        /** @return this entry as a study, or null when the kind is unknown */
+        public br.com.jorge.reis.endeavourneo.ui.chart.study.Study build() {
+            br.com.jorge.reis.endeavourneo.ui.chart.study.Study study =
+                    br.com.jorge.reis.endeavourneo.ui.chart.study.StudyCatalog
+                            .build(kindKey, parameters);
+
+            if (study != null) {
+                study.applyAppearance(appearance);
+            }
+
+            // Null for a kind that no longer exists. A saved layout must not
+            // stop a chart from opening because one of its indicators went
+            // away between versions.
+            return study;
+        }
+    }
 
     /**
      * One indicator inside a layout.
@@ -84,7 +123,7 @@ public record ChartLayout(String name, List<Entry> entries) {
 
     /** @return an empty layout under that name */
     public static ChartLayout empty(String name) {
-        return new ChartLayout(name, List.of());
+        return new ChartLayout(name, List.of(), List.of());
     }
 
     /**
@@ -93,6 +132,17 @@ public record ChartLayout(String name, List<Entry> entries) {
      * @return a layout capturing them
      */
     public static ChartLayout of(String name, List<Overlay> overlays) {
+        return of(name, overlays, List.of());
+    }
+
+    /**
+     * @param panes what each indicator pane was showing, and how tall
+     *
+     * <p>Overlays and panes together, because a layout is one answer to "how am
+     * I looking at this" and splitting it would let half of it change without
+     * the other half.</p>
+     */
+    public static ChartLayout of(String name, List<Overlay> overlays, List<Pane> panes) {
         List<Entry> entries = new ArrayList<>(overlays.size());
 
         for (Overlay overlay : overlays) {
@@ -100,7 +150,23 @@ public record ChartLayout(String name, List<Entry> entries) {
                     overlay.appearance()));
         }
 
-        return new ChartLayout(name, List.copyOf(entries));
+        return new ChartLayout(name, List.copyOf(entries), List.copyOf(panes));
+    }
+
+    /** @return the studies this layout describes, skipping any unknown kind */
+    public List<br.com.jorge.reis.endeavourneo.ui.chart.study.Study> studies() {
+        List<br.com.jorge.reis.endeavourneo.ui.chart.study.Study> found =
+                new ArrayList<>(panes.size());
+
+        for (Pane pane : panes) {
+            br.com.jorge.reis.endeavourneo.ui.chart.study.Study study = pane.build();
+
+            if (study != null) {
+                found.add(study);
+            }
+        }
+
+        return found;
     }
 
     /** @return the overlays this layout describes, skipping any unknown kind */
@@ -119,6 +185,6 @@ public record ChartLayout(String name, List<Entry> entries) {
     }
 
     public ChartLayout renamedTo(String newName) {
-        return new ChartLayout(newName, entries);
+        return new ChartLayout(newName, entries, panes);
     }
 }
