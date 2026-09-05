@@ -96,6 +96,31 @@ public final class ReplayPanel extends JPanel {
 
     private final JSlider scrubber = new JSlider(0, 1000, 0);
 
+    /**
+     * What stands in the scrubber's place while there is nothing to scrub.
+     *
+     * <p><b>Indeterminate, and honestly so.</b> The session is built in one
+     * call that reports nothing on the way -- the tick library, then every
+     * past day folded out of it -- so there is no fraction to show. A moving
+     * bar with no number still says the one thing that matters here, which is
+     * that the program is alive; a slider sitting at zero with the handle
+     * greyed says the opposite, and four seconds of that is how an application
+     * teaches people to press the button again.</p>
+     *
+     * <p>Making it a real percentage means threading a callback down through
+     * the session's construction. Worth doing, and it is not this change.</p>
+     */
+    private final javax.swing.JProgressBar loading = new javax.swing.JProgressBar();
+
+    /**
+     * Holds whichever of the two belongs in that row right now.
+     *
+     * <p>The same slot, not two stacked: the transport is a fixed shape and a
+     * row that appeared and disappeared would move the buttons under the
+     * reader's pointer every time a session was asked for.</p>
+     */
+    private final JPanel track = new JPanel(new java.awt.CardLayout());
+
     private final JButton request = new JButton(Messages.get("replay.request"));
 
     private final JButton play = new JButton();
@@ -450,7 +475,23 @@ public final class ReplayPanel extends JPanel {
         bottom.add(rate, BorderLayout.EAST);
 
         panel.add(clocks, BorderLayout.NORTH);
-        panel.add(scrubber, BorderLayout.CENTER);
+        loading.setIndeterminate(true);
+        loading.setPreferredSize(new java.awt.Dimension(
+                scrubber.getPreferredSize().width, 12));
+
+        // Centred at its own height rather than filling the row. The card it
+        // shares gives a card the whole area, and a progress bar told to fill
+        // forty pixels draws a forty-pixel block -- next to the slider it
+        // replaces, that reads as a different control, not the same one busy.
+        JPanel held = new JPanel(new java.awt.GridBagLayout());
+
+        held.setOpaque(false);
+        held.add(loading);
+
+        track.add(scrubber, "scrubber");
+        track.add(held, "loading");
+
+        panel.add(track, BorderLayout.CENTER);
         panel.add(bottom, BorderLayout.SOUTH);
 
         return panel;
@@ -597,6 +638,7 @@ public final class ReplayPanel extends JPanel {
             }
 
             dressChip(false);
+            showLoading(true);
             clock.setText(Messages.get("replay.loading"));
             ends.setText("");
 
@@ -637,6 +679,8 @@ public final class ReplayPanel extends JPanel {
         play.setIcon(ready && session.isPlaying()
                 ? ReplayIcons.pause(18) : ReplayIcons.play(18));
 
+        showLoading(waiting);
+
         if (waiting) {
             clock.setText(Messages.get("replay.loading"));
             ends.setText("");
@@ -660,6 +704,26 @@ public final class ReplayPanel extends JPanel {
             scrubber.setValue((int) Math.round(session.progress() * 1000));
             adjusting = false;
         }
+    }
+
+    /**
+     * Puts the moving bar in the scrubber's place, or takes it away.
+     *
+     * <p>The bar is only ANIMATED while it is the one showing. An
+     * indeterminate progress bar repaints itself on a timer whether or not
+     * anybody can see it, and a transport sitting idle all afternoon would be
+     * spending a timer on a picture of nothing.</p>
+     *
+     * <p>Package-visible so a test can put the transport in both states. The
+     * state it cannot reach otherwise is the one that matters -- getting there
+     * for real means building a session off a folder of ticks, and a test that
+     * did that would be testing the reader, not the swap.</p>
+     */
+    void showLoading(boolean busy) {
+        loading.setIndeterminate(busy);
+
+        ((java.awt.CardLayout) track.getLayout())
+                .show(track, busy ? "loading" : "scrubber");
     }
 
     /** Carries the session to whatever chart it is dropped on. */
