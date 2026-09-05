@@ -68,7 +68,7 @@ class PaneOrderTest {
         List<Integer> periods = new ArrayList<>();
 
         for (StudyPane pane : stack.panes()) {
-            periods.add(pane.study().parameters().get(0));
+            periods.add(pane.studies().get(0).parameters().get(0));
         }
 
         return periods;
@@ -175,7 +175,7 @@ class PaneOrderTest {
         List<ChartLayout.Pane> stored = stack.remembered();
 
         assertEquals(List.of(21, 8, 14),
-                stored.stream().map(pane -> pane.parameters().get(0)).toList(),
+                stored.stream().map(pane -> pane.entries().get(0).parameters().get(0)).toList(),
                 "the layout was written in the insertion order, not the arranged one");
 
         stack.restore(stored);

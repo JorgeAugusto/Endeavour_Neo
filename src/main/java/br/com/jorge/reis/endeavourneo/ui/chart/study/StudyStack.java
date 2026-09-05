@@ -122,7 +122,7 @@ public final class StudyStack extends JPanel {
 
         StudyPane pane = new StudyPane(canvas, study, this::relayout);
 
-        pane.onSettings(() -> settingsFor(study));
+        pane.onSettings(this::settingsFor);
         canvas.follow(pane);
         add(pane);
         relayout();
@@ -131,10 +131,77 @@ public final class StudyStack extends JPanel {
     }
 
     /**
+     * Puts an indicator into a pane that already holds one.
+     *
+     * @return whether it went in
+     *
+     * <p>Refused rather than squeezed when it does not belong: two things
+     * measured in different units share an axis only by one of them being
+     * flattened against an edge, and a line drawn flat is a line that lies
+     * about the market rather than about the pane.</p>
+     */
+    public boolean addTo(StudyPane pane, Study study) {
+        if (pane == null || !fits(pane.studies(), study)) {
+            return false;
+        }
+
+        study.calculate(canvas.source());
+        pane.add(study);
+        relayout();
+
+        return true;
+    }
+
+    /**
+     * @param present what a pane already holds
+     * @param wanted what is being added to it
+     * @return whether they can share one vertical scale
+     *
+     * <p><b>The one place this is decided.</b> Two answers count as yes, and
+     * they are the two readings a pane exists for:</p>
+     *
+     * <ul>
+     * <li><b>The same indicator at another scale.</b> A stochastic on the
+     * chart's own bars beside a stochastic on five minutes is the same
+     * measurement twice, whatever its range turns out to be — reading one
+     * against the other is the point.</li>
+     * <li><b>Different indicators whose range is fixed and equal.</b> A
+     * stochastic and an RSI both run nought to a hundred by their own
+     * definition, so they share an axis honestly.</li>
+     * </ul>
+     *
+     * <p>Everything else is no, and the strictest case is worth naming: two
+     * DIFFERENT indicators that both fit themselves to the data. Their ranges
+     * might agree today and disagree tomorrow, and a rule that depends on the
+     * bars on screen is a rule that changes when the reader scrolls.</p>
+     */
+    public static boolean fits(List<Study> present, Study wanted) {
+        if (wanted == null) {
+            return false;
+        }
+
+        for (Study each : present) {
+            if (each.nameKey().equals(wanted.nameKey())) {
+                continue;
+            }
+
+            double[] mine = wanted.bounds();
+            double[] theirs = each.bounds();
+
+            if (mine == null || theirs == null
+                    || mine[0] != theirs[0] || mine[1] != theirs[1]) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * Opens the settings of one study, and redraws it with what came back.
      *
      * <p>The dispatch lives here rather than in the pane because the pane's job
-     * is to draw a {@link Study} and nothing else -- teaching it which dialog
+     * is to draw its studies and nothing else -- teaching it which dialog
      * belongs to which implementation would make every new indicator a change
      * to the pane as well as an addition beside it.</p>
      */
@@ -157,11 +224,16 @@ public final class StudyStack extends JPanel {
                 new ArrayList<>();
 
         for (StudyPane pane : panes()) {
-            Study study = pane.study();
+            List<br.com.jorge.reis.endeavourneo.ui.chart.ChartLayout.Entry> inside =
+                    new ArrayList<>();
+
+            for (Study study : pane.studies()) {
+                inside.add(new br.com.jorge.reis.endeavourneo.ui.chart.ChartLayout.Entry(
+                        study.nameKey(), study.parameters(), true, study.appearance()));
+            }
 
             found.add(new br.com.jorge.reis.endeavourneo.ui.chart.ChartLayout.Pane(
-                    study.nameKey(), study.parameters(), study.appearance(),
-                    pane.storedHeight(), pane.isMinimised()));
+                    List.copyOf(inside), pane.storedHeight(), pane.isMinimised()));
         }
 
         return found;
@@ -181,14 +253,24 @@ public final class StudyStack extends JPanel {
         }
 
         for (br.com.jorge.reis.endeavourneo.ui.chart.ChartLayout.Pane each : wanted) {
-            Study study = each.build();
+            List<Study> inside = each.build();
 
-            if (study == null) {
-                // A kind this version does not have. Skipped, not fatal.
+            if (inside.isEmpty()) {
+                // Every kind in it is one this version does not have. Skipped,
+                // not fatal.
                 continue;
             }
 
-            StudyPane pane = show(study);
+            StudyPane pane = show(inside.get(0));
+
+            // Put back without asking whether they fit. What was stored was
+            // legal when it was written, and a rule that grew stricter since
+            // should not silently empty somebody's pane; the union range keeps
+            // the drawing honest either way.
+            for (int i = 1; i < inside.size(); i++) {
+                inside.get(i).calculate(canvas.source());
+                pane.add(inside.get(i));
+            }
 
             if (each.height() > 0) {
                 pane.setHeight(each.height());
@@ -337,7 +419,9 @@ public final class StudyStack extends JPanel {
      */
     public void recalculate() {
         for (StudyPane pane : panes()) {
-            pane.study().calculate(canvas.source());
+            for (Study study : pane.studies()) {
+                study.calculate(canvas.source());
+            }
         }
 
         repaint();

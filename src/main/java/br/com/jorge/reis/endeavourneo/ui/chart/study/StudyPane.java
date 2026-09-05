@@ -19,10 +19,6 @@ package br.com.jorge.reis.endeavourneo.ui.chart.study;
 
 import br.com.jorge.reis.endeavourneo.ui.chart.ChartCanvas;
 import br.com.jorge.reis.endeavourneo.ui.chart.ChartColors;
-import br.com.jorge.reis.endeavourneo.ui.chart.Forms;
-import br.com.jorge.reis.endeavourneo.ui.chart.Overlay;
-import br.com.jorge.reis.endeavourneo.ui.chart.PeriodCatalog;
-import br.com.jorge.reis.endeavourneo.ui.chart.PeriodDialog;
 import br.com.jorge.reis.endeavourneo.ui.chart.Viewport;
 
 import br.com.jorge.reis.endeavourneo.platform.Messages;
@@ -33,29 +29,50 @@ import java.awt.Cursor;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.Consumer;
 import javax.swing.JComponent;
 
 /**
- * One indicator, in its own strip under the chart.
+ * A strip under the chart holding one or more indicators on a shared scale.
  *
  * <h2>It borrows the chart's horizontal, and nothing else</h2>
  *
  * <p>The x of a bar comes from the chart's own {@link Viewport}, so a peak here
  * sits exactly under the candle that made it — scrolling, zooming and the
  * right-hand price strip all line up without either side being told. The y is
- * this pane's alone, from the study's {@link Study#bounds()}.</p>
+ * this pane's alone, from the range of whatever is inside it.</p>
  *
- * <p>That is the whole of the coupling: a pane asks the canvas where bar 40 is
- * and asks its own study what to draw there. It does not know what else is
- * stacked with it, and the canvas does not know it exists beyond having to
- * repaint it.</p>
+ * <h2>One scale, several indicators</h2>
+ *
+ * <p>A pane has no owner. It can hold the same indicator read at several
+ * scales — a stochastic on the chart's own bars beside a stochastic on five
+ * minutes — or different indicators that happen to share a range, a stochastic
+ * beside an RSI. What it must not hold is two things measured in different
+ * units, and that is decided before anything gets in here: see
+ * {@link StudyStack#fits}.</p>
+ *
+ * <p>The vertical range is the <b>union</b> of what is inside. With everything
+ * agreeing on nought to a hundred that union is nought to a hundred, which is
+ * the case this exists for; the union is what keeps the pane honest if
+ * anything ever slips past the check.</p>
+ *
+ * <h2>The header is a legend</h2>
+ *
+ * <p>With three indicators in a pane the title bar has to name three, show
+ * three sets of values under the cursor, and offer settings and close for each
+ * — the pane's own buttons cannot stand for any of them. Those appear on the
+ * entry under the pointer, in a slot that is <b>always reserved</b>: on a
+ * horizontal strip, revealing them inline would shove everything to their
+ * right sideways every time the pointer moved.</p>
  *
  * <h2>Minimised, never maximised</h2>
  *
@@ -72,7 +89,7 @@ public final class StudyPane extends JComponent {
 
     private static final long serialVersionUID = 1L;
 
-    /** The strip along the top: name, values, and the two buttons. */
+    /** The strip along the top: the entries, and the pane's two buttons. */
     private static final int HEADER = 20;
 
     /** How much of the top edge grabs, for dragging the pane taller or shorter. */
@@ -90,14 +107,26 @@ public final class StudyPane extends JComponent {
      */
     private static final int SLIP = 3;
 
+    /** Side of each little button. */
+    private static final int BUTTON = 14;
+
+    /** Room kept at the end of every entry for its two buttons. */
+    private static final int SLOT = 2 * BUTTON + 4 + 6;
+
     private final transient ChartCanvas canvas;
 
-    private final transient Study study;
+    /**
+     * What is drawn here, left to right in the header and all on one scale.
+     *
+     * <p>Never empty: a pane with nothing in it is not a pane, and the one that
+     * loses its last indicator asks the stack to take it away.</p>
+     */
+    private final transient List<Study> studies = new ArrayList<>();
 
     private final transient Runnable onChanged;
 
-    /** Opens this study's settings; the stack knows which dialog that is. */
-    private transient Runnable onSettings = () -> { };
+    /** Opens one study's settings; the stack knows which dialog that is. */
+    private transient Consumer<Study> onSettings = study -> { };
 
     private int height = 110;
 
@@ -114,10 +143,17 @@ public final class StudyPane extends JComponent {
     /** Whether that grab has travelled far enough to be a carry. */
     private transient boolean carrying;
 
+    /** Hit areas of the entries, rebuilt on every paint. */
+    private final transient List<Rectangle> entries = new ArrayList<>();
+
+    /** Which entry the pointer is on, or -1. */
+    private int hovered = -1;
+
     public StudyPane(ChartCanvas canvas, Study study, Runnable onChanged) {
         this.canvas = canvas;
-        this.study = study;
         this.onChanged = onChanged == null ? () -> { } : onChanged;
+
+        studies.add(study);
 
         setToolTipText(Messages.get("study.paneHint"));
 
@@ -125,25 +161,54 @@ public final class StudyPane extends JComponent {
 
             @Override
             public void mouseMoved(MouseEvent e) {
+                int was = hovered;
+
+                hovered = entryAt(e.getX(), e.getY());
+
+                if (hovered != was) {
+                    repaint();
+                }
+
                 setCursor(Cursor.getPredefinedCursor(cursorFor(e.getX(), e.getY())));
             }
 
             @Override
+            public void mouseExited(MouseEvent e) {
+                if (carrying) {
+                    // Still being carried; the pointer left on its way
+                    // somewhere and the drag is not over.
+                    return;
+                }
+
+                hovered = -1;
+
+                repaint();
+            }
+
+            @Override
             public void mousePressed(MouseEvent e) {
-                if (closeAt(e.getX())) {
-                    remove();
+                if (closeAt(e.getX(), e.getY())) {
+                    close();
 
                     return;
                 }
 
-                if (minimiseAt(e.getX())) {
+                if (minimiseAt(e.getX(), e.getY())) {
                     setMinimised(!minimised);
 
                     return;
                 }
 
-                if (settingsAt(e.getX())) {
-                    onSettings.run();
+                int entry = entryAt(e.getX(), e.getY());
+
+                if (entry >= 0 && crossAt(e.getX(), e.getY(), entry)) {
+                    drop(studies.get(entry));
+
+                    return;
+                }
+
+                if (entry >= 0 && gearAt(e.getX(), e.getY(), entry)) {
+                    onSettings.accept(studies.get(entry));
 
                     return;
                 }
@@ -202,13 +267,16 @@ public final class StudyPane extends JComponent {
 
             @Override
             public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() == 2 && e.getY() > GRIP && e.getY() < HEADER
-                        && !settingsAt(e.getX()) && !minimiseAt(e.getX())
-                        && !closeAt(e.getX())) {
-                    // The name, double-clicked, opens the settings -- the same
-                    // gesture the overlay legend already answers to. Minimising
-                    // has its own button and does not need a second way in.
-                    onSettings.run();
+                int entry = entryAt(e.getX(), e.getY());
+
+                if (e.getClickCount() == 2 && entry >= 0 && e.getY() > GRIP
+                        && !gearAt(e.getX(), e.getY(), entry)
+                        && !crossAt(e.getX(), e.getY(), entry)) {
+                    // The name, double-clicked, opens the settings of THAT
+                    // indicator -- the same gesture the overlay legend answers
+                    // to, and the only one that stays unambiguous when a pane
+                    // holds three.
+                    onSettings.accept(studies.get(entry));
                 }
             }
         };
@@ -217,12 +285,55 @@ public final class StudyPane extends JComponent {
         addMouseMotionListener(mouse);
     }
 
-    public Study study() {
-        return study;
+    /** @return what is drawn here, in the order the header lists it */
+    public List<Study> studies() {
+        return List.copyOf(studies);
     }
 
-    public void onSettings(Runnable listener) {
-        onSettings = listener == null ? () -> { } : listener;
+    /** @return the first one, which is all of it when a pane holds one */
+    public Study study() {
+        return studies.get(0);
+    }
+
+    /**
+     * Adds another indicator to this pane.
+     *
+     * <p>Whether it BELONGS here is not decided at this depth: the pane draws
+     * what it is given. {@link StudyStack#fits} is the one place that answers
+     * that, so there is one rule and not one per caller.</p>
+     */
+    public void add(Study study) {
+        if (study == null || studies.contains(study)) {
+            return;
+        }
+
+        studies.add(study);
+        onChanged.run();
+        repaint();
+    }
+
+    /** Takes one indicator out, and the pane with it when it was the last. */
+    public void drop(Study study) {
+        if (!studies.remove(study)) {
+            return;
+        }
+
+        hovered = -1;
+
+        if (studies.isEmpty()) {
+            // A pane drawing nothing is a strip of empty ground with two
+            // buttons on it, and no way to put anything back into it.
+            close();
+
+            return;
+        }
+
+        onChanged.run();
+        repaint();
+    }
+
+    public void onSettings(Consumer<Study> listener) {
+        onSettings = listener == null ? study -> { } : listener;
     }
 
     /** @return how tall this pane wants to be right now */
@@ -263,42 +374,21 @@ public final class StudyPane extends JComponent {
     }
 
     /**
-     * Called when this pane's own close button is pressed.
+     * Called when this pane's own close button is pressed, or its last
+     * indicator is taken away.
      *
      * <p>Through the stack, never straight out of the container: the canvas
      * repaints its panes from a list it keeps, and a pane torn off the screen
      * without leaving that list is a component being painted for ever after it
      * stopped existing on screen.</p>
      */
-    private void remove() {
+    private void close() {
         if (getParent() instanceof StudyStack stack) {
             stack.hide(this);
         }
     }
 
     // ------------------------------------------------------------- the boxes
-
-    /**
-     * @return whether a point is on the draggable part of the title bar
-     *
-     * <p>Not the buttons, and not the top few pixels, which resize. What is
-     * left is the name and the numbers -- exactly the part of a window's title
-     * bar that carries the window.</p>
-     */
-    private boolean titleAt(int x, int y) {
-        return y < HEADER && x < settingsLeft() && (minimised || y > GRIP);
-    }
-
-    /** @return which pointer the header should show at a point */
-    private int cursorFor(int x, int y) {
-        if (y <= GRIP && !minimised) {
-            return Cursor.N_RESIZE_CURSOR;
-        }
-
-        // A title bar that can be carried has to LOOK like one before it is
-        // grabbed; there is nothing else on screen saying the stack reorders.
-        return titleAt(x, y) ? Cursor.MOVE_CURSOR : Cursor.DEFAULT_CURSOR;
-    }
 
     private int closeLeft() {
         return getWidth() - 18;
@@ -308,20 +398,75 @@ public final class StudyPane extends JComponent {
         return getWidth() - 36;
     }
 
-    private int settingsLeft() {
-        return getWidth() - 54;
+    private boolean closeAt(int x, int y) {
+        return y < HEADER && x >= closeLeft() && x < closeLeft() + BUTTON;
     }
 
-    private boolean closeAt(int x) {
-        return x >= closeLeft() && x < closeLeft() + 14;
+    private boolean minimiseAt(int x, int y) {
+        return y < HEADER && x >= minimiseLeft() && x < minimiseLeft() + BUTTON;
     }
 
-    private boolean minimiseAt(int x) {
-        return x >= minimiseLeft() && x < minimiseLeft() + 14;
+    /** @return which entry a point is on, or -1 for anywhere else */
+    private int entryAt(int x, int y) {
+        if (y >= HEADER || x >= minimiseLeft()) {
+            return -1;
+        }
+
+        for (int i = 0; i < entries.size(); i++) {
+            if (entries.get(i).contains(x, y)) {
+                return i;
+            }
+        }
+
+        return -1;
     }
 
-    private boolean settingsAt(int x) {
-        return x >= settingsLeft() && x < settingsLeft() + 14;
+    private boolean gearAt(int x, int y, int entry) {
+        return y < HEADER && x >= gearLeft(entry) && x < gearLeft(entry) + BUTTON;
+    }
+
+    private boolean crossAt(int x, int y, int entry) {
+        return y < HEADER && x >= gearLeft(entry) + BUTTON + 4
+                && x < gearLeft(entry) + 2 * BUTTON + 4;
+    }
+
+    /** @return where the reserved slot of an entry begins */
+    private int gearLeft(int entry) {
+        Rectangle box = entries.get(entry);
+
+        return box.x + box.width - SLOT + 3;
+    }
+
+    /**
+     * @return whether a point is on the draggable part of the title bar
+     *
+     * <p>Not the buttons, and not the top few pixels, which resize. What is
+     * left is the names and the numbers -- exactly the part of a window's
+     * title bar that carries the window.</p>
+     */
+    private boolean titleAt(int x, int y) {
+        return y < HEADER && x < minimiseLeft() && (minimised || y > GRIP);
+    }
+
+    /** @return which pointer the header should show at a point */
+    private int cursorFor(int x, int y) {
+        if (closeAt(x, y) || minimiseAt(x, y)) {
+            return Cursor.HAND_CURSOR;
+        }
+
+        int entry = entryAt(x, y);
+
+        if (entry >= 0 && (gearAt(x, y, entry) || crossAt(x, y, entry))) {
+            return Cursor.HAND_CURSOR;
+        }
+
+        if (y <= GRIP && !minimised) {
+            return Cursor.N_RESIZE_CURSOR;
+        }
+
+        // A title bar that can be carried has to LOOK like one before it is
+        // grabbed; there is nothing else on screen saying the stack reorders.
+        return titleAt(x, y) ? Cursor.MOVE_CURSOR : Cursor.DEFAULT_CURSOR;
     }
 
     // ----------------------------------------------------------- the drawing
@@ -344,9 +489,8 @@ public final class StudyPane extends JComponent {
             }
 
             // AFTER the plot, because the scale strip on the right fills its
-            // whole column -- drawn before, the two buttons were painted and
-            // then covered by it, which is a bug that only shows on screen.
-            paintSettings(g, settingsLeft());
+            // whole column -- drawn before, the buttons were painted and then
+            // covered by it, which is a bug that only shows on screen.
             paintButton(g, minimiseLeft(), minimised);
             paintClose(g, closeLeft());
 
@@ -358,44 +502,115 @@ public final class StudyPane extends JComponent {
         }
     }
 
+    /**
+     * The names and the numbers, one entry per indicator.
+     *
+     * <p>An entry that would run into the pane's own buttons is not drawn, and
+     * neither is anything after it. Clipping is the only honest answer on a
+     * strip that cannot grow or scroll -- half a name and half a number would
+     * be worse than a name that is not there.</p>
+     */
     private void paintHeader(Graphics2D g) {
-        FontMetrics metrics = g.getFontMetrics();
-        int baseline = HEADER - 6;
-        int at = 6;
+        entries.clear();
 
-        // A band of its own, and a rule under it. The strip has to read as a
-        // title BAR and not as a caption floating over the plot, because it is
-        // the thing that gets grabbed to move the pane.
         g.setColor(band());
         g.fillRect(0, 0, getWidth(), HEADER);
 
         g.setColor(ChartColors.grid());
         g.drawLine(0, HEADER - 1, getWidth(), HEADER - 1);
 
-        String name = Messages.get(study.nameKey()) + " " + study.parameters();
+        FontMetrics metrics = g.getFontMetrics();
+        int baseline = HEADER - 6;
+        int at = 6;
+        int limit = minimiseLeft() - 6;
+        int bar = readAt();
 
-        g.setColor(ChartColors.foreground());
-        g.drawString(name, at, baseline);
+        for (int i = 0; i < studies.size(); i++) {
+            Study study = studies.get(i);
+            String name = labelOf(study);
+            List<String> numbers = numbersOf(study, bar);
+            int wide = metrics.stringWidth(name) + 10 + SLOT;
 
-        at += metrics.stringWidth(name) + 10;
-
-        // The values under the crosshair, or the last ones when it is away.
-        double[] values = study.valueAt(readAt());
-        List<Color> colours = study.colours();
-
-        for (int i = 0; i < values.length; i++) {
-            if (Double.isNaN(values[i])) {
-                continue;
+            for (String each : numbers) {
+                wide += metrics.stringWidth(each) + 8;
             }
 
-            String text = format().format(values[i]);
+            if (i > 0 && at + wide > limit) {
+                // The first one always goes in, however narrow the pane: a
+                // header naming nothing says less than one that is full.
+                //
+                // And the ones left out SAY they were left out. Their lines
+                // are still being drawn down there, and a header that simply
+                // stopped would be a pane showing six lines and naming four
+                // of them, with nothing on screen admitting it.
+                paintMore(g, at, baseline, studies.size() - i);
 
-            g.setColor(i < colours.size() ? colours.get(i) : ChartColors.foreground());
-            g.drawString(text, at, baseline);
+                break;
+            }
 
-            at += metrics.stringWidth(text) + 8;
+            entries.add(new Rectangle(at - 4, 0, wide, HEADER));
+
+            if (i == hovered) {
+                g.setColor(hoverTint());
+                g.fillRect(at - 4, 1, wide, HEADER - 2);
+            }
+
+            g.setColor(ChartColors.foreground());
+            g.drawString(name, at, baseline);
+
+            int text = at + metrics.stringWidth(name) + 10;
+            List<Color> colours = study.colours();
+
+            for (int n = 0; n < numbers.size(); n++) {
+                g.setColor(n < colours.size() ? colours.get(n) : ChartColors.foreground());
+                g.drawString(numbers.get(n), text, baseline);
+
+                text += metrics.stringWidth(numbers.get(n)) + 8;
+            }
+
+            if (i == hovered) {
+                paintSettings(g, gearLeft(i));
+                paintClose(g, gearLeft(i) + BUTTON + 4);
+            }
+
+            at += wide;
+        }
+    }
+
+    /**
+     * Says how many indicators did not fit in the header.
+     *
+     * <p>Dimmed, because it is not one of them -- it is the header admitting
+     * what it could not show. Widening the pane brings the names back.</p>
+     */
+    private void paintMore(Graphics2D g, int at, int baseline, int left) {
+        g.setColor(blend(1));
+        g.drawString("+" + left, at, baseline);
+    }
+
+    /** @return the indicator's name as the header says it */
+    private String labelOf(Study study) {
+        String name = Messages.get(study.nameKey()) + " " + study.parameters();
+        String scale = study.ownPeriod();
+
+        // The scale only when there IS one. Two stochastics of the same shape,
+        // one on the chart's bars and one on five minutes, are otherwise the
+        // same word over two different lines -- and that pairing is a large
+        // part of why a pane holds more than one.
+        return scale == null || scale.isBlank() ? name : name + " · " + scale;
+    }
+
+    /** @return the values under the cursor, as they are written */
+    private static List<String> numbersOf(Study study, int bar) {
+        List<String> found = new ArrayList<>();
+
+        for (double each : study.valueAt(bar)) {
+            if (!Double.isNaN(each)) {
+                found.add(format().format(each));
+            }
         }
 
+        return found;
     }
 
     /**
@@ -406,12 +621,21 @@ public final class StudyPane extends JComponent {
      * be invisible in one of them.</p>
      */
     private static Color band() {
+        return blend(8);
+    }
+
+    /** A step further, for the entry under the pointer. */
+    private static Color hoverTint() {
+        return blend(4);
+    }
+
+    private static Color blend(int parts) {
         Color back = ChartColors.background();
         Color fore = ChartColors.foreground();
 
-        return new Color((back.getRed() * 8 + fore.getRed()) / 9,
-                (back.getGreen() * 8 + fore.getGreen()) / 9,
-                (back.getBlue() * 8 + fore.getBlue()) / 9);
+        return new Color((back.getRed() * parts + fore.getRed()) / (parts + 1),
+                (back.getGreen() * parts + fore.getGreen()) / (parts + 1),
+                (back.getBlue() * parts + fore.getBlue()) / (parts + 1));
     }
 
     private void paintButton(Graphics2D g, int left, boolean restore) {
@@ -475,17 +699,50 @@ public final class StudyPane extends JComponent {
 
         int top = HEADER;
         int bottom = getHeight() - 2;
-        double[] range = study.bounds();
-        double low = range == null ? fittedLow(viewport) : range[0];
-        double high = range == null ? fittedHigh(viewport) : range[1];
+        double[] range = range(viewport);
 
-        if (high - low <= 0) {
+        if (range[1] - range[0] <= 0) {
             return;
         }
 
-        paintLevels(g, top, bottom, low, high);
-        paintLines(g, viewport, top, bottom, low, high);
-        paintScale(g, top, bottom, low, high);
+        paintLevels(g, top, bottom, range[0], range[1]);
+        paintLines(g, viewport, top, bottom, range[0], range[1]);
+        paintScale(g, top, bottom, range[0], range[1]);
+    }
+
+    /**
+     * @return {@code {low, high}} covering everything in the pane
+     *
+     * <p>The union, so nothing inside is ever drawn off the top. With every
+     * indicator here agreeing on its range -- which is what
+     * {@link StudyStack#fits} exists to guarantee -- the union IS that range,
+     * and this costs nothing.</p>
+     */
+    private double[] range(Viewport viewport) {
+        double low = Double.MAX_VALUE;
+        double high = -Double.MAX_VALUE;
+
+        for (Study study : studies) {
+            double[] fixed = study.bounds();
+
+            if (fixed != null) {
+                low = Math.min(low, fixed[0]);
+                high = Math.max(high, fixed[1]);
+
+                continue;
+            }
+
+            for (int bar = viewport.firstBar(); bar < viewport.lastBar(); bar++) {
+                for (double each : study.valueAt(bar)) {
+                    if (!Double.isNaN(each)) {
+                        low = Math.min(low, each);
+                        high = Math.max(high, each);
+                    }
+                }
+            }
+        }
+
+        return low == Double.MAX_VALUE ? new double[] {0, 1} : new double[] {low, high};
     }
 
     private double y(double value, int top, int bottom, double low, double high) {
@@ -493,47 +750,63 @@ public final class StudyPane extends JComponent {
     }
 
     private void paintLevels(Graphics2D g, int top, int bottom, double low, double high) {
-        for (Study.Level level : study.levels()) {
-            g.setColor(level.colour());
-            g.setStroke(level.stroke());
+        List<Integer> drawn = new ArrayList<>();
 
-            int at = (int) Math.round(y(level.at(), top, bottom, low, high));
+        for (Study study : studies) {
+            for (Study.Level level : study.levels()) {
+                int at = (int) Math.round(y(level.at(), top, bottom, low, high));
 
-            g.drawLine(0, at, plotWidth(), at);
+                // Two stochastics in one pane both want twenty and eighty, and
+                // the same line drawn twice is the same line.
+                if (drawn.contains(at)) {
+                    continue;
+                }
+
+                drawn.add(at);
+
+                g.setColor(level.colour());
+                g.setStroke(level.stroke());
+                g.drawLine(0, at, plotWidth(), at);
+            }
         }
     }
 
     private void paintLines(Graphics2D g, Viewport viewport,
                             int top, int bottom, double low, double high) {
-        List<Color> colours = study.colours();
-        List<java.awt.Stroke> strokes = study.strokes();
-        int lines = colours.size();
+        for (Study study : studies) {
+            if (!study.isVisible()) {
+                continue;
+            }
 
-        for (int line = 0; line < lines; line++) {
-            g.setColor(colours.get(line));
-            g.setStroke(line < strokes.size() ? strokes.get(line) : study.stroke());
+            List<Color> colours = study.colours();
+            List<java.awt.Stroke> strokes = study.strokes();
 
-            int lastX = Integer.MIN_VALUE;
-            int lastY = 0;
+            for (int line = 0; line < colours.size(); line++) {
+                g.setColor(colours.get(line));
+                g.setStroke(line < strokes.size() ? strokes.get(line) : study.stroke());
 
-            for (int bar = viewport.firstBar(); bar < viewport.lastBar(); bar++) {
-                double[] values = study.valueAt(bar);
+                int lastX = Integer.MIN_VALUE;
+                int lastY = 0;
 
-                if (line >= values.length || Double.isNaN(values[line])) {
-                    lastX = Integer.MIN_VALUE;
+                for (int bar = viewport.firstBar(); bar < viewport.lastBar(); bar++) {
+                    double[] values = study.valueAt(bar);
 
-                    continue;
+                    if (line >= values.length || Double.isNaN(values[line])) {
+                        lastX = Integer.MIN_VALUE;
+
+                        continue;
+                    }
+
+                    int x = (int) Math.round(viewport.x(bar));
+                    int at = (int) Math.round(y(values[line], top, bottom, low, high));
+
+                    if (lastX != Integer.MIN_VALUE) {
+                        g.drawLine(lastX, lastY, x, at);
+                    }
+
+                    lastX = x;
+                    lastY = at;
                 }
-
-                int x = (int) Math.round(viewport.x(bar));
-                int at = (int) Math.round(y(values[line], top, bottom, low, high));
-
-                if (lastX != Integer.MIN_VALUE) {
-                    g.drawLine(lastX, lastY, x, at);
-                }
-
-                lastX = x;
-                lastY = at;
             }
         }
     }
@@ -555,16 +828,22 @@ public final class StudyPane extends JComponent {
         g.setColor(ChartColors.foreground());
 
         DecimalFormat format = format();
-        java.util.List<Integer> written = new java.util.ArrayList<>();
+        List<Integer> written = new ArrayList<>();
 
         // The levels first, because they are the ones worth reading: twenty and
         // eighty are where a stochastic says something, and the ends of the
         // scale only say how tall the pane is.
-        for (Study.Level level : study.levels()) {
-            int at = (int) Math.round(y(level.at(), top, bottom, low, high));
+        for (Study study : studies) {
+            for (Study.Level level : study.levels()) {
+                int at = (int) Math.round(y(level.at(), top, bottom, low, high));
 
-            g.drawString(format.format(level.at()), plotWidth() + 6, at + 4);
-            written.add(at);
+                if (written.contains(at)) {
+                    continue;
+                }
+
+                g.drawString(format.format(level.at()), plotWidth() + 6, at + 4);
+                written.add(at);
+            }
         }
 
         // And an end only when nothing is already written across it. Two
@@ -574,7 +853,7 @@ public final class StudyPane extends JComponent {
         drawIfClear(g, format.format(low), bottom - 2, written);
     }
 
-    private void drawIfClear(Graphics2D g, String text, int at, java.util.List<Integer> taken) {
+    private void drawIfClear(Graphics2D g, String text, int at, List<Integer> taken) {
         for (int each : taken) {
             if (Math.abs(each - at) < 16) {
                 return;
@@ -586,34 +865,6 @@ public final class StudyPane extends JComponent {
 
     private int plotWidth() {
         return Math.max(1, getWidth() - canvas.axisWidth());
-    }
-
-    private double fittedLow(Viewport viewport) {
-        double lowest = Double.MAX_VALUE;
-
-        for (int bar = viewport.firstBar(); bar < viewport.lastBar(); bar++) {
-            for (double each : study.valueAt(bar)) {
-                if (!Double.isNaN(each)) {
-                    lowest = Math.min(lowest, each);
-                }
-            }
-        }
-
-        return lowest == Double.MAX_VALUE ? 0 : lowest;
-    }
-
-    private double fittedHigh(Viewport viewport) {
-        double highest = -Double.MAX_VALUE;
-
-        for (int bar = viewport.firstBar(); bar < viewport.lastBar(); bar++) {
-            for (double each : study.valueAt(bar)) {
-                if (!Double.isNaN(each)) {
-                    highest = Math.max(highest, each);
-                }
-            }
-        }
-
-        return highest == -Double.MAX_VALUE ? 1 : highest;
     }
 
     private static DecimalFormat format() {

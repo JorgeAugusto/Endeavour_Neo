@@ -112,6 +112,23 @@ public interface Overlay {
     }
 
     /**
+     * @return the code of the scale this is computed on, or null to follow the chart
+     *
+     * <p>Here, and not only on the classes that have the setting, because the
+     * scale is part of the indicator's NAME wherever it is listed. Two slow
+     * stochastics in one pane -- the chart's own scale and five minutes -- are
+     * the same word and the same numbers, and without this they are two
+     * identical rows over two different lines.</p>
+     *
+     * <p>Null and not the chart's own code: an indicator that follows the chart
+     * has nothing to add to its name, and saying the scale twice on every row
+     * is how a legend stops being read.</p>
+     */
+    default String ownPeriod() {
+        return null;
+    }
+
+    /**
      * @return everything about this indicator that is NOT its shape, as one line
      *
      * <p>Kept apart from {@link #parameters()} because the two are stored

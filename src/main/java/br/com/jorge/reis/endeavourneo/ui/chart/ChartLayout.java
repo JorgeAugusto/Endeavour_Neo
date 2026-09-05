@@ -59,23 +59,39 @@ public record ChartLayout(String name, List<Entry> entries, List<Pane> panes) {
      * looking at something, and how much room the stochastic got is part of
      * that way.</p>
      */
-    public record Pane(String kindKey, List<Integer> parameters, String appearance,
-                       int height, boolean minimised) {
+    public record Pane(List<Entry> entries, int height, boolean minimised) {
 
-        /** @return this entry as a study, or null when the kind is unknown */
-        public br.com.jorge.reis.endeavourneo.ui.chart.study.Study build() {
-            br.com.jorge.reis.endeavourneo.ui.chart.study.Study study =
-                    br.com.jorge.reis.endeavourneo.ui.chart.study.StudyCatalog
-                            .build(kindKey, parameters);
+        /** A pane that holds one indicator, which is how they all started. */
+        public Pane(String kindKey, List<Integer> parameters, String appearance,
+                    int height, boolean minimised) {
+            this(List.of(new Entry(kindKey, parameters, true, appearance)),
+                    height, minimised);
+        }
 
-            if (study != null) {
-                study.applyAppearance(appearance);
+        /**
+         * @return the indicators of this pane, skipping any kind this version
+         *         does not have
+         *
+         * <p>Skipping and not failing: a layout written by a later version can
+         * name an indicator this one lacks, and refusing to open the chart
+         * would turn one missing line into a lost window.</p>
+         */
+        public List<br.com.jorge.reis.endeavourneo.ui.chart.study.Study> build() {
+            List<br.com.jorge.reis.endeavourneo.ui.chart.study.Study> found =
+                    new ArrayList<>(entries.size());
+
+            for (Entry entry : entries) {
+                br.com.jorge.reis.endeavourneo.ui.chart.study.Study study =
+                        br.com.jorge.reis.endeavourneo.ui.chart.study.StudyCatalog
+                                .build(entry.kindKey(), entry.parameters());
+
+                if (study != null) {
+                    study.applyAppearance(entry.appearance());
+                    found.add(study);
+                }
             }
 
-            // Null for a kind that no longer exists. A saved layout must not
-            // stop a chart from opening because one of its indicators went
-            // away between versions.
-            return study;
+            return found;
         }
     }
 
@@ -153,17 +169,12 @@ public record ChartLayout(String name, List<Entry> entries, List<Pane> panes) {
         return new ChartLayout(name, List.copyOf(entries), List.copyOf(panes));
     }
 
-    /** @return the studies this layout describes, skipping any unknown kind */
+    /** @return every study this layout describes, pane by pane */
     public List<br.com.jorge.reis.endeavourneo.ui.chart.study.Study> studies() {
-        List<br.com.jorge.reis.endeavourneo.ui.chart.study.Study> found =
-                new ArrayList<>(panes.size());
+        List<br.com.jorge.reis.endeavourneo.ui.chart.study.Study> found = new ArrayList<>();
 
         for (Pane pane : panes) {
-            br.com.jorge.reis.endeavourneo.ui.chart.study.Study study = pane.build();
-
-            if (study != null) {
-                found.add(study);
-            }
+            found.addAll(pane.build());
         }
 
         return found;

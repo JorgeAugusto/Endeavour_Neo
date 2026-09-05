@@ -70,7 +70,7 @@ public final class ChartLayouts {
             if (name != null) {
                 layouts.add(new ChartLayout(name,
                         parse(PREFS.get("layout." + i + ".entries", "")),
-                        parsePanes(PREFS.get("layout." + i + ".panes", ""))));
+                        panesOf(i)));
             }
         }
 
@@ -96,7 +96,13 @@ public final class ChartLayouts {
             // A key of its own rather than more fields on the entry lines. A
             // layout written before panes existed then loads untouched, and a
             // reader of the file can tell the two kinds apart at a glance.
-            PREFS.put("layout." + i + ".panes", formatPanes(layout.panes()));
+            //
+            // And a SECOND key now that a pane holds several indicators: the
+            // old one had a line per pane and no room for a second indicator
+            // in it. Writing both would mean two truths about the same pane,
+            // so the old key is cleared as the new one is written.
+            PREFS.put("layout." + i + ".panes2", formatPanes(layout.panes()));
+            PREFS.remove("layout." + i + ".panes");
         }
 
         // Anything past the new end is removed, or a shrinking list would leave
@@ -105,6 +111,7 @@ public final class ChartLayouts {
             PREFS.remove("layout." + i + ".name");
             PREFS.remove("layout." + i + ".entries");
             PREFS.remove("layout." + i + ".panes");
+            PREFS.remove("layout." + i + ".panes2");
         }
 
         PREFS.putInt(COUNT, layouts.size());
@@ -146,29 +153,63 @@ public final class ChartLayouts {
 
     // --------------------------------------------------------------- the text
 
+    /**
+     * @param i which layout, by its slot
+     * @return its panes, from whichever key holds them
+     *
+     * <p>The new key first, then the old one. A workspace written before a
+     * pane could hold more than one indicator still opens, and the first save
+     * afterwards moves it across.</p>
+     */
+    private static List<ChartLayout.Pane> panesOf(int i) {
+        String written = PREFS.get("layout." + i + ".panes2", "");
+
+        return written.isBlank()
+                ? parseOldPanes(PREFS.get("layout." + i + ".panes", ""))
+                : parsePanes(written);
+    }
+
+    /**
+     * One line per INDICATOR, each saying which pane it belongs to.
+     *
+     * <p>A line per pane would need a separator inside a separator to hold
+     * three indicators, and a format with two levels of punctuation is a
+     * format nobody can read in the file or fix by hand. The height and the
+     * minimised flag repeat on every line of a pane; they are read from the
+     * first and the repetition costs nothing.</p>
+     */
     static String formatPanes(List<ChartLayout.Pane> panes) {
         StringBuilder text = new StringBuilder();
+        int written = 0;
 
-        for (int i = 0; i < panes.size() && i < MAX_ENTRIES; i++) {
-            ChartLayout.Pane pane = panes.get(i);
+        for (int p = 0; p < panes.size(); p++) {
+            ChartLayout.Pane pane = panes.get(p);
 
-            if (i > 0) {
-                text.append('\n');
-            }
-
-            text.append(pane.kindKey()).append('|');
-
-            for (int p = 0; p < pane.parameters().size(); p++) {
-                if (p > 0) {
-                    text.append(',');
+            for (ChartLayout.Entry entry : pane.entries()) {
+                if (written >= MAX_ENTRIES) {
+                    return text.toString();
                 }
 
-                text.append(pane.parameters().get(p));
-            }
+                if (written > 0) {
+                    text.append('\n');
+                }
 
-            text.append('|').append(pane.height())
-                    .append('|').append(pane.minimised())
-                    .append('|').append(pane.appearance());
+                written++;
+
+                text.append(p).append('|').append(entry.kindKey()).append('|');
+
+                for (int n = 0; n < entry.parameters().size(); n++) {
+                    if (n > 0) {
+                        text.append(',');
+                    }
+
+                    text.append(entry.parameters().get(n));
+                }
+
+                text.append('|').append(pane.height())
+                        .append('|').append(pane.minimised())
+                        .append('|').append(entry.appearance());
+            }
         }
 
         return text.toString();
@@ -181,41 +222,92 @@ public final class ChartLayouts {
             return panes;
         }
 
+        List<ChartLayout.Entry> gathering = new ArrayList<>();
+        int belongsTo = -1;
+        int height = 0;
+        boolean minimised = false;
+
         for (String line : text.split("\n")) {
             String[] fields = line.split("\\|");
 
-            if (fields.length < 4) {
+            if (fields.length < 5) {
                 // Skipped in silence, like a malformed overlay line: one bad
                 // line must not cost the other five.
                 continue;
             }
 
-            List<Integer> parameters = new ArrayList<>();
+            int mine = number(fields[0], -1);
 
-            for (String piece : fields[1].split(",")) {
-                try {
-                    parameters.add(Integer.valueOf(piece.trim()));
-                } catch (NumberFormatException e) {
-                    parameters.clear();
-
-                    break;
-                }
+            if (mine < 0) {
+                continue;
             }
 
-            int height;
-
-            try {
-                height = Integer.parseInt(fields[2].trim());
-            } catch (NumberFormatException e) {
-                height = 0;
+            if (mine != belongsTo && !gathering.isEmpty()) {
+                panes.add(new ChartLayout.Pane(List.copyOf(gathering), height, minimised));
+                gathering.clear();
             }
 
-            panes.add(new ChartLayout.Pane(fields[0].trim(), List.copyOf(parameters),
-                    fields.length > 4 ? fields[4] : "",
-                    height, Boolean.parseBoolean(fields[3].trim())));
+            belongsTo = mine;
+            height = number(fields[3], 0);
+            minimised = Boolean.parseBoolean(fields[4].trim());
+
+            gathering.add(new ChartLayout.Entry(fields[1].trim(), numbers(fields[2]), true,
+                    fields.length > 5 ? fields[5] : ""));
+        }
+
+        if (!gathering.isEmpty()) {
+            panes.add(new ChartLayout.Pane(List.copyOf(gathering), height, minimised));
         }
 
         return panes;
+    }
+
+    /** The shape written before a pane could hold more than one indicator. */
+    static List<ChartLayout.Pane> parseOldPanes(String text) {
+        List<ChartLayout.Pane> panes = new ArrayList<>();
+
+        if (text == null || text.isBlank()) {
+            return panes;
+        }
+
+        for (String line : text.split("\n")) {
+            String[] fields = line.split("\\|");
+
+            if (fields.length < 4) {
+                continue;
+            }
+
+            panes.add(new ChartLayout.Pane(fields[0].trim(), numbers(fields[1]),
+                    fields.length > 4 ? fields[4] : "",
+                    number(fields[2], 0), Boolean.parseBoolean(fields[3].trim())));
+        }
+
+        return panes;
+    }
+
+    private static List<Integer> numbers(String text) {
+        List<Integer> found = new ArrayList<>();
+
+        for (String piece : text.split(",")) {
+            try {
+                found.add(Integer.valueOf(piece.trim()));
+            } catch (NumberFormatException e) {
+                // One unreadable number makes the whole list meaningless: the
+                // indicator would be built with the wrong shape rather than
+                // with its defaults.
+                return List.of();
+            }
+        }
+
+        return List.copyOf(found);
+    }
+
+    private static int number(String text, int fallback) {
+        try {
+            return Integer.parseInt(text.trim());
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
     }
 
     static String format(List<ChartLayout.Entry> entries) {
