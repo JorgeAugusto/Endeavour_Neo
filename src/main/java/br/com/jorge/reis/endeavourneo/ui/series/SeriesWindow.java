@@ -85,18 +85,54 @@ public final class SeriesWindow extends JDialog {
 
     private final JLabel warning = new JLabel(" ");
 
+    /**
+     * The lock: this series may only be used through its segments.
+     *
+     * <p>Off by default, and it has to be: a series arrives with no segments at
+     * all, and a lock that came on by itself would make every new series
+     * unopenable until somebody worked out why.</p>
+     */
+    private final javax.swing.JCheckBox segmentsOnly =
+            new javax.swing.JCheckBox(Messages.get("series.segmentsOnly"));
+
     /** The series being edited, so switching away saves what was typed. */
     private transient String editing;
 
-    /** Its bars, read once, for counting sessions. */
-    private transient PriceSeries bars;
+    /**
+     * The days it holds, read once.
+     *
+     * <p><b>Days and not bars.</b> Everything this window asks -- where the
+     * data starts, where it ends, how many sessions a segment covers -- is
+     * answered by the list of days, and a tick source can produce that list
+     * from a directory listing while a bar series has to be read for it. Asking
+     * in days is what lets the two sit in the same combo box. See {@link
+     * Segmentable}.</p>
+     */
+    private transient java.util.NavigableSet<java.time.LocalDate> days =
+            new java.util.TreeSet<>();
 
     private SeriesWindow(Window owner) {
         super(owner, Messages.get("series.title"), ModalityType.MODELESS);
 
-        for (String each : SeriesCatalog.names()) {
+        // Series AND tick sources. The tape is a series of the same market at
+        // a finer resolution, and "which stretch of it am I allowed to look at"
+        // is the same question there as it is over minutes.
+        for (String each : Segmentable.keys()) {
             series.addItem(each);
         }
+
+        series.setRenderer(new javax.swing.DefaultListCellRenderer() {
+
+            private static final long serialVersionUID = 1L;
+
+            @Override
+            public java.awt.Component getListCellRendererComponent(javax.swing.JList<?> list,
+                    Object value, int index, boolean chosen, boolean focused) {
+                return super.getListCellRendererComponent(list,
+                        value == null ? null : Segmentable.labelOf(String.valueOf(value)),
+                        index, chosen, focused);
+            }
+        });
 
         series.addActionListener(e -> {
             save();
@@ -146,8 +182,19 @@ public final class SeriesWindow extends JDialog {
         row.add(new JLabel(Messages.get("series.series")));
         row.add(series);
 
+        segmentsOnly.setToolTipText(Messages.get("series.segmentsOnly.hint"));
+        segmentsOnly.addActionListener(e -> {
+            Segmentation.setSegmentsOnly(editing, segmentsOnly.isSelected());
+            refreshWarning();
+        });
+
+        JPanel lock = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+
+        lock.add(segmentsOnly);
+
         panel.add(row);
         panel.add(indented(about));
+        panel.add(lock);
 
         return panel;
     }
@@ -157,23 +204,27 @@ public final class SeriesWindow extends JDialog {
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 6));
 
         JButton add = new JButton(Messages.get("series.add"));
+        JButton show = new JButton(Messages.get("series.show"));
         JButton edit = new JButton(Messages.get("series.edit"));
         JButton remove = new JButton(Messages.get("series.remove"));
 
         // Nothing selected, nothing to edit or remove. A button that is always
         // enabled and sometimes does nothing teaches the reader to distrust
         // every button beside it.
+        show.setEnabled(false);
         edit.setEnabled(false);
         remove.setEnabled(false);
 
         table.getSelectionModel().addListSelectionListener(e -> {
             boolean picked = table.getSelectedRow() >= 0;
 
+            show.setEnabled(picked);
             edit.setEnabled(picked);
             remove.setEnabled(picked);
         });
 
-        edit.addActionListener(e -> reviseSelected());
+        show.addActionListener(e -> openSelected(true));
+        edit.addActionListener(e -> openSelected(false));
 
         // The row itself, too. Double click opens is what the tree does and
         // what every list in every IDE does, and a table that only responds to
@@ -183,7 +234,7 @@ public final class SeriesWindow extends JDialog {
             @Override
             public void mouseClicked(java.awt.event.MouseEvent clicked) {
                 if (clicked.getClickCount() == 2) {
-                    reviseSelected();
+                    openSelected(false);
                 }
             }
         });
@@ -193,26 +244,20 @@ public final class SeriesWindow extends JDialog {
             // unreadable series the old behaviour stands: a row appears and is
             // typed into. Refusing to add a segment because a FILE will not
             // open would be the window losing a job it can still do.
-            if (bars == null || bars.size() == 0) {
+            if (days.isEmpty()) {
                 model.add(suggested());
 
                 return;
             }
 
-            SegmentDialog.ask(this, editing,
-                            br.com.jorge.reis.endeavourneo.domain.market.Sessions.of(bars),
+            SegmentDialog.ask(this, editing, days,
                             List.copyOf(model.segments), suggested())
                     .ifPresent(model::add);
         });
-        remove.addActionListener(e -> {
-            int row = table.getSelectedRow();
-
-            if (row >= 0) {
-                model.remove(row);
-            }
-        });
+        remove.addActionListener(e -> removeSelected());
 
         buttons.add(add);
+        buttons.add(show);
         buttons.add(edit);
         buttons.add(remove);
 
@@ -237,20 +282,52 @@ public final class SeriesWindow extends JDialog {
      * always overlaps itself, and a window that opened saying "choca com
      * Testes" while editing Testes would be right and useless.</p>
      */
-    private void reviseSelected() {
+    private void openSelected(boolean onlyLooking) {
         int row = table.getSelectedRow();
 
-        if (row < 0 || bars == null || bars.size() == 0) {
+        if (row < 0 || days.isEmpty()) {
             return;
         }
 
         List<Segment> others = new java.util.ArrayList<>(model.segments);
         Segment chosen = others.remove(row);
 
-        SegmentDialog.revise(this, editing,
-                        br.com.jorge.reis.endeavourneo.domain.market.Sessions.of(bars),
-                        others, chosen)
+        if (onlyLooking) {
+            SegmentDialog.view(this, editing, days, others, chosen);
+
+            return;
+        }
+
+        SegmentDialog.revise(this, editing, days, others, chosen)
                 .ifPresent(segment -> model.replace(row, segment));
+    }
+
+    /**
+     * Removes the chosen segment, after asking.
+     *
+     * <p><b>Asked, like everything this application deletes.</b> A segment is
+     * two dates and a name, so losing one is not a catastrophe -- but the
+     * button sits beside two that open a window, the list has no undo, and a
+     * misfire here is silent. The question costs a keystroke; noticing the loss
+     * a week later costs the segment.</p>
+     */
+    private void removeSelected() {
+        int row = table.getSelectedRow();
+
+        if (row < 0) {
+            return;
+        }
+
+        Segment chosen = model.segments.get(row);
+        int answer = javax.swing.JOptionPane.showConfirmDialog(this,
+                Messages.get("series.removeAsk", chosen.name()),
+                Messages.get("series.removeTitle"),
+                javax.swing.JOptionPane.YES_NO_OPTION,
+                javax.swing.JOptionPane.WARNING_MESSAGE);
+
+        if (answer == javax.swing.JOptionPane.YES_OPTION) {
+            model.remove(row);
+        }
     }
 
     /**
@@ -274,34 +351,24 @@ public final class SeriesWindow extends JDialog {
     }
 
     private LocalDate firstDay() {
-        return bars == null || bars.size() == 0
-                ? LocalDate.now()
-                : Instant.ofEpochMilli(bars.timeAt(0)).atZone(ZONE).toLocalDate();
+        return days.isEmpty() ? LocalDate.now() : days.first();
     }
 
     private void load() {
         editing = String.valueOf(series.getSelectedItem());
-        bars = null;
 
-        try {
-            bars = SeriesCatalog.open(editing).orElse(null);
-        } catch (IOException e) {
-            // The counts go blank; the segments are still editable, which is
-            // what this window is for.
-            bars = null;
-        }
+        // The counts go blank when this comes back empty; the segments are
+        // still listed and still editable, which is what this window is for.
+        days = Segmentable.sessionsOf(editing);
 
-        about.setText(bars == null || bars.size() == 0
+        about.setText(days.isEmpty()
                 ? Messages.get("series.unreadable")
-                : Messages.get("series.about", firstDay().format(DAY),
-                        lastDay().format(DAY), String.format("%,d", sessionsIn(bars))));
+                : Messages.get("series.about", days.first().format(DAY),
+                        days.last().format(DAY), String.format("%,d", days.size())));
 
         model.replaceAll(Segmentation.of(editing));
+        segmentsOnly.setSelected(Segmentation.segmentsOnly(editing));
         refreshWarning();
-    }
-
-    private LocalDate lastDay() {
-        return Instant.ofEpochMilli(bars.timeAt(bars.size() - 1)).atZone(ZONE).toLocalDate();
     }
 
     private void save() {
@@ -313,51 +380,38 @@ public final class SeriesWindow extends JDialog {
     private void refreshWarning() {
         List<String> clashing = Segmentation.overlapping(model.segments);
 
-        warning.setText(clashing.isEmpty() ? " "
-                : Messages.get("series.overlap", String.join(", ", clashing)));
+        if (!clashing.isEmpty()) {
+            warning.setText(Messages.get("series.overlap", String.join(", ", clashing)));
+
+            return;
+        }
+
+        // A locked series with nothing to unlock is a series nobody can open,
+        // and the reader who did it will not connect the two by themselves --
+        // the chart simply refuses, somewhere else, later.
+        warning.setText(segmentsOnly.isSelected() && model.segments.isEmpty()
+                ? Messages.get("series.lockedEmpty") : " ");
     }
 
-    /** @return how many sessions of the series that segment covers */
+    /**
+     * @return how many sessions of the series that segment covers
+     *
+     * <p>A walk over a set of days, not over the bars: the set is already
+     * one entry per session, so this is a subset and a size rather than four
+     * years of minutes read again for every row of the table.</p>
+     */
     private int sessionsCovered(Segment segment) {
-        if (bars == null) {
+        if (days.isEmpty()) {
             return 0;
         }
 
-        LocalDate seen = null;
-        int days = 0;
+        java.time.LocalDate last = segment.to() == null ? days.last() : segment.to();
 
-        for (int i = 0; i < bars.size(); i++) {
-            LocalDate day = Instant.ofEpochMilli(bars.timeAt(i)).atZone(ZONE).toLocalDate();
-
-            if (day.equals(seen)) {
-                continue;
-            }
-
-            seen = day;
-
-            if (segment.covers(day)) {
-                days++;
-            }
+        if (last.isBefore(segment.from())) {
+            return 0;
         }
 
-        return days;
-    }
-
-    private static int sessionsIn(PriceSeries series) {
-        LocalDate seen = null;
-        int days = 0;
-
-        for (int i = 0; i < series.size(); i++) {
-            LocalDate day = Instant.ofEpochMilli(series.timeAt(i)).atZone(ZONE).toLocalDate();
-
-            if (!day.equals(seen)) {
-                seen = day;
-
-                days++;
-            }
-        }
-
-        return days;
+        return days.subSet(segment.from(), true, last, true).size();
     }
 
     /** A panel that stacks its rows, which is all the header needs. */

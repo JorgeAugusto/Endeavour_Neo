@@ -393,7 +393,23 @@ public final class MainWindow extends JFrame {
         // names like "Sem título", and showing prices under a title that names
         // no instrument is worse than quietly correcting it -- which also
         // repairs the entry, since what is open is what gets remembered.
-        String name = SeriesCatalog.has(series) ? series : SeriesCatalog.defaultName();
+        // A name can ask for a stretch: "winfull-1m#treino". See Segmentation.
+        String asked = br.com.jorge.reis.endeavourneo.platform.Segmentation.seriesIn(series);
+        br.com.jorge.reis.endeavourneo.domain.market.Segment segment =
+                br.com.jorge.reis.endeavourneo.platform.Segmentation.segmentIn(series);
+
+        // THE LOCK. A series the reader marked as segments-only does not open
+        // whole, and saying so out loud is the entire point: the alternative is
+        // a window full of test data that looks like every other window.
+        if (segment == null && SeriesCatalog.has(asked)
+                && br.com.jorge.reis.endeavourneo.platform.Segmentation.segmentsOnly(asked)) {
+            console.write(Messages.get("console.locked", asked));
+            status.say(Messages.get("console.locked", asked));
+
+            return null;
+        }
+
+        String name = SeriesCatalog.has(asked) ? asked : SeriesCatalog.defaultName();
 
         // ALWAYS a new chart, never fronting an existing one. A terminal is
         // expected to show the same instrument at several timeframes at once,
@@ -401,7 +417,7 @@ public final class MainWindow extends JFrame {
         // zoom levels. Fronting instead -- the semantics of an IDE tab, one
         // editor per file -- is wrong for a chart and was the previous
         // behaviour.
-        String title = uniqueTitle(SeriesCatalog.has(name) ? name : series);
+        String title = uniqueTitle(SeriesCatalog.has(name) ? series : series);
         ChartHolder holder = new ChartHolder(title, desktop, this, () -> {
             charts.remove(title);
             rememberCharts();
@@ -410,7 +426,12 @@ public final class MainWindow extends JFrame {
         // The canvas needs the instrument to find its tick sessions: they are
         // named winfut-2021-01-04.bin and the chart calls itself winfut-1m.
         holder.canvas().setInstrument(name);
-        holder.canvas().setSeries(seriesFor(name, title));
+
+        // Sliced, or not: SegmentedSeries hands back the base itself when there
+        // is no segment, so nothing below has to know which of the two it got.
+        holder.canvas().setSeries(
+                br.com.jorge.reis.endeavourneo.domain.market.SegmentedSeries.of(
+                        seriesFor(name, title), segment, java.time.ZoneId.systemDefault()));
 
         // Every chart accepts a replay dropped on it, from the moment it opens.
         br.com.jorge.reis.endeavourneo.ui.replay.ReplayDrop.enable(holder);

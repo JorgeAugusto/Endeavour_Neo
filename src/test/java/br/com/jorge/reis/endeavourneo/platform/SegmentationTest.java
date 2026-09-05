@@ -18,6 +18,7 @@
 package br.com.jorge.reis.endeavourneo.platform;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -52,12 +53,12 @@ class SegmentationTest {
 
     @BeforeEach
     void useATemporaryFile() {
-        Segmentation.useForTest(new Settings(folder.resolve("workspace.properties"), "a test"));
+        Segmentation.useForTest(folder.resolve("workspace.properties"));
     }
 
     @AfterEach
     void putTheWorkspaceBack() {
-        Segmentation.useForTest(null);
+        Segmentation.stopUsingTestStore();
     }
 
     @Test
@@ -167,5 +168,59 @@ class SegmentationTest {
                 new Segment("teste", LocalDate.of(2025, 1, 1), LocalDate.of(2025, 12, 31)));
 
         assertEquals(List.of("tudo / teste"), Segmentation.overlapping(clashing));
+    }
+
+    @Test
+    @DisplayName("um segmento tem nome composto, e ele volta inteiro")
+    void aSegmentHasACompoundName() {
+        Segment treino = new Segment("treino",
+                LocalDate.of(2020, 9, 1), LocalDate.of(2023, 12, 29));
+
+        Segmentation.set("winfull-1m", List.of(treino));
+
+        String name = Segmentation.nameOf("winfull-1m", treino);
+
+        assertEquals("winfull-1m#treino", name);
+        assertEquals("winfull-1m", Segmentation.seriesIn(name));
+        assertEquals(treino, Segmentation.segmentIn(name));
+    }
+
+    @Test
+    @DisplayName("um nome sem segmento aponta para a serie inteira")
+    void aPlainNameAsksForEverything() {
+        assertEquals("winfull-1m", Segmentation.seriesIn("winfull-1m"));
+        assertNull(Segmentation.segmentIn("winfull-1m"));
+    }
+
+    @Test
+    @DisplayName("um segmento que sumiu vira pedido pela serie inteira")
+    void aStaleNameFallsBackToTheWhole() {
+        // The safe direction: a locked series then refuses out loud, instead of
+        // quietly showing everything because a name went stale.
+        Segmentation.set("winfull-1m", List.of(new Segment("teste",
+                LocalDate.of(2025, 1, 2), LocalDate.of(2026, 9, 1))));
+
+        assertNull(Segmentation.segmentIn("winfull-1m#treino"));
+    }
+
+    @Test
+    @DisplayName("a trava sobrevive a gravar segmentos")
+    void theLockOutlivesASave() {
+        Segmentation.setSegmentsOnly("winfull-1m", true);
+        Segmentation.set("winfull-1m", List.of(new Segment("treino",
+                LocalDate.of(2020, 9, 1), LocalDate.of(2023, 12, 29))));
+
+        assertTrue(Segmentation.segmentsOnly("winfull-1m"),
+                "saving segments wiped the lock, which is the one thing it must not do");
+
+        Segmentation.setSegmentsOnly("winfull-1m", false);
+
+        assertFalse(Segmentation.segmentsOnly("winfull-1m"));
+    }
+
+    @Test
+    @DisplayName("uma serie nunca trancada e uma destrancada sao a mesma coisa")
+    void unlockedIsUnlocked() {
+        assertFalse(Segmentation.segmentsOnly("nunca-vista"));
     }
 }

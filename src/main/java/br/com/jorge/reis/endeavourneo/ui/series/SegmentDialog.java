@@ -99,6 +99,33 @@ public final class SegmentDialog extends JDialog {
     /** Set while the dates are being written FROM the handles, and the reverse. */
     private transient boolean echoing;
 
+    /** Whether this window only shows. Nothing in it moves, and nothing is saved. */
+    private final transient boolean readOnly;
+
+    /**
+     * What the window is for.
+     *
+     * <p>Three uses of one window, and the differences between them are two
+     * words and a switch: what it is called, what its button says, and whether
+     * anything can be moved. Three windows would have been three chances for
+     * the map to disagree with itself.</p>
+     */
+    private enum Mode {
+
+        CREATE("segment.title", "segment.create"),
+        EDIT("segment.editTitle", "segment.save"),
+        VIEW("segment.viewTitle", "segment.close");
+
+        private final String title;
+
+        private final String button;
+
+        Mode(String title, String button) {
+            this.title = title;
+            this.button = button;
+        }
+    }
+
     /**
      * The cells of the summary, left to right.
      *
@@ -114,11 +141,12 @@ public final class SegmentDialog extends JDialog {
     };
 
     private SegmentDialog(Window owner, String series, List<LocalDate> sessions,
-                          List<Segment> segments, Segment start, boolean editing) {
-        super(owner, Messages.get(editing ? "segment.editTitle" : "segment.title"),
-                Dialog.ModalityType.APPLICATION_MODAL);
+                          List<Segment> segments, Segment start, Mode mode) {
+        super(owner, Messages.get(mode.title), Dialog.ModalityType.APPLICATION_MODAL);
 
-        create.setText(Messages.get(editing ? "segment.save" : "segment.create"));
+        this.readOnly = mode == Mode.VIEW;
+
+        create.setText(Messages.get(mode.button));
 
         this.days = sessions;
         this.existing = segments;
@@ -149,6 +177,18 @@ public final class SegmentDialog extends JDialog {
 
         followHandles();
 
+        if (readOnly) {
+            // Shown, not offered. Everything still reads -- the map, the count,
+            // the sentence -- and nothing takes a hand: a window that looks
+            // editable and silently discards what was typed is worse than one
+            // that plainly does not edit.
+            name.setEditable(false);
+            from.setEnabled(false);
+            to.setEnabled(false);
+            range.setEnabled(false);
+            range.setFocusable(false);
+        }
+
         pack();
         setMinimumSize(new Dimension(620, getHeight()));
         setLocationRelativeTo(owner);
@@ -162,7 +202,7 @@ public final class SegmentDialog extends JDialog {
     public static java.util.Optional<Segment> ask(Window owner, String series,
                                                   NavigableSet<LocalDate> sessions,
                                                   List<Segment> segments, Segment start) {
-        return show(owner, series, sessions, segments, start, false);
+        return show(owner, series, sessions, segments, start, Mode.CREATE);
     }
 
     /**
@@ -179,19 +219,32 @@ public final class SegmentDialog extends JDialog {
     public static java.util.Optional<Segment> revise(Window owner, String series,
                                                      NavigableSet<LocalDate> sessions,
                                                      List<Segment> others, Segment start) {
-        return show(owner, series, sessions, others, start, true);
+        return show(owner, series, sessions, others, start, Mode.EDIT);
+    }
+
+    /**
+     * The same window again, with nothing that moves.
+     *
+     * <p>For looking. A segment is read the same way it is chosen -- against
+     * what is around it -- so the answer to "how is this one set up" is this
+     * picture, not a row of dates in a table.</p>
+     */
+    public static void view(Window owner, String series,
+                            NavigableSet<LocalDate> sessions,
+                            List<Segment> others, Segment shown) {
+        show(owner, series, sessions, others, shown, Mode.VIEW);
     }
 
     private static java.util.Optional<Segment> show(Window owner, String series,
                                                     NavigableSet<LocalDate> sessions,
                                                     List<Segment> segments, Segment start,
-                                                    boolean editing) {
+                                                    Mode mode) {
         if (sessions == null || sessions.isEmpty()) {
             return java.util.Optional.empty();
         }
 
         SegmentDialog dialog = new SegmentDialog(owner, series,
-                new ArrayList<>(sessions), new ArrayList<>(segments), start, editing);
+                new ArrayList<>(sessions), new ArrayList<>(segments), start, mode);
 
         dialog.setVisible(true);
 
@@ -375,10 +428,22 @@ public final class SegmentDialog extends JDialog {
 
         cancel.addActionListener(e -> dispose());
         create.addActionListener(e -> {
-            chosen = current();
+            if (!readOnly) {
+                chosen = current();
+            }
 
             dispose();
         });
+
+        if (readOnly) {
+            // One button, and it closes. A "Cancelar" beside a "Fechar" would
+            // ask the reader which of the two does nothing.
+            create.addActionListener(e -> dispose());
+            getRootPane().setDefaultButton(create);
+            row.add(create);
+
+            return row;
+        }
 
         getRootPane().setDefaultButton(create);
 
@@ -457,7 +522,7 @@ public final class SegmentDialog extends JDialog {
 
         map.showFresh(now, clash);
         range.setClashing(clash);
-        create.setEnabled(!clash);
+        create.setEnabled(!clash || readOnly);
 
         Period spread = Period.between(now.from(), now.to());
         long calendar = ChronoUnit.DAYS.between(now.from(), now.to()) + 1;

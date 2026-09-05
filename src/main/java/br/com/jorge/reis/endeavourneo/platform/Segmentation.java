@@ -77,9 +77,28 @@ public final class Segmentation {
         return store == null ? Settings.workspace() : store;
     }
 
-    /** Package-visible for the tests; null puts the workspace back. */
-    static void useForTest(Settings other) {
-        store = other;
+    /**
+     * @param file where the test wants its own settings written
+     *
+     * <p><b>Public because the tree now reads segments.</b> It used to be
+     * package-visible, which was right while only this package's tests needed
+     * it -- and stopped being right the moment a series in the navigator grew
+     * its segments as children. A test of the tree that reads the developer's
+     * own workspace passes or fails by what happens to be saved on that
+     * machine, which is the flakiness this codebase has already paid for
+     * once.</p>
+     *
+     * <p>A Path and not a {@link Settings}, so that class's constructor can
+     * stay closed: a test needs an isolated store, not the ability to build one
+     * of any shape.</p>
+     */
+    public static void useForTest(java.nio.file.Path file) {
+        store = new Settings(file, "a test");
+    }
+
+    /** Puts the real workspace back. Named apart so neither call is ambiguous. */
+    public static void stopUsingTestStore() {
+        store = null;
     }
 
     /** @return the segments of that series, in the order they were saved */
@@ -129,6 +148,83 @@ public final class Segmentation {
     }
 
     /**
+     * What separates a series from one of its segments in a name.
+     *
+     * <p>A chart of a stretch has to be openable, remembered in the workspace
+     * and reopened later, and all three of those travel as ONE string. So a
+     * segment gets a compound name -- {@code winfull-1m#treino} -- and the
+     * three methods below are the only place that knows it.</p>
+     */
+    public static final String MARK = "#";
+
+    /** @return how that segment of that series is named, in one string */
+    public static String nameOf(String series, Segment segment) {
+        return series + MARK + segment.name();
+    }
+
+    /** @return the series part of a name, which is the whole of it when there is no segment */
+    public static String seriesIn(String name) {
+        int at = name == null ? -1 : name.indexOf(MARK);
+
+        return at < 0 ? name : name.substring(0, at);
+    }
+
+    /**
+     * @return the segment that name points at, or null when it points at none
+     *
+     * <p>Null also when the name asks for a segment that is no longer there --
+     * renamed, or removed. That is the safe direction: the caller then sees a
+     * request for the WHOLE series, which a locked series refuses out loud. The
+     * other way round, quietly showing everything because a name went stale, is
+     * the mistake this whole mechanism exists to prevent.</p>
+     */
+    public static Segment segmentIn(String name) {
+        int at = name == null ? -1 : name.indexOf(MARK);
+
+        if (at < 0) {
+            return null;
+        }
+
+        String wanted = name.substring(at + MARK.length());
+
+        for (Segment each : of(name.substring(0, at))) {
+            if (each.name().equals(wanted)) {
+                return each;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return whether that series may only be used through its segments
+     *
+     * <p><b>A lock the reader puts on themselves.</b> Turned on for a series
+     * that holds everything -- the whole history, search years and test years
+     * together -- it makes the series itself unopenable, so the only way in is
+     * to name which stretch. Turned off for the small ones, where the whole
+     * thing IS the stretch.</p>
+     *
+     * <p>This is the cheapest defence there is against the expensive mistake:
+     * looking at test data without noticing, and then believing what was found
+     * in it. Nothing here decides that a series should be locked; it only
+     * remembers that the reader decided it.</p>
+     */
+    public static boolean segmentsOnly(String series) {
+        return store().getBoolean(ONLY + series, false);
+    }
+
+    public static void setSegmentsOnly(String series, boolean only) {
+        if (only) {
+            store().putBoolean(ONLY + series, true);
+        } else {
+            // Removed rather than written false, so a series that was never
+            // locked and one that was unlocked look the same in the file.
+            store().remove(ONLY + series);
+        }
+    }
+
+    /**
      * @return the segments that overlap another, by name
      *
      * <p>Reported, never prevented. Two segments sharing days is usually a
@@ -160,6 +256,16 @@ public final class Segmentation {
 
         return !one.from().isAfter(otherEnd) && !other.from().isAfter(oneEnd);
     }
+
+    /**
+     * Where the lock lives.
+     *
+     * <p>Under its OWN prefix, not under the series' segment keys, because
+     * {@link #set} clears everything beneath those before writing -- and a lock
+     * that vanished whenever a segment was added would be a lock nobody could
+     * rely on.</p>
+     */
+    private static final String ONLY = "segmentsOnly.";
 
     private static String keyOf(String series, int at, String field) {
         return PREFIX + series + "." + at + "." + field;

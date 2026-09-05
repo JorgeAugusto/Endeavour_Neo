@@ -18,6 +18,7 @@
 package br.com.jorge.reis.endeavourneo.ui.shell;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -97,6 +98,67 @@ class NavigatorTreeTest {
     }
 
     /** Every leaf under the tree, with its label and what it would open. */
+    /**
+     * The tree reads segments, so a test of the tree has to say which ones.
+     *
+     * <p>Without this it reads whatever is saved on the machine running the
+     * suite, and a series that happens to have two segments there stops being a
+     * leaf -- which is exactly how this test started failing.</p>
+     */
+    @org.junit.jupiter.api.BeforeEach
+    void isolateSegments(@TempDir Path store) {
+        br.com.jorge.reis.endeavourneo.platform.Segmentation.useForTest(
+                store.resolve("workspace.properties"));
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void giveTheWorkspaceBack() {
+        br.com.jorge.reis.endeavourneo.platform.Segmentation.stopUsingTestStore();
+    }
+
+    @Test
+    @DisplayName("os segmentos ficam embaixo da serie e abrem sozinhos")
+    void segmentsHangUnderTheirSeries(@TempDir Path folder) throws IOException {
+        base(folder, "winfull-1m");
+        SeriesCatalog.useFolderForTest(folder);
+
+        br.com.jorge.reis.endeavourneo.platform.Segmentation.set("winfull-1m", List.of(
+                new br.com.jorge.reis.endeavourneo.domain.market.Segment("treino",
+                        java.time.LocalDate.of(2020, 9, 1),
+                        java.time.LocalDate.of(2023, 12, 29))));
+
+        List<String[]> found = leaves(Navigator.treeModel());
+        String[] segment = found.stream()
+                .filter(each -> "winfull-1m#treino".equals(each[1]))
+                .findFirst()
+                .orElse(null);
+
+        assertNotNull(segment, "the segment is not in the tree");
+        assertTrue(segment[0].startsWith("treino"),
+                "the segment does not say its own name: " + segment[0]);
+    }
+
+    @Test
+    @DisplayName("uma serie trancada nao abre inteira, mas lista os segmentos")
+    void aLockedSeriesOpensNothingWhole(@TempDir Path folder) throws IOException {
+        base(folder, "winfull-1m");
+        SeriesCatalog.useFolderForTest(folder);
+
+        br.com.jorge.reis.endeavourneo.platform.Segmentation.set("winfull-1m", List.of(
+                new br.com.jorge.reis.endeavourneo.domain.market.Segment("teste",
+                        java.time.LocalDate.of(2025, 1, 2),
+                        java.time.LocalDate.of(2026, 9, 1))));
+        br.com.jorge.reis.endeavourneo.platform.Segmentation
+                .setSegmentsOnly("winfull-1m", true);
+
+        List<String[]> found = leaves(Navigator.treeModel());
+
+        assertTrue(found.stream().noneMatch(each -> "winfull-1m".equals(each[1])),
+                "the locked series can still be opened whole");
+        assertTrue(found.stream().anyMatch(each -> "winfull-1m#teste".equals(each[1])),
+                "the lock took the segments with it");
+    }
+
     private static List<String[]> leaves(TreeModel model) {
         List<String[]> found = new ArrayList<>();
 
@@ -119,10 +181,11 @@ class NavigatorTreeTest {
     }
 
     @Test
-    @DisplayName("the label carries the role and the name stays openable")
+    @DisplayName("the label is the market's name and the file name still opens it")
     void theLabelIsNotTheName(@TempDir Path folder) throws IOException {
-        // The whole point of the change: the reader sees what a base is FOR,
-        // and a double click still asks for the file. Showing the role by
+        // The label says WINFUT-FULL, because the file already sits under
+        // WINFUT and under "1 minuto" and repeating either is saying it three
+        // times. A double click still asks for the FILE. Showing a name by
         // renaming the node would break opening it, silently.
         base(folder, "winfull-1m");
         SeriesCatalog.useFolderForTest(folder);
@@ -134,10 +197,13 @@ class NavigatorTreeTest {
                 .orElse(null);
 
         assertNotNull(winn, "winfull-1m is not in the tree; leaves were " + leaves.size());
-        assertTrue(winn[0].startsWith("winfull-1m"), "the label lost the name: " + winn[0]);
-        assertTrue(winn[0].contains(Messages.orElse("navigator.role.source", "source")),
-                "the label does not say what the base is for: " + winn[0]);
+        assertEquals("WINFUT-FULL", winn[0]);
         assertEquals("winfull-1m", winn[1], "opening this leaf would ask for the label");
+
+        // And NOT the role. Every series is a source until a second one
+        // arrives, and a word that is on every line is a word nobody reads.
+        assertFalse(winn[0].contains(Messages.orElse("navigator.role.source", "source")),
+                "the label repeats what is true of every line: " + winn[0]);
     }
 
     @Test
@@ -239,7 +305,10 @@ class NavigatorTreeTest {
                 .orElse(null);
 
         assertNotNull(gold, "the base is not in the tree");
-        assertEquals("ouro-1m", gold[0], "an unknown base was decorated with a missing key");
+        assertFalse(gold[0].contains("!"),
+                "an unknown base was decorated with a missing key: " + gold[0]);
+        assertEquals("ouro", gold[0],
+                "with nothing to tell it from, a base keeps its market's name");
 
         DefaultMutableTreeNode root = (DefaultMutableTreeNode) Navigator.treeModel().getRoot();
         DefaultMutableTreeNode series = (DefaultMutableTreeNode) root.getChildAt(0);

@@ -21,6 +21,8 @@ import br.com.jorge.reis.endeavourneo.platform.Messages;
 
 import java.awt.BorderLayout;
 import br.com.jorge.reis.endeavourneo.platform.SeriesCatalog;
+import br.com.jorge.reis.endeavourneo.platform.Segmentation;
+import br.com.jorge.reis.endeavourneo.domain.market.Segment;
 
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -76,9 +78,13 @@ public final class Navigator extends JPanel {
 
                 Object node = tree.getLastSelectedPathComponent();
 
-                if (!(node instanceof DefaultMutableTreeNode leaf) || !leaf.isLeaf()) {
+                if (!(node instanceof DefaultMutableTreeNode leaf)) {
                     return;
                 }
+
+                // Not only leaves. A series with segments has children and is
+                // still openable -- as the whole thing -- so what decides is
+                // whether the node carries a name, not whether it is a twig.
 
                 // The NAME, never the label: the tree shows "winn-1m . busca"
                 // and the rest of the program only knows "winn-1m". A leaf with
@@ -219,7 +225,7 @@ public final class Navigator extends JPanel {
             }
 
             for (String name : byScale.get(scale)) {
-                under.add(new DefaultMutableTreeNode(new Leaf(name, labelOf(name))));
+                under.add(seriesNode(name));
             }
         }
 
@@ -233,6 +239,41 @@ public final class Navigator extends JPanel {
     }
 
     /**
+     * @return that series, with its segments hanging under it
+     *
+     * <p>The segments are where the work actually happens -- one stretch for
+     * searching, another kept unseen for testing -- so they belong in the tree
+     * beside everything else that can be opened, not only inside a settings
+     * window.</p>
+     *
+     * <p><b>A locked series carries no name</b>, which is what makes it refuse
+     * to open: the reader asked for that, in the series window, and the tree is
+     * where the asking has to show. It still lists its segments; it is the
+     * whole of it that is out of reach.</p>
+     */
+    private static DefaultMutableTreeNode seriesNode(String name) {
+        boolean locked = Segmentation.segmentsOnly(name);
+        DefaultMutableTreeNode node = new DefaultMutableTreeNode(new Leaf(
+                locked ? null : name,
+                locked ? labelOf(name) + "  ·  " + Messages.get("navigator.locked")
+                        : labelOf(name)));
+
+        for (Segment segment : Segmentation.of(name)) {
+            node.add(new DefaultMutableTreeNode(new Leaf(
+                    Segmentation.nameOf(name, segment), labelOf(segment))));
+        }
+
+        return node;
+    }
+
+    /** @return a segment as one line: its name, then where it runs */
+    private static String labelOf(Segment segment) {
+        return segment.name() + "  ·  " + segment.from()
+                + (segment.isOpenEnded()
+                        ? "  " + Messages.get("series.onwards") : "  a  " + segment.to());
+    }
+
+    /**
      * @return the name, and what the series is FOR when that is known
      *
      * <p>The role is what changes a decision: winn is where every hypothesis
@@ -243,8 +284,43 @@ public final class Navigator extends JPanel {
     private static String labelOf(String name) {
         String role = SeriesCatalog.roleOf(name);
 
-        return role == null
-                ? name : name + "  ·  " + Messages.orElse("navigator.role." + role, role);
+        // The role only when it DISTINGUISHES. Every series is a source until a
+        // second one arrives, and a word that is on every line is a word nobody
+        // reads -- while "export" beside one of three is the thing that stops
+        // the wrong file being opened.
+        return role == null || "source".equals(role)
+                ? displayOf(name)
+                : displayOf(name) + "  ·  " + Messages.orElse("navigator.role." + role, role);
+    }
+
+    /**
+     * @return the series as it is NAMED here, which is not its file name
+     *
+     * <p>{@code winfull-1m} sits under WINFUT and under "1 minuto", so saying
+     * either again is saying it three times. What is left is what actually
+     * tells this series from its neighbours -- {@code full} -- and it is read
+     * with the market: <b>WINFUT-FULL</b>.</p>
+     *
+     * <p>A series named after the market and nothing else keeps just the
+     * market's name. There is nothing to distinguish it from.</p>
+     */
+    private static String displayOf(String name) {
+        String instrument = SeriesCatalog.groupOf(name);
+        String scale = SeriesCatalog.scaleOf(name);
+        String rest = name;
+
+        if (!scale.isEmpty() && rest.endsWith("-" + scale)) {
+            rest = rest.substring(0, rest.length() - scale.length() - 1);
+        }
+
+        if (rest.startsWith(instrument)) {
+            rest = rest.substring(instrument.length());
+        }
+
+        String market = Messages.market(instrument);
+
+        return rest.isBlank() ? market
+                : market + "-" + rest.replace("-", "").toUpperCase(java.util.Locale.ROOT);
     }
 
     /**
@@ -294,12 +370,27 @@ public final class Navigator extends JPanel {
                 continue;
             }
 
-            node.add(new DefaultMutableTreeNode(new Leaf(null,
+            DefaultMutableTreeNode found = new DefaultMutableTreeNode(new Leaf(null,
                     Messages.get("navigator.tickSessions",
                             Messages.orElse("navigator.tickSource." + source.key(),
                                     source.key()),
                             String.valueOf(days.size()),
-                            days.get(0).toString(), days.get(days.size() - 1).toString()))));
+                            days.get(0).toString(), days.get(days.size() - 1).toString())));
+
+            // A tick source can be segmented like any other series -- see
+            // Segmentable -- and the segments are listed here for the same
+            // reason they are listed under a series: so the reader can see that
+            // they exist without opening a settings window to find out.
+            //
+            // They open nothing, because their parent opens nothing: a tick
+            // session is what a chart is REPLAYED from, not a chart.
+            for (br.com.jorge.reis.endeavourneo.domain.market.Segment segment
+                    : Segmentation.of(br.com.jorge.reis.endeavourneo.ui.series.Segmentable
+                            .keyOfTicks(instrument, source))) {
+                found.add(new DefaultMutableTreeNode(new Leaf(null, labelOf(segment))));
+            }
+
+            node.add(found);
         }
 
         return node.getChildCount() == 0 ? null : node;

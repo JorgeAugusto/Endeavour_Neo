@@ -92,6 +92,10 @@ final class RangeBar extends JComponent {
 
             @Override
             public void mousePressed(MouseEvent e) {
+                if (!isEnabled()) {
+                    return;
+                }
+
                 requestFocusInWindow();
                 grab(e.getX());
             }
@@ -239,6 +243,10 @@ final class RangeBar extends JComponent {
      * before any listener sees it.</p>
      */
     boolean nudge(int code) {
+        if (!isEnabled()) {
+            return false;
+        }
+
         int step;
 
         switch (code) {
