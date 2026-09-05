@@ -215,44 +215,11 @@ public final class Renko implements Aggregation {
      * @param sinceLow how far price ran down since that brick
      * @param sinceHigh how far price ran up since that brick
      * @param pending volume accumulated and not yet given to a brick
-     * @param coverLow the lowest price actually TRADED since the last brick
-     * @param coverHigh the highest
-     * @param tally the trades waiting to be given to a brick, by price level
-     *
-     * <p>The traded hull is not {@code sinceLow}/{@code sinceHigh}. Those two
-     * are reset to the anchor whenever a brick is laid, because they are the
-     * tail of the NEXT brick; this pair is reset to the range of the bar that
-     * laid it, because it answers a different question -- where were there
-     * trades. Reusing the tail for it threw away the price that laid the last
-     * brick and called its own level untraded. See {@link Untraded}.</p>
+     * @param tally what has traded since the last brick closed
      */
     public record Carry(double anchor, int direction,
                         double sinceLow, double sinceHigh, double pending,
-                        double coverLow, double coverHigh, TradeTally tally) {
-
-        /**
-         * @return the same ruler, with nothing counted as traded yet
-         *
-         * <p><b>Called when a new session starts, and only then.</b> The ruler
-         * carries across the night -- it has to, or the bricks would not line
-         * up -- but the TRADES do not. A brick drawn this morning by the first
-         * print of the day was created in one instant and nobody traded inside
-         * it; that yesterday's price passed through the same band, hours
-         * earlier, does not make it a traded brick.</p>
-         *
-         * <p>Read off the reference product on 03/09/2026 at 100 points: it
-         * draws <b>fifteen</b> grey bricks from 187.900 up to 189.400 and the
-         * first one it colours is 189.400 -&gt; 189.500. Carrying the hull
-         * across the night coloured the first two of those, because 02/09 went
-         * on trading between 187.800 and 188.100 for an hour after its last
-         * brick.</p>
-         */
-        public Carry atNewSession() {
-            return new Carry(anchor, direction, sinceLow, sinceHigh, pending,
-                    Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY,
-                    new TradeTally());
-        }
-    }
+                        TradeTally tally) { }
 
     /**
      * @param bricks what was laid
@@ -369,7 +336,7 @@ public final class Renko implements Aggregation {
         if (source == null || source.size() == 0) {
             return new Continued(PriceSeries.empty(),
                     from == null
-                            ? new Carry(0, 0, 0, 0, 0, 0, 0, new TradeTally())
+                            ? new Carry(0, 0, 0, 0, 0, new TradeTally())
                             : from);
         }
 
@@ -397,14 +364,6 @@ public final class Renko implements Aggregation {
         double sinceLow = from == null ? anchor : from.sinceLow();
         double sinceHigh = from == null ? anchor : from.sinceHigh();
 
-        // Where there were trades since the last brick. Apart from the two
-        // above on purpose: those are reset to the anchor when a brick is laid,
-        // and the anchor is a level on the grid rather than a price anybody
-        // paid. This pair is reset to the range of the bar that laid the brick,
-        // which is where the money actually changed hands.
-        double coverLow = from == null ? source.openAt(0) : from.coverLow();
-        double coverHigh = from == null ? source.openAt(0) : from.coverHigh();
-
         // Copied, never written through: a replay folds the same carry again
         // whenever a frame turns out to have laid nothing, and a tally emptied
         // by that attempt would take the trades with it.
@@ -412,13 +371,6 @@ public final class Renko implements Aggregation {
                 ? new TradeTally() : from.tally().copy();
 
         for (int i = 0; i < source.size(); i++) {
-            // Where there were trades before this bar arrived. A brick laid
-            // now covers a band of price; if neither this pair nor this bar's
-            // own range reaches into that band, nobody traded at those levels.
-            // See Untraded, and markGap below.
-            double coverBeforeLow = coverLow;
-            double coverBeforeHigh = coverHigh;
-
             double volume = source.volumeAt(i);
 
             if (Double.isFinite(volume)) {
@@ -426,10 +378,14 @@ public final class Renko implements Aggregation {
                 anyVolume = true;
             }
 
-            // BEFORE the bricks are laid, so the print that closes a brick is
-            // already in the tally -- it belongs to whichever band it landed
-            // in, which is the band ABOVE the brick it closed.
-            tally.add(source, i, brick);
+            // Held back until AFTER the bricks are laid: the print that
+            // closes a brick belongs to the one that starts, not to the one it
+            // finished. Measured on 03/09/2026, where the first print of the
+            // day closed a box carrying 146.009 trades and then opened the box
+            // that went on to hold 2.514 -- itself among them.
+            // What kind of bar this is has to be known before it lays
+            // anything -- see TradeTally.seeing.
+            tally.seeing(source, i);
 
             // Both extremes, in the order the bar most likely reached them: a
             // rising bar dips before it climbs. Reading the CLOSE alone was the
@@ -479,20 +435,23 @@ public final class Renko implements Aggregation {
                 int downNeeded = direction <= 0 ? 1 : reversal;
 
                 if (upSteps >= upNeeded) {
-                    int count = upSteps;
+                    // A TURN STARTS ONE BRICK AWAY. Classic renko, and what the
+                    // reference product draws: after a box closing at 188.100
+                    // it took a fall past 187.900 to turn, and it drew ONE box,
+                    // from 188.000 to 187.900 -- not two from 188.100 down.
+                    // Both of its last two boxes on 02/09/2026 open at 188.000,
+                    // which nothing else can produce, and both report a
+                    // variation of 200 points on a body of 100.
+                    int skip = upNeeded - 1;
+                    int count = upSteps - skip;
                     int at = bricks.size();
 
-                    anchor = laydown(bricks, stamps, untraded, counts, anchor, count, +1,
-                            source.timeAt(i));
+                    anchor = laydown(bricks, stamps, untraded, counts,
+                            anchor + skip * brick, count, +1, source.timeAt(i));
                     direction = +1;
                     made += count;
 
-                    // Before the tail is widened below: the body is what the
-                    // question is about, and open-to-close is the body whether
-                    // or not a tail was hung on it.
-                    settle(bricks, stamps, untraded, counts, at, tally,
-                            source.lowAt(i), source.highAt(i),
-                            coverBeforeLow, coverBeforeHigh);
+                    settle(bricks, stamps, untraded, counts, at, tally);
 
                     if (wicks) {
                         // Only the FIRST of a batch wears a tail: how far price
@@ -502,17 +461,16 @@ public final class Renko implements Aggregation {
                         bricks.get(at)[2] = Math.min(bricks.get(at)[2], sinceLow);
                     }
                 } else if (downSteps >= downNeeded) {
-                    int count = downSteps;
+                    int skip = downNeeded - 1;
+                    int count = downSteps - skip;
                     int at = bricks.size();
 
-                    anchor = laydown(bricks, stamps, untraded, counts, anchor, count, -1,
-                            source.timeAt(i));
+                    anchor = laydown(bricks, stamps, untraded, counts,
+                            anchor - skip * brick, count, -1, source.timeAt(i));
                     direction = -1;
                     made += count;
 
-                    settle(bricks, stamps, untraded, counts, at, tally,
-                            source.lowAt(i), source.highAt(i),
-                            coverBeforeLow, coverBeforeHigh);
+                    settle(bricks, stamps, untraded, counts, at, tally);
 
                     if (wicks) {
                         bricks.get(at)[1] = Math.max(bricks.get(at)[1], sinceHigh);
@@ -525,40 +483,17 @@ public final class Renko implements Aggregation {
                 }
             }
 
-            if (made > 0) {
-                if (tally.summarised()) {
-                    // Candles: the minute's volume cannot be put where it
-                    // happened, because the source never said where that was.
-                    // Splitting it equally is a convention, and it is named as
-                    // one in this class's own documentation.
-                    double each = pending / made;
-
-                    for (int b = bricks.size() - made; b < bricks.size(); b++) {
-                        bricks.get(b)[4] = each;
-                    }
-
-                    pending = 0.0;
-                } else {
-                    // Trades: settle() already gave each brick what landed in
-                    // it. What is left over belongs to the brick still forming.
-                    pending = tally.waiting();
-                }
-
-                // This bar laid the last brick, so the trades that count from
-                // here on are its own and whatever comes after.
-                coverLow = source.lowAt(i);
-                coverHigh = source.highAt(i);
-            } else {
-                coverLow = Math.min(coverLow, source.lowAt(i));
-                coverHigh = Math.max(coverHigh, source.highAt(i));
-            }
+            // This bar goes into the tally AFTER any bricks it laid, so it
+            // belongs to the one now forming rather than to the one it closed.
+            tally.add(source, i);
+            pending = tally.volume();
         }
 
         if (forming) {
             double now = source.closeAt(source.size() - 1);
             double[] shape = formingAt(
                     new Carry(anchor, direction, sinceLow, sinceHigh, pending,
-                            coverLow, coverHigh, tally), now);
+                            tally), now);
             double top = shape[1];
             double bottom = shape[2];
 
@@ -588,8 +523,7 @@ public final class Renko implements Aggregation {
         // brick appended just above is provisional and must not become the
         // starting point of the next stretch.
         return new Continued(assemble(bricks, stamps, untraded, counts, anyVolume),
-                new Carry(anchor, direction, sinceLow, sinceHigh, pending,
-                        coverLow, coverHigh, tally));
+                new Carry(anchor, direction, sinceLow, sinceHigh, pending, tally));
     }
 
     /**
@@ -645,78 +579,35 @@ public final class Renko implements Aggregation {
      */
     private void settle(List<double[]> bricks, List<Long> stamps,
                         List<Boolean> untraded, List<Long> counts, int at,
-                        TradeTally tally,
-                        double barLow, double barHigh,
-                        double coverLow, double coverHigh) {
+                        TradeTally tally) {
+        // THE FIRST BRICK OF A BATCH TAKES EVERYTHING; the rest take nothing.
+        // A batch is one price move: the first brick is the one that was being
+        // built, and the others were passed through in the same instant and
+        // were never anybody's chart. See TradeTally.
+        long trades = tally.trades();
+
+        if (!tally.summarised() && trades > 0) {
+            counts.set(at, trades);
+            stamps.set(at, tally.first());
+        }
+
+        bricks.get(at)[4] = tally.volume();
+
         for (int b = at; b < bricks.size(); b++) {
-            double open = bricks.get(b)[0];
-            double close = bricks.get(b)[3];
-
-            TradeTally.Cell mine = tally.claim(open, close, brick);
-
             if (tally.summarised()) {
-                // Candles cannot be counted, so the question is answered the
-                // only way it can be: from the prices the bars did report.
-                untraded.set(b, empty(open, close, coverLow, coverHigh)
-                        && empty(open, close, barLow, barHigh));
-
+                // Candles cannot be counted -- a minute is a summary of trades
+                // at times it does not report -- so nothing here is claimed
+                // either way. See Counted.
                 continue;
             }
 
-            counts.set(b, mine.trades);
-            bricks.get(b)[4] = mine.volume;
-            untraded.set(b, mine.trades == 0);
+            long mine = b == at ? trades : 0L;
 
-            if (mine.trades > 0) {
-                // The reference product stamps a brick with the FIRST trade in
-                // it, not with the one that closed it. Measured on 03/09/2026:
-                // its brick 189.400 -> 189.500 reads 09:02:46, which is the
-                // opening auction print that opened it; the trade that closed
-                // it printed at 09:02:47.
-                //
-                // A brick with no trades keeps the time it was created, which
-                // is the same answer -- there is nothing else it could mean.
-                //
-                // NEVER EARLIER THAN THE BRICK BEFORE IT. When one bar lays two
-                // bricks at once, each takes its own band's trades and those
-                // two sets overlap in time: measured on 02/09/2026, a pair laid
-                // together at 17:16 whose first trades were 17:06:38 and
-                // 17:06:04, in that order. Left alone the time axis would run
-                // backwards, which is a different thing from the irregular
-                // spacing a renko is supposed to have.
-                stamps.set(b, b == 0 ? mine.first
-                        : Math.max(mine.first, stamps.get(b - 1)));
-            }
-        }
-    }
-
-    /**
-     * @param open where the brick started
-     * @param close where it ended
-     * @param from the lowest of a set of traded prices
-     * @param to the highest
-     * @return whether no price in that set falls inside that brick
-     *
-     * <p><b>A brick owns the level it closes at and not the one it opened
-     * from.</b> Every boundary belongs to two bricks and a price sitting on one
-     * has to belong to exactly one of them — the one that was still forming
-     * when that price arrived, which is the brick closing there. A rising brick
-     * covers {@code (open, close]} and a falling one {@code [close, open)}.</p>
-     *
-     * <p>Used only where the trades cannot be counted, which is a renko built
-     * from candles: a bar with a range holds trades at prices it never names,
-     * so the best available answer is the hull of what the bars did report.
-     * Over trades, {@link TradeTally} answers exactly and this is not
-     * consulted.</p>
-     */
-    private boolean empty(double open, double close, double from, double to) {
-        double eps = brick * 1e-9;
-
-        if (close > open) {
-            return to <= open + eps || from > close + eps;
+            counts.set(b, mine);
+            untraded.set(b, mine == 0);
         }
 
-        return to < close - eps || from >= open - eps;
+        tally.clear();
     }
 
     private static PriceSeries assemble(List<double[]> bricks, List<Long> stamps,

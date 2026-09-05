@@ -18,6 +18,7 @@
 package br.com.jorge.reis.endeavourneo.domain.market;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.DisplayName;
@@ -26,6 +27,10 @@ import org.junit.jupiter.api.Test;
 /**
  * How many trades made a brick, how many contracts they carried, and when the
  * first of them arrived.
+ *
+ * <p>The rule under all of it: <b>a brick holds everything that traded while it
+ * was the one being built</b> — by time, not by price band. See {@link
+ * TradeTally}, where it is measured against the reference product.</p>
  */
 @DisplayName("Negocios por tijolo")
 class RenkoCountTest {
@@ -115,27 +120,29 @@ class RenkoCountTest {
     }
 
     @Test
-    @DisplayName("a brick holds the trades that landed in its own band")
-    void countedByBand() {
-        // Two prints inside the band, then one past 187.100 that closes the
-        // brick and belongs to the band ABOVE it.
+    @DisplayName("a brick holds every trade that arrived while it was forming")
+    void countedByTheStretch() {
+        // Three prints, then a fourth that takes price past 187.100 and closes
+        // the brick. The three belong to it; the fourth starts the next one.
         PriceSeries bricks = new Renko(100, 2, false)
                 .apply(trades(187_000, 187_050, 187_080, 187_110));
 
         assertEquals(1, bricks.size());
-        assertEquals(2, Counted.at(bricks, 0), "the print at 187.110 is not in this brick");
-        assertEquals(4.0, bricks.volumeAt(0), 1e-9, "two prints of two contracts");
+        assertEquals(3, Counted.at(bricks, 0));
+        assertEquals(6.0, bricks.volumeAt(0), 1e-9, "three prints of two contracts");
     }
 
     @Test
-    @DisplayName("the print sitting on the level below belongs to the brick under it")
-    void theLevelBelowIsNotMine() {
-        // 187.000 is the bottom of this brick's band and the top of the one
-        // beneath it, which is where it goes.
-        PriceSeries bricks = new Renko(100, 2, false)
-                .apply(trades(187_000, 187_050, 187_110));
+    @DisplayName("the print that closed a brick belongs to the next one")
+    void theClosingPrintStartsTheNext() {
+        PriceSeries source = trades(187_000, 187_050, 187_110, 187_130, 187_210);
+        PriceSeries bricks = new Renko(100, 2, false).apply(source);
 
-        assertEquals(1, Counted.at(bricks, 0));
+        assertEquals(2, bricks.size());
+        assertEquals(2, Counted.at(bricks, 0), "the print at 187.110 is not in the first");
+        assertEquals(2, Counted.at(bricks, 1), "and it is in the second");
+        assertEquals(source.timeAt(2), bricks.timeAt(1),
+                "the second brick starts at the print that closed the first");
     }
 
     @Test
@@ -144,35 +151,37 @@ class RenkoCountTest {
         PriceSeries source = trades(187_000, 187_050, 187_080, 187_110);
         PriceSeries bricks = new Renko(100, 2, false).apply(source);
 
-        assertEquals(source.timeAt(1), bricks.timeAt(0),
+        assertEquals(source.timeAt(0), bricks.timeAt(0),
                 "the brick was stamped with the print that closed it");
     }
 
     @Test
-    @DisplayName("a brick nobody traded in keeps the moment it was created")
-    void aGapBrickKeepsItsBirthday() {
+    @DisplayName("a jump fills the brick it closed and leaves the rest empty")
+    void aJumpLeavesEmptyBricksBehind() {
         PriceSeries source = trades(187_000, 188_110);
         PriceSeries bricks = new Renko(100, 2, false).apply(source);
 
         assertTrue(bricks.size() > 1, "the jump should have laid a run of bricks");
 
-        for (int i = 0; i < bricks.size(); i++) {
-            assertEquals(0, Counted.at(bricks, i), "brick " + i + " holds no trade");
+        assertEquals(1, Counted.at(bricks, 0), "the brick the jump closed holds the print");
+        assertFalse(Untraded.at(bricks, 0));
+        assertEquals(source.timeAt(0), bricks.timeAt(0));
+
+        for (int i = 1; i < bricks.size(); i++) {
+            assertEquals(0, Counted.at(bricks, i), "brick " + i + " was passed through");
             assertTrue(Untraded.at(bricks, i), "brick " + i + " should be marked");
-            assertEquals(source.timeAt(1), bricks.timeAt(i));
+            assertEquals(source.timeAt(1), bricks.timeAt(i),
+                    "a brick nobody traded in keeps the moment it was created");
         }
     }
 
     @Test
     @DisplayName("the stamps never run backwards")
     void stampsNeverGoBack() {
-        // One bar lays two bricks at once and each takes its own band. Here the
-        // LOWER band was traded first, so its brick would be stamped earlier
-        // than the one above it -- and the time axis would run backwards.
         PriceSeries bricks = new Renko(100, 2, false)
-                .apply(trades(187_050, 187_110, 186_950, 187_050, 186_890));
+                .apply(trades(187_050, 187_110, 187_220, 186_890, 186_780, 187_010, 187_330));
 
-        assertEquals(3, bricks.size());
+        assertTrue(bricks.size() > 2, "the path should have turned at least once");
 
         for (int i = 1; i < bricks.size(); i++) {
             assertTrue(bricks.timeAt(i) >= bricks.timeAt(i - 1),
@@ -191,18 +200,14 @@ class RenkoCountTest {
 
         for (int i = 0; i < bricks.size(); i++) {
             assertEquals(Counted.UNKNOWN, Counted.at(bricks, i),
-                    "a minute is a summary of trades at prices it never named");
+                    "a minute is a summary of trades at times it never named");
+            assertFalse(Untraded.at(bricks, i),
+                    "unknown is not zero: a candle cannot say a brick was empty");
         }
 
-        // And the volume is still shared out, which is the convention this has
-        // always used for candles -- named as one in Renko's own documentation.
-        double total = 0.0;
-
-        for (int i = 0; i < bricks.size(); i++) {
-            total += bricks.volumeAt(i);
-        }
-
-        assertEquals(100.0, total, 1e-9);
+        // The volume still goes to the brick that was being built. The minute
+        // that laid these is not in it -- it belongs to the one now forming.
+        assertEquals(10.0, bricks.volumeAt(0), 1e-9);
     }
 
     @Test

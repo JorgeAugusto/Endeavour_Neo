@@ -98,7 +98,7 @@ class RenkoTest {
     }
 
     @Test
-    @DisplayName("turning round costs two bricks, carrying on costs one")
+    @DisplayName("turning round costs two bricks of distance and draws one")
     void reversalCostsMore() {
         // Past 110, then down. Nine points down is not enough to turn -- with a
         // one-brick rule it would be, and the chart would fill with alternating
@@ -110,12 +110,16 @@ class RenkoTest {
 
         assertEquals(1, bricks.size(), "a nine-point pullback must not turn the trend");
 
-        // Past twenty points down does turn it, and lays both bricks.
+        // Past twenty points down does turn it -- and draws ONE brick, starting
+        // one brick away from where the last one closed. That offset is what
+        // the reference product draws, and it is measured: on 02/09/2026 its
+        // last two boxes at 100 points both OPEN at 188.000, one closing at
+        // 187.900 and the next at 188.100, which nothing else can produce.
         PriceSeries turned = Renko.of(10).apply(closes(100, 111, 89));
 
-        assertEquals(3, turned.size());
-        assertEquals(110.0, turned.openAt(1), "the turn starts where the last brick left off");
-        assertEquals(90.0, turned.closeAt(2));
+        assertEquals(2, turned.size(), "a turn draws one brick, not two");
+        assertEquals(100.0, turned.openAt(1), "the turn starts one brick away from 110");
+        assertEquals(90.0, turned.closeAt(1));
     }
 
     @Test
@@ -362,15 +366,20 @@ class RenkoTest {
     }
 
     @Test
-    @DisplayName("bricks completed by the same bar share its time")
+    @DisplayName("bricks created by the same bar share its time")
     void bricksShareTheirBarsTime() {
         // Three bricks from one minute really did all happen inside that minute.
         // Spreading them over invented timestamps would be the only alternative,
         // and it would be fiction.
+        //
+        // The FIRST of them is the exception, and not an invented one: it is the
+        // brick that was being built, so it carries the moment building started.
+        // The other two were passed through in an instant. See TradeTally.
         PriceSeries source = closes(100, 135);
         PriceSeries bricks = Renko.of(10).apply(source);
 
-        assertEquals(source.timeAt(1), bricks.timeAt(0));
+        assertEquals(source.timeAt(0), bricks.timeAt(0));
+        assertEquals(source.timeAt(1), bricks.timeAt(1));
         assertEquals(source.timeAt(1), bricks.timeAt(2));
     }
 

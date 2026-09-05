@@ -129,17 +129,17 @@ class RenkoGapTest {
     @DisplayName("the gap is marked, and the brick holding the first trade is not")
     void openingGapUp() {
         // Yesterday traded at 187.000 and the first print of the day is 1.100
-        // higher. Ten bricks bridge it and nobody paid a price inside any of
-        // them: yesterday's 187.000 belongs to the brick BELOW the first, which
-        // was never laid, and today's print is above the last.
+        // higher. That one print CLOSES the brick that had been forming since
+        // yesterday -- so the first of the ten carries yesterday's trade -- and
+        // creates the other nine on its way past, in an instant, empty.
         PriceSeries bricks = new Renko(100, 2, false)
                 .apply(trades(187_000, 188_100, 188_200));
 
-        assertEquals("..........#", marks(bricks));
+        assertEquals("#.........#", marks(bricks));
 
-        assertEquals(188_000, bricks.openAt(10), 1e-9);
-        assertEquals(188_100, bricks.closeAt(10), 1e-9,
-                "the first coloured brick is the one whose band holds the print");
+        assertEquals(187_000, bricks.openAt(0), 1e-9);
+        assertEquals(187_100, bricks.closeAt(0), 1e-9,
+                "the coloured brick is the one the jump closed, not one it created");
     }
 
     @Test
@@ -148,17 +148,15 @@ class RenkoGapTest {
         PriceSeries bricks = new Renko(100, 2, false)
                 .apply(trades(188_000, 186_950, 186_890));
 
-        // Every band from 188.000 down to 187.000 is empty: the 188.000 print
-        // belongs to the band above it and the 186.950 print is below them all.
-        // The last brick holds 186.950 and is coloured.
-        assertEquals("..........#", marks(bricks));
+        assertEquals("#.........#", marks(bricks));
     }
 
     @Test
-    @DisplayName("a minute that ran the same distance is NOT a gap")
+    @DisplayName("candles are never marked, because they cannot be counted")
     void aFastMinuteIsNotAGap() {
-        // Four bricks of range inside one bar, traded through. The same brick
-        // count as a 400-point gap, and nothing about it is a gap.
+        // Four bricks of range inside one bar. A minute is a summary of trades
+        // at prices and times it does not report, so nothing here can be called
+        // untraded -- unknown is not zero. See Counted.
         PriceSeries bricks = new Renko(100, 2, false)
                 .apply(ohlc(new double[]{187_000, 187_000, 187_000, 187_000},
                         new double[]{187_010, 187_450, 187_000, 187_400}));
@@ -167,24 +165,23 @@ class RenkoGapTest {
     }
 
     @Test
-    @DisplayName("a bar that gaps AND then trades marks only the part it jumped")
-    void gapThenRange() {
+    @DisplayName("after the jump, trading resumes and the bricks colour again")
+    void gapThenTrading() {
         PriceSeries bricks = new Renko(100, 2, false)
-                .apply(ohlc(new double[]{187_000, 187_000, 187_000, 187_000},
-                        new double[]{187_990, 188_250, 187_980, 188_200}));
+                .apply(trades(187_000, 187_050, 188_100, 188_130, 188_210));
 
-        // Up to 187.900 was jumped; from the low of that bar at 187.980 upwards
-        // it was traded.
-        assertEquals(".........###", marks(bricks));
+        // Two prints, then a jump that closes their brick and creates nine
+        // empty ones, then two prints that each close one of their own.
+        assertEquals("#.........##", marks(bricks));
     }
 
     @Test
-    @DisplayName("what was traded before the gap is not part of it")
+    @DisplayName("what was traded before the gap belongs to the brick it closed")
     void whatWasSeenBeforeCounts() {
-        // Price drifts to 187.100 and then to 186.910 without drawing anything
-        // -- a reversal of two needs more than that -- so the market really
-        // traded down there while the ruler stayed put. Then the gap. The brick
-        // covering the ground price actually walked has to stay coloured.
+        // Price drifts to 187.100 and then to 186.910 without drawing anything,
+        // so three prints are waiting when the drop finally comes. They belong
+        // to the brick that drop CLOSED -- the first one -- and the eight it
+        // created on the way down hold nothing.
         PriceSeries bricks = new Renko(100, 2, false)
                 .apply(trades(187_000, 187_100, 186_910, 186_000, 185_990));
 
@@ -201,7 +198,7 @@ class RenkoGapTest {
 
         assertEquals("#", marks(first.bricks()));
         assertEquals("#........#", marks(second.bricks()),
-                "the night is a gap even though each session is folded on its own");
+                "the trades waiting overnight belong to the brick the morning closed");
     }
 
     @Test

@@ -139,12 +139,6 @@ public final class TickRenko {
             return false;
         }
 
-        // A new session: the ruler carries, the trades do not. See
-        // Renko.Carry.atNewSession.
-        if (carry != null) {
-            carry = carry.atNewSession();
-        }
-
         return fold(TickBars.of(session));
     }
 
@@ -192,13 +186,6 @@ public final class TickRenko {
             advanced = 0;
             advancingBars = session == null || session.size() == 0
                     ? null : TickBars.of(session);
-
-            // Same as add(): a session starts with nothing traded yet. Only
-            // here, where the day actually changes -- advance() is called every
-            // frame and the trades inside one session do carry.
-            if (carry != null) {
-                carry = carry.atNewSession();
-            }
 
             // Marked as folded so a later add() of the same day cannot lay it
             // a second time on top of what advance() already laid.
@@ -334,11 +321,7 @@ public final class TickRenko {
             bricks.add(new double[]{laid.openAt(i), laid.highAt(i),
                     laid.lowAt(i), laid.closeAt(i), laid.volumeAt(i)});
 
-            // The same guard Renko.settle applies inside one pass, across the
-            // seam between two of them: the first brick of a fold cannot know
-            // what the last brick of the fold before it was stamped with.
-            stamps.add(stamps.isEmpty() ? laid.timeAt(i)
-                    : Math.max(laid.timeAt(i), stamps.get(stamps.size() - 1)));
+            stamps.add(laid.timeAt(i));
         }
 
         return laid.size() > 0;

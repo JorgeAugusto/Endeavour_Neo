@@ -172,7 +172,9 @@ class RenkoWickBoundsTest {
         }
 
         assertTrue(up >= 0, "the 125 high should have turned the trend");
-        assertEquals(80.0, bricks.openAt(up), 1e-9);
+        // One brick away from the 80 the last brick closed at: a turn is drawn
+        // offset, which is what the reference product does. See Renko.
+        assertEquals(90.0, bricks.openAt(up), 1e-9);
         assertTrue(bricks.lowAt(up) >= 80.0 - 2 * 10,
                 "the up brick wears a tail to " + bricks.lowAt(up)
                         + ", a price that in the assumed path had not been reached yet");
