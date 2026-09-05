@@ -363,6 +363,11 @@ public final class ChartHolder {
             layoutBar = new LayoutBar(canvas, body, key);
 
             canvas.onOverlaysChanged(layoutBar::capture);
+
+            // The order of the panes is part of the layout, and it is written
+            // the moment it changes rather than when the chart closes: it is a
+            // deliberate arrangement, not a size that drifted.
+            body.onArrangement(layoutBar::capture);
         }
 
         return layoutBar;

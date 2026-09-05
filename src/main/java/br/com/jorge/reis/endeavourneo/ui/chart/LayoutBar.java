@@ -200,19 +200,9 @@ public final class LayoutBar extends JComponent {
      * short of where it was dropped, and nothing on screen says why.</p>
      */
     static <T> boolean move(java.util.List<T> list, int from, int gap) {
-        if (from < 0 || from >= list.size() || gap < 0 || gap > list.size()) {
-            return false;
-        }
-
-        int to = gap > from ? gap - 1 : gap;
-
-        if (to == from) {
-            return false;
-        }
-
-        list.add(Math.max(0, Math.min(to, list.size() - 1)), list.remove(from));
-
-        return true;
+        // The panes under the chart are dragged the same way, up and down
+        // instead of sideways, so the arithmetic lives on its own.
+        return Reordering.move(list, from, gap);
     }
 
     // ------------------------------------------------------------- the tabs

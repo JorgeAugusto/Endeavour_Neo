@@ -33,8 +33,11 @@ import org.junit.jupiter.api.Test;
  * <p>All of it is one off-by-one: the gap is counted while the dragged item is
  * still in the list. Get it wrong and a tab lands one place short of where it
  * was dropped, which looks like the drag simply not working.</p>
+ *
+ * <p>The same arithmetic serves the indicator panes, dragged by their title
+ * bars into a different vertical order, so these cases cover both.</p>
  */
-@DisplayName("Reordenar abas")
+@DisplayName("Reordenar abas e paineis")
 class LayoutOrderTest {
 
     private static List<String> four() {
@@ -48,7 +51,7 @@ class LayoutOrderTest {
 
         // "a" dropped into the gap before "d" -- gap three, counted while "a"
         // is still there -- lands after "c".
-        assertTrue(LayoutBar.move(list, 0, 3));
+        assertTrue(Reordering.move(list, 0, 3));
         assertEquals(List.of("b", "c", "a", "d"), list);
     }
 
@@ -57,7 +60,7 @@ class LayoutOrderTest {
     void draggingLeft() {
         List<String> list = four();
 
-        assertTrue(LayoutBar.move(list, 3, 1));
+        assertTrue(Reordering.move(list, 3, 1));
         assertEquals(List.of("a", "d", "b", "c"), list);
     }
 
@@ -66,7 +69,7 @@ class LayoutOrderTest {
     void droppingPastTheEnd() {
         List<String> list = four();
 
-        assertTrue(LayoutBar.move(list, 1, 4));
+        assertTrue(Reordering.move(list, 1, 4));
         assertEquals(List.of("a", "c", "d", "b"), list);
     }
 
@@ -75,8 +78,8 @@ class LayoutOrderTest {
     void droppingWhereItAlreadyIs() {
         List<String> list = four();
 
-        assertFalse(LayoutBar.move(list, 1, 1), "it reported a move that did not happen");
-        assertFalse(LayoutBar.move(list, 1, 2), "the gap after itself is also its own place");
+        assertFalse(Reordering.move(list, 1, 1), "it reported a move that did not happen");
+        assertFalse(Reordering.move(list, 1, 2), "the gap after itself is also its own place");
         assertEquals(List.of("a", "b", "c", "d"), list);
     }
 
@@ -85,10 +88,10 @@ class LayoutOrderTest {
     void nonsenseIsRefused() {
         List<String> list = four();
 
-        assertFalse(LayoutBar.move(list, -1, 2));
-        assertFalse(LayoutBar.move(list, 9, 2));
-        assertFalse(LayoutBar.move(list, 0, -1));
-        assertFalse(LayoutBar.move(list, 0, 99));
+        assertFalse(Reordering.move(list, -1, 2));
+        assertFalse(Reordering.move(list, 9, 2));
+        assertFalse(Reordering.move(list, 0, -1));
+        assertFalse(Reordering.move(list, 0, 99));
         assertEquals(List.of("a", "b", "c", "d"), list);
     }
 
@@ -97,11 +100,11 @@ class LayoutOrderTest {
     void thereAndBack() {
         List<String> list = four();
 
-        LayoutBar.move(list, 0, 4);
+        Reordering.move(list, 0, 4);
 
         assertEquals(List.of("b", "c", "d", "a"), list);
 
-        LayoutBar.move(list, 3, 0);
+        Reordering.move(list, 3, 0);
 
         assertEquals(List.of("a", "b", "c", "d"), list);
     }

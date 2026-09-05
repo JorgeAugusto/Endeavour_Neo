@@ -61,6 +61,31 @@ public final class StudyStack extends JPanel {
 
     private final transient ChartCanvas canvas;
 
+    /**
+     * Which pane is being dragged by its title bar, or null when none is.
+     *
+     * <p>The reorder happens on RELEASE, not while the pointer moves. Moving
+     * the panes as it passes over each one would relayout the stack underneath
+     * the gesture -- and the pane the drag started on would be somewhere else
+     * halfway through, which is how a drag ends up dropping the wrong
+     * indicator. So the stack draws where the pane WOULD land and commits
+     * once.</p>
+     */
+    private transient StudyPane dragging;
+
+    /** Where it would land, as a gap between panes; -1 while nothing is dragged. */
+    private transient int dropAt = -1;
+
+    /**
+     * Told when the panes are rearranged, so the layout can be written.
+     *
+     * <p>Height and minimising ride along with the layout when the chart is
+     * closed, which is soon enough for a size. The ORDER is different: it is a
+     * deliberate arrangement, and losing it to a crash would cost the reader
+     * the one thing they had just decided.</p>
+     */
+    private transient Runnable onArrangement = () -> { };
+
     public StudyStack(ChartCanvas canvas) {
         super(null);
 
@@ -68,6 +93,10 @@ public final class StudyStack extends JPanel {
 
         setLayout(new Stacked());
         add(canvas);
+    }
+
+    public void onArrangement(Runnable listener) {
+        onArrangement = listener == null ? () -> { } : listener;
     }
 
     /** @return the panes, top to bottom */
@@ -169,6 +198,126 @@ public final class StudyStack extends JPanel {
         }
 
         relayout();
+    }
+
+    // ------------------------------------------------------ dragging a pane
+
+    /** Begins a reorder; called by the pane whose title bar was grabbed. */
+    void beginDrag(StudyPane pane) {
+        dragging = pane;
+        dropAt = -1;
+    }
+
+    /**
+     * @param y a pixel down THIS component, from the pointer
+     *
+     * <p>Nothing moves here. Only the mark showing where the release would put
+     * it changes, and only when it actually changes -- a repaint per pixel of
+     * pointer movement would redraw every study in the stack.</p>
+     */
+    void dragTo(int y) {
+        if (dragging == null) {
+            return;
+        }
+
+        int wanted = gapAt(y);
+
+        if (wanted != dropAt) {
+            dropAt = wanted;
+
+            repaint();
+        }
+    }
+
+    /** Ends a reorder, moving the pane if the pointer landed on a gap. */
+    void endDrag() {
+        StudyPane pane = dragging;
+        int gap = dropAt;
+
+        dragging = null;
+        dropAt = -1;
+
+        repaint();
+
+        if (pane == null || gap < 0) {
+            return;
+        }
+
+        // After the release has finished being delivered. The move takes the
+        // pane out of this container and puts it back, and doing that to the
+        // component whose event is still on the stack is asking for trouble.
+        javax.swing.SwingUtilities.invokeLater(() -> moveTo(pane, gap));
+    }
+
+    /**
+     * @param y a pixel down this component
+     * @return which GAP between panes it points at, from zero
+     *
+     * <p>Gaps and not panes: dropping is answering "above which one", and the
+     * answer has to include "below the last", which no pane index can say.</p>
+     */
+    private int gapAt(int y) {
+        List<StudyPane> panes = panes();
+
+        for (int i = 0; i < panes.size(); i++) {
+            StudyPane pane = panes.get(i);
+
+            if (y < pane.getY() + pane.getHeight() / 2) {
+                return i;
+            }
+        }
+
+        return panes.size();
+    }
+
+    /**
+     * Moves one pane to a gap, and says so, so the layout can be written.
+     *
+     * @param pane the one being carried
+     * @param gap where it should sit, counted in gaps between panes
+     */
+    private void moveTo(StudyPane pane, int gap) {
+        List<StudyPane> panes = panes();
+        int from = panes.indexOf(pane);
+
+        // The same drop the layout tabs answer to, on the other axis.
+        if (!br.com.jorge.reis.endeavourneo.ui.chart.Reordering.move(panes, from, gap)) {
+            return;
+        }
+
+        // Every pane out and back in, rather than one moved past the others.
+        // The canvas sits among these children too, and counting around it is
+        // the kind of arithmetic that is right until someone adds a third kind
+        // of child.
+        for (StudyPane each : panes) {
+            remove(each);
+        }
+
+        for (StudyPane each : panes) {
+            add(each);
+        }
+
+        relayout();
+        onArrangement.run();
+    }
+
+    @Override
+    protected void paintChildren(java.awt.Graphics graphics) {
+        super.paintChildren(graphics);
+
+        if (dropAt < 0) {
+            return;
+        }
+
+        List<StudyPane> panes = panes();
+
+        // A line in the gap, which is the one thing that says "here" without
+        // moving anything: the panes stay where they are until released, so
+        // this mark is the only feedback the gesture has.
+        int y = dropAt < panes.size() ? panes.get(dropAt).getY() : getHeight();
+
+        graphics.setColor(ChartColors.up());
+        graphics.fillRect(0, Math.max(0, Math.min(y - 1, getHeight() - 3)), getWidth(), 3);
     }
 
     /** Takes an indicator away, with its pane. */

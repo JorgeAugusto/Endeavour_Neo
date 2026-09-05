@@ -80,6 +80,16 @@ public final class StudyPane extends JComponent {
 
     private static final int SHORTEST = HEADER + 30;
 
+    /**
+     * How far the pointer has to travel on the title bar before it counts as
+     * carrying the pane rather than clicking it.
+     *
+     * <p>Without it a hand that moves one pixel between press and release
+     * would reorder the stack, and the reader would have no idea what they
+     * did.</p>
+     */
+    private static final int SLIP = 3;
+
     private final transient ChartCanvas canvas;
 
     private final transient Study study;
@@ -98,6 +108,12 @@ public final class StudyPane extends JComponent {
 
     private transient int grabbedHeight;
 
+    /** Where the title bar was grabbed, or -1 when it was not. */
+    private transient int carriedFrom = -1;
+
+    /** Whether that grab has travelled far enough to be a carry. */
+    private transient boolean carrying;
+
     public StudyPane(ChartCanvas canvas, Study study, Runnable onChanged) {
         this.canvas = canvas;
         this.study = study;
@@ -109,8 +125,7 @@ public final class StudyPane extends JComponent {
 
             @Override
             public void mouseMoved(MouseEvent e) {
-                setCursor(Cursor.getPredefinedCursor(e.getY() <= GRIP && !minimised
-                        ? Cursor.N_RESIZE_CURSOR : Cursor.DEFAULT_CURSOR));
+                setCursor(Cursor.getPredefinedCursor(cursorFor(e.getX(), e.getY())));
             }
 
             @Override
@@ -136,22 +151,53 @@ public final class StudyPane extends JComponent {
                 if (e.getY() <= GRIP && !minimised) {
                     grabbedAt = e.getYOnScreen();
                     grabbedHeight = height;
+
+                    return;
+                }
+
+                if (titleAt(e.getX(), e.getY())) {
+                    carriedFrom = e.getYOnScreen();
+                    carrying = false;
                 }
             }
 
             @Override
             public void mouseDragged(MouseEvent e) {
-                if (grabbedAt < 0) {
+                if (grabbedAt >= 0) {
+                    // Dragging the TOP edge, so pulling up makes it taller.
+                    setHeight(grabbedHeight + (grabbedAt - e.getYOnScreen()));
+
                     return;
                 }
 
-                // Dragging the TOP edge, so pulling up makes it taller.
-                setHeight(grabbedHeight + (grabbedAt - e.getYOnScreen()));
+                if (carriedFrom < 0 || !(getParent() instanceof StudyStack stack)) {
+                    return;
+                }
+
+                if (!carrying && Math.abs(e.getYOnScreen() - carriedFrom) < SLIP) {
+                    return;
+                }
+
+                if (!carrying) {
+                    carrying = true;
+
+                    stack.beginDrag(StudyPane.this);
+                }
+
+                stack.dragTo(javax.swing.SwingUtilities
+                        .convertPoint(StudyPane.this, e.getPoint(), stack).y);
             }
 
             @Override
             public void mouseReleased(MouseEvent e) {
                 grabbedAt = -1;
+                carriedFrom = -1;
+
+                if (carrying && getParent() instanceof StudyStack stack) {
+                    stack.endDrag();
+                }
+
+                carrying = false;
             }
 
             @Override
@@ -232,6 +278,28 @@ public final class StudyPane extends JComponent {
 
     // ------------------------------------------------------------- the boxes
 
+    /**
+     * @return whether a point is on the draggable part of the title bar
+     *
+     * <p>Not the buttons, and not the top few pixels, which resize. What is
+     * left is the name and the numbers -- exactly the part of a window's title
+     * bar that carries the window.</p>
+     */
+    private boolean titleAt(int x, int y) {
+        return y < HEADER && x < settingsLeft() && (minimised || y > GRIP);
+    }
+
+    /** @return which pointer the header should show at a point */
+    private int cursorFor(int x, int y) {
+        if (y <= GRIP && !minimised) {
+            return Cursor.N_RESIZE_CURSOR;
+        }
+
+        // A title bar that can be carried has to LOOK like one before it is
+        // grabbed; there is nothing else on screen saying the stack reorders.
+        return titleAt(x, y) ? Cursor.MOVE_CURSOR : Cursor.DEFAULT_CURSOR;
+    }
+
     private int closeLeft() {
         return getWidth() - 18;
     }
@@ -295,6 +363,15 @@ public final class StudyPane extends JComponent {
         int baseline = HEADER - 6;
         int at = 6;
 
+        // A band of its own, and a rule under it. The strip has to read as a
+        // title BAR and not as a caption floating over the plot, because it is
+        // the thing that gets grabbed to move the pane.
+        g.setColor(band());
+        g.fillRect(0, 0, getWidth(), HEADER);
+
+        g.setColor(ChartColors.grid());
+        g.drawLine(0, HEADER - 1, getWidth(), HEADER - 1);
+
         String name = Messages.get(study.nameKey()) + " " + study.parameters();
 
         g.setColor(ChartColors.foreground());
@@ -319,6 +396,22 @@ public final class StudyPane extends JComponent {
             at += metrics.stringWidth(text) + 8;
         }
 
+    }
+
+    /**
+     * @return the title bar's own ground
+     *
+     * <p>A step from the chart's background towards its ink, so the band shows
+     * up in either theme without either being named here. A fixed grey would
+     * be invisible in one of them.</p>
+     */
+    private static Color band() {
+        Color back = ChartColors.background();
+        Color fore = ChartColors.foreground();
+
+        return new Color((back.getRed() * 8 + fore.getRed()) / 9,
+                (back.getGreen() * 8 + fore.getGreen()) / 9,
+                (back.getBlue() * 8 + fore.getBlue()) / 9);
     }
 
     private void paintButton(Graphics2D g, int left, boolean restore) {
