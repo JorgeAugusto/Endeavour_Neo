@@ -37,6 +37,7 @@ import javax.swing.JPanel;
 import javax.swing.JSlider;
 import javax.swing.SwingConstants;
 import javax.swing.TransferHandler;
+import javax.swing.UIManager;
 
 /**
  * The replay transport: pick a day, request it, then drag it onto a chart.
@@ -244,14 +245,74 @@ public final class ReplayPanel extends JPanel {
 
     // ------------------------------------------------------------- the pieces
 
+    /**
+     * Puts the market's name on the handle, or takes it off.
+     *
+     * @param ready whether there is a session to carry
+     *
+     * <p>Everything the handle says goes on and off together. With no session
+     * there is nothing to drag, so the arrow and the wash go with the name --
+     * a control that looks draggable and is not is worse than a plain
+     * label.</p>
+     */
+    private void dressChip(boolean ready) {
+        chip.setText(ready ? session.name() : Messages.get("replay.noSession"));
+        chip.setEnabled(ready);
+        chip.setIcon(ready ? ReplayIcons.drag(12) : null);
+        chip.setBackground(ready ? dragTint() : UIManager.getColor("Panel.background"));
+        chip.setCursor(Cursor.getPredefinedCursor(
+                ready ? Cursor.MOVE_CURSOR : Cursor.DEFAULT_CURSOR));
+    }
+
+    /**
+     * @return the wash of colour that marks the handle
+     *
+     * <p>Mixed into whatever the theme's panel is rather than fixed, for the
+     * usual reason: a colour that reads as a gentle highlight on the light
+     * theme is a glaring block on the night one. The blend is weaker on the
+     * dark theme because the same amount of yellow carries much further
+     * against a dark ground.</p>
+     */
+    private static java.awt.Color dragTint() {
+        java.awt.Color base = UIManager.getColor("Panel.background");
+
+        if (base == null) {
+            base = java.awt.Color.LIGHT_GRAY;
+        }
+
+        // Perceived brightness, not a plain average: the eye weighs green far
+        // more than blue, and a plain average calls some dark themes light.
+        double light = 0.299 * base.getRed() + 0.587 * base.getGreen()
+                + 0.114 * base.getBlue();
+        boolean dark = light < 128.0;
+
+        java.awt.Color yellow = dark ? new java.awt.Color(0xC9A227)
+                : new java.awt.Color(0xFFD54F);
+        float share = dark ? 0.26f : 0.45f;
+
+        return new java.awt.Color(
+                Math.round(base.getRed() + (yellow.getRed() - base.getRed()) * share),
+                Math.round(base.getGreen() + (yellow.getGreen() - base.getGreen()) * share),
+                Math.round(base.getBlue() + (yellow.getBlue() - base.getBlue()) * share));
+    }
+
     private JPanel top() {
         JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
 
         chip.setOpaque(true);
         chip.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
         chip.setFont(chip.getFont().deriveFont(Font.BOLD));
-        chip.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         chip.setToolTipText(Messages.get("replay.dragHint"));
+
+        // A LABEL THAT BEHAVES LIKE A CONTROL HAS TO LOOK LIKE ONE. This one is
+        // the handle -- the session is carried to a chart by dragging its name
+        // -- and until now it looked exactly like the words beside it. Three
+        // marks say so, and not one of them is a sentence: the four-way arrow,
+        // the move cursor, and a wash of colour that lifts it off the panel.
+        // The arrow itself goes on and off with the session; see dressChip.
+        chip.setHorizontalTextPosition(SwingConstants.LEADING);
+        chip.setIconTextGap(8);
+        chip.setCursor(Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR));
 
         // The chip is the handle: the session is carried to a chart by dragging
         // its name, which is how the reference product does it and is the only
@@ -547,7 +608,7 @@ public final class ReplayPanel extends JPanel {
                 each.setEnabled(false);
             }
 
-            chip.setText(Messages.get("replay.noSession"));
+            dressChip(false);
             clock.setText(Messages.get("replay.loading"));
             ends.setText("");
 
@@ -567,8 +628,7 @@ public final class ReplayPanel extends JPanel {
         // this program used to offer was a session that never happened.
         boolean nothingToPlay = ready && session.isEmpty();
 
-        chip.setText(ready ? session.instrument() : Messages.get("replay.noSession"));
-        chip.setEnabled(ready);
+        dressChip(ready);
 
         for (Component each : new Component[]{play, back, forward, scrubber, speed}) {
             each.setEnabled(ready && !waiting && !nothingToPlay);

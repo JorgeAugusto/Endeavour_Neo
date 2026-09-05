@@ -83,7 +83,7 @@ public final class ReplayDrop {
         // bar would stop growing the moment its period began.
         Runnable follow = () -> holder.canvas().seriesGrew();
 
-        holder.attachReplay(session.instrument() + " " + session.rangeText(),
+        holder.attachReplay(session.name() + " " + session.rangeText(),
                 session.series(), () -> session.forget(follow), session.playing(),
                 session.feedLabel());
 

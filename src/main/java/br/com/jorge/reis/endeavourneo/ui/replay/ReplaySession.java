@@ -523,6 +523,17 @@ public final class ReplaySession {
         return br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.groupOf(instrument);
     }
 
+    /**
+     * @return the market as it is NAMED, which is not how it is stored
+     *
+     * <p>See {@link br.com.jorge.reis.endeavourneo.platform.Messages#market}.
+     * A feed of bars answers with its series name, which is already a name a
+     * reader recognises.</p>
+     */
+    public String name() {
+        return br.com.jorge.reis.endeavourneo.platform.Messages.market(instrument);
+    }
+
     public String instrument() {
         return instrument;
     }

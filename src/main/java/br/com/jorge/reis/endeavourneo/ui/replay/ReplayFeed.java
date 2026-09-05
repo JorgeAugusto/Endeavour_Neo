@@ -204,7 +204,7 @@ public record ReplayFeed(String instrument, String series, TickSource source) {
      * order the tree already reads in.</p>
      */
     public String label() {
-        String market = Messages.orElse("navigator.group." + instrument, instrument);
+        String market = Messages.market(instrument);
 
         if (isTicks()) {
             return market + "  ·  " + Messages.get("navigator.ticks")

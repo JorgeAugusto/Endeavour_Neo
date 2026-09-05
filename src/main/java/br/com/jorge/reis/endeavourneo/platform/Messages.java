@@ -89,6 +89,24 @@ public final class Messages {
      * group name is not a defect, and shouting about it would make the tree
      * unreadable for a file that is perfectly fine.</p>
      */
+    /**
+     * @param instrument the market as it is stored, which is a folder name
+     * @return how it is NAMED on screen
+     *
+     * <p>The two are not the same word and should not be. On disk the market is
+     * {@code win}, because that is a directory and directories are lower case
+     * and short; on screen it is what the trader's own platform calls the
+     * contract. Showing the folder name was reported as strange, and it was:
+     * nobody trades something called "win".</p>
+     *
+     * <p>Here rather than at each of the four places that show it, so they
+     * cannot drift apart -- and they had already started to, with the tree
+     * reading one name and the replay's own handle reading another.</p>
+     */
+    public static String market(String instrument) {
+        return orElse("navigator.group." + instrument, instrument);
+    }
+
     public static String orElse(String key, String fallback) {
         try {
             return bundle.getString(key);

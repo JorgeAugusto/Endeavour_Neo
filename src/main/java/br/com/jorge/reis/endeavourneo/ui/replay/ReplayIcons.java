@@ -83,6 +83,39 @@ final class ReplayIcons {
         });
     }
 
+    /**
+     * The four-way arrow: this can be picked up and carried.
+     *
+     * <p>Beside the market's name in the transport, because the name IS the
+     * handle -- the session is taken to a chart by dragging it, and a label
+     * that behaves like a control has to say so. Without the cross the gesture
+     * is only discoverable by accident, and the reference product marks the
+     * same label the same way.</p>
+     */
+    static Icon drag(int size) {
+        return new Painted(size, (g, w, h, colour) -> {
+            g.setColor(colour);
+            g.setStroke(new BasicStroke(1.0f));
+
+            int cx = w / 2;
+            int cy = h / 2;
+            int arm = Math.min(w, h) / 2 - 1;
+            int head = Math.max(2, arm / 2);
+
+            g.drawLine(cx, cy - arm, cx, cy + arm);
+            g.drawLine(cx - arm, cy, cx + arm, cy);
+
+            g.fillPolygon(new int[]{cx - head, cx + head, cx},
+                    new int[]{cy - arm + head, cy - arm + head, cy - arm}, 3);
+            g.fillPolygon(new int[]{cx - head, cx + head, cx},
+                    new int[]{cy + arm - head, cy + arm - head, cy + arm}, 3);
+            g.fillPolygon(new int[]{cx - arm + head, cx - arm + head, cx - arm},
+                    new int[]{cy - head, cy + head, cy}, 3);
+            g.fillPolygon(new int[]{cx + arm - head, cx + arm - head, cx + arm},
+                    new int[]{cy - head, cy + head, cy}, 3);
+        });
+    }
+
     @FunctionalInterface
     private interface Glyph {
         void draw(Graphics2D g, int width, int height, Color colour);

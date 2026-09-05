@@ -200,7 +200,7 @@ public final class Navigator extends JPanel {
     private static DefaultMutableTreeNode instrumentNode(
             String instrument, java.util.Map<String, List<String>> byScale) {
         DefaultMutableTreeNode node = new DefaultMutableTreeNode(
-                Messages.orElse("navigator.group." + instrument, instrument));
+                Messages.market(instrument));
 
         List<String> scales = new java.util.ArrayList<>(byScale.keySet());
 
