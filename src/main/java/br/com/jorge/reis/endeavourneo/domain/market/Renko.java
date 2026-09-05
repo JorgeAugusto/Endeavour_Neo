@@ -217,6 +217,7 @@ public final class Renko implements Aggregation {
      * @param pending volume accumulated and not yet given to a brick
      * @param coverLow the lowest price actually TRADED since the last brick
      * @param coverHigh the highest
+     * @param tally the trades waiting to be given to a brick, by price level
      *
      * <p>The traded hull is not {@code sinceLow}/{@code sinceHigh}. Those two
      * are reset to the anchor whenever a brick is laid, because they are the
@@ -227,7 +228,7 @@ public final class Renko implements Aggregation {
      */
     public record Carry(double anchor, int direction,
                         double sinceLow, double sinceHigh, double pending,
-                        double coverLow, double coverHigh) {
+                        double coverLow, double coverHigh, TradeTally tally) {
 
         /**
          * @return the same ruler, with nothing counted as traded yet
@@ -248,7 +249,8 @@ public final class Renko implements Aggregation {
          */
         public Carry atNewSession() {
             return new Carry(anchor, direction, sinceLow, sinceHigh, pending,
-                    Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY);
+                    Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY,
+                    new TradeTally());
         }
     }
 
@@ -366,12 +368,15 @@ public final class Renko implements Aggregation {
     public Continued applyFrom(PriceSeries source, Carry from) {
         if (source == null || source.size() == 0) {
             return new Continued(PriceSeries.empty(),
-                    from == null ? new Carry(0, 0, 0, 0, 0, 0, 0) : from);
+                    from == null
+                            ? new Carry(0, 0, 0, 0, 0, 0, 0, new TradeTally())
+                            : from);
         }
 
         List<double[]> bricks = new ArrayList<>();
         List<Long> stamps = new ArrayList<>();
         List<Boolean> untraded = new ArrayList<>();
+        List<Long> counts = new ArrayList<>();
 
         // The level the last brick closed at. It starts at the first bar's OPEN,
         // which is the one price in a bar that never moves.
@@ -400,6 +405,12 @@ public final class Renko implements Aggregation {
         double coverLow = from == null ? source.openAt(0) : from.coverLow();
         double coverHigh = from == null ? source.openAt(0) : from.coverHigh();
 
+        // Copied, never written through: a replay folds the same carry again
+        // whenever a frame turns out to have laid nothing, and a tally emptied
+        // by that attempt would take the trades with it.
+        TradeTally tally = from == null || from.tally() == null
+                ? new TradeTally() : from.tally().copy();
+
         for (int i = 0; i < source.size(); i++) {
             // Where there were trades before this bar arrived. A brick laid
             // now covers a band of price; if neither this pair nor this bar's
@@ -414,6 +425,11 @@ public final class Renko implements Aggregation {
                 pending += volume;
                 anyVolume = true;
             }
+
+            // BEFORE the bricks are laid, so the print that closes a brick is
+            // already in the tally -- it belongs to whichever band it landed
+            // in, which is the band ABOVE the brick it closed.
+            tally.add(source, i, brick);
 
             // Both extremes, in the order the bar most likely reached them: a
             // rising bar dips before it climbs. Reading the CLOSE alone was the
@@ -466,7 +482,7 @@ public final class Renko implements Aggregation {
                     int count = upSteps;
                     int at = bricks.size();
 
-                    anchor = laydown(bricks, stamps, untraded, anchor, count, +1,
+                    anchor = laydown(bricks, stamps, untraded, counts, anchor, count, +1,
                             source.timeAt(i));
                     direction = +1;
                     made += count;
@@ -474,7 +490,7 @@ public final class Renko implements Aggregation {
                     // Before the tail is widened below: the body is what the
                     // question is about, and open-to-close is the body whether
                     // or not a tail was hung on it.
-                    markGap(bricks, untraded, at,
+                    settle(bricks, stamps, untraded, counts, at, tally,
                             source.lowAt(i), source.highAt(i),
                             coverBeforeLow, coverBeforeHigh);
 
@@ -489,12 +505,12 @@ public final class Renko implements Aggregation {
                     int count = downSteps;
                     int at = bricks.size();
 
-                    anchor = laydown(bricks, stamps, untraded, anchor, count, -1,
+                    anchor = laydown(bricks, stamps, untraded, counts, anchor, count, -1,
                             source.timeAt(i));
                     direction = -1;
                     made += count;
 
-                    markGap(bricks, untraded, at,
+                    settle(bricks, stamps, untraded, counts, at, tally,
                             source.lowAt(i), source.highAt(i),
                             coverBeforeLow, coverBeforeHigh);
 
@@ -510,13 +526,23 @@ public final class Renko implements Aggregation {
             }
 
             if (made > 0) {
-                double each = pending / made;
+                if (tally.summarised()) {
+                    // Candles: the minute's volume cannot be put where it
+                    // happened, because the source never said where that was.
+                    // Splitting it equally is a convention, and it is named as
+                    // one in this class's own documentation.
+                    double each = pending / made;
 
-                for (int b = bricks.size() - made; b < bricks.size(); b++) {
-                    bricks.get(b)[4] = each;
+                    for (int b = bricks.size() - made; b < bricks.size(); b++) {
+                        bricks.get(b)[4] = each;
+                    }
+
+                    pending = 0.0;
+                } else {
+                    // Trades: settle() already gave each brick what landed in
+                    // it. What is left over belongs to the brick still forming.
+                    pending = tally.waiting();
                 }
-
-                pending = 0.0;
 
                 // This bar laid the last brick, so the trades that count from
                 // here on are its own and whatever comes after.
@@ -532,7 +558,7 @@ public final class Renko implements Aggregation {
             double now = source.closeAt(source.size() - 1);
             double[] shape = formingAt(
                     new Carry(anchor, direction, sinceLow, sinceHigh, pending,
-                            coverLow, coverHigh), now);
+                            coverLow, coverHigh, tally), now);
             double top = shape[1];
             double bottom = shape[2];
 
@@ -551,14 +577,19 @@ public final class Renko implements Aggregation {
 
             // Never a gap: the forming brick is where the price IS.
             untraded.add(Boolean.FALSE);
+
+            // And never a count: it is not one band yet -- it runs from the
+            // anchor to wherever price has got to, which can be most of a
+            // brick's worth of levels.
+            counts.add(Counted.UNKNOWN);
         }
 
         // The carry is taken from the state, not from the bricks: the forming
         // brick appended just above is provisional and must not become the
         // starting point of the next stretch.
-        return new Continued(assemble(bricks, stamps, untraded, anyVolume),
+        return new Continued(assemble(bricks, stamps, untraded, counts, anyVolume),
                 new Carry(anchor, direction, sinceLow, sinceHigh, pending,
-                        coverLow, coverHigh));
+                        coverLow, coverHigh, tally));
     }
 
     /**
@@ -569,7 +600,7 @@ public final class Renko implements Aggregation {
      * move as a length rather than as a number to read off an axis.</p>
      */
     private double laydown(List<double[]> bricks, List<Long> stamps,
-                           List<Boolean> untraded,
+                           List<Boolean> untraded, List<Long> counts,
                            double anchor, int count, int step, long time) {
         double level = anchor;
 
@@ -580,6 +611,7 @@ public final class Renko implements Aggregation {
             bricks.add(new double[]{open, Math.max(open, close), Math.min(open, close), close, 0.0});
             stamps.add(time);
             untraded.add(Boolean.FALSE);
+            counts.add(Counted.UNKNOWN);
 
             level = close;
         }
@@ -611,15 +643,50 @@ public final class Renko implements Aggregation {
      * <p>The reference product answers the same question and shows it as a
      * count: the brick it draws grey reads <i>Contratos Neg: 0,00</i>.</p>
      */
-    private void markGap(List<double[]> bricks, List<Boolean> untraded, int at,
-                         double barLow, double barHigh,
-                         double coverLow, double coverHigh) {
+    private void settle(List<double[]> bricks, List<Long> stamps,
+                        List<Boolean> untraded, List<Long> counts, int at,
+                        TradeTally tally,
+                        double barLow, double barHigh,
+                        double coverLow, double coverHigh) {
         for (int b = at; b < bricks.size(); b++) {
             double open = bricks.get(b)[0];
             double close = bricks.get(b)[3];
 
-            untraded.set(b, empty(open, close, coverLow, coverHigh)
-                    && empty(open, close, barLow, barHigh));
+            TradeTally.Cell mine = tally.claim(open, close, brick);
+
+            if (tally.summarised()) {
+                // Candles cannot be counted, so the question is answered the
+                // only way it can be: from the prices the bars did report.
+                untraded.set(b, empty(open, close, coverLow, coverHigh)
+                        && empty(open, close, barLow, barHigh));
+
+                continue;
+            }
+
+            counts.set(b, mine.trades);
+            bricks.get(b)[4] = mine.volume;
+            untraded.set(b, mine.trades == 0);
+
+            if (mine.trades > 0) {
+                // The reference product stamps a brick with the FIRST trade in
+                // it, not with the one that closed it. Measured on 03/09/2026:
+                // its brick 189.400 -> 189.500 reads 09:02:46, which is the
+                // opening auction print that opened it; the trade that closed
+                // it printed at 09:02:47.
+                //
+                // A brick with no trades keeps the time it was created, which
+                // is the same answer -- there is nothing else it could mean.
+                //
+                // NEVER EARLIER THAN THE BRICK BEFORE IT. When one bar lays two
+                // bricks at once, each takes its own band's trades and those
+                // two sets overlap in time: measured on 02/09/2026, a pair laid
+                // together at 17:16 whose first trades were 17:06:38 and
+                // 17:06:04, in that order. Left alone the time axis would run
+                // backwards, which is a different thing from the irregular
+                // spacing a renko is supposed to have.
+                stamps.set(b, b == 0 ? mine.first
+                        : Math.max(mine.first, stamps.get(b - 1)));
+            }
         }
     }
 
@@ -636,9 +703,11 @@ public final class Renko implements Aggregation {
      * when that price arrived, which is the brick closing there. A rising brick
      * covers {@code (open, close]} and a falling one {@code [close, open)}.</p>
      *
-     * <p>The same rule as {@link #steps}, read from the other side, and fixed
-     * by the same measurement: fifty-one prints at 189.500 all belong to the
-     * brick that closes at 189.500, not to the one above it.</p>
+     * <p>Used only where the trades cannot be counted, which is a renko built
+     * from candles: a bar with a range holds trades at prices it never names,
+     * so the best available answer is the hull of what the bars did report.
+     * Over trades, {@link TradeTally} answers exactly and this is not
+     * consulted.</p>
      */
     private boolean empty(double open, double close, double from, double to) {
         double eps = brick * 1e-9;
@@ -651,7 +720,8 @@ public final class Renko implements Aggregation {
     }
 
     private static PriceSeries assemble(List<double[]> bricks, List<Long> stamps,
-                                        List<Boolean> untraded, boolean anyVolume) {
+                                        List<Boolean> untraded, List<Long> counts,
+                                        boolean anyVolume) {
         int size = bricks.size();
 
         long[] times = new long[size];
@@ -661,12 +731,14 @@ public final class Renko implements Aggregation {
         double[] closes = new double[size];
         double[] volumes = new double[size];
         boolean[] gaps = new boolean[size];
+        long[] trades = new long[size];
 
         for (int i = 0; i < size; i++) {
             double[] one = bricks.get(i);
 
             times[i] = stamps.get(i);
             gaps[i] = untraded.get(i);
+            trades[i] = counts.get(i);
             opens[i] = one[0];
             highs[i] = one[1];
             lows[i] = one[2];
@@ -674,6 +746,6 @@ public final class Renko implements Aggregation {
             volumes[i] = anyVolume ? one[4] : Double.NaN;
         }
 
-        return new ArraySeries(times, opens, highs, lows, closes, volumes, gaps);
+        return new ArraySeries(times, opens, highs, lows, closes, volumes, gaps, trades);
     }
 }

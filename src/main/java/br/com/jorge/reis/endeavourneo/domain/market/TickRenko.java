@@ -71,6 +71,9 @@ public final class TickRenko {
      */
     private final java.util.BitSet untraded = new java.util.BitSet();
 
+    /** How many trades made each brick, or UNKNOWN. See {@link Counted}. */
+    private final List<Long> counts = new ArrayList<>();
+
     /** Which sessions are already in, so folding one twice is impossible. */
     private final Set<LocalDate> folded = new LinkedHashSet<>();
 
@@ -255,6 +258,13 @@ public final class TickRenko {
             }
 
             @Override
+            public long tradesAt(int index) {
+                // And never a count: it is not one band yet.
+                return index < settled.size()
+                        ? Counted.at(settled, index) : Counted.UNKNOWN;
+            }
+
+            @Override
             public int size() {
                 return settled.size() + 1;
             }
@@ -319,10 +329,16 @@ public final class TickRenko {
 
         for (int i = 0; i < laid.size(); i++) {
             untraded.set(bricks.size(), Untraded.at(laid, i));
+            counts.add(Counted.at(laid, i));
 
             bricks.add(new double[]{laid.openAt(i), laid.highAt(i),
                     laid.lowAt(i), laid.closeAt(i), laid.volumeAt(i)});
-            stamps.add(laid.timeAt(i));
+
+            // The same guard Renko.settle applies inside one pass, across the
+            // seam between two of them: the first brick of a fold cannot know
+            // what the last brick of the fold before it was stamped with.
+            stamps.add(stamps.isEmpty() ? laid.timeAt(i)
+                    : Math.max(laid.timeAt(i), stamps.get(stamps.size() - 1)));
         }
 
         return laid.size() > 0;
@@ -347,12 +363,22 @@ public final class TickRenko {
         }
 
         java.util.BitSet gaps = (java.util.BitSet) untraded.clone();
+        long[] made = new long[counts.size()];
+
+        for (int i = 0; i < made.length; i++) {
+            made[i] = counts.get(i);
+        }
 
         return new Marked() {
 
             @Override
             public boolean untradedAt(int index) {
                 return gaps.get(index);
+            }
+
+            @Override
+            public long tradesAt(int index) {
+                return made[index];
             }
 
             @Override
@@ -392,8 +418,8 @@ public final class TickRenko {
         };
     }
 
-    /** A series that also answers which of its bars hold no trade. */
-    private interface Marked extends PriceSeries, Untraded { }
+    /** A series that says which bars hold no trade, and how many the rest hold. */
+    private interface Marked extends PriceSeries, Untraded, Counted { }
 
     /**
      * @param days the sessions to cover, in order

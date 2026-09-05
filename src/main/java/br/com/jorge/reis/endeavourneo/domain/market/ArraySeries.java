@@ -29,7 +29,7 @@ package br.com.jorge.reis.endeavourneo.domain.market;
  * package-private on purpose: only the aggregations build these, and they build
  * them freshly. Nobody outside holds a reference to write through.</p>
  */
-final class ArraySeries implements PriceSeries, Untraded {
+final class ArraySeries implements PriceSeries, Untraded, Counted {
 
     private final long[] times;
 
@@ -54,14 +54,22 @@ final class ArraySeries implements PriceSeries, Untraded {
      */
     private final boolean[] untraded;
 
+    /**
+     * How many trades made each bar, or null when the source cannot say.
+     *
+     * <p>Null for everything but a renko built from trades. See {@link
+     * Counted}, and note that null here means UNKNOWN and never zero.</p>
+     */
+    private final long[] trades;
+
     ArraySeries(long[] times, double[] opens, double[] highs,
                 double[] lows, double[] closes, double[] volumes) {
-        this(times, opens, highs, lows, closes, volumes, null);
+        this(times, opens, highs, lows, closes, volumes, null, null);
     }
 
     ArraySeries(long[] times, double[] opens, double[] highs,
                 double[] lows, double[] closes, double[] volumes,
-                boolean[] untraded) {
+                boolean[] untraded, long[] trades) {
         this.times = times;
         this.opens = opens;
         this.highs = highs;
@@ -69,11 +77,17 @@ final class ArraySeries implements PriceSeries, Untraded {
         this.closes = closes;
         this.volumes = volumes;
         this.untraded = untraded;
+        this.trades = trades;
     }
 
     @Override
     public boolean untradedAt(int index) {
         return untraded != null && untraded[index];
+    }
+
+    @Override
+    public long tradesAt(int index) {
+        return trades == null ? Counted.UNKNOWN : trades[index];
     }
 
     @Override

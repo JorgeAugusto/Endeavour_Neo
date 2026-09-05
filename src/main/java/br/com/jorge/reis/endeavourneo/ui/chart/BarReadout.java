@@ -196,12 +196,21 @@ final class BarReadout {
             rows.add(new String[]{Messages.get("readout.volume"), format(0).format(volume)});
         }
 
-        // Only ever true on a renko brick laid across a gap, and worth saying
-        // out loud: the reader is looking at a bar whose open and close are as
-        // real as any other and whose SHAPE was drawn by arithmetic, because
-        // the market was shut. See Untraded.
-        if (br.com.jorge.reis.endeavourneo.domain.market.Untraded.at(series, index)) {
-            rows.add(new String[]{Messages.get("readout.untraded"),
+        // Counted rather than guessed, and only a source where one bar is one
+        // trade can answer -- see Counted. Absent, never zero, when it cannot:
+        // a row reading "0" would be a claim, and the wrong one.
+        long trades = br.com.jorge.reis.endeavourneo.domain.market.Counted.at(series, index);
+
+        if (trades >= 0) {
+            rows.add(new String[]{Messages.get("readout.trades"),
+                    format(0).format(trades)});
+        } else if (br.com.jorge.reis.endeavourneo.domain.market.Untraded.at(series, index)) {
+            // A renko built from candles cannot count, but it can still say
+            // that nothing was traded in this band -- which is worth saying out
+            // loud: the reader is looking at a bar whose open and close are as
+            // real as any other and whose SHAPE was drawn by arithmetic,
+            // because the market was shut. See Untraded.
+            rows.add(new String[]{Messages.get("readout.trades"),
                     Messages.get("readout.untraded.none")});
         }
 
