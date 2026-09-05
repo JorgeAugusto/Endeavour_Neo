@@ -129,16 +129,16 @@ class RenkoGapTest {
     @DisplayName("the gap is marked, and the brick holding the first trade is not")
     void openingGapUp() {
         // Yesterday traded at 187.000 and the first print of the day is 1.100
-        // higher. Eleven bricks bridge it: the first one holds yesterday's
-        // price, the other ten cover levels nobody paid. The band that holds
-        // the new print is the twelfth, and it is coloured.
+        // higher. Ten bricks bridge it and nobody paid a price inside any of
+        // them: yesterday's 187.000 belongs to the brick BELOW the first, which
+        // was never laid, and today's print is above the last.
         PriceSeries bricks = new Renko(100, 2, false)
                 .apply(trades(187_000, 188_100, 188_200));
 
-        assertEquals("#..........#", marks(bricks));
+        assertEquals("..........#", marks(bricks));
 
-        assertEquals(188_100, bricks.openAt(11), 1e-9);
-        assertEquals(188_200, bricks.closeAt(11), 1e-9,
+        assertEquals(188_000, bricks.openAt(10), 1e-9);
+        assertEquals(188_100, bricks.closeAt(10), 1e-9,
                 "the first coloured brick is the one whose band holds the print");
     }
 
@@ -146,11 +146,11 @@ class RenkoGapTest {
     @DisplayName("a gap down is the mirror of a gap up")
     void openingGapDown() {
         PriceSeries bricks = new Renko(100, 2, false)
-                .apply(trades(188_000, 186_950, 186_900));
+                .apply(trades(188_000, 186_950, 186_890));
 
-        // Every band from 187.900 down to 187.000 is empty: the 188.000 print
-        // belongs to the band ABOVE the first of them, and the 186.950 print
-        // is below the last.
+        // Every band from 188.000 down to 187.000 is empty: the 188.000 print
+        // belongs to the band above it and the 186.950 print is below them all.
+        // The last brick holds 186.950 and is coloured.
         assertEquals("..........#", marks(bricks));
     }
 
@@ -175,20 +175,20 @@ class RenkoGapTest {
 
         // Up to 187.900 was jumped; from the low of that bar at 187.980 upwards
         // it was traded.
-        assertEquals("#........###", marks(bricks));
+        assertEquals(".........###", marks(bricks));
     }
 
     @Test
     @DisplayName("what was traded before the gap is not part of it")
     void whatWasSeenBeforeCounts() {
-        // Up one brick, then 190 points back down -- which a reversal of two
-        // will not draw, so the ruler stays put while the market really trades
-        // down there. Then the gap. The two bricks covering the ground price
-        // actually walked have to stay coloured.
+        // Price drifts to 187.100 and then to 186.910 without drawing anything
+        // -- a reversal of two needs more than that -- so the market really
+        // traded down there while the ruler stayed put. Then the gap. The brick
+        // covering the ground price actually walked has to stay coloured.
         PriceSeries bricks = new Renko(100, 2, false)
-                .apply(trades(187_000, 187_100, 186_910, 186_000));
+                .apply(trades(187_000, 187_100, 186_910, 186_000, 185_990));
 
-        assertEquals("###........#", marks(bricks));
+        assertEquals("#........#", marks(bricks));
     }
 
     @Test
@@ -196,11 +196,11 @@ class RenkoGapTest {
     void carriedAcrossSessions() {
         Renko renko = new Renko(100, 2, false);
 
-        Renko.Continued first = renko.applyFrom(trades(187_000, 187_100), null);
+        Renko.Continued first = renko.applyFrom(trades(187_000, 187_050, 187_110), null);
         Renko.Continued second = renko.applyFrom(trades(188_100, 188_200), first.carry());
 
         assertEquals("#", marks(first.bricks()));
-        assertEquals("#.........#", marks(second.bricks()),
+        assertEquals("#........#", marks(second.bricks()),
                 "the night is a gap even though each session is folded on its own");
     }
 
@@ -220,22 +220,19 @@ class RenkoGapTest {
     }
 
     @Test
-    @DisplayName("a price on a boundary belongs to the band above it")
-    void aPriceOnTheEdgeGoesUp() {
-        // 188.000 is the top of one band and the bottom of the next, and it has
-        // to be counted in exactly one. On this instrument prices move in fives
-        // and bricks in twenty-fives, so this is one trade in twenty and not a
-        // corner case.
-        PriceSeries below = new Renko(100, 2, false).apply(trades(187_000, 188_000));
+    @DisplayName("a print on a level belongs to the brick that closes there")
+    void aPriceOnTheEdgeStaysBelow() {
+        // Reaching the level is not passing it, so nothing is drawn yet.
+        assertEquals(0, new Renko(100, 2, false).apply(trades(187_000, 187_100)).size(),
+                "a move of exactly one brick does not close one");
 
-        assertEquals("#.........", marks(below).substring(0, 10),
-                "the band ending at 188.000 was not traded in");
+        // Now price passes 187.200, so two bricks are drawn at once. The print
+        // that sat on 187.100 belongs to the FIRST of them -- the one closing
+        // there -- and the second holds nothing at all.
+        PriceSeries bricks = new Renko(100, 2, false)
+                .apply(trades(187_000, 187_100, 187_210));
 
-        PriceSeries above = new Renko(100, 2, false)
-                .apply(trades(187_000, 188_000, 188_100));
-
-        assertFalse(Untraded.at(above, above.size() - 1),
-                "the band starting at 188.000 was");
+        assertEquals("#.", marks(bricks));
     }
 
     @Test

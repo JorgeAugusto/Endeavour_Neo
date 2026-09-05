@@ -100,15 +100,18 @@ class RenkoTest {
     @Test
     @DisplayName("turning round costs two bricks, carrying on costs one")
     void reversalCostsMore() {
-        // Up to 110, then down. Nine points down is not enough to turn -- with a
+        // Past 110, then down. Nine points down is not enough to turn -- with a
         // one-brick rule it would be, and the chart would fill with alternating
         // bricks around a single level.
-        PriceSeries bricks = Renko.of(10).apply(closes(100, 110, 101));
+        //
+        // 111 and not 110, here and below: a brick closes when price goes PAST
+        // its level. See Renko.steps.
+        PriceSeries bricks = Renko.of(10).apply(closes(100, 111, 101));
 
         assertEquals(1, bricks.size(), "a nine-point pullback must not turn the trend");
 
-        // Twenty points down does turn it, and lays both bricks.
-        PriceSeries turned = Renko.of(10).apply(closes(100, 110, 90));
+        // Past twenty points down does turn it, and lays both bricks.
+        PriceSeries turned = Renko.of(10).apply(closes(100, 111, 89));
 
         assertEquals(3, turned.size());
         assertEquals(110.0, turned.openAt(1), "the turn starts where the last brick left off");
@@ -118,7 +121,7 @@ class RenkoTest {
     @Test
     @DisplayName("with a one-brick reversal every crossing draws a brick")
     void reversalOfOne() {
-        PriceSeries bricks = new Renko(10, 1).apply(closes(100, 110, 100, 110));
+        PriceSeries bricks = new Renko(10, 1).apply(closes(100, 111, 99, 111));
 
         assertEquals(3, bricks.size(), "a one-brick rule turns on every crossing");
     }
@@ -211,7 +214,7 @@ class RenkoTest {
     @Test
     @DisplayName("a brick with nothing fought against it has no tail")
     void noExcursionMeansNoTail() {
-        PriceSeries bricks = Renko.of(10).apply(closes(100, 110));
+        PriceSeries bricks = Renko.of(10).apply(closes(100, 111));
 
         assertEquals(110.0, bricks.highAt(0));
         assertEquals(100.0, bricks.lowAt(0), "a tail appeared where price never went");
@@ -313,7 +316,9 @@ class RenkoTest {
         // A brick of no height is a flat mark at the level, which is what price
         // sitting on the level looks like. A bar that never comes and goes is
         // worth more than one that is always meaningful.
-        assertEquals(2, Renko.of(10).withForming(true).apply(closes(100, 110)).size(),
+        // One brick laid, then price back exactly on the level: the brick being
+        // built has no height at all, and it still has to be drawn.
+        assertEquals(2, Renko.of(10).withForming(true).apply(closes(100, 111, 110)).size(),
                 "the brick under construction went missing when it had no height");
     }
 
@@ -401,7 +406,7 @@ class RenkoTest {
     @Test
     @DisplayName("a series with no volume gives bricks with no volume")
     void absentVolumeStaysAbsent() {
-        assertTrue(Double.isNaN(Renko.of(10).apply(closes(100, 110)).volumeAt(0)));
+        assertTrue(Double.isNaN(Renko.of(10).apply(closes(100, 111)).volumeAt(0)));
     }
 
     @Test

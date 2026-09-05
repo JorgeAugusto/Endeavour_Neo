@@ -306,6 +306,40 @@ public final class Renko implements Aggregation {
         return Math.floor(price / brick) * brick;
     }
 
+    /**
+     * @param moved how far price went from the anchor, in that direction
+     * @return how many bricks that move COMPLETES
+     *
+     * <p><b>A brick closes when price goes PAST its level, not when it reaches
+     * it.</b> The difference is one trade wide and it is not academic: this
+     * instrument moves in fives and its bricks in twenty-fives, so price lands
+     * exactly on a level constantly.</p>
+     *
+     * <p>Read off the reference product, which reports each brick's own trade
+     * count. Its brick 189.400 -&gt; 189.500 on 03/09/2026 holds <b>2.514
+     * trades and 72.589 contracts</b> — exactly the first 2.514 trades of that
+     * session. The level 189.500 was printed fifty-one times in a row, from
+     * trade 2.464 to trade 2.514, and every one of them is inside that brick;
+     * trade 2.515, the first at 189.505, is the one that closed it and it
+     * belongs to the brick above. The first version here closed on trade 2.464
+     * and handed the other fifty upstairs.</p>
+     *
+     * <p>It changes the drawing and not only the bookkeeping: price that
+     * touches a level and turns back without passing it lays a brick under the
+     * old rule and none under this one. Price oscillating between two exact
+     * levels for ever draws nothing at all, which is right — nothing has
+     * happened that the ruler is meant to record.</p>
+     */
+    private int steps(double moved) {
+        if (!(moved > 0.0)) {
+            return 0;
+        }
+
+        // The epsilon is what makes "exactly on the level" round the right way:
+        // a move of precisely one brick has to come out as zero completed.
+        return (int) Math.ceil(moved / brick - 1e-9) - 1;
+    }
+
     public Continued applyFrom(PriceSeries source, Carry from) {
         if (source == null || source.size() == 0) {
             return new Continued(PriceSeries.empty(),
@@ -400,11 +434,13 @@ public final class Renko implements Aggregation {
                     price = source.highAt(i);
                 }
 
-                double upNeeded = direction >= 0 ? brick : reversal * brick;
-                double downNeeded = direction <= 0 ? brick : reversal * brick;
+                int upSteps = steps(price - anchor);
+                int downSteps = steps(anchor - price);
+                int upNeeded = direction >= 0 ? 1 : reversal;
+                int downNeeded = direction <= 0 ? 1 : reversal;
 
-                if (price - anchor >= upNeeded) {
-                    int count = (int) Math.floor((price - anchor) / brick);
+                if (upSteps >= upNeeded) {
+                    int count = upSteps;
                     int at = bricks.size();
 
                     anchor = laydown(bricks, stamps, untraded, anchor, count, +1,
@@ -426,8 +462,8 @@ public final class Renko implements Aggregation {
                         // own extreme.
                         bricks.get(at)[2] = Math.min(bricks.get(at)[2], sinceLow);
                     }
-                } else if (anchor - price >= downNeeded) {
-                    int count = (int) Math.floor((anchor - price) / brick);
+                } else if (downSteps >= downNeeded) {
+                    int count = downSteps;
                     int at = bricks.size();
 
                     anchor = laydown(bricks, stamps, untraded, anchor, count, -1,
@@ -559,34 +595,36 @@ public final class Renko implements Aggregation {
             double open = bricks.get(b)[0];
             double close = bricks.get(b)[3];
 
-            double low = Math.min(open, close);
-            double high = Math.max(open, close);
-
-            untraded.set(b, empty(low, high, coverLow, coverHigh)
-                    && empty(low, high, barLow, barHigh));
+            untraded.set(b, empty(open, close, coverLow, coverHigh)
+                    && empty(open, close, barLow, barHigh));
         }
     }
 
     /**
-     * @param low the bottom of a brick's band
-     * @param high its top
+     * @param open where the brick started
+     * @param close where it ended
      * @param from the lowest of a set of traded prices
      * @param to the highest
-     * @return whether no price in that set falls inside that band
+     * @return whether no price in that set falls inside that brick
      *
-     * <p><b>A band owns its bottom edge and not its top</b>, exactly as {@link
-     * #gridUnder} cuts the grid. Every brick boundary is shared by two bricks,
-     * so a price sitting on one has to belong to one of them and not both --
-     * and the lower brick is the one that already closed. Without the rule,
-     * a trade landing on a round number would colour the brick above it as
-     * well, and on this instrument prices are multiples of five while bricks
-     * are multiples of twenty-five: landing on a boundary is not a corner
-     * case, it is one trade in twenty.</p>
+     * <p><b>A brick owns the level it closes at and not the one it opened
+     * from.</b> Every boundary belongs to two bricks and a price sitting on one
+     * has to belong to exactly one of them — the one that was still forming
+     * when that price arrived, which is the brick closing there. A rising brick
+     * covers {@code (open, close]} and a falling one {@code [close, open)}.</p>
+     *
+     * <p>The same rule as {@link #steps}, read from the other side, and fixed
+     * by the same measurement: fifty-one prints at 189.500 all belong to the
+     * brick that closes at 189.500, not to the one above it.</p>
      */
-    private boolean empty(double low, double high, double from, double to) {
+    private boolean empty(double open, double close, double from, double to) {
         double eps = brick * 1e-9;
 
-        return to < low - eps || from >= high - eps;
+        if (close > open) {
+            return to <= open + eps || from > close + eps;
+        }
+
+        return to < close - eps || from >= open - eps;
     }
 
     private static PriceSeries assemble(List<double[]> bricks, List<Long> stamps,
