@@ -114,8 +114,11 @@ public final class SegmentDialog extends JDialog {
     };
 
     private SegmentDialog(Window owner, String series, List<LocalDate> sessions,
-                          List<Segment> segments, Segment start) {
-        super(owner, Messages.get("segment.title"), Dialog.ModalityType.APPLICATION_MODAL);
+                          List<Segment> segments, Segment start, boolean editing) {
+        super(owner, Messages.get(editing ? "segment.editTitle" : "segment.title"),
+                Dialog.ModalityType.APPLICATION_MODAL);
+
+        create.setText(Messages.get(editing ? "segment.save" : "segment.create"));
 
         this.days = sessions;
         this.existing = segments;
@@ -159,12 +162,36 @@ public final class SegmentDialog extends JDialog {
     public static java.util.Optional<Segment> ask(Window owner, String series,
                                                   NavigableSet<LocalDate> sessions,
                                                   List<Segment> segments, Segment start) {
+        return show(owner, series, sessions, segments, start, false);
+    }
+
+    /**
+     * The same window, opened on a segment that already exists.
+     *
+     * <p>The same window on purpose. A segment is chosen against what is around
+     * it -- what is taken, what is left, how much of the series it is -- and
+     * that is as true the second time as the first. A separate "edit" form
+     * would be the same questions asked worse.</p>
+     *
+     * @param others every OTHER segment, so the one being edited does not clash
+     *               with itself
+     */
+    public static java.util.Optional<Segment> revise(Window owner, String series,
+                                                     NavigableSet<LocalDate> sessions,
+                                                     List<Segment> others, Segment start) {
+        return show(owner, series, sessions, others, start, true);
+    }
+
+    private static java.util.Optional<Segment> show(Window owner, String series,
+                                                    NavigableSet<LocalDate> sessions,
+                                                    List<Segment> segments, Segment start,
+                                                    boolean editing) {
         if (sessions == null || sessions.isEmpty()) {
             return java.util.Optional.empty();
         }
 
         SegmentDialog dialog = new SegmentDialog(owner, series,
-                new ArrayList<>(sessions), new ArrayList<>(segments), start);
+                new ArrayList<>(sessions), new ArrayList<>(segments), start, editing);
 
         dialog.setVisible(true);
 

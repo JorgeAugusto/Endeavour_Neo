@@ -33,7 +33,6 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import javax.swing.BorderFactory;
@@ -158,7 +157,36 @@ public final class SeriesWindow extends JDialog {
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 6));
 
         JButton add = new JButton(Messages.get("series.add"));
+        JButton edit = new JButton(Messages.get("series.edit"));
         JButton remove = new JButton(Messages.get("series.remove"));
+
+        // Nothing selected, nothing to edit or remove. A button that is always
+        // enabled and sometimes does nothing teaches the reader to distrust
+        // every button beside it.
+        edit.setEnabled(false);
+        remove.setEnabled(false);
+
+        table.getSelectionModel().addListSelectionListener(e -> {
+            boolean picked = table.getSelectedRow() >= 0;
+
+            edit.setEnabled(picked);
+            remove.setEnabled(picked);
+        });
+
+        edit.addActionListener(e -> reviseSelected());
+
+        // The row itself, too. Double click opens is what the tree does and
+        // what every list in every IDE does, and a table that only responds to
+        // a button reads as a table that responds to nothing.
+        table.addMouseListener(new java.awt.event.MouseAdapter() {
+
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent clicked) {
+                if (clicked.getClickCount() == 2) {
+                    reviseSelected();
+                }
+            }
+        });
 
         add.addActionListener(e -> {
             // The dialog needs the sessions to place anything, so with an
@@ -185,6 +213,7 @@ public final class SeriesWindow extends JDialog {
         });
 
         buttons.add(add);
+        buttons.add(edit);
         buttons.add(remove);
 
         panel.add(indented(warning), BorderLayout.NORTH);
@@ -199,6 +228,29 @@ public final class SeriesWindow extends JDialog {
         row.add(label);
 
         return row;
+    }
+
+    /**
+     * Opens the chosen segment in the window it was made in.
+     *
+     * <p>Every OTHER segment goes along, and this one does not: a segment
+     * always overlaps itself, and a window that opened saying "choca com
+     * Testes" while editing Testes would be right and useless.</p>
+     */
+    private void reviseSelected() {
+        int row = table.getSelectedRow();
+
+        if (row < 0 || bars == null || bars.size() == 0) {
+            return;
+        }
+
+        List<Segment> others = new java.util.ArrayList<>(model.segments);
+        Segment chosen = others.remove(row);
+
+        SegmentDialog.revise(this, editing,
+                        br.com.jorge.reis.endeavourneo.domain.market.Sessions.of(bars),
+                        others, chosen)
+                .ifPresent(segment -> model.replace(row, segment));
     }
 
     /**
@@ -371,11 +423,27 @@ public final class SeriesWindow extends JDialog {
             };
         }
 
+        /**
+         * @return false, always
+         *
+         * <p><b>This table lists; it does not edit.</b> Typing a date into a
+         * cell asks the reader to know what is free without showing it, which
+         * is the whole reason the segment window exists -- and it let a typo
+         * become a segment that overlaps another one, discovered later by a
+         * warning nobody was looking at.</p>
+         *
+         * <p>Editing goes through that window now, by the button or by a double
+         * click on the row.</p>
+         */
         @Override
         public boolean isCellEditable(int row, int column) {
-            // The count is measured, not typed. An editable number that the
-            // program overwrites is a promise it does not keep.
-            return column < 3;
+            return false;
+        }
+
+        void replace(int row, Segment segment) {
+            segments.set(row, segment);
+            fireTableRowsUpdated(row, row);
+            refreshWarning();
         }
 
         @Override
@@ -391,31 +459,5 @@ public final class SeriesWindow extends JDialog {
             };
         }
 
-        @Override
-        public void setValueAt(Object value, int row, int column) {
-            Segment was = segments.get(row);
-            String text = value == null ? "" : value.toString().trim();
-
-            try {
-                Segment now = switch (column) {
-                    case 0 -> new Segment(text, was.from(), was.to());
-                    case 1 -> new Segment(was.name(), LocalDate.parse(text, DAY), was.to());
-                    default -> new Segment(was.name(), was.from(),
-                            text.isEmpty() || text.equals(Messages.get("series.onwards"))
-                                    ? null : LocalDate.parse(text, DAY));
-                };
-
-                segments.set(row, now);
-            } catch (DateTimeParseException | IllegalArgumentException e) {
-                // What was typed is not a segment: a date the calendar does not
-                // have, an end before the start, a name of nothing. The old
-                // value stays and the table redraws it, which says "no" without
-                // a dialog interrupting a row of typing.
-                java.awt.Toolkit.getDefaultToolkit().beep();
-            }
-
-            fireTableRowsUpdated(row, row);
-            refreshWarning();
-        }
     }
 }
