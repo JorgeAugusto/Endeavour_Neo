@@ -1,6 +1,6 @@
 # Estado da auditoria
 
-Atualizado em 06/09/2026, 16:15. Este arquivo existe para a auditoria sobreviver
+Atualizado em 06/09/2026, 16:40. Este arquivo existe para a auditoria sobreviver
 a uma compactação de contexto ou a uma sessão nova: o que está aqui não depende
 de ninguém lembrar da conversa.
 
@@ -16,7 +16,8 @@ Método e partição: [../AUDITORIA.md](../AUDITORIA.md)
 | A2 — renko, ticks e replay | 2.996 | 196.636 | 2 ALTA, 12 MÉDIA, 13 BAIXA | `a2-renko-ticks.md` |
 | A3 — ChartCanvas | 2.650 | 183.192 | 4 ALTA, 9 MÉDIA, 13 BAIXA | `a3-chartcanvas.md` |
 | A4 — holder, layout, legenda, eixos, estilo | 5.167 | 212.208 | 3 ALTA, 9 MÉDIA, 9 BAIXA | `a4-layout-eixos.md` |
-| **soma** | **13.998** | **743.812** | **10 ALTA, 38 MÉDIA, 47 BAIXA** | |
+| A5 — indicadores, estudos, painéis, diálogos | 5.259 | 238.174 | 4 ALTA, 10 MÉDIA, 10 BAIXA | `a5-indicadores.md` |
+| **soma** | **19.257** | **981.986** | **14 ALTA, 48 MÉDIA, 57 BAIXA** | |
 
 ## Áreas pendentes
 
@@ -28,7 +29,7 @@ Método e partição: [../AUDITORIA.md](../AUDITORIA.md)
 | A7 — platform, shell, settings, series | 7.500 | ~450k |
 | A8a — testes de domínio | ~4.600 | ~275k |
 | A8b — testes de interface | ~8.300 | ~500k |
-| **restante** | **28.178** | **~1,7M** |
+| **restante** | **22.919** | **~1,3M** |
 
 Depois das nove áreas: as **quatro lentes transversais** (EDT, tempo/lookahead,
 persistência, i18n) por `grep` dirigido, e só então a **verificação
@@ -141,6 +142,57 @@ int[] ys = new int[to - from];
 Duas alocações por repintura e um `drawPolyline` com um milhão de pontos. Nada
 limita `to - from` além do tamanho da série. **Confirmado.**
 
+### ✅ A5 — `OwnScale.smooth` é idêntico ao `map`: a interpolação nunca agiu
+
+`indexOfClosed` devolve o maior `c` tal que `coarse.timeAt(c+1) <= t`. O `smooth`
+mede a rampa no intervalo errado:
+
+```java
+long from = coarse.timeAt(closed);
+long to   = closed + 1 < coarse.size() ? coarse.timeAt(closed + 1) : from;
+double along = Math.max(0.0, Math.min(1.0, (fine.timeAt(i) - from) / (double) span));
+```
+
+Como `t >= coarse.timeAt(c+1) = to`, então `t - from >= span` e `along` é sempre
+grampeado em **1,0**. O resultado é `slow[c-1] + (slow[c]-slow[c-1])*1.0 =
+slow[c]` — exatamente o que o `map` já dava. A opção "Inclinar entre os pontos
+fechados", **ligada por padrão** na média, no RSI e nas bandas, não faz nada.
+**Confirmado por álgebra.**
+
+Correção: a rampa tem de correr **durante a barra em formação** — de
+`timeAt(closed+1)` a `timeAt(closed+2)`, saindo de `slow[closed-1]` e chegando em
+`slow[closed]`. Assim a linha atrasa em vez de adiantar.
+
+### ✅ A5 — `OwnPeriodTest.interpolationStaysBehind:154` não tem dentes
+
+```java
+assertTrue(value <= series.closeAt(bar),
+        "interpolation reached bar " + bar + " with " + value);
+```
+
+Afirma só um **teto**. Nada afirma que a linha inclina. Com o `smooth` apagado o
+teste passa igual — foi ele que deu a licença falsa ao A5-1. Mesmo padrão do
+`RenkoWickBoundsTest` (A2).
+
+### ✅ A5 — deslocamento negativo da média lê barras à direita
+
+```java
+this.shift = new JSpinner(new SpinnerNumberModel(average.shift(), -500, 500, 1));  // MovingAverageDialog:114
+int at = bar - shift;                                                              // MovingAverage:280
+```
+
+Com `shift = -3`, a barra `i` mostra a média calculada sobre `i+3`. O javadoc da
+classe só explica o shift **positivo** ("pushes it into the future", o uso
+clássico) e nunca menciona o negativo — o limite inferior parece intervalo
+simétrico por descuido. **Confirmado.**
+
+### ✅ A5 — `StudyStack` recalcula síncrono na EDT
+
+`study.calculate(canvas.source())` nas linhas 121, 148, 227, 282 e 434. O único
+`invokeLater` do arquivo (342) é para mover um painel. Com 1 M de barras, agregar
+para a escala maior mais O(n×período) trava a janela no OK do diálogo e na troca
+de série. **Confirmado.**
+
 ---
 
 ## O que está LIMPO e foi conferido
@@ -158,6 +210,14 @@ ordem de avaliação dos argumentos. **O `Sessions` duplicado NÃO divergiu** �
 dois usam a mesma expressão de virada de dia, então é dívida de camada, não
 ALTA.
 
+**O `map` e o `indexOfClosed` do `OwnScale` estão corretos** (A5) — não leem o
+futuro, conferidos passo a passo com bordas de 1 e 2 barras grossas. Os quatro
+consumidores usam a regra única, as quatro respostas de `fitsOnPrice()` estão
+certas, o `StudyStack.fits` implementa exatamente os dois "sim", a aritmética dos
+quatro indicadores confere na mão, as 36 chaves de bundle existem nos dois
+idiomas, e a extração do `LinePen` foi fiel ao `Pen` interno removido em
+`a80f7ea`.
+
 ---
 
 ## Calibração de custo, medida
@@ -168,9 +228,10 @@ ALTA.
 | A2 | 2.996 | 196.636 | 65,6 |
 | A3 | 2.650 | 183.192 | 69,1 |
 | A4 | 5.167 | 212.208 | 41,1 |
-| | **13.998** | **743.812** | **53,1** |
+| A5 | 5.259 | 238.174 | 45,3 |
+| | **19.257** | **981.986** | **51,0** |
 
-**Use 55 tokens por linha** nas projeções. O número sobe com a quantidade de
+**Use 51 tokens por linha** nas projeções. O número sobe com a quantidade de
 regras a conferir e de arquivos cruzados — a estimativa inicial de 12,5 tok/linha
 errou por 4,8×.
 

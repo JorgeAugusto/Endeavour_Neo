@@ -5,28 +5,39 @@ Escrito para sobreviver a compactação e a troca de sessão.
 
 ---
 
-## 1. Defeito conhecido e não corrigido
+## 1. Defeitos conhecidos e não corrigidos
 
-### O estocástico não interpola entre pontos fechados; o RSI interpola
+### A interpolação de escala maior nunca agiu — em nenhum indicador
 
-Descoberto olhando o aplicativo inteiro renderizado fora da tela, com o workspace
-real restaurado: no painel havia estocástico, estocástico em 5m e IFR juntos, e
-**a linha do estocástico em 5m sai em degraus enquanto a do IFR ao lado sai
-inclinada**.
+**Corrigido em 06/09/2026 pela auditoria A5.** O que estava escrito aqui antes
+dizia que o RSI interpolava e o estocástico não, e que a linha do estocástico
+saía em degraus ao lado da do RSI inclinada. **O sintoma estava errado**: as duas
+saem em degraus, porque `OwnScale.smooth` é matematicamente idêntico ao
+`OwnScale.map`.
 
-A causa: quando o RSI foi escrito, ele ganhou a opção *"Aplicar interpolação"*
-que o Profit mostra na aba Ativo/Período, e `RelativeStrength.calculate` chama
-`OwnScale.smooth` depois do `OwnScale.map`. O `SlowStochastic` **não tem essa
-opção nem essa chamada** — a linha de appearance dele não carrega o campo.
+`indexOfClosed` devolve o maior `c` com `coarse.timeAt(c+1) <= t`, e o `smooth`
+mede a rampa de `timeAt(c)` a `timeAt(c+1)` — intervalo que `t` já ultrapassou.
+O fator `along` é sempre ≥ 1, é grampeado em 1,0, e o resultado é sempre
+`slow[c]`. A caixa "Inclinar entre os pontos fechados", **ligada por padrão** na
+média, no RSI e nas bandas, não faz nada. Evidência em
+`auditoria/00-estado.md`.
 
-Os dois leem escala maior pela mesma regra e só um suaviza. É inconsistência
-introduzida por mim ao fazer o RSI, não defeito herdado.
+**Ordem de correção, nesta sequência:**
 
-**Correção:** dar ao `SlowStochastic` o mesmo campo `interpolate` (padrão
-ligado, como no RSI), a mesma chamada a `OwnScale.smooth`, o mesmo controle na
-aba de escala do `StochasticDialog`, e mais um campo na linha de appearance.
-Quebra o formato salvo dos estocásticos — o que é aceitável, ver
-[[quebrar-redes-salvas-nao-e-restricao]].
+1. **`OwnScale.smooth`** — a rampa tem de correr durante a barra em formação: de
+   `timeAt(closed+1)` a `timeAt(closed+2)`, saindo de `slow[closed-1]` e chegando
+   em `slow[closed]`. A linha atrasa em vez de adiantar, que é o lado honesto de
+   errar.
+2. **`OwnPeriodTest.interpolationStaysBehind`** — hoje só afirma um teto
+   (`value <= closeAt(bar)`) e passaria com o `smooth` apagado; foi ele que deu a
+   licença falsa. Tem de afirmar que a linha **inclina**: dois valores
+   consecutivos diferentes dentro de uma mesma barra grossa.
+3. **Só então o `SlowStochastic`** ganha o campo `interpolate` (padrão ligado,
+   como nos outros), a chamada a `OwnScale.smooth`, e o controle numa aba de
+   escala própria — hoje ele tem duas abas e enfia a escala no fim dos
+   parâmetros, contra três abas do RSI. Quebra o `appearance` posicional de 15
+   campos, que é o único da área **sem teste de ida-e-volta**; quebrar formato
+   salvo é aceitável, ver [[quebrar-redes-salvas-nao-e-restricao]].
 
 ---
 
@@ -50,10 +61,10 @@ evidência do agente, que é como as auditorias do `endeavour` sempre fizeram.
 
 ---
 
-## 3. Os 10 ALTA abertos da auditoria
+## 3. Os 14 ALTA abertos da auditoria
 
 Detalhe completo em `auditoria/a1-series.md`, `a2-renko-ticks.md`,
-`a3-chartcanvas.md`, `a4-layout-eixos.md`. Evidência das verificadas em `auditoria/00-estado.md`.
+`a3-chartcanvas.md`, `a4-layout-eixos.md`, `a5-indicadores.md`. Evidência das verificadas em `auditoria/00-estado.md`.
 
 | # | onde | o quê | verificado |
 |---|---|---|---|
@@ -67,6 +78,10 @@ Detalhe completo em `auditoria/a1-series.md`, `a2-renko-ticks.md`,
 | A4-1 | `OverlayLegend.java:201` | `hoveredBar()` cru: legenda imprime `—` assim que o ponteiro sai do canvas | ✅ |
 | A4-2 | `ChartHeader.java:359` | tooltip varre 1,05 M barras convertendo fuso **na EDT**, a cada `mouseMoved` | ✅ |
 | A4-3 | `LineStyle.java:54` | dois `int[]` por repintura e `drawPolyline` de 1 M pontos; sem decimação | ✅ |
+| A5-1 | `OwnScale.java:145` | `smooth` é idêntico ao `map`: a interpolação nunca agiu | ✅ |
+| A5-2 | `OwnPeriodTest.java:154` | teste sem dentes; só afirma teto, deu a licença falsa ao A5-1 | ✅ |
+| A5-3 | `MovingAverageDialog.java:114` | spinner aceita shift −500: a barra `i` lê a média de `i+3` | ✅ |
+| A5-4 | `StudyStack.java:121` | `calculate` síncrono na EDT em cinco pontos; 1 M de barras trava a janela | ✅ |
 
 Fora da auditoria, um teste sem dentes já identificado: **`RenkoWickBoundsTest`
 só afirma tetos, nunca pisos** — por isso a calda curta do A2-2 passou.
