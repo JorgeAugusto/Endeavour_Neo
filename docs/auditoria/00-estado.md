@@ -1,6 +1,6 @@
 # Estado da auditoria
 
-Atualizado em 06/09/2026, 15:25. Este arquivo existe para a auditoria sobreviver
+Atualizado em 06/09/2026, 16:15. Este arquivo existe para a auditoria sobreviver
 a uma compactação de contexto ou a uma sessão nova: o que está aqui não depende
 de ninguém lembrar da conversa.
 
@@ -15,7 +15,8 @@ Método e partição: [../AUDITORIA.md](../AUDITORIA.md)
 | A1 — séries, arquivos e sessões | 3.185 | 151.776 | 1 ALTA, 8 MÉDIA, 12 BAIXA | `a1-series.md` |
 | A2 — renko, ticks e replay | 2.996 | 196.636 | 2 ALTA, 12 MÉDIA, 13 BAIXA | `a2-renko-ticks.md` |
 | A3 — ChartCanvas | 2.650 | 183.192 | 4 ALTA, 9 MÉDIA, 13 BAIXA | `a3-chartcanvas.md` |
-| **soma** | **8.831** | **531.604** | **7 ALTA, 29 MÉDIA, 38 BAIXA** | |
+| A4 — holder, layout, legenda, eixos, estilo | 5.167 | 212.208 | 3 ALTA, 9 MÉDIA, 9 BAIXA | `a4-layout-eixos.md` |
+| **soma** | **13.998** | **743.812** | **10 ALTA, 38 MÉDIA, 47 BAIXA** | |
 
 ## Áreas pendentes
 
@@ -27,7 +28,7 @@ Método e partição: [../AUDITORIA.md](../AUDITORIA.md)
 | A7 — platform, shell, settings, series | 7.500 | ~450k |
 | A8a — testes de domínio | ~4.600 | ~275k |
 | A8b — testes de interface | ~8.300 | ~500k |
-| **restante** | **34.950** | **~2,1M** |
+| **restante** | **28.178** | **~1,7M** |
 
 Depois das nove áreas: as **quatro lentes transversais** (EDT, tempo/lookahead,
 persistência, i18n) por `grep` dirigido, e só então a **verificação
@@ -97,6 +98,49 @@ Compara **só o período**. Como `attachReplay`/`detachReplay` trocam a série s
 mexer no período, uma construção velha passa pela guarda e substitui a série ao
 vivo — a mistura candle/tick que a classe existe para impedir. **Confirmado.**
 
+### ✅ A4 — `OverlayLegend.java:201` — a legenda apaga os valores
+
+```java
+int bar = canvas.hoveredBar();
+```
+
+O contrato está escrito na própria `ChartCanvas`: `/** @return the bar under the
+mouse, or -1 when the mouse is elsewhere */`. E o recuo existe pronto, com o
+javadoc dizendo exatamente para que serve:
+
+```java
+/** @return the last bar on screen, which is what a legend reads when the mouse is away */
+public int lastVisibleBar() {
+```
+
+O irmão `StudyPane.java:702` usa direito — `return under >= 0 ? under :
+canvas.lastVisibleBar();`. A legenda de preço não. Como ela fica **acima** do
+canvas, o ponteiro passa por ela para chegar ao gráfico e todo indicador imprime
+`—`. **Confirmado.**
+
+### ✅ A4 — `ChartHeader.java:359` — varredura da série inteira na EDT
+
+`SeriesSummary.html(...)` é montado dentro de `mouseMoved`, e dentro dele:
+
+```java
+static int sessionsIn(PriceSeries series) {
+    ...
+    for (int i = 0; i < series.size(); i++) {
+        LocalDate day = Instant.ofEpochMilli(series.timeAt(i)).atZone(zone).toLocalDate();
+```
+
+Um milhão de conversões de fuso por movimento do ponteiro. **Confirmado.**
+
+### ✅ A4 — `LineStyle.java:54` — o mesmo defeito do A3-1, agora no estilo
+
+```java
+int[] xs = new int[to - from];
+int[] ys = new int[to - from];
+```
+
+Duas alocações por repintura e um `drawPolyline` com um milhão de pontos. Nada
+limita `to - from` além do tamanho da série. **Confirmado.**
+
 ---
 
 ## O que está LIMPO e foi conferido
@@ -108,6 +152,12 @@ duas divergem apenas na documentação. A régua validada contra o Profit contin
 **O ChartCanvas não viola nenhuma das três regras de domínio medidas** (A3):
 futuro, base crua e renko. Ele delega as três corretamente.
 
+**O `Viewport` está limpo** (A4): ida-e-volta exata nos dois eixos, casos
+degenerados guardados. **O `Reordering` resistiu** à tentativa de quebra pela
+ordem de avaliação dos argumentos. **O `Sessions` duplicado NÃO divergiu** — os
+dois usam a mesma expressão de virada de dia, então é dívida de camada, não
+ALTA.
+
 ---
 
 ## Calibração de custo, medida
@@ -117,9 +167,10 @@ futuro, base crua e renko. Ele delega as três corretamente.
 | A1 | 3.185 | 151.776 | 47,7 |
 | A2 | 2.996 | 196.636 | 65,6 |
 | A3 | 2.650 | 183.192 | 69,1 |
-| | **8.831** | **531.604** | **60,2** |
+| A4 | 5.167 | 212.208 | 41,1 |
+| | **13.998** | **743.812** | **53,1** |
 
-**Use 60 tokens por linha** nas projeções. O número sobe com a quantidade de
+**Use 55 tokens por linha** nas projeções. O número sobe com a quantidade de
 regras a conferir e de arquivos cruzados — a estimativa inicial de 12,5 tok/linha
 errou por 4,8×.
 

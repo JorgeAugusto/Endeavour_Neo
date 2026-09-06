@@ -50,10 +50,10 @@ evidência do agente, que é como as auditorias do `endeavour` sempre fizeram.
 
 ---
 
-## 3. Os 7 ALTA abertos da auditoria
+## 3. Os 10 ALTA abertos da auditoria
 
 Detalhe completo em `auditoria/a1-series.md`, `a2-renko-ticks.md`,
-`a3-chartcanvas.md`. Evidência das verificadas em `auditoria/00-estado.md`.
+`a3-chartcanvas.md`, `a4-layout-eixos.md`. Evidência das verificadas em `auditoria/00-estado.md`.
 
 | # | onde | o quê | verificado |
 |---|---|---|---|
@@ -64,6 +64,9 @@ Detalhe completo em `auditoria/a1-series.md`, `a2-renko-ticks.md`,
 | A3-2 | `ChartCanvas.java:1011` | 4 varreduras e 3 `Files.walk` **na EDT** antes do SwingWorker | — |
 | A3-3 | `ChartCanvas.java:1094` | replay troca a série sem recalcular overlays: média de candle sobre tijolo | — |
 | A3-4 | `ChartCanvas.java:1084` | guarda compara só o período; construção velha substitui a série ao vivo | ✅ |
+| A4-1 | `OverlayLegend.java:201` | `hoveredBar()` cru: legenda imprime `—` assim que o ponteiro sai do canvas | ✅ |
+| A4-2 | `ChartHeader.java:359` | tooltip varre 1,05 M barras convertendo fuso **na EDT**, a cada `mouseMoved` | ✅ |
+| A4-3 | `LineStyle.java:54` | dois `int[]` por repintura e `drawPolyline` de 1 M pontos; sem decimação | ✅ |
 
 Fora da auditoria, um teste sem dentes já identificado: **`RenkoWickBoundsTest`
 só afirma tetos, nunca pisos** — por isso a calda curta do A2-2 passou.
