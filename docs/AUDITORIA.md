@@ -1,11 +1,11 @@
 # O método de auditoria do endeavour_neo
 
-Como rodar uma auditoria profunda deste projeto com vários agentes, quanto ela
-custa, e o que muda conforme o modelo. Escrito em 05/09/2026, depois de uma
-tentativa que estourou o limite de tokens sem entregar nada — o desenho abaixo
-existe por causa dela.
+Como rodar uma auditoria profunda deste projeto com vários agentes, e quanto ela
+custa. Escrito em 05/09/2026, depois de duas tentativas que estouraram o limite
+de tokens sem entregar nada — o desenho abaixo existe por causa delas.
 
-Roteiro executável: [auditoria/auditoria-neo.workflow.js](auditoria/auditoria-neo.workflow.js)
+**O modelo é escolha do usuário, feita de forma explícita.** Nada aqui troca de
+modelo sozinho.
 
 ---
 
@@ -117,41 +117,6 @@ esta fase é barata mesmo com o modelo mais pesado.
 
 ---
 
-## Qual modelo em qual fase
-
-A variável que decide é **a razão entre contexto e inferência**.
-
-| fase | contexto | inferência | modelo | esforço |
-|---|---|---|---|---|
-| 1 · áreas | enorme (~406k) | rasa por achado | **Opus** | médio |
-| 2 · lentes | pequeno (grep dirigido) | média | **Opus** | médio |
-| 3 · verificação | mínimo (um achado) | **profunda** | **Fable** | alto |
-
-**Auditoria ampla é leitura e lista.** Perguntas como "esta chave existe no
-bundle?" ou "este componente é tocado fora da EDT?" são de checklist: o modelo
-mais pesado paga preço cheio em cada token lido e o raciocínio extra em grande
-parte re-deriva o que o mais leve também veria.
-
-**Refutar um achado plausível-mas-errado é inferência difícil** sobre contexto
-curto. É exatamente onde o modelo pesado converte raciocínio em resposta, e onde
-ele custa pouco em absoluto.
-
-### Se for rodar tudo no Fable
-
-Muda só a fase 1, que é onde está o volume. Três ajustes, em ordem de eficácia:
-
-1. **Divida em duas ou três corridas** — A1–A4, depois A5–A7, depois A8a/A8b.
-   Cada uma fecha sozinha e escreve o seu relatório; a rajada some.
-2. **Deixe os testes para uma corrida à parte.** São ~125k tokens e o tipo de
-   defeito é outro (dentes, isolamento, cobertura) — cabe num documento próprio.
-3. **Esforço médio na fase 1.** Alto ali multiplica o raciocínio justamente onde
-   ele menos rende.
-
-Com isso o Fable roda o método inteiro. Sem isso, ele estoura na fase 1 — foi o
-que aconteceu.
-
----
-
 ## Como rodar — uma área por vez
 
 **Este é o jeito recomendado, e a razão está na seção das duas falhas.**
@@ -181,33 +146,6 @@ porque o insumo é um achado de vinte linhas.
 
 As quatro lentes transversais entram **depois** das nove áreas, lendo os
 relatórios prontos mais `grep` dirigido, e também escrevem arquivo.
-
-### O caminho por workflow, e quando NÃO usar
-
-O roteiro está em [auditoria/auditoria-neo.workflow.js](auditoria/auditoria-neo.workflow.js)
-e recebe `args` com a raiz e o mapa de áreas:
-
-```
-Workflow({ scriptPath: "docs/auditoria/auditoria-neo.workflow.js", args: { root, areas } })
-```
-
-`resumeFromRunId` traz de volta do cache os agentes cujo par (prompt, opções)
-não mudou. **Mas isso só ajuda se algum tiver concluído** — nas duas corridas
-acima nenhum concluiu, e o cache veio vazio.
-
-**Use o workflow apenas com folga de orçamento confirmada.** Sem folga, ele
-converte um gasto grande em zero entrega.
-
-Regenerar a partição, se o projeto crescer:
-
-```bash
-find src/main/java -name "*.java" -exec wc -l {} + | sort -rn | head -30
-```
-
-Reequilibre para que nenhuma área passe de ~7.500 linhas, e mantenha qualquer
-arquivo acima de ~2.000 linhas sozinho numa área.
-
----
 
 ## O formato do documento final
 
