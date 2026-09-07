@@ -1,0 +1,273 @@
+# Índice dos achados das nove áreas
+
+Uma linha por achado: **id · arquivo:linha · título**. O detalhe — trecho
+literal, consequência, correção e a tentativa de refutação — está no
+relatório da área.
+
+Este arquivo existe para as **lentes transversais**: elas recebem esta lista
+e a ordem de reportar **só o que estas áreas não viram**. Entregar os
+relatórios inteiros custaria um quarto multiplicador em cima do corpus, que
+foi exatamente como a tentativa v1 queimou 1,5 milhão de tokens sem entregar
+nada.
+
+## ALTA (51)
+
+- **A1-1** `Timeframe.java:307` — Qualquer escala em minutos acima de 1.440 vira silenciosamente D1, com todas as barras carimbadas à meia-noite
+- **A2-1** `ReplaySeries.java:173-213` — O replay congela para sempre quando um minuto não tem caminho de preços, e o comentário afirma o contrário
+- **A2-2** `Renko.java:419-484` — O segundo extremo de uma barra que assentou caixa é apagado da calda corrente
+- **-** `{100,100,100,100}` — âncora 100 (grade), direção 0.
+- **-** `{100,115,100,115}` — sobe uma caixa 100→110, âncora 110, direção +1;
+- **-** `{110,108,85,108}` — direção +1, logo `lowFirst = true`.
+- **-** `{90,95,78,78}` — direção −1, `lowFirst = false`.
+- **A3-1** `ChartCanvas.java:2631` — Zoom total de uma série de 1.050.000 barras varre a série inteira em cinco laços, com alocação por barra, a cada movimento do mouse
+- **A3-2** `ChartCanvas.java:1011` — `rebuildFromTicks` varre a série inteira e a árvore de arquivos de ticks na EDT antes de criar o SwingWorker
+- **A3-3** `ChartCanvas.java:1094` — O caminho de replay põe a série nova na tela sem recalcular os indicadores
+- **A3-4** `ChartCanvas.java:1084` — A guarda contra resultado atrasado só olha o período — trocar a série deixa uma construção velha sobrescrever a que está na tela
+- **A4-1** `OverlayLegend.java:201` — A legenda mostra "—" em vez do valor de cada indicador sempre que o mouse não está sobre o gráfico — que é o tempo todo em que o leitor está olhando para ela
+- **A4-2** `ChartHeader.java:359-362` — Passar o mouse sobre o nome do instrumento varre a série inteira, convertendo cada barra em `LocalDate`, na EDT, a cada pixel
+- **A4-3** `LineStyle.java:54-60` — `LineStyle` aloca dois vetores do tamanho das barras visíveis a cada repintura, e as barras visíveis podem ser a série inteira
+- **A5-1** `ui/chart/OwnScale.java:136-155` — `OwnScale.smooth` nunca interpola: o resultado é sempre idêntico ao do `map`
+- **A5-2** `src/test/java/.../ui/chart/overlay/OwnPeriodTest.java:138-158` — O teste da interpolação só afirma teto, e o defeito é de piso
+- **A5-3** `ui/chart/overlay/MovingAverage.java:279-283` — Deslocamento negativo faz a média ler barras à direita
+- **A5-4** `ui/chart/study/StudyStack.java:431-439` — Varredura da série inteira dentro de manipulador de evento, na EDT
+- **A6-1** `ReplayPanel.java:186-190` — a velocidade escolhida nunca chega na sessão nova
+- **A6-2** `ReplayPanel.java:195-205` — o campo "Até" se corrige dentro da própria notificação do documento, e estoura
+- **A6-3** `ReplaySession.java:706-716` — o replay fica "tocando" para sempre quando não há caminho para a barra (lado da interface)
+- **A6-4** `ReplaySession.java:263-273` — "carregando ticks..." não tem saída quando a leitura falha
+- **A6-5** `ReplayPanel.java:360-361` — varredura da série inteira dentro do `ActionListener` do combo
+- **A6-6** `ReplaySessionTest.java:144-153` — teste que compara um valor consigo mesmo
+- **A6-7** `ReplayRangeTest.java:173-181` — o teto de `MOST_SESSIONS` nunca é exercido pelo teste que diz exercê-lo
+- **A7a-1** `platform/JobService.java:282-292` — `Error` escapa do `try` e o trabalho é entregue como SUCESSO com `null`
+- **A7a-2** `platform/JobService.java:165-176 e :296-299` — Trabalho cancelado nunca avisa ninguém, e `isCancelled()` volta a mentir `false`
+- **A7a-3** `src/test/java/br/com/jorge/reis/endeavourneo/platform/JobServiceTest.java:138-149` — `JobServiceTest.cancellationIsCooperative` afirma uma disjunção que a linha seguinte já afirma sozinha — e é por isso que A7a-2 sobreviveu
+- **A7a-4** `src/test/java/br/com/jorge/reis/endeavourneo/architecture/LayerBoundaryTest.java:117-129` — O guarda da fronteira de camadas só enxerga a palavra `import`, e o repositório escreve referências qualificadas
+- **A7a-5** `platform/SeriesCatalog.java:314-335` — A série AJUSTADA por razão é a única que aparece na tela com o nome puro do mercado
+- **A7b-1** `ui/shell/MainWindow.java:1035` — Sair pelo menu apaga a lista de gráficos a reabrir
+- **A7b-2** `src/test/java/.../ui/shell/MainWindowTest.java:220` — O teste do "toda janela volta" só exercita a saída que funciona
+- **A7b-3** `ui/series/Segmentable.java:122 chamado de ui/series/SeriesWindow.java:392` — Varredura de 824.881 barras na EDT, dentro do ouvinte do combo (a quinta ocorrência)
+- **A7b-4** `ui/shell/MainWindow.java:352` — Uma série que existe e falha ao ler vira passeio aleatório desenhado com o nome dela
+- **A7b-5** `ui/shell/MainWindow.java:420` — O ternário de dois ramos iguais: a janela fica com o nome que foi pedido, não com o da série que abriu
+- **A7b-6** `ui/series/SeriesWindow.java:190 e ui/shell/MainWindow.java:831` — Duas janelas de séries sobre a mesma série: a última a fechar apaga o que a outra gravou
+- **A7b-7** `src/test/java/.../ui/series/SegmentPickingTest.java:189` — Teste sem dentes: "o mapa desenha os segmentos" não verifica desenho nenhum
+- **A7b-8** `src/test/java/.../ui/shell/StatusStripTest.java:77 e :141` — Teste sem dentes: o rodapé é medido por posição, nunca por largura
+- **A8a-1** `RenkoWickBoundsTest.java:119` — as três asserções de calda são de teto; calda nenhuma passa em todas
+- **A8a-2** `TimeframeTest.java (arquivo inteiro` — nenhum teste dobra acima de 30 minutos; o carimbo de meia-noite passa
+- **A8a-3** `ReplaySeriesTest.java:178` — o replay travado nunca é exercitado: nenhum `TickPath` devolve null
+- **A8a-4** `TickRenkoTest.java:142` — `assertTrue(half.size() < whole.size())`: um negócio de lookahead passa
+- **A8a-5** `TimeframeTest.java:128-140` — `carriesTheOpeningTime` usa fixture já alinhado; o defeito dos ticks 59s atrasados passa
+- **A8a-6** `ausência em TimeframeTest.java; produto em Timeframe.java:293-297` — `MONTHLY` nunca é dobrado; "todo setembro num só balde" passa
+- **A8a-7** `HistoryBeforeReplayTest.java:74-84` — `joinsInOrder` promete ordem e não lê um carimbo sequer
+- **A8b-1** `ui/chart/overlay/BollingerBandsTest.java:180-210` — "nenhuma banda sabe o que o mercado não disse" não pega a leitura do futuro
+- **A8b-2** `ui/chart/overlay/MovingAverageTest.java (arquivo inteiro` — a média em escala maior não tem teste nenhum, e a interpolação nasce ligada
+- **A8b-3** `ui/chart/study/rsi/RelativeStrengthTest.java:231-262` — o RSI em escala maior também não tem teste de cálculo
+- **A8b-4** `ui/chart/overlay/MovingAverageTest.java:128-138` — o deslocamento só é testado para a frente; para trás ele lê o futuro
+- **A8b-5** `ui/chart/SeriesSummaryTest.java:133-148` — "diz se veio de ticks ou de candles" passa com os dois rótulos trocados
+- **A8b-6** `ausência. src/main/.../ui/chart/OverlayLegend.java` — a legenda não tem um único teste, e a correção que acabou de entrar nela está solta
+
+## MÉDIA (104)
+
+- **A1-2** `Timeframe.java:237-239` — `Timeframe.fold` decide "esta série não tem volume" olhando só a barra 0, e apaga todos os volumes já somados
+- **A1-3** `Timeframe.java:250-271` — Em `Timeframe`, o javadoc de `bucketOf` está colado em `startOf`, e `bucketOf` fica sem nenhum
+- **A1-4** `TickPath.java:44-46` — `RecordedTicks` não respeita o contrato que `TickPath` declara: o caminho não começa na abertura nem termina no fechamento
+- **A1-5** `RecordedTicks.java:55-59` — O parâmetro `zone` de `RecordedTicks` não tem efeito nenhum sobre os ticks: as sessões calculam a meia-noite no fuso do sistema
+- **A1-6** `TickLibrary.java:76-82` — Em `TickLibrary`, dois comentários dizem que o mapa está em ordem de uso; ele está em ordem de inserção e nunca é reordenado
+- **A1-7** `TapeFile.java:186-191` — Em `TapeFile`, "uma sessão em que ninguém negociou" é também o que se lê de uma sessão cheia cujo dicionário ficou vazio
+- **A1-8** `TapeFile.java:531-534` — `TapeFile.Session.aggressorAt` clona um array por chamada e estoura com `ArrayIndexOutOfBoundsException` — não `IOException` — num byte zero
+- **A1-9** `TickLibrary.java:283-300` — `TickLibrary.exported()` engole a `IOException` da varredura e responde "nenhuma sessão", sem dizer nada
+- **A2-3** `Renko.java:72-74` — O javadoc afirma, três vezes, que o volume é repartido entre as caixas do lote — a regra 7 e o código dizem o oposto
+- **A2-4** `Renko.java:556-579` — O javadoc de `settle` e o de `Untraded` ainda descrevem a regra por FAIXA DE PREÇO, que é o defeito já corrigido — e listam parâmetros que não existem
+- **A2-5** `TickRenko.java:145-154` — O primeiro javadoc de `TickRenko.advance` está órfão E mente: diz que a sessão NÃO é marcada como dobrada, e a linha 192 marca
+- **A2-6** `Renko.java:264-297` — O javadoc de `applyFrom` — que carrega a propriedade em que a construção sessão a sessão se apoia — está órfão sobre `gridUnder`
+- **A2-7** `ReplaySeries.java:288-307` — `ReplaySeries.clock()` anda para trás quase uma barra inteira quando uma barra termina
+- **A2-8** `TickRenko.java:174-193` — O rabo da sessão que estava sendo avançada nunca é dobrado quando o replay entra no dia seguinte
+- **A2-9** `Renko.java:220-222` — `Renko.Carry` não valida invariante, guarda um `TradeTally` mutável, e por isso `equals` é identidade — o teste que compara dois carries só passa por acidente
+- **A2-10** `Renko.java:325-333` — Nada limita quantas caixas uma barra pode assentar; `steps()` satura o `int` em silêncio
+- **A2-11** `TickBars.java:137-140` — `TickBars.volumeAt` ignora `hasVolume`: "não disse nada" vira zero, contra o contrato explícito de `TickSeries`
+- **A2-12** `TickRenko.java:340-354` — `TickRenko.live()` remonta a série inteira de caixas a cada quadro
+- **A2-13** `RenkoTest.java:169-182` — Um teste afirma no nome o oposto da regra 4 — "tocar o nível é suficiente" — e a fixture nem exercita o caso discriminante
+- **A2-14** `Renko.java:188-197` — `Renko.label()` devolve texto de interface em português, de dentro de `domain/`, e escrito errado
+- **A3-5** `ChartCanvas.java:1154` — A guarda do diálogo só conhece o export METATRADER; o construtor tenta PROFIT primeiro
+- **A3-6** `ChartCanvas.java:2480` — Nenhum tratador de mouse confere o botão: o clique direito apaga a medição e recentra o gráfico
+- **A3-7** `ChartCanvas.java:2628` — O zoom da roda ancora pela largura do componente, não pela do gráfico
+- **A3-8** `ChartCanvas.java:1627` — `storeView` diz guardar "how far along" e não guarda a posição
+- **A3-9** `ChartCanvas.java:643` — Três regras diferentes de arredondamento de preço, e o rodapé usa a que o próprio arquivo diz que não pode existir
+- **A3-10** `ChartCanvas.java:87` — Sete javadocs órfãos, cada um documentando o membro errado
+- **A3-11** `ChartCanvas.java:1094` — A `TickLibrary` do replay vaza: sobrescrita sem fechar, e nunca fechada ao fechar o gráfico
+- **A3-12** `ChartCanvas.java:856` — Ligar e desligar os rabos do renko joga fora o zoom e a posição do leitor
+- **A3-13** `ChartCanvas.java:1264` — O caminho de extensão faz leitura de disco bloqueante na EDT e copia a série inteira a cada quadro
+- **A4-4** `(sem referência)` — O comentário de `parsePanes` diz que a altura vem da primeira linha do painel; o código a lê da última
+- **A4-5** `(sem referência)` — `ChartLayouts` documenta um armazenamento que não usa, e corta o layout em 40 indicadores por causa de um limite que não existe
+- **A4-6** `LayoutBar.java:484-488` — Remover uma aba à ESQUERDA da selecionada troca o gráfico de layout em silêncio
+- **A4-7** `BarReadout.java:171-176` — A linha "Contra anterior" do resumo compara com a barra anterior, e o comentário promete a comparação de pregão
+- **A4-8** `ChartHolder.java:303-318` — Três javadocs órfãos descrevendo membro diferente do que está logo abaixo
+- **A4-9** `SeriesSummary.java:113-117` — Dois comentários afirmam que o calendário só é consultado onde o dia muda; os dois consultam por barra
+- **A4-10** `LayoutBar.java:443-451` — Renomear duas abas com o mesmo nome quebra a seleção, enquanto duplicar toma o cuidado de evitá-lo
+- **A4-11** `ChartLayouts.java:90-109` — Cada `capture()` reescreve o arquivo de configuração inteiro 3n+1 vezes, na EDT
+- **A4-12** `(sem referência)` — `ui/chart/Sessions` é aritmética de domínio morando na camada de interface, com o nome de uma classe de domínio que já existe
+- **A5-5** `SlowStochastic.java:506-507 contra RelativeStrength.java:356-360` — O estocástico não tem interpolação; o RSI tem. Confirmado, e não é só a linha
+- **A5-6** `ui/chart/overlay/BollingerBands.java:325-336 (o que a classe oferece) contra` — Estilo e espessura da linha do meio das bandas não desenham nada
+- **A5-7** `ui/chart/LinePen.java:218 e :279-281` — `LinePen` arredonda a espessura para inteiro, e explode fora de 1..8
+- **A5-8** `ui/chart/LinePen.java:299-317` — `setBorder` dentro de `paintComponent`
+- **A5-9** `ui/chart/study/StudyStack.java:241-244` — O "visível" de um estudo dentro de painel é gravado como literal `true`
+- **A5-10** `ui/chart/study/StudyPane.java:331-348` — `drop()` esvazia a lista de estudos e deixa os retângulos do cabeçalho para trás
+- **A5-11** `ui/chart/study/StudyPane.java:750-757` — Alocação por barra dentro da pintura, e a série lida duas vezes por linha
+- **A5-12** `ui/chart/study/stochastic/SlowStochastic.java:546-574` — A suavização exponencial do estocástico não tem aquecimento, contra o próprio javadoc
+- **A5-13** `ui/chart/study/stochastic/SlowStochastic.java:399-403` — O `appearance` do estocástico é o único sem teste de ida-e-volta, e descarta a cor de venda
+- **A5-14** `ui/chart/overlay/BollingerBands.java:431-434` — As bandas alocam um array por barra durante o cálculo
+- **A6-8** `ReplaySession.java:117-120` — o "até onde vai" do transporte é inventado, e o fixture foi feito para casar com a invenção
+- **A6-9** `ReplayPanel.java:537-538` — a cor de erro é fixa e some no tema escuro
+- **A6-10** `ReplayDrop.java:84-93` — um gráfico fechado nunca sai da lista de "avisar quando acabar"
+- **A6-11** `ReplayFeed.java:140` — o cache de dias jogáveis nunca é esvaziado em produção, e o conjunto escapa mutável
+- **A6-12** `ReplayPanel.java:348` — abrir o transporte varre o disco duas vezes na EDT
+- **A6-13** `ReplayPanel.java:606-616` — a sessão que não constrói não diz nada a ninguém
+- **A6-14** `ReplayWindow.java:34-37` — o javadoc da janela promete o contrário do que o código faz
+- **A6-15** `ReplayPanel.java:207-211` — arrastar o scrubber com o replay tocando: o relógio disputa a alça
+- **A6-16** `DatePicker.java:135-155` — `DatePicker.onChange` troca o ouvinte e **acrescenta** outro
+- **A6-17** `messages.properties:243 e :256; messages_pt_BR.properties:243 e :256` — `replay.speed` está definido duas vezes no bundle, com significados diferentes
+- **A6-18** `ReplaySession.java:554-557` — texto de interface montado em Java, em português, dentro de `ReplaySession`
+- **A6-19** `ReplaySession.java:253-256` — o fuso do sistema decide de que dia é cada barra, em quatro lugares
+- **A7a-6** `platform/JobService.java:245-247 e :313-333` — Etapa e fração são um par único para o serviço inteiro; dois jobs simultâneos se sobrescrevem
+- **A7a-7** `platform/JobService.java:233 e :336-338` — `onChange` não tem como desinscrever, e a troca de idioma vaza a janela inteira
+- **A7a-8** `platform/Settings.java:257-284 e :328-336` — `save()` trunca no lugar e reescreve o arquivo inteiro a cada chave
+- **A7a-9** `platform/Settings.java:70` — `user.home` ausente derruba a classe `Settings` inteira, num inicializador estático
+- **A7a-10** `platform/Settings.java:278-283` — Falha de gravação vira uma chave que ninguém lê, e que depois é persistida como se fosse configuração
+- **A7a-11** `platform/SeriesCatalog.java:490-527` — A varredura de disco engole o erro por um caminho e escapa por outro
+- **A7a-12** `platform/SeriesCatalog.java:495-523` — A listagem reabre as configurações e o cabeçalho de cada arquivo, e roda na EDT
+- **A7a-13** `platform/SeriesCatalog.java:601-620` — `open()` é um verifica-depois-age: duas threads leem a mesma série duas vezes, e o cache nunca percebe o arquivo mudar
+- **A7a-14** `platform/SeriesCatalog.java:167-178` — `useFolderForTest` é pública e move o estado global que o próprio arquivo documenta ter destruído 90 MB
+- **A7a-15** `src/test/java/.../platform/SeriesCatalogTest.java:121-142 e 215-234` — Os testes do `SeriesCatalog` leem as configurações reais da máquina de quem roda a suíte
+- **A7a-16** `platform/Segmentation.java:133-148` — `Segmentation.set` apaga tudo e só depois começa a escrever, uma gravação de arquivo por vez
+- **A7a-17** `platform/Segmentation.java:105-130` — O comentário promete pular uma entrada ruim; o código trunca a lista inteira
+- **A7a-18** `platform/Messages.java:50 e :141-154` — O bundle é um estático não-volátil trocado em tempo de execução e lido de threads de job
+- **A7a-19** `platform/Appearance.java:78` — `Appearance.install` devolve texto de interface em inglês literal, que vai para a barra de status
+- **A7b-9** `ui/shell/MainWindow.java:977` — O log dobrado volta para onde estava no fechamento anterior, não para onde o leitor deixou
+- **A7b-10** `ui/shell/Navigator.java:132 com ui/shell/Navigator.java:191` — Duplo clique em "Sem título", sob Estudos, abre um gráfico da série padrão
+- **A7b-11** `ui/shell/StatusBar.java:215` — O rodapé continua nomeando um gráfico que já foi fechado
+- **A7b-12** `ui/shell/StatusBar.java:271 e :313` — Em janela estreita a mensagem vai a zero e o botão Cancelar sai de vista
+- **A7b-13** `ui/series/SeriesWindow.java:404 chamado de :180 e :149` — A janela de séries grava mesmo quando nada foi editado, e a gravação apaga o que ela não soube ler
+- **A7b-14** `ui/series/SeriesWindow.java:388` — Sem série nenhuma no disco, a janela grava segmentos sob a chave literal "null"
+- **A7b-15** `ui/shell/MainWindow.java:809 com Launcher.java:99` — Depois de trocar o idioma, tudo que vai para a saída padrão cai numa janela destruída
+- **A7b-16** `ui/settings/SettingsDialog.java:104` — Diálogos nunca são descartados, e o troca-tema percorre todos eles
+- **A7b-17** `ui/series/SegmentDialog.java:483 com ui/series/RangeBar.java:139` — Data invertida digitada no diálogo: o campo mostra uma coisa, o segmento salvo é outra
+- **A7b-18** `src/test/java/.../ui/series/SegmentPickingTest.java:107` — Teste de intervalo que passaria mesmo se `setRange` não fizesse nada
+- **A7b-19** `ui/shell/MainWindow.java:301 com platform/Settings.java:369` — Com dez ou mais gráficos, a ordem de restauração é alfabética, não numérica
+- **A7b-20** `ui/shell/Navigator.java:157 chamado de ui/shell/MainWindow.java:833` — A árvore é reconstruída, com I/O, dentro de manipuladores de evento
+- **A7b-21** `src/test/java/.../ui/shell/CollapsiblePaneTest.java:35 e` — Os testes escrevem nas preferências e no workspace reais do usuário
+- **A7b-22** `ui/shell/MainWindow.java:200 com src/test/java/.../MainWindowTest.java:269` — Cada teste da janela principal deixa um `restoreCharts` na fila, para uma janela já descartada
+- **A7b-23** `ui/shell/Navigator.java:269` — "a" escrito em português dentro do código
+- **A8a-8** `SegmentedSeriesTest.java (arquivo inteiro` — `SegmentedSeriesTest` só lê `closeAt` e `timeAt`
+- **A8a-9** `MarketFileTest.java:99 e SeriesMergeTest.java:162` — `minutes` escrito por `MarketFile.write` nunca é lido de volta
+- **A8a-10** `TickRenkoTest.java:196-199` — `anEmptySessionIsHarmless`: o laço pode não rodar nenhuma vez
+- **A8a-11** `ausência; produto em Timeframe.java:181 e consumidor em` — `Timeframe.fold` em um minuto (o caminho dos ticks) não tem teste
+- **A8a-12** `ausência; produto em ReplaySeries.java:164-169` — `advanceMarketTime` sem gerador de ticks: o ramo de fallback não tem teste
+- **A8a-13** `ausência total.` — `ArraySeries` e `SyntheticTicks` não têm teste nenhum
+- **A8b-7** `ui/chart/ChartCanvasTest.java:89-98` — "mais largo dá passo mais fino" passa com o parâmetro ignorado
+- **A8b-8** `ui/chart/ChartCanvasTest.java:61-68` — os limites do arrasto são afirmados só de um lado
+- **A8b-9** `ui/chart/TimeAxisTest.java:92-130 (a classe inteira` — o limiar do eixo (2 dias) nunca é cercado
+- **A8b-10** `ui/chart/study/PaneSharingTest.java:96 e :126-132` — `fits` casa duas faixas pela MESMA instância de array
+- **A8b-11** `ui/shell/CollapsiblePaneTest.java:37-62` — "a legenda fica" é afirmada por um valor que nada no caminho pode mudar
+- **A8b-12** `ui/chart/TickRenkoOnChartTest.java:235` — três asserções negativas do renko de ticks são guardadas por um `sleep` fixo
+- **A8b-13** `ui/chart/overlay/BollingerBandsTest.java:212-254` — o traço da linha do meio das bandas nunca chega ao desenho
+- **A8b-14** `ui/chart/MeasurementTest.java:86-91` — o tempo decorrido da régua só tem piso, nunca um valor
+- **A8b-15** `ausência` — o caminho de pintura nunca vê mais de três barras
+
+## BAIXA (98)
+
+- **-** `PriceSeries.java:66-98` — a série vazia não sobrescreve `volumeAt`; os cinco
+- **-** `ArraySeries.java:70-81` — o construtor aceita arrays de tamanhos diferentes.
+- **-** `Timeframe.java:271-282` — `startOf` soma `slot` de minutos de relógio ao
+- **-** `Timeframe.java` — a classe não tem `equals`/`hashCode`, e `ofMinutes`
+- **-** `Timeframe.java:194-247` — `fold` aloca seis arrays do tamanho da ORIGEM e
+- **-** `TapeFile.java:103-105` — `isTape` usa o literal `"ENDVTAPE"` em vez da
+- **-** `TickFile.java:320-330` — `header(channel, file, tag)` compara contra
+- **-** `TapeFile.java:206-219` — depois de ler as `entries` corretoras, nada confere
+- **-** `TapeFile.java:360-365` — `entry.putShort((short) name.length)` sem conferir o
+- **-** `Renko.java:590` — `counts.set(at, trades);` é escrita morta: o laço das linhas
+- **-** `Renko.java:596-608` — quando `tally.summarised()`, o laço percorre o lote
+- **-** `Renko.java:589` — `if (!tally.summarised() && trades > 0)` protege o carimbo,
+- **-** `TradeTally.java:125-129` — `seeing` decide "é resumo" por `high != low`. Uma
+- **-** `TradeTally.java:132-134` — `add` chama `seeing` de novo, depois de `Renko` já
+- **-** `ReplaySeries.java:162-169` — com `ticks == null`, `advance((int) (millis /
+- **-** `ReplaySeries.java:122-130` — `measureBar` lê o intervalo das duas primeiras
+- **-** `MetaTraderTicks.java:222-242` — `whole()` ignora em silêncio qualquer byte que
+- **-** `MetaTraderTicks.java:171-180` — data e hora são lidas em deslocamentos FIXOS
+- **-** `TickRenko.java:118-132` — para achar a última data dobrada, `add` percorre o
+- **-** `ChartCanvas.java:2038` — `if (series == null || last <= first)` confere `series` DEPOIS
+- **-** `ChartCanvas.java:2327` — `paintCrosshair` não tem a guarda `onAxis`/`onTimeAxis` que
+- **-** `ChartCanvas.java:1322` — o javadoc de `hoveredBar` promete `-1` *"when the mouse is
+- **-** `ChartCanvas.java:188` — o javadoc de `JUMP_MARGIN` diz *"from the bottom-right corner"*,
+- **-** `ChartCanvas.java:1781` — `paintOverlays` usa `overlay.stroke()` para todas as linhas;
+- **-** `ChartCanvas.java:244` — o javadoc de `followers` justifica o `final` com *"a subclass's
+- **-** `ChartCanvas.java:2540` — `onCursorChanged.run();` está fora da indentação do bloco.
+- **-** `ChartCanvas.java:824` — `setPeriod` compara com `==`; `new Renko(55, 2)` duas vezes são
+- **-** `ChartCanvas.java:614` — `isAutomaticScale()` compara `double` com `==`; funciona porque
+- **-** `ChartCanvas.java:2112` — `paintLastPrice` mostra o fechamento da última barra VISÍVEL, e
+- **-** `ChartCanvas.java:1318` — `getStyle()` usa prefixo `get` onde todo o resto do arquivo usa
+- **-** `ChartHolder.java:734` — `private JMenuItem item(String, Runnable)` nunca é chamado, e `import javax.swing.JMenu;` (linha 48) não é usado. Resto do menu que virou barra de ferramentas.
+- **-** `messages_pt_BR.properties:203,208,210,211` — `Serie`, `Inicio`, `Duracao`, `Pregoes` sem acento, enquanto o mesmo arquivo escreve `Cópia de {0}` e `Máxima` corretamente.
+- **-** `messages_pt_BR.properties:213-215` — `summary.years/months/days` só têm plural (`{0} anos`), então `SeriesSummary.spanBetween` imprime "1 anos, 1 meses e 1 dias". `ruler.day`/`ruler.days` têm as duas formas; `summary` não seguiu.
+- **-** `OverlayLegend.java:244` — `gapAt` usa `i * ROW_HEIGHT + ROW_HEIGHT / 2` como meio da linha, um pixel acima do meio real pela mesma razão.
+- **-** `BarReadout.java:240-246` — `decimalsFor(high - low)` escolhe as casas decimais pela amplitude DA BARRA, não pelo tick do instrumento: um minuto do WIN com amplitude de 5 pontos imprime `121.500,00`, e o minuto seguinte com 15 pontos imprime `121.500`. A mesma coluna muda de formato de barra para barra.
+- **-** `RandomWalkSeries.java:36` — `<p>Delete this class the moment a real series is wired in.</p>`, e a classe está em produção em `MainWindow.java:369` e `ReplaySession.java:30`, com séries reais já ligadas.
+- **-** `ChartHeader.java:371-378` — `mousePressed` abre o menu de segmento em qualquer botão do mouse, inclusive o direito, que em toda outra parte deste programa abre menu de contexto.
+- **A5-15** `ui/chart/OwnScale.java:121-123` — Código morto em `OwnScale.map`
+- **A5-16** `ui/chart/study/stochastic/StochasticDialog.java:20-49` — Onze imports mortos no `StochasticDialog`, sobra da extração do `LinePen`
+- **A5-17** `ui/chart/study/stochastic/StochasticDialog.java:205-206` — `average.setEnabled(true)` incondicional
+- **A5-18** `ui/chart/overlay/MovingAverage.java:157-161` — O javadoc do construtor variádico da média descreve outra ordem
+- **A5-19** `ui/chart/study/StudyPane.java:619-628 e :579-583` — Filtrar NaN desalinha o número da sua cor no cabeçalho
+- **A5-20** `ui/chart/OverlayCatalog.java:51-52` — Records da área sem construtor compacto
+- **A5-21** `ui/chart/study/StudyStack.java:188-195` — `fits` supõe que `bounds()` tem dois elementos
+- **A5-22** `ui/chart/InsertOverlayDialog.java:189-196 e ui/chart/ChartCanvas.java:713-726` — `InsertOverlayDialog.edit` devolve um indicador sem a aparência do que substituiu
+- **A5-23** `ui/chart/Overlay.java:83-112` — Javadoc órfão em `Overlay`
+- **A5-24** `ui/chart/study/StudyPane.java:601-603 e :615` — Texto de interface montado em Java
+- **A6-20** `ReplayPanel.java:679-680` — dois ícones novos por frame, e um `setIcon` que repinta o botão 25 vezes por segundo
+- **A6-21** `ReplaySession.java:150-156` — javadocs empilhados que ficam presos no membro errado
+- **A6-22** `ReplaySession.java:675-685` — `isStopped()` não é usado por ninguém
+- **A6-23** `DatePicker.java:205` — comentários que narram o código
+- **A6-24** `ReplayPanel.java:687` — `chip.setEnabled(true)` redundante
+- **A6-25** `ReplayPanel.java:267-278` — `stopSession()` é um invólucro de uma linha com dois javadocs
+- **A6-26** `ReplaySessionTest.java:166-169` — o comentário do teste de velocidade diz 50, o código diz 60
+- **-** `seekingToTheEnd` — **sem dentes** — ver A6-6. Tautologia.
+- **-** `theClockIsTheSessionsClock` — pega o relógio ficar em 1970 ou virar "agora".
+- **-** `speed` — pega `setSpeed` não travar o piso nem o teto. **Não pega** três coisas:
+- **-** `theClockSaysWhichDay` — `assertEquals(8, ...length())` e
+- **-** `theTitleSaysTheRange` — trava o literal `" a "` (A6-18) — o teste **defende** o
+- **-** `thereIsACap` — **sem dentes** — ver A6-7. Apagar o teto do produto não quebra
+- **A7a-20** `platform/SeriesCatalog.java:292-297` — Três javadocs órfãos: a documentação está colada no membro errado
+- **-** `Appearance` — o `@return` de `registerPalette` sobrou sobre `forgetPalettes`, que é
+- **-** `Messages` — o bloco com `@param key/@param fallback` que descreve `orElse` está colado em
+- **-** `SeriesCatalog` — `@return the market a series belongs to`, que é de `groupOf`, está
+- **A7a-21** `src/main/resources/messages.properties:243 e :256 (e as duas equivalentes em` — `replay.speed` está declarada duas vezes nos dois bundles
+- **A7a-22** `platform/Theme.java:55-63` — O javadoc do `Theme` ainda descreve o nó de `Preferences` que não existe mais
+- **A7a-23** `platform/Settings.java:266-269` — Toda gravação muda uma linha do arquivo, o que desfaz metade da razão de ordenar
+- **A7a-24** `Launcher.java:60-74` — Bandeira desconhecida no arranque é ignorada sem uma palavra, e o tema é regravado toda vez
+- **A7a-25** `platform/Progress.java:34 contra ui/shell/StatusBar.java:177-184` — O javadoc do `Progress` diz que a barra some; ela fica indeterminada
+- **A7a-26** `platform/Appearance.java:81-97` — O espaçamento apertado se perde quando o FlatLaf não está presente
+- **A7a-27** `platform/SeriesCatalog.java:423-440 e :449-455` — `secondsOf` pode lançar de dentro de um comparador
+- **A7a-28** `platform/Appearance.java:193-199` — `monospaced` fixa "Consolas" sem conferir se existe
+- **A7a-29** `src/test/java/.../platform/ThemeSwitchTest.java:50-115` — `ThemeSwitchTest` deixa o look and feel trocado para o resto da suíte
+- **A7a-30** `platform/Messages.java:122-130` — `mnemonic` devolve um ponto de código como se fosse um código de tecla
+- **A7b-24** `(sem referência)` — Javadoc pregado no membro errado, seis vezes
+- **A7b-25** `(sem referência)` — Código morto
+- **A7b-26** `(sem referência)` — Cores fixas onde a área toda lê o tema
+- **A7b-27** `(sem referência)` — Coleção mutável escapando pelo getter
+- **A7b-28** `(sem referência)` — `record` sem invariante no construtor compacto
+- **A7b-29** `(sem referência)` — Estado empacotado num inteiro para detectar mudança
+- **A7b-30** `(sem referência)` — "0,0%" escrito no código, e formatação dependente do locale padrão
+- **A7b-31** `(sem referência)` — Comentário que conta cinco onde há seis
+- **A7b-32** `(sem referência)` — O console arrasta o cursor para o fim a cada linha
+- **A7b-33** `(sem referência)` — O painel dobrável não tem teclado, e engole o foco ao dobrar
+- **A7b-34** `(sem referência)` — Botões habilitados que não fazem nada quando a série não lê
+- **A7b-35** `(sem referência)` — `IOException` engolida sem deixar rastro
+- **A8a-14** `RenkoTest.java:453-465` — metade de `everyBoundaryIsOnTheGrid` é aritmética sobre constantes
+- **A8a-15** `TickRenkoTest.java:432-436` — o laço de vinte quadros de `theFormingBrickIsNeverCounted` é inerte
+- **A8a-16** `TapeFileTest.java:194-198` — `theBrokersSurvive` afere o dicionário por uma faixa larga e uma constante compartilhada
+- **A8a-17** `ausência em TapeFileTest.java` — `TapeFile` não tem o teste negativo que `TickFile` tem
+- **A8a-18** `MarketFile.java:236` — a guarda `count < 0 || count > Integer.MAX_VALUE` de `MarketFile` não tem teste
+- **A8b-16** `ui/chart/overlay/BollingerBandsTest.java:272-288` — o grampo de desvio "impossível" só afirma o que já é igualdade
+- **A8b-17** `ui/chart/overlay/MovingAverageTest.java:153-160` — a cor automática é comparada consigo mesma
+- **A8b-18** `ui/chart/study/stochastic/SlowStochasticTest.java:206-207` — a média do estocástico é conferida numa única barra
+- **A8b-19** `ui/chart/SegmentChipTest.java:179-181` — o primeiro ponto colorido do menu de segmento não é afirmado
+- **A8b-20** `ui/chart/OverlayCatalogTest.java:61-62` — `everyKindIsUsable` pergunta o valor antes de calcular
+- **-** `SeriesSummary` — qual rótulo corresponde a qual fonte
+- **-** `Measurement.elapsed()` — nenhum valor fixado. A8b-14.
