@@ -17,7 +17,9 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.chart;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
@@ -25,6 +27,7 @@ import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
 import java.awt.Rectangle;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -127,5 +130,75 @@ class TimeAxisTest {
         assertTrue(canvas.axisSpeaksInDaysFor(Viewport.of(canvas.series(),
                         new Rectangle(0, 0, 900, 400), 0, 130_000)),
                 "three months on screen were labelled with the clock");
+    }
+
+    private static ZonedDateTime at(int year, int month, int day, int hour, int minute) {
+        return LocalDateTime.of(year, month, day, hour, minute).atZone(ZONE);
+    }
+
+    @Test
+    @DisplayName("the weekly label falls on a Monday, not on a Thursday")
+    void theWeekBeginsOnMonday() {
+        // The whole reason axisBucket exists as a method. It used to be
+        // millis / (step * 60_000) inline in the paint, which at the weekly step
+        // is epochDay / 7 -- and 1970-01-01 was a Thursday, so the axis drew its
+        // weeks from Thursday to Wednesday. Timeframe.bucketOf forbids exactly
+        // this, in a comment, and the day band beneath the axis already used the
+        // zone: the two disagreed inside one repaint.
+        int week = 10_080;
+
+        // 2026-09-07 is a Monday. Sunday belongs to the week that began before
+        // it; Monday opens a new one.
+        assertEquals(ChartCanvas.axisBucket(at(2026, 9, 2, 12, 0), week),
+                ChartCanvas.axisBucket(at(2026, 9, 6, 23, 59), week),
+                "Wednesday and the Sunday after it fell in different weeks");
+        assertNotEquals(ChartCanvas.axisBucket(at(2026, 9, 6, 23, 59), week),
+                ChartCanvas.axisBucket(at(2026, 9, 7, 0, 1), week),
+                "Sunday night and Monday morning fell in the same week");
+
+        // And the failure the old arithmetic produced, stated directly: Wednesday
+        // and the Thursday after it are ONE week, not two.
+        assertEquals(ChartCanvas.axisBucket(at(2026, 9, 2, 12, 0), week),
+                ChartCanvas.axisBucket(at(2026, 9, 3, 12, 0), week),
+                "the week still breaks on a Thursday");
+    }
+
+    @Test
+    @DisplayName("a step below a day divides the local day, not the epoch")
+    void theDayIsDividedLocally() {
+        // Two bars either side of local midnight have to land in different
+        // buckets whatever the machine's offset from UTC is -- which is the part
+        // dividing raw millis got wrong everywhere but Greenwich.
+        assertNotEquals(ChartCanvas.axisBucket(at(2026, 9, 2, 23, 59), 60),
+                ChartCanvas.axisBucket(at(2026, 9, 3, 0, 1), 60),
+                "the last hour of one day and the first of the next were one bucket");
+
+        // Within the hour, one bucket; across it, two.
+        assertEquals(ChartCanvas.axisBucket(at(2026, 9, 2, 14, 5), 60),
+                ChartCanvas.axisBucket(at(2026, 9, 2, 14, 55), 60));
+        assertNotEquals(ChartCanvas.axisBucket(at(2026, 9, 2, 14, 55), 60),
+                ChartCanvas.axisBucket(at(2026, 9, 2, 15, 5), 60));
+    }
+
+    @Test
+    @DisplayName("the bucket never goes backwards as time goes forward")
+    void bucketsAdvanceWithTime() {
+        // A property rather than three numbers: whatever the step, a later bar
+        // can never be given a smaller bucket, or the axis would draw a label at
+        // every bar for the rest of the chart.
+        for (int step : new int[]{1, 5, 15, 60, 240, 720, 1_440, 2_880, 10_080}) {
+            long previous = Long.MIN_VALUE;
+
+            for (int day = 1; day <= 40; day++) {
+                for (int hour : new int[]{0, 6, 13, 23}) {
+                    long bucket = ChartCanvas.axisBucket(at(2026, 9, 1, hour, 0).plusDays(day), step);
+
+                    assertTrue(bucket >= previous,
+                            "step " + step + " went backwards at day " + day + " hour " + hour);
+
+                    previous = bucket;
+                }
+            }
+        }
     }
 }

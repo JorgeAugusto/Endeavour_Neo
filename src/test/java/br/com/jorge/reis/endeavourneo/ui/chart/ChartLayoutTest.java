@@ -29,6 +29,41 @@ import org.junit.jupiter.api.Test;
 class ChartLayoutTest {
 
     @Test
+    @DisplayName("the default layout actually builds its indicators")
+    void theDefaultLayoutDrawsSomething() {
+        // It did not, for as long as the class was renamed. The default asked for
+        // "overlay.ema", the catalogue registers "overlay.movingAverage", and the
+        // key survived in the bundle, in four javadocs and in a test fixture --
+        // so nothing looked wrong anywhere. Entry.build handed back null,
+        // ChartLayout.build dropped nulls in silence (on purpose, to tolerate a
+        // layout from a later version), and applying the default gave a chart
+        // with no indicator on it.
+        //
+        // Round-tripping the TEXT could not catch that, and did not: a key that
+        // nothing registers writes and reads back perfectly. Only asking the
+        // layout for its indicators, and counting them, does.
+        // Counting them also catches the SECOND defect, which the first hid:
+        // the three periods were one entry's parameter list, and a parameter
+        // list is one indicator's settings -- period, shift, kind. It asked for
+        // a single average of period 17, shifted 55 bars sideways, of kind 200.
+        List<Overlay> built = ChartLayouts.defaultLayout().build();
+
+        assertEquals(3, built.size(),
+                "the default layout did not build three separate averages");
+
+        for (Overlay each : built) {
+            assertEquals("overlay.movingAverage", each.nameKey());
+        }
+
+        assertEquals(List.of(17, 55, 200),
+                built.stream()
+                        .map(each -> ((br.com.jorge.reis.endeavourneo.ui.chart.overlay.MovingAverage) each)
+                                .period())
+                        .toList(),
+                "the three periods are 17, 55 and 200");
+    }
+
+    @Test
     @DisplayName("a layout survives being written and read back, exactly")
     void roundTrip() {
         // This is the whole promise of a saved layout: reopening tomorrow gives

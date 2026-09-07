@@ -93,6 +93,16 @@ public enum Language {
         // Always, including SYSTEM -- whose locale() is the machine's. Doing it
         // only for the other two meant switching BACK to "follow the system"
         // left the previous choice in place until the next launch.
-        Messages.setLocale(remembered().locale());
+        Locale chosen = remembered().locale();
+
+        Messages.setLocale(chosen);
+
+        // The bundle is only half of it. Ten places read Locale.getDefault()
+        // directly -- the calendar month, the MMM/yy of the time axis, the
+        // decimal separator in seven readouts -- and Swing picks the words on
+        // the JOptionPane buttons from the JVM's locale, not from the bundle.
+        // Without this line, choosing English on a Brazilian machine asked the
+        // question in English over buttons that said Sim and Nao.
+        Locale.setDefault(chosen);
     }
 }

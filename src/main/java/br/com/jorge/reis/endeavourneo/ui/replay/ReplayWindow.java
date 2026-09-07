@@ -57,10 +57,18 @@ public final class ReplayWindow extends JFrame {
         // Closing the transport ends the session and gives every chart back its
         // own data. Leaving them frozen on a day that stopped playing, with a
         // title still claiming a replay, would make the charts need closing too.
+        //
+        // On windowCLOSED, not windowClosing. Closing fires only when the reader
+        // presses the X; dispose() -- which MainWindow.relaunch calls on every
+        // language change -- fires only closed. Hanging the release on closing
+        // alone left a language switch with the session's 40 ms Timer still
+        // walking the market, the tick files still open, and no reference left
+        // to stop either, because relaunch nulls the field straight after.
+        // windowClosed covers both paths: pressing the X disposes as well.
         addWindowListener(new java.awt.event.WindowAdapter() {
 
             @Override
-            public void windowClosing(java.awt.event.WindowEvent e) {
+            public void windowClosed(java.awt.event.WindowEvent e) {
                 panel.release();
             }
         });

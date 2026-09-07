@@ -31,9 +31,55 @@ import org.junit.jupiter.api.Test;
 @DisplayName("Language")
 class LanguageTest {
 
+    /**
+     * The JVM's own locale, put back after every test.
+     *
+     * <p>install() now moves it, which is the point of
+     * {@link #installMovesTheJvmLocaleToo()}. Leaving it moved would hand the
+     * next test in the run a machine that is not this one.</p>
+     */
+    private final Locale machine = Locale.getDefault();
+
+    /**
+     * The reader's own choice, put back after every test.
+     *
+     * <p>{@code remember()} writes to the real workspace. A test that leaves it
+     * moved changes the language of the application on the machine that ran the
+     * suite, which is not a thing a test is allowed to do.</p>
+     */
+    private final Language chosen = Language.remembered();
+
     @AfterEach
     void restore() {
-        Messages.setLocale(Locale.getDefault());
+        chosen.remember();
+
+        Locale.setDefault(machine);
+        Messages.setLocale(machine);
+    }
+
+    @Test
+    @DisplayName("choosing a language moves the JVM's locale, not only the bundle")
+    void installMovesTheJvmLocaleToo() {
+        // install() used to call Messages.setLocale and stop there, and half the
+        // application never heard about it. Ten places read Locale.getDefault()
+        // directly -- the calendar month, the MMM/yy of the time axis, the
+        // decimal separator in seven readouts -- and Swing takes the words on the
+        // JOptionPane buttons from the JVM locale, never from the bundle. On a
+        // Brazilian machine set to English, the question came out in English over
+        // buttons that said Sim and Nao.
+        Locale.setDefault(new Locale("pt", "BR"));
+
+        Language.ENGLISH.remember();
+        Language.install();
+
+        assertEquals(Language.ENGLISH.locale(), Locale.getDefault(),
+                "the bundle changed language and the JVM did not");
+
+        // And back the other way, so this cannot pass by only ever moving once.
+        Language.PORTUGUESE.remember();
+        Language.install();
+
+        assertEquals(Language.PORTUGUESE.locale(), Locale.getDefault());
     }
 
     @Test

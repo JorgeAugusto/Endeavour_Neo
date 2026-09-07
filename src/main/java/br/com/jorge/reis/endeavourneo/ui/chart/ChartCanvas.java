@@ -1893,7 +1893,7 @@ public final class ChartCanvas extends JComponent {
 
         for (int i = viewport.firstBar(); i < viewport.lastBar() && i < series.size(); i++) {
             ZonedDateTime time = Instant.ofEpochMilli(series.timeAt(i)).atZone(zone);
-            long bucket = series.timeAt(i) / (step * 60_000L);
+            long bucket = axisBucket(time, step);
 
             boolean newDay = previousTime != null
                     && !time.toLocalDate().equals(previousTime.toLocalDate());
@@ -2061,6 +2061,45 @@ public final class ChartCanvas extends JComponent {
         g.drawString(text, (int) Math.round((left + right) / 2 - width / 2.0),
                 top + metrics.getAscent() + 2);
     }
+
+    /**
+     * @param time the bar's instant, already in the reader's zone
+     * @param step the label interval in minutes, one of {@code TIME_STEPS}
+     * @return which slot of that interval the bar falls in; a label is drawn
+     *         wherever this number changes from one bar to the next
+     *
+     * <p><b>In the zone, never in UTC.</b> The obvious form is
+     * {@code millis / (step * 60_000)}, and it was what stood here. It is wrong
+     * for every step that a person names after a calendar: at the weekly step it
+     * is exactly {@code epochDay / 7}, and since 1970-01-01 was a Thursday, the
+     * weeks it drew began on Thursdays. {@code Timeframe.bucketOf} forbids that
+     * in a comment, in the same words, for the same reason -- and the day band
+     * painted directly beneath this axis already used the zone, so the two
+     * disagreed inside one repaint.</p>
+     *
+     * <p>Steps below a day divide the day itself, so they need the local time of
+     * day rather than the epoch; a step of a day or more counts whole local
+     * days, and the week starts on Monday because that is where a week starts.</p>
+     */
+    static long axisBucket(ZonedDateTime time, int step) {
+        if (step >= WEEK_MINUTES) {
+            return time.toLocalDate()
+                    .minusDays(time.getDayOfWeek().getValue() - java.time.DayOfWeek.MONDAY.getValue())
+                    .toEpochDay();
+        }
+
+        if (step >= DAY_MINUTES) {
+            return time.toLocalDate().toEpochDay() / (step / DAY_MINUTES);
+        }
+
+        long minuteOfDay = time.getHour() * 60L + time.getMinute();
+
+        return time.toLocalDate().toEpochDay() * (DAY_MINUTES / step) + minuteOfDay / step;
+    }
+
+    private static final int DAY_MINUTES = 1_440;
+
+    private static final int WEEK_MINUTES = 10_080;
 
     /**
      * @return the smallest round interval that does not crowd the labels

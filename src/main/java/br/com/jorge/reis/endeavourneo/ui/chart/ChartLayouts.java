@@ -138,9 +138,33 @@ public final class ChartLayouts {
         return candidate;
     }
 
-    private static ChartLayout defaultLayout() {
+    /**
+     * @return what a reader who has never saved a layout is offered
+     *
+     * <p>Package-private rather than private so a test can build it. It reached
+     * production naming a key nothing registers, and the only way that is caught
+     * is by asking it for its indicators and counting them.</p>
+     */
+    static ChartLayout defaultLayout() {
+        // The key has to be the one MovingAverage.nameKey() answers. It said
+        // "overlay.ema" for as long as the class was called that, and the rename
+        // moved the class without moving this line -- so the catalogue looked up
+        // a key nobody registers, Entry.build handed back null, ChartLayout.build
+        // dropped the null in silence (which it does on purpose, to tolerate a
+        // layout written by a later version), and applying the default layout
+        // produced a chart with no indicator at all.
+        // THREE entries, not one entry with three numbers. An Entry's parameter
+        // list is that one indicator's settings -- period, shift, kind -- so
+        // List.of(17, 55, 200) asked for a single average of period 17, shifted
+        // 55 bars sideways, of kind 200. It was never noticed because the key
+        // beside it was dead and the whole entry was dropped before anything
+        // tried to build it. MainWindow says the intended shape out loud:
+        // "Three averages, three indicators. One indicator drawing three lines
+        // meant they shared one set of settings."
         return new ChartLayout(Messages.get("layout.default"),
-                List.of(new ChartLayout.Entry("overlay.ema", List.of(17, 55, 200), true)));
+                List.of(new ChartLayout.Entry("overlay.movingAverage", List.of(17), true),
+                        new ChartLayout.Entry("overlay.movingAverage", List.of(55), true),
+                        new ChartLayout.Entry("overlay.movingAverage", List.of(200), true)));
     }
 
     // --------------------------------------------------------------- the text
