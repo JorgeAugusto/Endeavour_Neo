@@ -96,6 +96,40 @@ class LayoutOrderTest {
     }
 
     @Test
+    @DisplayName("apagar uma aba a ESQUERDA nao troca a que esta sendo olhada")
+    void removingToTheLeftKeepsTheSelection() {
+        // The one the old arithmetic got wrong. Three layouts, the reader on the
+        // second, and the first is deleted: Math.min(1, 1) left them on the
+        // third, and applying it swapped the chart's indicators for a layout the
+        // reader had not even been using.
+        assertEquals(0, Reordering.selectionAfterRemoval(1, 0, 2),
+                "deleting a tab to the left moved the reader to the next layout, and the "
+                        + "chart swapped its indicators with nothing on screen to say why");
+
+        // Two to the left of a selection further along.
+        assertEquals(2, Reordering.selectionAfterRemoval(3, 1, 3));
+    }
+
+    @Test
+    @DisplayName("apagar uma aba a DIREITA nao mexe na selecao")
+    void removingToTheRightKeepsTheSelection() {
+        assertEquals(1, Reordering.selectionAfterRemoval(1, 2, 2));
+        assertEquals(0, Reordering.selectionAfterRemoval(0, 1, 1));
+    }
+
+    @Test
+    @DisplayName("apagar a que esta sendo olhada cai na que ficou no lugar dela")
+    void removingTheSelectedFallsIntoTheSlot() {
+        // The two cases the old Math.min was right for, kept: what is in that
+        // slot now, or the last one when there is nothing after it.
+        assertEquals(1, Reordering.selectionAfterRemoval(1, 1, 3));
+        assertEquals(1, Reordering.selectionAfterRemoval(2, 2, 2));
+
+        // And nothing left is nothing selected.
+        assertEquals(-1, Reordering.selectionAfterRemoval(0, 0, 0));
+    }
+
+    @Test
     @DisplayName("o primeiro vai para o fim e volta")
     void thereAndBack() {
         List<String> list = four();

@@ -482,7 +482,10 @@ public final class LayoutBar extends JComponent {
         }
 
         layouts.remove(index);
-        selected = Math.min(selected, layouts.size() - 1);
+
+        // The selection follows the LAYOUT and not the slot -- the same rule
+        // moveLayout states, which removeLayout did not keep. See Reordering.
+        selected = Reordering.selectionAfterRemoval(selected, index, layouts.size());
 
         ChartLayouts.save(layouts);
         ChartLayouts.remember(chartKey, layouts.get(selected).name());

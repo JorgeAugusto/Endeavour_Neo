@@ -72,4 +72,43 @@ public final class Reordering {
 
         return true;
     }
+
+    /**
+     * @param selected which item is being looked at, before the removal
+     * @param removed which item is going, by its index right now
+     * @param sizeAfter how many are left once it is gone
+     * @return which item is being looked at afterwards
+     *
+     * <p><b>The selection follows the ITEM, not the slot.</b> The removal used
+     * to be {@code selected = Math.min(selected, size - 1)}, which is right for
+     * the two easy cases and wrong for the third: taking out an item BEFORE the
+     * selected one shifts everything after it down, and the reader is left
+     * looking at the neighbour. With three layouts and the reader on the second,
+     * deleting the first left them on the third -- and the chart swapped its
+     * indicators for a layout the reader had not even been using, with nothing
+     * on screen to say why.</p>
+     *
+     * <p>Here, beside {@code move}, and for the same reason that one is here:
+     * the arithmetic is one off-by-one deep and it can be tested without a
+     * window.</p>
+     */
+    public static int selectionAfterRemoval(int selected, int removed, int sizeAfter) {
+        if (sizeAfter <= 0) {
+            return -1;
+        }
+
+        if (removed < selected) {
+            // Everything after the hole slid down by one, the selection with it.
+            return selected - 1;
+        }
+
+        if (removed > selected) {
+            // Nothing before the selection moved.
+            return selected;
+        }
+
+        // The selected one is what went. The nearest thing to where the reader
+        // was looking is what is in that slot now, or the last one.
+        return Math.min(selected, sizeAfter - 1);
+    }
 }

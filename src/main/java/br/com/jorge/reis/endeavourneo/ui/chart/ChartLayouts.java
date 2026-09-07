@@ -129,10 +129,38 @@ public final class ChartLayouts {
      * the one next to it.</p>
      */
     public static String copyName(List<String> existing, String name) {
-        String candidate = Messages.get("layout.copyOf", name);
+        return copyName(existing, name, of -> Messages.get("layout.copyOf", of));
+    }
 
-        while (existing.contains(candidate)) {
-            candidate = Messages.get("layout.copyOf", candidate);
+    /**
+     * @param phrase how "a copy of X" is said; <b>may return the same thing
+     *               every time, and this still has to end</b>
+     *
+     * <p>Package-visible so the failing condition can be ARRANGED. It cannot be
+     * reached through the bundle from a test -- the entry is on the classpath
+     * and every locale falls back to it -- and it is a real condition: the old
+     * loop's only exit was the text CHANGING, and the text changes only because
+     * the bundle entry carries a {@code {0}}. Take that entry away and {@code
+     * Messages.get} answers {@code !layout.copyOf!}; {@code MessageFormat} over
+     * a text with no placeholder gives back the same text; the candidate stops
+     * moving and the loop never ends -- on the interface thread, from the
+     * duplicate button.</p>
+     *
+     * <p>A missing translation freezing the whole application is the exact case
+     * {@code Messages} exists to make harmless: "one forgotten string in a
+     * translation should not stop the application from opening".</p>
+     *
+     * <p>So the phrase is asked ONCE and the collisions are numbered. That also
+     * happens to read better: "copy of copy of copy of Volume" is not a
+     * name.</p>
+     */
+    static String copyName(List<String> existing, String name,
+            java.util.function.UnaryOperator<String> phrase) {
+        String base = phrase.apply(name);
+        String candidate = base;
+
+        for (int n = 2; existing.contains(candidate); n++) {
+            candidate = base + " (" + n + ")";
         }
 
         return candidate;

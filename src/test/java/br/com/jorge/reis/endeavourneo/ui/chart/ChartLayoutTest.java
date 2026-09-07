@@ -143,6 +143,43 @@ class ChartLayoutTest {
                 "the second copy has to be distinguishable from the first");
     }
 
+    @Test
+    @org.junit.jupiter.api.Timeout(value = 5,
+            threadMode = org.junit.jupiter.api.Timeout.ThreadMode.SEPARATE_THREAD)
+    @DisplayName("nomear uma copia TERMINA, mesmo com dez copias e com a chave faltando")
+    void naminganewCopyAlwaysEnds() {
+        // The old loop's only exit was the candidate CHANGING, and it changed
+        // because the bundle entry carries a {0}. Take that entry away --
+        // Messages.get then answers "!layout.copyOf!" and MessageFormat over a
+        // text with no placeholder gives back the same text -- and the candidate
+        // stops moving. The loop never ends, on the interface thread, from the
+        // duplicate button: a missing translation freezing the whole
+        // application, which is the exact case Messages exists to make harmless.
+        //
+        // THE MISSING ENTRY IS HANDED IN, because it cannot be reached through
+        // the bundle: the entry is on the classpath and every locale falls back
+        // to it. A phrase that answers the same thing every time IS the missing
+        // entry, exactly.
+        //
+        // A Timeout is half the assertion. There is no way to say "this returns"
+        // except to bound the time it may take.
+        List<String> taken = new java.util.ArrayList<>(List.of("Clean"));
+
+        for (int i = 0; i < 10; i++) {
+            String next = ChartLayouts.copyName(taken, "Clean", of -> "!layout.copyOf!");
+
+            assertFalse(taken.contains(next), "the name given is already in use: " + next);
+
+            taken.add(next);
+        }
+
+        assertEquals(11, taken.size(), "ten copies did not produce ten distinct names");
+
+        // And the ordinary path still reads like a name.
+        assertTrue(ChartLayouts.copyName(List.of(), "Clean").contains("Clean"),
+                "the copy is no longer named after what it was copied from");
+    }
+
     private static Overlay built(String key, int... periods) {
         return new ChartLayout.Entry(key, boxed(periods), true).build();
     }
