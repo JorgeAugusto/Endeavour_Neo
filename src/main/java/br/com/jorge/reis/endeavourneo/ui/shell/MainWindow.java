@@ -368,6 +368,74 @@ public final class MainWindow extends JFrame {
      * are not the market's, drawn without a word, are the one thing a chart
      * must never do.</p>
      */
+    /**
+     * Lets a chart reach the history its window left behind.
+     *
+     * @param holder the chart
+     * @param name the series it is showing
+     * @param loaded how many bars it was given
+     *
+     * <p><b>Paging and warm-up are one mechanism.</b> The canvas asks when the
+     * leftmost visible bar comes within its slack of the loaded start, and that
+     * slack is the widest period an indicator here can be set to -- so the bars
+     * an average needs and has not got arrive before the reader can see the gap
+     * they would leave. Reaching the true beginning of the file is a different
+     * thing: there the gap is honest, because those bars never existed.</p>
+     *
+     * <p>A block at a time, and the block is the window. The cost of reading is
+     * the trip to the disk, not the bytes: a hundred thousand bars is 4,8 MB and
+     * one seek, while a hundred bars is one seek too. Small steps would buy a
+     * hundred pauses where one buys a month of history.</p>
+     */
+    private void offerHistory(ChartHolder holder, String name, int loaded) {
+        int total;
+
+        try {
+            total = SeriesCatalog.countOf(name);
+        } catch (java.io.IOException e) {
+            // No count, no paging. The chart still draws what it has.
+            return;
+        }
+
+        holder.canvas().setHistoryBehind(total - loaded, () -> {
+            int wanted = loaded + Math.max(1,
+                    br.com.jorge.reis.endeavourneo.ui.chart.ChartPreferences.window());
+
+            new javax.swing.SwingWorker<PriceSeries, Void>() {
+
+                @Override
+                protected PriceSeries doInBackground() throws java.io.IOException {
+                    return SeriesCatalog.open(name, wanted).orElse(null);
+                }
+
+                @Override
+                protected void done() {
+                    try {
+                        PriceSeries longer = get();
+
+                        if (longer == null) {
+                            return;
+                        }
+
+                        holder.canvas().growHistory(longer, longer.size() - loaded);
+                        offerHistory(holder, name, longer.size());
+                    } catch (java.util.concurrent.ExecutionException
+                            | InterruptedException e) {
+                        // The history stays where it is, which is what the reader
+                        // is already looking at. A dialog over a scroll would be
+                        // worse than a chart that simply does not grow.
+                        console.write(Messages.get("console.seriesFailed", name,
+                                String.valueOf(e.getMessage())));
+
+                        if (e instanceof InterruptedException) {
+                            Thread.currentThread().interrupt();
+                        }
+                    }
+                }
+            }.execute();
+        });
+    }
+
     private PriceSeries seriesFor(String name, String title) {
         try {
             // A WINDOW of the most recent bars, not the file. See
@@ -477,9 +545,18 @@ public final class MainWindow extends JFrame {
 
         // Sliced, or not: SegmentedSeries hands back the base itself when there
         // is no segment, so nothing below has to know which of the two it got.
+        PriceSeries loaded = seriesFor(name, title);
+
         holder.canvas().setSeries(
                 br.com.jorge.reis.endeavourneo.domain.market.SegmentedSeries.of(
-                        seriesFor(name, title), segment, java.time.ZoneId.systemDefault()));
+                        loaded, segment, java.time.ZoneId.systemDefault()));
+
+        // Only when the whole series is on show. A segment is a stretch the
+        // reader chose by date, and quietly widening it because they scrolled to
+        // its left edge would be answering a question they did not ask.
+        if (segment == null) {
+            offerHistory(holder, name, loaded.size());
+        }
 
         // Every chart accepts a replay dropped on it, from the moment it opens.
         br.com.jorge.reis.endeavourneo.ui.replay.ReplayDrop.enable(holder);

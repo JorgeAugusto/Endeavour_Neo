@@ -801,6 +801,77 @@ public final class ChartCanvas extends JComponent {
         refold();
     }
 
+    /**
+     * How many bars of the file sit BEFORE the window that was loaded.
+     *
+     * <p>Zero means the chart is holding the whole file and there is nothing
+     * behind it, which is also what a series with no file behind it says.</p>
+     */
+    private transient int behind;
+
+    /** Told when the reader nears the loaded start and there is more file back there. */
+    private transient Runnable onWantsHistory = () -> { };
+
+    /** So one approach to the edge asks once, and not once per repaint. */
+    private transient boolean asking;
+
+    /**
+     * How close to the loaded start the reader may come before more is fetched.
+     *
+     * <p><b>This is the warm-up, and it is the same mechanism as the paging.</b>
+     * An average of two hundred has nothing to say for its first two hundred
+     * bars, so at the loaded start it draws a gap -- and the bars that would
+     * fill it are in the file, simply unread. Fetching before the reader arrives
+     * pushes that gap off the left of the screen. The number is the widest
+     * period any indicator here can be set to, which the moving average's own
+     * spinner caps at two thousand, plus room to arrive.</p>
+     */
+    private static final int HISTORY_SLACK = 2_500;
+
+    /**
+     * @param bars how many bars of the file were not loaded, at the front
+     * @param wanted what to run when the reader comes near them
+     */
+    public void setHistoryBehind(int bars, Runnable wanted) {
+        this.behind = Math.max(0, bars);
+        this.onWantsHistory = wanted == null ? () -> { } : wanted;
+        this.asking = false;
+    }
+
+    /** @return how many bars of the file sit before what is loaded */
+    public int historyBehind() {
+        return behind;
+    }
+
+    /**
+     * Puts older bars in front of the ones already here, without moving the view.
+     *
+     * @param longer the same window with more history at the front
+     * @param added how many bars were added at the front
+     */
+    public void growHistory(PriceSeries longer, int added) {
+        if (longer == null || added <= 0) {
+            asking = false;
+
+            return;
+        }
+
+        // Where the reader is looking, counted from the RIGHT, because that is
+        // what stays still. The bars are being added at the other end.
+        int fromRight = Math.max(0, this.series.size() - firstBar);
+
+        this.source = longer;
+        this.behind = Math.max(0, this.behind - added);
+        this.asking = false;
+
+        refold();
+
+        this.firstBar = clampFirstBar(this.series.size() - fromRight);
+
+        repaint();
+        onSeriesChanged.run();
+    }
+
     /** @param newPeriod the scale to look at, from {@link PeriodCatalog} */
     public void setPeriod(Aggregation newPeriod) {
         setPeriod(newPeriod, newPeriod == null ? null : newPeriod.label(),
@@ -1465,8 +1536,38 @@ public final class ChartCanvas extends JComponent {
     private int clampFirstBar(int candidate) {
         int air = Math.max(1, (int) Math.round(visibleBars * AIR_RIGHT));
         int furthest = Math.max(0, series.size() - visibleBars + air);
+        int settled = Math.max(0, Math.min(candidate, furthest));
 
-        return Math.max(0, Math.min(candidate, furthest));
+        // HERE, because every way of moving the chart ends up here: the drag,
+        // the wheel, the keyboard, going to the end. Watching each of them
+        // instead would mean the one added next year does not ask.
+        if (!asking && behind > 0 && settled < HISTORY_SLACK) {
+            asking = true;
+
+            onWantsHistory.run();
+        }
+
+        return settled;
+    }
+
+    /**
+     * @param bar which bar to put at the left of the screen
+     *
+     * <p>Package-private. The reader moves a chart with the mouse and the
+     * keyboard, and every one of those paths ends at {@link #clampFirstBar} --
+     * which is also where the chart notices it is near the history it has not
+     * loaded. This is that same door, opened for a test that has to stand
+     * somewhere without a mouse.</p>
+     */
+    void scrollTo(int bar) {
+        firstBar = clampFirstBar(bar);
+
+        repaint();
+    }
+
+    /** @return the bar at the left of the screen */
+    int firstVisibleBar() {
+        return firstBar;
     }
 
     /** Scrolls back to the newest bars, keeping whatever air was left on the right. */

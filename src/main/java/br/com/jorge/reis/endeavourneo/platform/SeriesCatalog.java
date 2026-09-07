@@ -663,6 +663,21 @@ public final class SeriesCatalog {
         return Optional.of(MarketFile.read(file, Math.max(0, total - bars), bars));
     }
 
+    /**
+     * @param name a series's name
+     * @return how many bars its file holds, or 0 when there is no such series
+     * @throws IOException if there is one and its header cannot be read
+     *
+     * <p>From the header, so it costs a file open and twenty-four bytes. It is
+     * what makes "the last hundred thousand" answerable without reading the
+     * file, and what tells a chart how much history it has not loaded.</p>
+     */
+    public static int countOf(String name) throws IOException {
+        Path file = fileOf(name);
+
+        return MarketFile.isSeries(file) ? MarketFile.countIn(file) : 0;
+    }
+
     /** Drops what is held in memory. The files are untouched. */
     public static void forget() {
         LOADED.clear();
