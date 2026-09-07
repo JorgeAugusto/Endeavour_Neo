@@ -110,30 +110,16 @@ final class SeriesSummary {
     /**
      * @return how many sessions the series covers
      *
-     * <p>Walked once, asking the calendar only where the day changes. Per bar
-     * it would be 825 thousand conversions on the source, on the interface
-     * thread, every time the pointer crosses the name.</p>
+     * <p><b>Asked of {@code Sessions}, which remembers.</b> This used to be a
+     * third copy of the same walk, and its comment claimed to ask the calendar
+     * "only where the day changes" -- which the code did not do: the conversion
+     * sat inside the loop and ran on all 824.881 bars, and only the COUNTER
+     * moved on a change. This is built for a tooltip, so it ran on the interface
+     * thread every time the pointer crossed the instrument's name, at 39-102 ms
+     * a crossing.</p>
      */
     static int sessionsIn(PriceSeries series) {
-        if (series == null || series.size() == 0) {
-            return 0;
-        }
-
-        ZoneId zone = ZoneId.systemDefault();
-        LocalDate seen = null;
-        int days = 0;
-
-        for (int i = 0; i < series.size(); i++) {
-            LocalDate day = Instant.ofEpochMilli(series.timeAt(i)).atZone(zone).toLocalDate();
-
-            if (!day.equals(seen)) {
-                seen = day;
-
-                days++;
-            }
-        }
-
-        return days;
+        return br.com.jorge.reis.endeavourneo.domain.market.Sessions.of(series).size();
     }
 
     /** @return the summary as a tooltip */

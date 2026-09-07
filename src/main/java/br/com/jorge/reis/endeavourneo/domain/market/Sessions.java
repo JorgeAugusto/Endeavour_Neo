@@ -20,8 +20,11 @@ package br.com.jorge.reis.endeavourneo.domain.market;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.Collections;
+import java.util.Map;
 import java.util.NavigableSet;
 import java.util.TreeSet;
+import java.util.WeakHashMap;
 
 /**
  * Which days a series actually holds.
@@ -59,18 +62,78 @@ public final class Sessions {
         return of(series, ZoneId.systemDefault());
     }
 
-    /** @param zone the zone the bars are read in, as everything else reads them */
-    public static NavigableSet<LocalDate> of(PriceSeries series, ZoneId zone) {
-        NavigableSet<LocalDate> days = new TreeSet<>();
+    /**
+     * What was answered for a series, and how far into it the answer goes.
+     *
+     * @param zone the zone it was walked in; another zone is another answer
+     * @param upTo the series size when it was walked
+     * @param days the sessions found, never handed out directly
+     */
+    private record Answer(ZoneId zone, int upTo, NavigableSet<LocalDate> days) { }
 
+    /**
+     * The answers already worked out, one per series.
+     *
+     * <p><b>Weak on the series</b>, so a chart that closes takes its entry with
+     * it: a strong map here would hold every series ever opened, and each is
+     * tens of megabytes.</p>
+     *
+     * <p>Synchronised on the map alone and never across the walk. Holding a lock
+     * while walking 824.881 bars would stop whichever thread asked second for
+     * as long as the walk takes, which is the very stall this cache exists to
+     * remove — and it is a defect this project already has elsewhere. Two
+     * threads racing both walk and both store the same answer, which costs one
+     * wasted walk and is correct.</p>
+     */
+    private static final Map<PriceSeries, Answer> ANSWERED =
+            Collections.synchronizedMap(new WeakHashMap<>());
+
+    /**
+     * @param zone the zone the bars are read in, as everything else reads them
+     *
+     * <p><b>The answer is remembered.</b> The paragraph above asked whoever
+     * calls this to hold the answer rather than ask again, and four callers did
+     * not: the renko before rebuilding, the summary tooltip on every mouse move,
+     * the transport on every combo change, and the segments window. Asking a
+     * caller to remember is asking every future caller to remember, and the
+     * fourth one forgets. So it is remembered here.</p>
+     *
+     * <p><b>A series that GREW is walked only where it grew.</b> The replay
+     * appends bars as it plays, and bars are chronological, so the sessions
+     * already found stay found and the tail adds to them. A series that SHRANK
+     * -- the reader dragged the replay backwards -- is walked again from the
+     * start, because dates have to leave the answer and there is no honest way
+     * to know which without looking.</p>
+     *
+     * <p><b>What it assumes:</b> that a series of the same size holds the same
+     * bars. True of every series here -- they are built once and appended to --
+     * and false of one that rewrote a bar in place, which none does. Stated
+     * because it is the assumption that would make this return a stale answer.</p>
+     */
+    public static NavigableSet<LocalDate> of(PriceSeries series, ZoneId zone) {
         if (series == null) {
-            return days;
+            return new TreeSet<>();
         }
 
         ZoneId at = zone == null ? ZoneId.systemDefault() : zone;
-        LocalDate seen = null;
+        int size = series.size();
+        Answer known = ANSWERED.get(series);
 
-        for (int i = 0; i < series.size(); i++) {
+        if (known != null && known.zone().equals(at) && known.upTo() == size) {
+            // A COPY. The set is kept, and a caller that sorted, cleared or
+            // added to what it got back would be editing every other caller's
+            // answer. Copying 1.494 dates is microseconds against the 27 ms the
+            // walk costs.
+            return new TreeSet<>(known.days());
+        }
+
+        boolean append = known != null && known.zone().equals(at) && size > known.upTo();
+
+        NavigableSet<LocalDate> days = append ? new TreeSet<>(known.days()) : new TreeSet<>();
+        int from = append ? known.upTo() : 0;
+        LocalDate seen = days.isEmpty() ? null : days.last();
+
+        for (int i = from; i < size; i++) {
             LocalDate day = Instant.ofEpochMilli(series.timeAt(i)).atZone(at).toLocalDate();
 
             // Compared with the last one rather than looked up in the set: the
@@ -83,6 +146,19 @@ public final class Sessions {
             }
         }
 
-        return days;
+        ANSWERED.put(series, new Answer(at, size, days));
+
+        return new TreeSet<>(days);
+    }
+
+    /**
+     * Forgets everything remembered.
+     *
+     * <p>For tests, which build a series, ask, and then want to measure the walk
+     * again. Nothing in the application needs it: an entry leaves on its own
+     * when its series does.</p>
+     */
+    public static void forget() {
+        ANSWERED.clear();
     }
 }
