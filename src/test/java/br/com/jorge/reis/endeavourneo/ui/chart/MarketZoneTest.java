@@ -53,14 +53,19 @@ import org.junit.jupiter.api.io.TempDir;
 class MarketZoneTest {
 
     /**
-     * Ten hours east, with no daylight saving.
+     * Far enough east that the session falls on ANOTHER DATE entirely.
      *
-     * <p>09:00 in Sao Paulo is 22:00 there, so the session runs past local
-     * midnight — which is the only shape that tells two calendars apart. A zone
-     * where the session stays inside one local day proves nothing, and the first
-     * draft of a sibling test used one.</p>
+     * <p>Fifteen hours ahead of Sao Paulo: 09:00 there is midnight here, so a
+     * morning session is wholly the following date and the two calendars name
+     * DISJOINT days. That is the shape this needs.</p>
+     *
+     * <p>The first draft used Brisbane, ten hours east, where the session merely
+     * straddles local midnight — so the machine's single day is a SUBSET of the
+     * market's two, the broken guard finds it in the exported set, and the test
+     * passes with the defect in place. It did, and breaking the product on
+     * purpose is what showed it.</p>
      */
-    private static final ZoneId FAR = ZoneId.of("Australia/Brisbane");
+    private static final ZoneId FAR = ZoneId.of("Pacific/Auckland");
 
     /** One session of bars, 09:00 to 12:00 in Sao Paulo on that date. */
     private static PriceSeries session(LocalDate day) {
@@ -124,14 +129,17 @@ class MarketZoneTest {
         try {
             Timeframe.useZone(FAR);
 
-            PriceSeries bars = session(LocalDate.of(2026, 9, 1));
+            LocalDate here = LocalDate.of(2026, 9, 1);
+            PriceSeries bars = session(here);
             List<LocalDate> days = RenkoSource.sessionsIn(bars);
 
-            // In a calendar ten hours east this session straddles midnight, so
-            // it is two dates and not one. If it were one, this fixture could
-            // not tell the two calendars apart.
-            assertEquals(2, days.size(),
-                    "the session did not cross local midnight: " + days);
+            // ANOTHER DATE, not merely another split of the same one: fifteen
+            // hours east, a morning in Sao Paulo is wholly the next day. If the
+            // market's days included the machine's, a guard reading the wrong
+            // calendar would still find its day in the exported set and this
+            // would pass with the defect in place.
+            assertEquals(List.of(here.plusDays(1)), days,
+                    "the market calendar did not name a different date: " + days);
 
             // Exactly the days the calendar named, and nothing else on disk.
             Path ticks = folder.resolve("win").resolve("ticks");
