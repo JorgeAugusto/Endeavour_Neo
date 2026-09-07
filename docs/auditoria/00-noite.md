@@ -43,10 +43,10 @@ de código que não existia mais. Por isso as fases são estritamente sequenciai
 | # | fase | estado |
 |---|---|---|
 | 0 | Trabalho em voo quando ele foi dormir | **fechada** — `1b34571` |
-| 1 | Resolver todos os achados restantes da auditoria I | **em curso** |
-| 2 | Refazer a auditoria completa, 2 agentes por vez | não começou |
+| 1 | Resolver os achados de domínio e replay da auditoria I | **fechada** — `f6f6640` |
+| 2 | Refazer a auditoria completa, 2 agentes por vez | **em curso** |
 | 3 | Juntar e validar cruzado | não começou |
-| 4 | Corrigir os achados novos | não começou |
+| 4 | Corrigir os achados novos, e o que sobrou da lista velha | não começou |
 
 ---
 
@@ -59,8 +59,12 @@ transversais. `00-achados.md` é o índice; o detalhe está no relatório de cad
 | gravidade | levantados | fechados | **abertos** |
 |---|---:|---:|---:|
 | ALTA | 52 | 51 + 1 refutado | **0** |
-| MÉDIA | 133 | 24 | **109** |
+| MÉDIA | 133 | **40** | **93** |
 | BAIXA | 115 | 0 | **115** |
+
+Atualizado às 05h. Estão **fechadas inteiras** as áreas **A1, A2 e A3** nos
+MÉDIA, mais L2-3 e A5-12. É todo o domínio e todo o replay — onde um defeito
+muda número e não texto, que foi o corte da decisão D5.
 
 Os 24 MÉDIA já fechados, com o commit:
 
@@ -130,6 +134,90 @@ pode estudar.
 
 ---
 
+### D5 — Onde parar de corrigir a lista velha · **DECIDIDA POR MIM**
+
+Medida a velocidade real da noite: **onze achados a cada duas horas**, contando
+a correção, o teste que faltava, a prova de dentes e o commit. Nesse passo os 97
+MÉDIA restantes são dezoito horas. Não cabem antes da auditoria, e a auditoria é
+o que ele pediu explicitamente na fase 2.
+
+**Decidi cortar aqui.** A fase 1 fecha ainda os MÉDIA de **domínio e replay** —
+onde um defeito muda número, e não texto — e para. O resto da lista velha vai
+para a fase 4, ao lado do que a auditoria nova achar.
+
+**Por quê:** a auditoria relê o código atual. Metade das áreas foi reescrita
+esta noite, então metade da lista velha aponta para linhas que já não existem.
+Gastar as horas restantes na lista velha entregaria correções de sete dias atrás
+e nenhuma auditoria; gastar na auditoria entrega a lista nova, que é a que vale
+para o estado de agora.
+
+**O que isso custa:** as áreas A4, A7a, A7b, A8a, A8b e as lentes L1, L3 e L4
+ficam sem passada de correção esta noite. Elas voltam pela auditoria, e a
+validação cruzada da fase 3 confere a lista velha contra a nova para achar o que
+só a velha viu.
+
+### D4 — A ordem entre corrigir tudo e reauditar · **DECIDIDA POR MIM**
+
+Ele pediu, nesta ordem: resolver todos os restantes, depois refazer a auditoria.
+Restam **~105 MÉDIA e 115 BAIXA**. Corrigir os 220 à mão é trabalho serial e
+lento; a auditoria é a parte cara, valiosa e paralelizável. Fazendo a fase 1
+inteira primeiro, a fase 2 não começa esta noite.
+
+**Decidi assim:** fase 1 fecha os **MÉDIA** — o que muda comportamento, o que
+vaza recurso, e os testes sem dentes. As **BAIXA entram na fase 4**, junto com o
+que a auditoria nova achar.
+
+**Por quê:** a auditoria nova relê o código como ele estará depois das
+correções. Uma BAIXA de sete dias atrás aponta para linhas que já mudaram — três
+áreas inteiras foram reescritas esta noite. Corrigir a lista velha antes de
+reauditar é gastar duas vezes e acertar a segunda; deixar a auditoria derivá-las
+do código atual é gastar uma.
+
+**O que isso custa:** se a auditoria nova não reencontrar alguma BAIXA da lista
+velha, ela fica sem correção. Aceitei porque a lista velha continua no disco
+(`00-achados.md`) e a validação cruzada da fase 3 confere uma contra a outra — é
+exatamente o tipo de furo que ela existe para pegar.
+
+---
+
+## A auditoria II — como está desenhada
+
+**Pasta própria**, `docs/auditoria/ii/`, para não sobrescrever a primeira: a
+fase 3 precisa das duas lado a lado.
+
+**Os agentes de área não leem a auditoria I.** Isso é deliberado e é o que dá
+valor à segunda passada: se ela lesse a primeira, encontraria o que a primeira
+encontrou e a validação cruzada não significaria nada. O briefing
+(`ii/00-briefing.md`) diz isso em letras.
+
+**Ids com prefixo `B`**, para nunca confundir com os `A` da primeira.
+
+**Dois por vez**, como ele pediu. A skill `auditar` manda rodar um por vez, e a
+razão registrada nela é uma decisão dele de 05/09; a instrução desta noite é
+mais nova e diz "até 2", então é ela que vale. Ainda está longe do desenho que
+falhou — treze de uma vez, duas corridas inteiras evaporadas.
+
+A partição é a medida em `docs/AUDITORIA.md`, com as áreas grandes já partidas:
+
+| área | o que cobre | linhas |
+|---|---|---:|
+| B1 | séries, agregação, formatos de arquivo, biblioteca de ticks | ~3.500 |
+| B2 | renko, ticks sintéticos, replay do domínio | ~2.900 |
+| B3 | `ChartCanvas` inteiro | ~3.000 |
+| B4 | holder, layout, legenda, eixos, estilo | ~5.200 |
+| B5 | indicadores: overlays, estudos, painéis, diálogos | ~6.900 |
+| B6 | `ui/replay` | ~2.600 |
+| B7a | platform, settings, catálogo | ~2.500 |
+| B7b | shell, series, settings de interface | ~5.400 |
+| B8a | testes de domínio e plataforma | ~4.600 |
+| B8b | testes de interface | ~8.300 |
+
+E depois as quatro lentes transversais, que **não releem os arquivos**: recebem
+padrões de `grep` e leem ±40 linhas em volta de cada ocorrência, mais a lista do
+que as áreas já acharam.
+
+---
+
 ## Diário — cada passo, com o commit
 
 ### 07/09, madrugada — fase 0, o que estava em voo
@@ -144,6 +232,29 @@ pode estudar.
 | Um export de ticks abre como gráfico | `1b34571` |
 
 Suíte: **537 verdes**.
+
+### 07/09, 02h às 04h — fase 1
+
+| lote | achados | commit |
+|---|---|---|
+| Um relógio só: candle e renko param no mesmo instante | L2-3 | `cf9d3b8` |
+| Botão, âncora do zoom, posição guardada, fita recusada | A3-5, A3-6, A3-7, A3-8, A3-11 | `fa0d4ed` |
+| Rodapé, caldas, pregão pedido adiantado, javadoc inerte | A3-9, A3-10, A3-12, A3-13, A2-5, A2-6 | `5fce5e8` |
+
+Suíte: **550 verdes**, de 537.
+
+Três coisas que valem mais que os achados em si:
+
+- **Um teste matou uma classe inteira de defeito.** `OrphanJavadocTest` varre a
+  árvore procurando javadoc que documenta o membro errado. A auditoria achava um
+  arquivo por vez; a varredura acha todos e impede que voltem. Restam 23 num
+  teto que não pode crescer.
+- **Um dos oito javadocs órfãos do `ChartCanvas` era meu**, criado uma hora
+  antes ao extrair um método. É a melhor prova de que o caso pedia um teste e
+  não oito correções.
+- **Um teste que escrevi não tinha dentes** e só apareceu ao quebrar o produto:
+  ele perguntava ao feed e ao arquivo, que são as mesmas duas coisas de que a
+  ligação é feita. `isRecorded()` passou a responder da própria ligação.
 
 Dois defeitos foram achados pelos próprios testes desta noite, e valem
 registro porque não estavam em auditoria nenhuma:
