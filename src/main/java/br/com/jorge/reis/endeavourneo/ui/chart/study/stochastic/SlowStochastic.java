@@ -550,7 +550,18 @@ public final class SlowStochastic implements Overlay {
      * numbers is an average of two wearing the wrong name.</p>
      */
     private void smooth(double[] from, double[] into) {
-        List<Double> window = new ArrayList<>();
+        // A RING OF PRIMITIVES, not a List<Double>. This runs twice per
+        // calculate, over every bar: on the real source that was 1,65 million
+        // Double objects boxed and thrown away per recalculation, plus a
+        // remove(0) shifting the list each time. Measured before: 319 ms to
+        // recalculate one stochastic, against 5 ms for a moving average over the
+        // same bars -- and this method was the whole of the difference. The
+        // recalculation happens on the interface thread, in five places, once
+        // per indicator in the panel.
+        int span = Math.max(1, average);
+        double[] window = new double[span];
+        int held = 0;
+        int next = 0;
         double sum = 0.0;
         double previous = Double.NaN;
         double weight = 2.0 / (average + 1.0);
@@ -558,7 +569,8 @@ public final class SlowStochastic implements Overlay {
         for (int i = 0; i < from.length; i++) {
             if (Double.isNaN(from[i])) {
                 into[i] = Double.NaN;
-                window.clear();
+                held = 0;
+                next = 0;
                 sum = 0.0;
                 previous = Double.NaN;
 
@@ -573,14 +585,18 @@ public final class SlowStochastic implements Overlay {
                 continue;
             }
 
-            window.add(from[i]);
-            sum += from[i];
-
-            if (window.size() > average) {
-                sum -= window.remove(0);
+            if (held == span) {
+                // Full: the oldest is where the next one goes.
+                sum -= window[next];
+            } else {
+                held++;
             }
 
-            if (window.size() < average) {
+            window[next] = from[i];
+            sum += from[i];
+            next = (next + 1) % span;
+
+            if (held < average) {
                 into[i] = Double.NaN;
 
                 continue;
@@ -590,8 +606,11 @@ public final class SlowStochastic implements Overlay {
                 double total = 0.0;
                 double divisor = 0.0;
 
-                for (int at = 0; at < window.size(); at++) {
-                    total += window.get(at) * (at + 1);
+                // Oldest first, which when the ring is full is where the next
+                // write would land. The weight rises with age towards the
+                // present, exactly as it did over the list.
+                for (int at = 0; at < held; at++) {
+                    total += window[(next + at) % span] * (at + 1);
                     divisor += at + 1;
                 }
 

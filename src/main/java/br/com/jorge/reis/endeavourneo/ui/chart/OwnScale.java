@@ -134,8 +134,24 @@ public final class OwnScale {
      * and still says nothing the market had not already said.</p>
      */
     public static void smooth(PriceSeries fine, PriceSeries coarse, double[] slow, double[] into) {
+        // A RUNNING POINTER, the way map does it, and not a binary search per
+        // bar. indexOfClosed is the right answer to "which bar was closed at
+        // this instant" asked once; asked once per bar it walks the coarse
+        // series 825.000 times over. Measured: recalculating an average on its
+        // own scale took 183 ms, on the interface thread, once per indicator in
+        // the panel. Both series are chronological, so the answer only ever
+        // moves forward.
+        int closed = -1;
+
         for (int i = 0; i < into.length; i++) {
-            int closed = indexOfClosed(fine, coarse, i);
+            while (closed + 1 < coarse.size() - 1
+                    && coarse.timeAt(closed + 2) <= fine.timeAt(i)) {
+                closed++;
+            }
+
+            if (closed < 0 && coarse.size() > 1 && coarse.timeAt(1) <= fine.timeAt(i)) {
+                closed = 0;
+            }
 
             if (closed < 1 || !Double.isFinite(slow[closed]) || !Double.isFinite(slow[closed - 1])) {
                 continue;
