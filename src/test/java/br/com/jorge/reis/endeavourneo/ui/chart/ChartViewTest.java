@@ -22,8 +22,6 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -31,16 +29,17 @@ import org.junit.jupiter.api.Test;
 /**
  * Where the reader was looking, and what puts them back there.
  *
- * <p>The gestures themselves are not driven here — real mouse events through a
- * component are slow and flaky, and this file follows {@code ChartCanvasTest} in
- * pulling the part that can be wrong out of the listener. What cannot be pulled
- * out is read from the source, the way {@code TickLibraryClosingTest} reads it.</p>
+ * <p><b>The gestures ARE driven here now.</b> This file used to say they were
+ * not -- "real mouse events through a component are slow and flaky" -- and read
+ * the source instead. Both halves of that were wrong: the listeners come out of
+ * {@code getMouseListeners}, which is what the component hands the toolkit, a
+ * {@code MouseEvent} has a public constructor, and none of it needs a window or
+ * a millisecond. What the source-reading bought was the appearance of a test:
+ * moving a block above the guard leaves every word it matched exactly where it
+ * was.</p>
  */
 @DisplayName("A vista do grafico")
 class ChartViewTest {
-
-    private static final Path CANVAS = Path.of("src", "main", "java", "br", "com", "jorge",
-            "reis", "endeavourneo", "ui", "chart", "ChartCanvas.java");
 
     @Test
     @DisplayName("a barra sob o cursor fica sob o cursor, e a fracao e a do GRAFICO")
@@ -390,43 +389,4 @@ class ChartViewTest {
                 "turning the tails back on moved the reader");
     }
 
-    @Test
-    @DisplayName("o replay pede o pregao antes de precisar dele, e nao redesenha o que nao mudou")
-    void theReplayAsksAheadAndRedrawsOnlyWhatMoved() throws IOException {
-        // TickRenko.advance calls load(), which reads the session from disk when
-        // it is not resident -- ninety megabytes, on the interface thread, at
-        // the instant the replay crosses midnight. And live() rebuilt the whole
-        // brick series on every frame, twenty-five times a second, for a chart
-        // that had not changed.
-        String source = Files.readString(CANVAS, StandardCharsets.UTF_8);
-        int at = source.indexOf("private boolean extendBricks() {");
-
-        assertTrue(at > 0, "extendBricks is not where this looks");
-
-        String body = source.substring(at, at + 2_600);
-
-        assertTrue(body.contains("growingFrom.request(day)"),
-                "the session is not asked for before advance goes looking");
-        assertTrue(body.contains("growingFrom.request(day.plusDays(1))"),
-                "the next session is never asked for, so midnight blocks");
-        assertTrue(body.contains("if (!growing.advance(day, now + 1)"),
-                "the answer from advance is thrown away and the view rebuilt anyway");
-    }
-
-    @Test
-    @DisplayName("a biblioteca de ticks nunca e trocada sem ser fechada")
-    void theTickLibraryIsClosedBeforeItIsReplaced() throws IOException {
-        // Two workers landing one after the other dropped the earlier library on
-        // the floor: a reading thread and up to three sessions of ticks -- 340
-        // MB -- held for the life of the application, once per race.
-        String source = Files.readString(CANVAS, StandardCharsets.UTF_8);
-        int at = source.indexOf("growingFrom = library;");
-
-        assertTrue(at > 0, "the assignment this is about is gone");
-
-        String before = source.substring(Math.max(0, at - 600), at);
-
-        assertTrue(before.contains("stopGrowing();"),
-                "the library is assigned without closing what was there");
-    }
 }

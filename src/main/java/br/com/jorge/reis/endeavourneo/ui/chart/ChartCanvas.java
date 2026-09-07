@@ -1060,6 +1060,35 @@ public final class ChartCanvas extends JComponent {
         stopGrowing();
     }
 
+    /**
+     * Puts a growing renko and the library it reads from in place.
+     *
+     * <p><b>Closing whatever was there first.</b> Two workers landing one after
+     * the other dropped the earlier library on the floor -- a reading thread and
+     * up to three sessions of ticks, 340 MB, held for the life of the
+     * application, once per race.</p>
+     *
+     * <p>A method rather than three lines at the one site that needs them,
+     * because the only test that guarded this read the SOURCE: it asked whether
+     * the words {@code stopGrowing();} appeared within 600 characters before the
+     * assignment. A second assignment somewhere else -- a new replay path, say
+     * -- would never have been looked at, since {@code indexOf} finds the first
+     * and stops. Here there is one door, and the test measures the object that
+     * goes through it.</p>
+     */
+    void growFrom(br.com.jorge.reis.endeavourneo.domain.market.TickRenko built,
+            br.com.jorge.reis.endeavourneo.domain.market.TickLibrary library) {
+        stopGrowing();
+
+        growing = built;
+        growingFrom = library;
+    }
+
+    /** @return the library the growing renko reads from, or null; for the test of the swap */
+    br.com.jorge.reis.endeavourneo.domain.market.TickLibrary growingLibrary() {
+        return growingFrom;
+    }
+
     private void stopGrowing() {
         growing = null;
 
@@ -1235,14 +1264,7 @@ public final class ChartCanvas extends JComponent {
                     br.com.jorge.reis.endeavourneo.domain.market.TickRenko built = get();
 
                     if (replaying) {
-                        // CLOSED FIRST. Two workers landing one after the other
-                        // dropped the earlier library on the floor -- a reading
-                        // thread and up to three sessions of ticks, held for the
-                        // life of the application, once per race.
-                        stopGrowing();
-
-                        growing = built;
-                        growingFrom = library;
+                        growFrom(built, library);
 
                         // The session in progress is carried in by the next
                         // frame, which is a fortieth of a second away.
@@ -1386,6 +1408,40 @@ public final class ChartCanvas extends JComponent {
     }
 
     /**
+     * Asks the loader for the day the clock is in AND the one after it.
+     *
+     * <p>On the loader thread, before {@code advance()} goes looking. {@code
+     * TickRenko.advance} calls {@code load()}, which reads the session from disk
+     * when it is not resident -- ninety megabytes, on the interface thread, at
+     * the instant the replay crosses midnight. Asking for both means the file is
+     * already in memory when the clock gets there.</p>
+     *
+     * <p><b>The second call is belt and braces, and saying so is the point.</b>
+     * {@code TickLibrary.request} already queues the day, the one after and the
+     * one before -- "the day itself first, then its neighbours" -- so tomorrow
+     * is on its way from the first call alone. What the second one changes is
+     * {@code focus}, which decides what is evicted last, and it moves it to
+     * tomorrow while the clock is still on today. A report asked for a test that
+     * "the next session is asked for, or midnight blocks"; midnight does not
+     * block without it, and a test written to that sentence would have been
+     * measuring a line that does not carry the guarantee. What carries it is
+     * that BOTH sessions are resident before the clock arrives, which is what
+     * the test asserts.</p>
+     *
+     * @param library where the sessions come from, or null when none is growing
+     * @param day where the replay clock is now
+     */
+    static void requestAround(br.com.jorge.reis.endeavourneo.domain.market.TickLibrary library,
+            java.time.LocalDate day) {
+        if (library == null) {
+            return;
+        }
+
+        library.request(day);
+        library.request(day.plusDays(1));
+    }
+
+    /**
      * @return whether the growing renko could be carried to the replay's clock
      *
      * <p>Only what printed since the last frame is folded. The ruler carries
@@ -1422,16 +1478,7 @@ public final class ChartCanvas extends JComponent {
                 return false;
             }
 
-            if (growingFrom != null) {
-                // ASKED FOR ON THE LOADER THREAD, before advance() goes looking.
-                // TickRenko.advance calls load(), which reads the session from
-                // disk if it is not resident -- ninety megabytes, on the
-                // interface thread, at the instant the replay crosses midnight.
-                // Requesting the day and the one after it means the file is
-                // already in memory when the clock gets there.
-                growingFrom.request(day);
-                growingFrom.request(day.plusDays(1));
-            }
+            requestAround(growingFrom, day);
 
             if (!growing.advance(day, now + 1) && fromTicks && this.series != null) {
                 // NOTHING PRINTED since the last frame, so there is nothing new
