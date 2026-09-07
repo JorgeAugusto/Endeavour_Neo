@@ -61,10 +61,10 @@ evidência do agente, que é como as auditorias do `endeavour` sempre fizeram.
 
 ---
 
-## 3. Os 14 ALTA abertos da auditoria
+## 3. Os 21 ALTA abertos da auditoria
 
 Detalhe completo em `auditoria/a1-series.md`, `a2-renko-ticks.md`,
-`a3-chartcanvas.md`, `a4-layout-eixos.md`, `a5-indicadores.md`. Evidência das verificadas em `auditoria/00-estado.md`.
+`a3-chartcanvas.md`, `a4-layout-eixos.md`, `a5-indicadores.md`, `a6-replay.md`. Evidência das verificadas em `auditoria/00-estado.md`.
 
 | # | onde | o quê | verificado |
 |---|---|---|---|
@@ -82,9 +82,38 @@ Detalhe completo em `auditoria/a1-series.md`, `a2-renko-ticks.md`,
 | A5-2 | `OwnPeriodTest.java:154` | teste sem dentes; só afirma teto, deu a licença falsa ao A5-1 | ✅ |
 | A5-3 | `MovingAverageDialog.java:114` | spinner aceita shift −500: a barra `i` lê a média de `i+3` | ✅ |
 | A5-4 | `StudyStack.java:121` | `calculate` síncrono na EDT em cinco pontos; 1 M de barras trava a janela | ✅ |
+| A6-1 | `ReplayPanel.java:600` | o `done()` nunca aplica a velocidade: combo diz 60, replay anda a 1× | ✅ |
+| A6-2 | `ReplayPanel.java:195` | o campo "Até" se corrige dentro da notificação do `Document`: `IllegalStateException` na EDT | — |
+| A6-3 | `ReplaySession.java:706` | o congelamento eterno do A2 visto de fora: ícone em "tocando", 25 `refresh()`/s para sempre | — |
+| A6-4 | `ReplaySession.java:263` | "carregando ticks..." sem saída quando a leitura falha | — |
+| A6-5 | `ReplayFeed.java:150` | varredura da série inteira no `ActionListener` do combo | — |
+| A6-6 | `ReplaySessionTest.java:152` | `assertEquals(x.size(), x.size())` — tautologia | ✅ |
+| A6-7 | `ReplayRangeTest.java:179` | teto puro; apagar `MOST_SESSIONS` não quebra o teste | ✅ |
 
-Fora da auditoria, um teste sem dentes já identificado: **`RenkoWickBoundsTest`
-só afirma tetos, nunca pisos** — por isso a calda curta do A2-2 passou.
+### O padrão que se repetiu três vezes: teste que afirma só um teto
+
+Três dos vinte e um ALTA são testes sem dentes, e os três têm a mesma forma —
+`assertTrue(x <= limite)` e nenhuma asserção de piso:
+
+| teste | deixou passar |
+|---|---|
+| `RenkoWickBoundsTest` | a calda curta do A2-2 |
+| `OwnPeriodTest.interpolationStaysBehind` | a interpolação que nunca agiu (A5-1) |
+| `ReplayRangeTest.thereIsACap` | nada ainda — mas apagar `MOST_SESSIONS` passa |
+
+Mais um que é pior que teto: `ReplaySessionTest:152` compara uma expressão
+consigo mesma.
+
+**Vale uma lente transversal só disto** quando as áreas acabarem: `grep` por
+método de teste cujas asserções sejam todas `assertTrue` com `<=` ou `>=`, sem
+nenhum `assertEquals` de valor.
+
+### O outro padrão: nada decima
+
+Cinco achados são a mesma ferida em lugares diferentes — 1 M de barras varridas
+na EDT: `ChartCanvas.java:1206` (A3-1), `ChartHeader.java:359` (A4-2),
+`LineStyle.java:54` (A4-3), `StudyStack.java:121` (A5-4) e `ReplayFeed.java:150`
+(A6-5). É **uma correção só**, feita no `Viewport`, não cinco.
 
 ---
 

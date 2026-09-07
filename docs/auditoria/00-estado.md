@@ -1,6 +1,6 @@
 # Estado da auditoria
 
-Atualizado em 06/09/2026, 16:40. Este arquivo existe para a auditoria sobreviver
+Atualizado em 06/09/2026, 17:10. Este arquivo existe para a auditoria sobreviver
 a uma compactação de contexto ou a uma sessão nova: o que está aqui não depende
 de ninguém lembrar da conversa.
 
@@ -17,7 +17,8 @@ Método e partição: [../AUDITORIA.md](../AUDITORIA.md)
 | A3 — ChartCanvas | 2.650 | 183.192 | 4 ALTA, 9 MÉDIA, 13 BAIXA | `a3-chartcanvas.md` |
 | A4 — holder, layout, legenda, eixos, estilo | 5.167 | 212.208 | 3 ALTA, 9 MÉDIA, 9 BAIXA | `a4-layout-eixos.md` |
 | A5 — indicadores, estudos, painéis, diálogos | 5.259 | 238.174 | 4 ALTA, 10 MÉDIA, 10 BAIXA | `a5-indicadores.md` |
-| **soma** | **19.257** | **981.986** | **14 ALTA, 48 MÉDIA, 57 BAIXA** | |
+| A6 — replay (produção + os 9 testes) | 4.034 | 201.644 | 7 ALTA, 12 MÉDIA, 7 BAIXA | `a6-replay.md` |
+| **soma** | **23.291** | **1.183.630** | **21 ALTA, 60 MÉDIA, 64 BAIXA** | |
 
 ## Áreas pendentes
 
@@ -25,11 +26,11 @@ Método e partição: [../AUDITORIA.md](../AUDITORIA.md)
 |---|---:|---:|
 | A4 — holder, layout, legenda, eixos, estilo | 5.167 | ~310k |
 | A5 — indicadores, estudos, painéis, diálogos | 6.929 | ~415k |
-| A6 — replay | 2.519 | ~150k |
-| A7 — platform, shell, settings, series | 7.500 | ~450k |
+| A7a — platform e Launcher | 2.429 | ~125k |
+| A7b — shell, settings, series | 5.071 | ~260k |
 | A8a — testes de domínio | ~4.600 | ~275k |
 | A8b — testes de interface | ~8.300 | ~500k |
-| **restante** | **22.919** | **~1,3M** |
+| **restante** | **20.400** | **~1,0M** |
 
 Depois das nove áreas: as **quatro lentes transversais** (EDT, tempo/lookahead,
 persistência, i18n) por `grep` dirigido, e só então a **verificação
@@ -193,6 +194,50 @@ simétrico por descuido. **Confirmado.**
 para a escala maior mais O(n×período) trava a janela no OK do diálogo e na troca
 de série. **Confirmado.**
 
+### ✅ A6 — a velocidade escolhida nunca chega na sessão nova
+
+O `done()` da `SwingWorker` que constrói a sessão (`ReplayPanel.java:600`) faz
+três coisas e nenhuma é aplicar a velocidade:
+
+```java
+session = get();
+session.watch(refresh);
+...
+refresh();
+```
+
+O único caminho até `setSpeed` é o `ActionListener` do combo:
+
+```java
+speed.setSelectedItem(rememberedSpeed());                                    // :186
+speed.addActionListener(e -> ... .put("replay.speed", ...));                 // :188
+speed.addActionListener(e -> withSession(s -> s.setSpeed((Integer) speed.getSelectedItem())));  // :190
+```
+
+O `setSelectedItem` da linha 186 roda **antes** de os listeners existirem, então
+nem o restauro dispara. E `ReplaySession.speed = 1` (`:148`) é o padrão. **O
+combo mostra 60 e o replay anda a 1×.** Correção: uma linha no `done()`.
+**Confirmado.**
+
+### ✅ A6 — `ReplaySessionTest.java:152` compara uma expressão consigo mesma
+
+```java
+assertEquals(replay.series().size(), replay.series().size());
+```
+
+Tautologia pura: passa com qualquer implementação de `seekFraction`. **Confirmado.**
+
+### ✅ A6 — `ReplayRangeTest.java:179` é teto puro
+
+```java
+assertTrue(tenYears <= ReplaySession.MOST_SESSIONS * oneDay,
+        "the cap did not hold: " + tenYears / oneDay + " sessions");
+```
+
+Só `<=`, e o fixture não tem dez anos de dado — apagar `MOST_SESSIONS` do
+produto não quebra o teste. **Terceiro teste sem dentes da auditoria**, e o
+terceiro do mesmo formato: asserção de teto onde faltava a de piso.
+
 ---
 
 ## O que está LIMPO e foi conferido
@@ -229,7 +274,8 @@ idiomas, e a extração do `LinePen` foi fiel ao `Pen` interno removido em
 | A3 | 2.650 | 183.192 | 69,1 |
 | A4 | 5.167 | 212.208 | 41,1 |
 | A5 | 5.259 | 238.174 | 45,3 |
-| | **19.257** | **981.986** | **51,0** |
+| A6 | 4.034 | 201.644 | 50,0 |
+| | **23.291** | **1.183.630** | **50,8** |
 
 **Use 51 tokens por linha** nas projeções. O número sobe com a quantidade de
 regras a conferir e de arquivos cruzados — a estimativa inicial de 12,5 tok/linha
