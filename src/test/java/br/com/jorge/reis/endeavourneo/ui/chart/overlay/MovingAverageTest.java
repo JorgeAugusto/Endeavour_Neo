@@ -138,6 +138,30 @@ class MovingAverageTest {
     }
 
     @Test
+    @DisplayName("the line is never pushed LEFT, which would read bars to the right")
+    void theShiftNeverGoesBackwards() {
+        // Only the forward shift was ever tested, and the spinner beside it went
+        // down to -500. valueAt reads values[bar - shift], so a shift of -2 puts
+        // on bar i an average worked out over bars up to i + 2: the chart reading
+        // the future, arriving through a control whose lower bound looks like a
+        // symmetric range somebody typed rather than a decision anybody made.
+        MovingAverage average = new MovingAverage(1);
+
+        average.setShift(-2);
+
+        assertEquals(0, average.shift(), "a negative shift was accepted");
+
+        average.calculate(bars(10, 20, 30, 40));
+
+        // With period 1 the average IS the close, so anything leaking in from
+        // the right shows up as a wrong number rather than as a suspicion.
+        for (int bar = 0; bar < 4; bar++) {
+            assertEquals((bar + 1) * 10.0, average.valueAt(bar)[0], 1e-9,
+                    "bar " + bar + " is showing a price from further to the right");
+        }
+    }
+
+    @Test
     @DisplayName("the source decides which price is averaged")
     void theSourceMatters() {
         PriceSeries series = bars(10, 20, 30);

@@ -207,6 +207,31 @@ class BollingerBandsTest {
                                 + ", which the market had not reached");
             }
         }
+
+        // TEETH, and the ceiling above has none on its own. Over prices that
+        // only rise, the honest middle and a middle that read the coarse bar
+        // still forming are BOTH below the current close -- the assertion is
+        // true either way, and was true for as long as it stood alone.
+        //
+        // What separates them is movement. Between two closes inside one
+        // five-minute bar nothing has closed, so nothing new can have arrived
+        // and the value must not move. A mapping that took the CONTAINING bar
+        // moves here, because the containing bar grows with every minute.
+        for (int bar = 5; bar < series.size() - 1; bar++) {
+            if (bar % 5 == 4) {
+                // A coarse bar closes between these two; moving is correct here.
+                continue;
+            }
+
+            assertEquals(bands.valueAt(bar)[1], bands.valueAt(bar + 1)[1], 1e-9,
+                    "the middle moved between bar " + bar + " and " + (bar + 1)
+                            + ", inside a five-minute bar that had not closed");
+        }
+
+        // And something was drawn at all: a fixture that produced NaN everywhere
+        // would satisfy both loops by never entering them.
+        assertTrue(Double.isFinite(bands.valueAt(series.size() - 1)[1]),
+                "no band was drawn at all, so neither loop above asserted anything");
     }
 
     @Test

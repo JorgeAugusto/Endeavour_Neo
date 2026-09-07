@@ -42,6 +42,48 @@ class RelativeStrengthTest {
 
     private static final double EXACT = 1e-9;
 
+    @org.junit.jupiter.api.Test
+    @DisplayName("on its own scale it reads the last CLOSED coarse bar, never the one forming")
+    void onItsOwnScaleItDoesNotReadTheFuture() {
+        // The RSI's own-scale CALCULATION had no test at all. setOwnPeriod
+        // appeared once in this file, inside a round trip of the appearance
+        // text -- which proves the setting survives being written down, and
+        // nothing whatever about what the indicator then draws.
+        //
+        // The moving average has this test, in OwnPeriodTest, and it is the trap
+        // this project has already paid for once: the obvious mapping takes the
+        // coarse bar CONTAINING each bar, and that bar is partly the future.
+        double[] closes = new double[15];
+
+        for (int i = 0; i < closes.length; i++) {
+            closes[i] = 100 + i;
+        }
+
+        PriceSeries minutes = bars(closes);
+
+        RelativeStrength rsi = new RelativeStrength(2);
+
+        rsi.setOwnPeriod("5m");
+        rsi.setInterpolated(false);
+        rsi.calculate(minutes);
+
+        // Nothing before the first five-minute bar has closed.
+        for (int bar = 0; bar < 5; bar++) {
+            assertTrue(Double.isNaN(at(rsi, bar)),
+                    "bar " + bar + " drew a value from a five-minute bar still forming");
+        }
+
+        // 09:05 and 09:09 must read the SAME thing: the 09:05 bar has not closed
+        // in between, so nothing new can have arrived. A mapping that took the
+        // containing bar would move here, because the containing bar grows.
+        assertEquals(at(rsi, 5), at(rsi, 9), EXACT,
+                "the value moved inside a coarse bar that had not closed");
+
+        // And the last bar cannot know its own five-minute close.
+        assertEquals(at(rsi, 10), at(rsi, 14), EXACT,
+                "the last bar read a coarse bar that had not finished");
+    }
+
     private static PriceSeries bars(double... prices) {
         return new PriceSeries() {
 

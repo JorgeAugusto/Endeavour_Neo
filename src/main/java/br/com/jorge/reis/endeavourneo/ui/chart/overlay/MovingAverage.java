@@ -190,8 +190,20 @@ public final class MovingAverage implements Overlay {
         return shift;
     }
 
+    /**
+     * @param value how many bars to push the line to the RIGHT; never negative
+     *
+     * <p><b>Zero is the floor, and it is a domain rule rather than a taste.</b>
+     * valueAt reads {@code values[bar - shift]}, so a negative shift pulls the
+     * line left and puts, on bar {@code i}, an average worked out over bars up
+     * to {@code i + |shift|}. That is the chart reading the future -- the one
+     * thing this project refuses everywhere else, and it arrived here by a
+     * spinner whose lower bound was -500, which reads like a symmetric range
+     * somebody typed rather than a decision anybody made. The class javadoc
+     * documents the positive shift and has never mentioned a negative one.</p>
+     */
     public void setShift(int value) {
-        this.shift = value;
+        this.shift = Math.max(0, value);
     }
 
     // -------------------------------------------------------- the appearance

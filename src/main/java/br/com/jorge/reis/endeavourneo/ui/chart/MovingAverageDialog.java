@@ -111,7 +111,10 @@ public final class MovingAverageDialog extends JDialog {
         this.periodCode = average.ownPeriod();
 
         this.period = new JSpinner(new SpinnerNumberModel(average.period(), 1, 2_000, 1));
-        this.shift = new JSpinner(new SpinnerNumberModel(average.shift(), -500, 500, 1));
+        // From ZERO. It read -500, which looks like a symmetric range typed
+        // rather than a decision made: a negative shift pulls the line left and
+        // shows, on each bar, an average of bars to its right. See setShift.
+        this.shift = new JSpinner(new SpinnerNumberModel(average.shift(), 0, 500, 1));
         this.thickness = new JSpinner(new SpinnerNumberModel(average.thickness(), 1, 8, 1));
 
         setTitle(Messages.get("overlay.dialog.title",
