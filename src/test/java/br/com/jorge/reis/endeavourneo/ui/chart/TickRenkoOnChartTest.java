@@ -20,6 +20,7 @@ package br.com.jorge.reis.endeavourneo.ui.chart;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import br.com.jorge.reis.endeavourneo.domain.market.TickSource;
@@ -476,5 +477,43 @@ class TickRenkoOnChartTest {
 
         assertFalse(canvas.isFromTicks(), "a later frame put the bricks back");
         assertEquals(MINUTES, canvas.series().size());
+    }
+
+    @Test
+    @DisplayName("um quadro em que nada imprimiu nao troca o renko de ticks pelo de candles")
+    void aQuietFrameKeepsTheTickBricks(@TempDir Path folder) throws Exception {
+        // extendBricks answered false for two different things: "this renko has
+        // to be abandoned" and "nothing printed since the last frame". seriesGrew
+        // reads it as the first and falls through to period.apply(source) -- the
+        // candle renko, which lays 8% to 27% more bricks -- while fromTicks goes
+        // on saying the bricks came from the ticks. Permanent until the chart is
+        // reopened, and nothing on screen says it happened.
+        //
+        // The quiet frame is the common one: at twenty-five frames a second most
+        // frames have no new trade in them.
+        session(folder);
+
+        ChartCanvas canvas = showing(folder);
+
+        canvas.setTickSource(
+                br.com.jorge.reis.endeavourneo.domain.market.TickSource.METATRADER);
+        canvas.setPeriod(new Renko(55, 2), "55R", "55R");
+
+        settle(canvas);
+
+        assertTrue(canvas.isFromTicks(), "the chart never reached the tick bricks");
+
+        int bricks = canvas.series().size();
+        PriceSeries was = canvas.series();
+
+        // The clock has not moved, so this frame has nothing to add.
+        canvas.seriesGrew();
+
+        assertTrue(canvas.isFromTicks(),
+                "a frame with nothing new swapped the tick renko for the candle renko");
+        assertEquals(bricks, canvas.series().size(),
+                "the bricks changed on a frame in which nothing printed");
+        assertSame(was, canvas.series(),
+                "the whole view was rebuilt for a chart that did not change");
     }
 }
