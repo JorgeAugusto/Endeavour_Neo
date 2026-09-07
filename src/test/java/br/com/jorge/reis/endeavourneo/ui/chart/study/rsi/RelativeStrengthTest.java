@@ -53,10 +53,30 @@ class RelativeStrengthTest {
         // The moving average has this test, in OwnPeriodTest, and it is the trap
         // this project has already paid for once: the obvious mapping takes the
         // coarse bar CONTAINING each bar, and that bar is partly the future.
-        double[] closes = new double[15];
+        //
+        // AND THIS TEST USED TO PASS WITH THE RSI DRAWING NOTHING. It ran on a
+        // rising line of fifteen closes: the first five bars were REQUIRED to be
+        // NaN, and the other two assertions compared two bars against each
+        // other -- and assertEquals(double, double, delta) starts by asking
+        // Double.valueOf(a).equals(Double.valueOf(b)), which is TRUE for NaN
+        // against NaN. Every assertion was satisfied by an all-NaN result. The
+        // product could return early on the own-scale path and the RSI would
+        // simply vanish from the screen the moment a reader chose a scale of its
+        // own, in silence, with this the only test of that path and green.
+        //
+        // It is fixed the way its sibling already does it -- BollingerBandsTest
+        // asserts a finite band before it compares anything -- and then further:
+        // one value is worked out by hand, so the test knows what the number IS
+        // and not only that two of them agree.
+        //
+        // The fixture is deliberate. Closes are held CONSTANT inside each
+        // five-minute window, so the coarse closes are exactly the numbers named
+        // here, and nothing depends on how the minutes inside a window run.
+        double[] window = {100, 110, 120, 100, 101, 102, 103, 104};
+        double[] closes = new double[window.length * 5];
 
         for (int i = 0; i < closes.length; i++) {
-            closes[i] = 100 + i;
+            closes[i] = window[i / 5];
         }
 
         PriceSeries minutes = bars(closes);
@@ -73,15 +93,33 @@ class RelativeStrengthTest {
                     "bar " + bar + " drew a value from a five-minute bar still forming");
         }
 
-        // 09:05 and 09:09 must read the SAME thing: the 09:05 bar has not closed
-        // in between, so nothing new can have arrived. A mapping that took the
-        // containing bar would move here, because the containing bar grows.
-        assertEquals(at(rsi, 5), at(rsi, 9), EXACT,
+        // THE VALUE, worked out on paper. Bars 15 to 19 read the coarse bar that
+        // closed at minute 14, the third one: 100, 110, 120, two rises and no
+        // fall. Wilder's reading with nothing falling is a hundred by
+        // definition, and the seed window is those two rises.
+        //
+        // This is also, by itself, the proof that it does not read the future:
+        // the coarse bar CONTAINING minute 15 closes at 100 after a fall of
+        // twenty, and its reading is 33,3 -- so a mapping that took the
+        // containing bar could not land on a hundred here.
+        assertEquals(100.0, at(rsi, 15), EXACT,
+                "the RSI drew nothing at all on its own scale, or drew the wrong number: "
+                        + "three rising five-minute closes read a hundred");
+
+        // Constant across the whole of one coarse bar: minute 19 knows nothing
+        // that minute 15 did not, because nothing closed in between. A mapping
+        // that took the containing bar would move here, because that bar grows.
+        assertEquals(at(rsi, 15), at(rsi, 19), EXACT,
                 "the value moved inside a coarse bar that had not closed");
 
-        // And the last bar cannot know its own five-minute close.
-        assertEquals(at(rsi, 10), at(rsi, 14), EXACT,
-                "the last bar read a coarse bar that had not finished");
+        // And it DOES move when one closes. Without this the two assertions
+        // above are also satisfied by an indicator frozen at its first value.
+        assertNotEquals(at(rsi, 19), at(rsi, 20),
+                "the value did not change when a five-minute bar closed with a fall of "
+                        + "twenty in it: the indicator is not reading the coarse bars at all");
+
+        assertTrue(Double.isFinite(at(rsi, closes.length - 1)),
+                "the last bar drew nothing, so the RSI disappears on its own scale");
     }
 
     private static PriceSeries bars(double... prices) {
