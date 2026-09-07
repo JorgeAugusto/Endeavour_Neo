@@ -449,6 +449,61 @@ public final class MainWindow extends JFrame {
                         .toInstant().toEpochMilli();
     }
 
+    /**
+     * Reads an export in the background and hands the chart its bars.
+     *
+     * <p>The window is already on screen and empty when this starts. Blocking
+     * the interface thread instead would freeze the whole application for the
+     * seconds the read takes, and doing it before the window exists would leave
+     * the reader with nothing at all and no way to tell whether anything was
+     * happening.</p>
+     */
+    private void fillFromTicks(ChartHolder holder, String name,
+            br.com.jorge.reis.endeavourneo.domain.market.Segment segment) {
+        br.com.jorge.reis.endeavourneo.domain.market.TickSource source =
+                br.com.jorge.reis.endeavourneo.ui.series.Segmentable.sourceOf(name);
+        String instrument =
+                br.com.jorge.reis.endeavourneo.ui.series.Segmentable.instrumentOf(name);
+
+        if (source == null || instrument == null) {
+            return;
+        }
+
+        console.write(Messages.get("console.readingTicks", name));
+
+        new javax.swing.SwingWorker<PriceSeries, Void>() {
+
+            @Override
+            protected PriceSeries doInBackground() {
+                return br.com.jorge.reis.endeavourneo.domain.market.FoldedTicks.all(
+                        SeriesCatalog.ticksOf(instrument), instrument, source,
+                        java.time.ZoneId.systemDefault());
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    PriceSeries bars = get();
+
+                    holder.canvas().setSeries(
+                            br.com.jorge.reis.endeavourneo.domain.market.SegmentedSeries.of(
+                                    bars, segment, java.time.ZoneId.systemDefault()));
+
+                    console.write(Messages.get("console.seriesLoaded", name,
+                            String.valueOf(bars.size())));
+                } catch (java.util.concurrent.ExecutionException
+                        | InterruptedException e) {
+                    console.write(Messages.get("console.seriesFailed", name,
+                            String.valueOf(e.getMessage())));
+
+                    if (e instanceof InterruptedException) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+            }
+        }.execute();
+    }
+
     private PriceSeries seriesFor(String name, String title,
             br.com.jorge.reis.endeavourneo.domain.market.Segment segment) {
         try {
@@ -540,7 +595,13 @@ public final class MainWindow extends JFrame {
             return null;
         }
 
-        String name = SeriesCatalog.has(asked) ? asked : SeriesCatalog.defaultName();
+        // A TICK EXPORT IS A SERIES. It holds every print of every session it
+        // covers, which is MORE than the candle file holds and not less, and it
+        // used to be the only data in the program that could not be looked at:
+        // the tree offered it, and opening it fell through to the default series
+        // because SeriesCatalog has never heard of it. See FoldedTicks.
+        boolean ticks = br.com.jorge.reis.endeavourneo.ui.series.Segmentable.isTicks(asked);
+        String name = ticks || SeriesCatalog.has(asked) ? asked : SeriesCatalog.defaultName();
 
         // ALWAYS a new chart, never fronting an existing one. A terminal is
         // expected to show the same instrument at several timeframes at once,
@@ -554,10 +615,12 @@ public final class MainWindow extends JFrame {
         // series is gone, the window has to carry the name of what actually
         // opened, or rememberCharts writes the dead name back and the entry
         // never repairs itself, which is what the comment above promises.
-        String title = uniqueTitle(SeriesCatalog.has(asked) ? series : name);
+        String title = uniqueTitle(ticks || SeriesCatalog.has(asked) ? series : name);
 
         // The NAME, not the key. See ChartHolder.label.
-        String shown = SeriesCatalog.displayOf(name)
+        String shown = (ticks
+                ? br.com.jorge.reis.endeavourneo.ui.series.Segmentable.labelOf(name)
+                : SeriesCatalog.displayOf(name))
                 + (segment == null ? "" : "  \u00b7  " + segment.name());
         ChartHolder holder = new ChartHolder(title, shown, desktop, this, () -> {
             charts.remove(title);
@@ -565,22 +628,35 @@ public final class MainWindow extends JFrame {
         });
 
         // The canvas needs the instrument to find its tick sessions: they are
-        // named winfut-2021-01-04.bin and the chart calls itself winfut-1m.
-        holder.canvas().setInstrument(name);
+        // named winfut-2021-01-04.bin and the chart calls itself winfut-1m. For
+        // a chart OF an export the key is not an instrument, so the market half
+        // of it is what goes in.
+        holder.canvas().setInstrument(ticks
+                ? br.com.jorge.reis.endeavourneo.ui.series.Segmentable.instrumentOf(name)
+                : name);
 
-        // Sliced, or not: SegmentedSeries hands back the base itself when there
-        // is no segment, so nothing below has to know which of the two it got.
-        PriceSeries loaded = seriesFor(name, title, segment);
+        if (ticks) {
+            // EMPTY NOW, FILLED IN THE BACKGROUND. Reading an export is seconds
+            // -- 1.838 MB and 8,1 s for the twenty MetaTrader sessions, 691 MB
+            // and 4,4 s for the nine of Profit -- and the interface thread is
+            // the one thread that may not spend them. The window opens at once
+            // and the console says what it is waiting for.
+            fillFromTicks(holder, name, segment);
+        } else {
+            // Sliced, or not: SegmentedSeries hands back the base itself when
+            // there is no segment, so nothing below has to know which it got.
+            PriceSeries loaded = seriesFor(name, title, segment);
 
-        holder.canvas().setSeries(
-                br.com.jorge.reis.endeavourneo.domain.market.SegmentedSeries.of(
-                        loaded, segment, java.time.ZoneId.systemDefault()));
+            holder.canvas().setSeries(
+                    br.com.jorge.reis.endeavourneo.domain.market.SegmentedSeries.of(
+                            loaded, segment, java.time.ZoneId.systemDefault()));
 
-        // Only when the whole series is on show. A segment is a stretch the
-        // reader chose by date, and quietly widening it because they scrolled to
-        // its left edge would be answering a question they did not ask.
-        if (segment == null) {
-            offerHistory(holder, name, loaded.size());
+            // Only when the whole series is on show. A segment is a stretch the
+            // reader chose by date, and quietly widening it because they
+            // scrolled to its left edge would answer a question they did not ask.
+            if (segment == null) {
+                offerHistory(holder, name, loaded.size());
+            }
         }
 
         // Every chart accepts a replay dropped on it, from the moment it opens.

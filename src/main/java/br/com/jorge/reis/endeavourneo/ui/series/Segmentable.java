@@ -85,16 +85,42 @@ public final class Segmentable {
         return key != null && key.contains(TICKS);
     }
 
+    /** @return the market half of a ticks key, or null when it is not one */
+    public static String instrumentOf(String key) {
+        return isTicks(key) ? key.substring(0, key.indexOf(TICKS)) : null;
+    }
+
+    /**
+     * @return the export half of a ticks key, or null when it is not one
+     *
+     * <p>Decoded here and nowhere else. It was picked apart inline in two
+     * places, which is two places to forget when the separator changes.</p>
+     */
+    public static TickSource sourceOf(String key) {
+        if (!isTicks(key)) {
+            return null;
+        }
+
+        String wanted = key.substring(key.indexOf(TICKS) + TICKS.length());
+
+        for (TickSource each : TickSource.values()) {
+            if (each.key().equals(wanted)) {
+                return each;
+            }
+        }
+
+        return null;
+    }
+
     /** @return how the key is written on screen */
     public static String labelOf(String key) {
         if (!isTicks(key)) {
             return key;
         }
 
-        String instrument = key.substring(0, key.indexOf(TICKS));
         String source = key.substring(key.indexOf(TICKS) + TICKS.length());
 
-        return Messages.market(instrument) + "  ·  " + Messages.get("navigator.ticks")
+        return Messages.market(instrumentOf(key)) + "  ·  " + Messages.get("navigator.ticks")
                 + "  ·  " + Messages.orElse("navigator.tickSource." + source, source);
     }
 
@@ -107,16 +133,10 @@ public final class Segmentable {
      */
     public static NavigableSet<LocalDate> sessionsOf(String key) {
         if (isTicks(key)) {
-            String instrument = key.substring(0, key.indexOf(TICKS));
-            String source = key.substring(key.indexOf(TICKS) + TICKS.length());
+            TickSource source = sourceOf(key);
 
-            for (TickSource each : TickSource.values()) {
-                if (each.key().equals(source)) {
-                    return new TreeSet<>(daysOfTicks(instrument, each));
-                }
-            }
-
-            return new TreeSet<>();
+            return source == null ? new TreeSet<>()
+                    : new TreeSet<>(daysOfTicks(instrumentOf(key), source));
         }
 
         try {

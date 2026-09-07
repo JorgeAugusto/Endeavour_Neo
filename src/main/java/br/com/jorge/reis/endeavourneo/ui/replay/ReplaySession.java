@@ -98,6 +98,9 @@ public final class ReplaySession {
     /** The sessions of real ticks, at most three of them in memory. */
     private final transient TickLibrary ticks;
 
+    /** Where the exported sessions are, for the folds that do not go through the library. */
+    private final transient java.nio.file.Path tickFolder;
+
     /**
      * What breaks a bar into the prices inside it.
      *
@@ -218,6 +221,7 @@ public final class ReplaySession {
         // Before the days, because a tick feed builds its days OUT of the
         // library: every bar on screen is folded from the trades that printed,
         // the sessions before the chosen one included.
+        this.tickFolder = tickFolder;
         this.ticks = new TickLibrary(tickFolder, feed.instrument(),
                 feed.isTicks() ? feed.source() : TickSource.METATRADER);
 
@@ -433,23 +437,11 @@ public final class ReplaySession {
      * high, then the low". A bar is not read that way here.</p>
      */
     private PriceSeries foldedFromTicks(LocalDate day) {
-        java.nio.file.Path file = ticks.fileFor(day);
-
-        if (!day.equals(ticks.source().sessionIn(file))) {
-            // Not exported. An empty day rather than a day drawn from somewhere
-            // else: a tick feed shows ticks, and where there are none it shows
-            // nothing.
-            return PriceSeries.empty();
-        }
-
-        try {
-            return br.com.jorge.reis.endeavourneo.domain.market.Timeframe.ONE_MINUTE.fold(
-                    br.com.jorge.reis.endeavourneo.domain.market.TickBars.of(
-                            ticks.source().read(file)),
-                    ZoneId.systemDefault());
-        } catch (java.io.IOException e) {
-            return PriceSeries.empty();
-        }
+        // Delegated since a chart can be opened ON an export: the fold had been
+        // written here first and copying it into FoldedTicks would leave two
+        // answers to "what is a session, as bars".
+        return br.com.jorge.reis.endeavourneo.domain.market.FoldedTicks.day(
+                tickFolder, feed.instrument(), ticks.source(), day, ZoneId.systemDefault());
     }
 
     /**

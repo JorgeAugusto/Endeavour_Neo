@@ -363,7 +363,16 @@ public final class Navigator extends JPanel {
                 continue;
             }
 
-            DefaultMutableTreeNode found = new DefaultMutableTreeNode(new Leaf(null,
+            String key = br.com.jorge.reis.endeavourneo.ui.series.Segmentable
+                    .keyOfTicks(instrument, source);
+
+            // NAMED, so it opens. It used to be a leaf that opened nothing, on
+            // the argument that "a tick session is what a chart is REPLAYED
+            // from, not a chart". That was wrong: an export holds every print of
+            // every session it covers, which is MORE than the candle file holds,
+            // and the rule made the most complete data in the program the only
+            // data that could not be looked at.
+            DefaultMutableTreeNode found = new DefaultMutableTreeNode(new Leaf(key,
                     Messages.get("navigator.tickSessions",
                             Messages.orElse("navigator.tickSource." + source.key(),
                                     source.key()),
@@ -371,16 +380,12 @@ public final class Navigator extends JPanel {
                             days.get(0).toString(), days.get(days.size() - 1).toString())));
 
             // A tick source can be segmented like any other series -- see
-            // Segmentable -- and the segments are listed here for the same
-            // reason they are listed under a series: so the reader can see that
-            // they exist without opening a settings window to find out.
-            //
-            // They open nothing, because their parent opens nothing: a tick
-            // session is what a chart is REPLAYED from, not a chart.
+            // Segmentable -- and its segments open like any other series's, for
+            // the same reason the source itself now does.
             for (br.com.jorge.reis.endeavourneo.domain.market.Segment segment
-                    : Segmentation.of(br.com.jorge.reis.endeavourneo.ui.series.Segmentable
-                            .keyOfTicks(instrument, source))) {
-                found.add(new DefaultMutableTreeNode(new Leaf(null, labelOf(segment))));
+                    : Segmentation.of(key)) {
+                found.add(new DefaultMutableTreeNode(new Leaf(
+                        Segmentation.nameOf(key, segment), labelOf(segment))));
             }
 
             node.add(found);

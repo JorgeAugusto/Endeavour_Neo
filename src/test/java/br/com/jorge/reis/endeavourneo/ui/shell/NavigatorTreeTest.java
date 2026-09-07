@@ -456,4 +456,31 @@ class NavigatorTreeTest {
 
         assertEquals(inside, under(folder, inside));
     }
+
+    @Test
+    @DisplayName("uma fonte de ticks ABRE, como qualquer outra serie")
+    void aTickSourceOpens(@TempDir Path folder) throws IOException {
+        // It used to be a leaf that opened nothing, and the comment guarding it
+        // said "a tick session is what a chart is REPLAYED from, not a chart".
+        // That was wrong: an export holds every print of every session it
+        // covers, which is MORE than the candle file holds, and the rule made
+        // the most complete data in the program the only data that could not be
+        // looked at.
+        SeriesCatalog.useFolderForTest(folder);
+
+        tickSession(folder, "win", java.time.LocalDate.of(2021, 1, 4), TickSource.METATRADER);
+
+        DefaultMutableTreeNode node =
+                Navigator.tickSessions(folder.resolve("win").resolve("ticks"), "win");
+
+        assertNotNull(node, "the session was not listed at all");
+        assertEquals(1, node.getChildCount());
+
+        String opens = Navigator.nameOf((DefaultMutableTreeNode) node.getChildAt(0));
+
+        assertNotNull(opens, "the tick source still opens nothing");
+        assertEquals(br.com.jorge.reis.endeavourneo.ui.series.Segmentable
+                .keyOfTicks("win", TickSource.METATRADER), opens,
+                "it opens something other than its own export");
+    }
 }
