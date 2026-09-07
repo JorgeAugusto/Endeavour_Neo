@@ -50,6 +50,40 @@ class SeriesCatalogTest {
         SeriesCatalog.forget();
     }
 
+    @Test
+    @DisplayName("o que o leitor escreve COMPLETA o que vem de fabrica")
+    void whatthereaderWritesCompletesTheDefaults() {
+        // The setting used to be the fallback's SUBSTITUTE. A reader who opened
+        // the file to name one new market lost the built-in name of every other
+        // one -- and nothing said so, because a market with no stated name falls
+        // back to a guess that usually looks reasonable. The tree they were
+        // trying to improve came out worse than before they touched it.
+        Settings settings = Settings.settings();
+        String was = settings.get("data.groups", null);
+
+        try {
+            settings.put("data.groups", "ouro-1m=ouro");
+
+            assertEquals("ouro", SeriesCatalog.groupOf("ouro-1m"),
+                    "what the reader wrote was not read at all");
+            assertEquals("win", SeriesCatalog.groupOf("winfull-1m"),
+                    "naming one market threw away the built-in name of every other one");
+
+            // And what the reader writes WINS where the two meet, which is the
+            // other thing this file is for.
+            settings.put("data.groups", "winfull-1m=outro");
+
+            assertEquals("outro", SeriesCatalog.groupOf("winfull-1m"),
+                    "the built-in value overrode the reader's own");
+        } finally {
+            if (was == null) {
+                settings.remove("data.groups");
+            } else {
+                settings.put("data.groups", was);
+            }
+        }
+    }
+
     /** A base of one bar, written the way the first Endeavour writes it. */
     private static void base(Path folder, String name, double close) throws IOException {
         ByteBuffer buffer = ByteBuffer.allocate(24 + 48).order(ByteOrder.BIG_ENDIAN);
@@ -182,6 +216,19 @@ class SeriesCatalogTest {
     @Test
     @DisplayName("no series is ever labelled with the market's bare name")
     void noSeriesWearsTheMarketsName() {
+        // THE SCALE COMES OFF WHEREVER IT IS. scaleOf reads the FIRST part that
+        // is a scale, deliberately and with a test of its own just above --
+        // scaleOf("btcusdt-1m-1y") is "1m" -- and displayOf took it off assuming
+        // it was the suffix. For that name the two readings disagreed and the
+        // scale stayed: the label came out repeating the very scale the series
+        // is already hanging under, which is what displayOf exists to stop.
+        assertFalse(SeriesCatalog.displayOf("btcusdt-1m-1y").contains("1M1"),
+                "the scale was left in the label of a series that does not carry it as a "
+                        + "suffix: " + SeriesCatalog.displayOf("btcusdt-1m-1y"));
+        assertTrue(SeriesCatalog.displayOf("btcusdt-1m-1y").endsWith("-1Y"),
+                "what is left over is not what tells this series from its neighbours: "
+                        + SeriesCatalog.displayOf("btcusdt-1m-1y"));
+
         // The rule, and the reason it is a rule about LABELS rather than about
         // this market. displayOf drops the scale and the instrument prefix and
         // reads what is left beside the market's name -- and for a file named

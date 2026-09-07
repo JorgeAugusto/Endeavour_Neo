@@ -157,7 +157,33 @@ public final class SeriesCatalog {
         return answer;
     }
 
-    /** @param folder where to look from now on, remembered across launches */
+    /**
+     * @param folder where to look from now on, remembered across launches
+     *
+     * <h2>The settings this class reads are edited by hand, and here is the
+     * list</h2>
+     *
+     * <p><b>Nothing in the program calls this, or {@code setRetired}.</b> There
+     * is no preferences page for either, and saying so beats leaving two public
+     * methods that the next reading of this file takes for a live path. They are
+     * the writers the settings file would need the day one exists, and until
+     * then the file is written in a text editor.</p>
+     *
+     * <p>These are the keys, all of them read here and none of them written by
+     * anything: {@code data.directory} (this one), {@code data.retired}, {@code
+     * data.groups}, {@code data.scales}, {@code data.roles}. A sixth,
+     * {@code data.zone}, is read by the launcher -- and that one IS written now,
+     * because it was read by the launcher and written by nobody, so the whole
+     * correction it belongs to was built and never armed. The rest are safe as
+     * they stand: each falls back to a value that is right on this machine, and
+     * what is written completes it rather than replacing it.</p>
+     *
+     * <p>{@code data.directory} is deliberately NOT written back with its
+     * default. The others name things that do not move; the data folder does,
+     * and a value pinned on first launch would go on pointing at a folder that
+     * is no longer there, in silence, which is worse than looking for it every
+     * time.</p>
+     */
     public static void setFolder(Path folder) {
         Path absolute = folder.toAbsolutePath();
 
@@ -245,19 +271,41 @@ public final class SeriesCatalog {
      * its role, its market, its scale -- and they are all said the same way.
      * One parser, because three copies of it means the third one is where the
      * trim gets forgotten.</p>
+     *
+     * <p><b>What is written COMPLETES what is built in, and does not replace
+     * it.</b> The setting used to be the fallback's substitute: a reader who
+     * opened the file to name one new market lost the built-in name of every
+     * other one, and the tree they were trying to improve came out worse than
+     * before they touched it. Nothing said so, because a market with no stated
+     * name falls back to a guess that usually looks reasonable.</p>
+     *
+     * <p>Read second, so a reader who writes a pair that already exists is
+     * OVERRIDING it, which is the other thing this file is for. The two
+     * together are the only shape that lets a partial answer be a useful
+     * one.</p>
      */
     private static Map<String, String> stated(String key, String fallback) {
         Map<String, String> pairs = new LinkedHashMap<>();
 
-        for (String each : Settings.settings().get(key, fallback).split(",")) {
+        readInto(pairs, fallback);
+        readInto(pairs, Settings.settings().get(key, ""));
+
+        return pairs;
+    }
+
+    /** @param text the {@code name=value,name=value} form; anything else is skipped */
+    private static void readInto(Map<String, String> pairs, String text) {
+        if (text == null) {
+            return;
+        }
+
+        for (String each : text.split(",")) {
             int equals = each.indexOf('=');
 
             if (equals > 0) {
                 pairs.put(each.substring(0, equals).trim(), each.substring(equals + 1).trim());
             }
         }
-
-        return pairs;
     }
 
     /** @return the role of that series, or null when it has none */
@@ -333,8 +381,19 @@ public final class SeriesCatalog {
         String scale = scaleOf(name);
         String rest = name;
 
-        if (!scale.isEmpty() && rest.endsWith("-" + scale)) {
-            rest = rest.substring(0, rest.length() - scale.length() - 1);
+        // WHEREVER IT IS, not only at the end. scaleOf reads the FIRST part
+        // that is a scale, on purpose and with a test of its own -- scaleOf
+        // ("btcusdt-1m-1y") is "1m" -- and this took it off assuming it was the
+        // suffix. For that name the two readings disagreed and the scale stayed:
+        // the label came out "Bitcoin-1M1Y", repeating the very scale the series
+        // is already hanging under, which is the one thing the javadoc above
+        // says this method exists to stop. The right label is "Bitcoin-1Y".
+        if (!scale.isEmpty()) {
+            int at = rest.indexOf("-" + scale);
+
+            if (at >= 0) {
+                rest = rest.substring(0, at) + rest.substring(at + scale.length() + 1);
+            }
         }
 
         if (rest.startsWith(instrument)) {
@@ -527,6 +586,12 @@ public final class SeriesCatalog {
             return List.of();
         }
 
+        // ONCE, not once per file. This was inside the filter below, and
+        // retired() re-reads the settings and re-parses the list on every call:
+        // a folder of forty series parsed the same string forty times, for an
+        // answer that cannot change during a walk.
+        Set<String> hidden = retired();
+
         try (Stream<Path> files = Files.walk(folder, 3)) {
             return files
                     .filter(file -> file.getFileName().toString().endsWith(SUFFIX))
@@ -536,7 +601,7 @@ public final class SeriesCatalog {
 
                         return name.substring(0, name.length() - SUFFIX.length());
                     })
-                    .filter(name -> !retired().contains(name))
+                    .filter(name -> !hidden.contains(name))
                     // Against the folder being LISTED, which is not always the
                     // current one -- a settings page may be previewing another.
                     //
@@ -556,7 +621,26 @@ public final class SeriesCatalog {
                     .distinct()
                     .sorted()
                     .toList();
-        } catch (IOException e) {
+        } catch (IOException | java.io.UncheckedIOException e) {
+            // SAID OUT LOUD, and naming the folder. "There are no series here"
+            // and "I could not read this folder" used to leave by the same door
+            // with nothing written down -- the opposite of the distinction this
+            // class makes on purpose in open(), where "no such series is an
+            // ordinary answer" and "a series that exists and will not read is a
+            // fault worth showing".
+            //
+            // And it does not stop at an empty tree. holdsABase goes false, so
+            // folder() moves on to another candidate or falls back to the first
+            // one: a folder without permission makes the program quietly point
+            // somewhere else, which is exactly the silent substitution the
+            // javadoc of candidates() says was taken out.
+            //
+            // UncheckedIOException as well as IOException, because Files.walk is
+            // lazy: what the traversal throws is wrapped, and a catch of the
+            // checked one alone can only ever see the failure to START.
+            System.err.println(folder + ": the series in this folder could not be listed ("
+                    + e + ")");
+
             return List.of();
         }
     }
