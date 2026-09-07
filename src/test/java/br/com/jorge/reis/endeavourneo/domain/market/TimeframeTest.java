@@ -382,6 +382,116 @@ class TimeframeTest {
     }
 
     @Test
+    @DisplayName("uma barra de varios dias carrega a ABERTURA, nao a meia-noite")
+    void amultiDayBarCarriesTheOpen() {
+        // The javadoc of startOf says it out loud: "a day, week or month bucket
+        // begins at midnight, and midnight is not a moment this market existed;
+        // the first bar's time is the session's open". Its guard covered D1, W1
+        // and M1 -- and not a scale of several days written in MINUTES, which is
+        // what a reader types. The minute of the day never reaches 4320, so the
+        // slot came out zero and the bar was stamped with local midnight.
+        //
+        // Written against a folded series and not against startOf, because the
+        // stamp is what the time axis reads and what a search by instant has to
+        // match.
+        java.time.LocalDate monday = java.time.LocalDate.of(2026, 9, 7);
+        long open = morningOf(monday);
+
+        PriceSeries folded = Timeframe.ofMinutes(3 * 24 * 60).apply(
+                oneBarPerDayFrom(monday, 10), SAO_PAULO);
+
+        assertTrue(folded.size() > 0, "the fixture folded to nothing");
+        assertEquals(open, folded.timeAt(0),
+                "the bar was stamped with midnight, which is not a moment this market "
+                        + "existed and not an instant the minute series can be searched for");
+    }
+
+    @Test
+    @DisplayName("uma escala de sete dias corta onde a W1 corta, nao numa quinta de 1970")
+    void asevenDayScaleCutsWhereTheWeekCuts() {
+        // epochDay / 7 groups from a Thursday, because 1970-01-01 was one. The
+        // javadoc of this class names that trap in so many words, three
+        // paragraphs before promising that buckets come "from local calendar
+        // fields in the exchange's zone, never from the epoch" -- and the line
+        // for scales above a day was epochDay / N.
+        //
+        // Typing 10080 therefore gave a week cut three days away from the one W1
+        // draws, out of the same object, with nothing saying so.
+        Timeframe sevenDays = Timeframe.ofMinutes(7 * 24 * 60);
+
+        java.time.LocalDate monday = java.time.LocalDate.of(2026, 9, 7);
+
+        assertEquals(java.time.DayOfWeek.MONDAY, monday.getDayOfWeek(),
+                "the fixture does not start on a Monday");
+
+        // Monday to Sunday is one bar.
+        for (int day = 1; day < 7; day++) {
+            assertEquals(sevenDays.bucketOf(morningOf(monday), SAO_PAULO),
+                    sevenDays.bucketOf(morningOf(monday.plusDays(day)), SAO_PAULO),
+                    monday.plusDays(day) + " fell outside the week that started on "
+                            + monday);
+        }
+
+        // And the day before, and the day after, are not.
+        assertNotEquals(sevenDays.bucketOf(morningOf(monday), SAO_PAULO),
+                sevenDays.bucketOf(morningOf(monday.minusDays(1)), SAO_PAULO),
+                "the Sunday before was folded into the week that starts on Monday");
+        assertNotEquals(sevenDays.bucketOf(morningOf(monday), SAO_PAULO),
+                sevenDays.bucketOf(morningOf(monday.plusDays(7)), SAO_PAULO),
+                "the next Monday was folded into the previous week");
+
+        // Which is exactly what W1 does, and the point is that the two agree.
+        assertEquals(Timeframe.WEEKLY.bucketOf(morningOf(monday), SAO_PAULO)
+                        == Timeframe.WEEKLY.bucketOf(morningOf(monday.plusDays(6)), SAO_PAULO),
+                sevenDays.bucketOf(morningOf(monday), SAO_PAULO)
+                        == sevenDays.bucketOf(morningOf(monday.plusDays(6)), SAO_PAULO),
+                "seven days typed in minutes and W1 disagree about what a week is");
+    }
+
+    /** One bar a day at that hour, thirty of them, so a multi-day fold has something to fold. */
+    private static PriceSeries oneBarPerDayFrom(java.time.LocalDate first, int hour) {
+        long[] times = new long[30];
+
+        for (int day = 0; day < times.length; day++) {
+            times[day] = first.plusDays(day).atTime(hour, 0)
+                    .atZone(SAO_PAULO).toInstant().toEpochMilli();
+        }
+
+        return new PriceSeries() {
+
+            @Override
+            public int size() {
+                return times.length;
+            }
+
+            @Override
+            public long timeAt(int index) {
+                return times[index];
+            }
+
+            @Override
+            public double openAt(int index) {
+                return 100 + index;
+            }
+
+            @Override
+            public double highAt(int index) {
+                return 101 + index;
+            }
+
+            @Override
+            public double lowAt(int index) {
+                return 99 + index;
+            }
+
+            @Override
+            public double closeAt(int index) {
+                return 100 + index;
+            }
+        };
+    }
+
+    @Test
     @DisplayName("the hour scale folds hours, not each day whole")
     void theHourScaleFoldsHours() {
         // ONE_HOUR is declared and was never folded by this file either. It is

@@ -302,7 +302,21 @@ public final class Timeframe implements Aggregation {
      * should carry. So those keep it.</p>
      */
     private long startOf(long millis, ZoneId zone) {
-        if (minutes <= 0) {
+        // A DAY OR MORE KEEPS ITS OWN MOMENT. The guard used to be minutes <= 0,
+        // which covers DAY, WEEK and MONTH but NOT a scale of several days
+        // written in minutes -- and ofMinutes takes up to thirty days, which the
+        // reader reaches by typing. For 4320 (three days) the minute of the day
+        // never reaches 4320, so the slot came out zero and the bar was stamped
+        // with local MIDNIGHT: the exact instant the paragraph above calls "not
+        // a moment this market existed".
+        //
+        // And it was not even the bucket's start. With a holiday on the Monday
+        // the bucket's first session falls on its second day, and the stamp came
+        // out at that day's midnight -- an instant no search against the minute
+        // series can find.
+        //
+        // The same test bucketOf uses to decide whole days, so the two agree.
+        if (minutes <= 0 || minutes >= DAY_MINUTES) {
             return millis;
         }
 
@@ -358,7 +372,21 @@ public final class Timeframe implements Aggregation {
             // A scale that is not a whole number of days rounds DOWN to one --
             // 2000 minutes is a day and a bit, and there is no honest way to
             // draw the bit.
-            return local.toLocalDate().toEpochDay() / Math.max(1, minutes / DAY_MINUTES);
+            //
+            // ANCHORED ON A MONDAY, not on the epoch. This was epochDay / N, and
+            // the javadoc of this class forbids exactly that out loud -- "weeks
+            // would run Thursday to Wednesday. Epoch day zero was a Thursday" --
+            // three paragraphs before promising that buckets come "from local
+            // calendar fields in the exchange's zone, never from the epoch".
+            // Typing 10080 gave a week cut three days away from the one W1 draws,
+            // from the same object, with nothing saying so; and for any other N
+            // the cut landed on whatever weekday a date in 1970 happened to be.
+            //
+            // MONDAY_ZERO is the Monday of the epoch's own week, so seven days
+            // lines up with WEEKLY above and every other N starts from a named
+            // day rather than an accident.
+            return (local.toLocalDate().toEpochDay() - MONDAY_ZERO)
+                    / Math.max(1, minutes / DAY_MINUTES);
         }
 
         // Day first, then the slot within the day: a slot number on its own
@@ -367,6 +395,16 @@ public final class Timeframe implements Aggregation {
 
         return local.toLocalDate().toEpochDay() * 1_440L + (minuteOfDay / minutes) * (long) minutes;
     }
+
+    /**
+     * The epoch day of the Monday that starts the epoch's own week.
+     *
+     * <p>1970-01-01 was a Thursday, so its Monday is 1969-12-29, three days
+     * earlier. Everything above a day is counted from here, which is what makes
+     * a seven-day scale agree with {@code WEEKLY} instead of running Thursday to
+     * Wednesday.</p>
+     */
+    private static final long MONDAY_ZERO = -3L;
 
     @Override
     public String toString() {
