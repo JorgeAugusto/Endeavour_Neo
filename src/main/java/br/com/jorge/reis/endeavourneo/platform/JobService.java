@@ -165,8 +165,9 @@ public final class JobService implements AutoCloseable {
             if (settled && !delivered && error != null) {
                 delivered = true;
 
-                System.err.println("job \"" + name + "\" failed and nobody handled it:");
-                error.printStackTrace();
+                FAILURES.println("job \"" + name + "\" failed and nobody handled it:");
+                error.printStackTrace(FAILURES);
+                FAILURES.flush();
             }
         }
 
@@ -257,6 +258,23 @@ public final class JobService implements AutoCloseable {
             return cancelled.contains(this);
         }
     }
+
+    /**
+     * Where a last-chance failure is written, taken before anything redirects it.
+     *
+     * <p><b>Captured at class load, and that is the whole point.</b> The console
+     * window replaces {@code System.err} with a stream that hands each line to
+     * the interface thread, and {@code close()} is called from a shutdown hook.
+     * The JVM does not wait for the interface thread to drain, so the one report
+     * this class exists to never lose was being posted to a queue that would not
+     * run again -- printed into a window that was already going away.</p>
+     *
+     * <p>This class is loaded when the Launcher builds the service, which is
+     * before the first window and therefore before that redirect. Holding the
+     * stream from then on means the report reaches wherever the application's
+     * output actually goes.</p>
+     */
+    private static final java.io.PrintStream FAILURES = System.err;
 
     /** Leaves one core for the interface thread, and never fewer than two. */
     private static final int THREADS =

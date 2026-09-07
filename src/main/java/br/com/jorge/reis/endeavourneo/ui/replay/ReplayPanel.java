@@ -192,14 +192,25 @@ public final class ReplayPanel extends JPanel {
         // The end follows the start rather than waiting to be refused: moving
         // the start past the end is somebody choosing a later day, not somebody
         // asking for a backwards range.
-        Runnable settle = () -> {
+        // AFTER the notification, never inside it. Both pickers report a change
+        // from a DocumentListener, and setDate writes to that same document --
+        // so correcting "Até" while being told "Até" changed is Swing's
+        // "Attempt to mutate in notification", an IllegalStateException thrown
+        // on the interface thread the moment somebody typed a date outside the
+        // window. Which also meant the correction never happened and the
+        // windowDays ceiling was never applied by that field at all.
+        //
+        // invokeLater puts the write in the next event, when the document is no
+        // longer being read. The reader sees the same thing: a field that fixes
+        // itself as they type.
+        Runnable settle = () -> javax.swing.SwingUtilities.invokeLater(() -> {
             LocalDate corrected = keepInWindow(date.date(), until.date(),
                     ReplayPreferences.windowDays());
 
             if (corrected != null && !corrected.equals(until.date())) {
                 until.setDate(corrected);
             }
-        };
+        });
 
         date.onChange(settle);
         until.onChange(settle);

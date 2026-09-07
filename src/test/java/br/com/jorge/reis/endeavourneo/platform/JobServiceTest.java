@@ -196,6 +196,65 @@ class JobServiceTest {
     }
 
     @Test
+    @DisplayName("a failure nobody handled is reported where output really goes")
+    void theLastChanceReportSurvivesTheRedirect() throws Exception {
+        // close() is called from a shutdown hook, and the console window
+        // replaces System.err with a stream that hands each line to the
+        // interface thread. The JVM does not wait for that thread to drain, so
+        // the one report this class exists to never lose was being posted to a
+        // queue that would not run again.
+        //
+        // Standing in for the console here: a stream that swallows everything.
+        // The report has to reach the stream the class captured at load, not
+        // this one.
+        java.io.PrintStream real = System.err;
+
+        // The class captures its stream at load, so it has to be loaded BEFORE
+        // the redirect below -- otherwise this test would prove only that the
+        // capture happened after it, which is not the property.
+        new JobService().close();
+
+        java.io.ByteArrayOutputStream swallowed = new java.io.ByteArrayOutputStream();
+
+        System.setErr(new java.io.PrintStream(swallowed, true, java.nio.charset.StandardCharsets.UTF_8));
+
+        try {
+            CountDownLatch ran = new CountDownLatch(1);
+
+            try (JobService jobs = new JobService()) {
+                // No whenFailed: the failure is nobody's, which is the case the
+                // last-chance report exists for.
+                jobs.submit("orphan", progress -> {
+                    ran.countDown();
+
+                    throw new IllegalStateException("nobody is listening");
+                });
+
+                assertTrue(ran.await(TIMEOUT_SECONDS, TimeUnit.SECONDS), "the job never ran");
+
+                // The latch counts down BEFORE the throw, so the job has not
+                // failed yet at this point. Closing here would find nothing
+                // unclaimed and report nothing -- which is how the first draft
+                // of this test passed whether the fix was in or out.
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(TIMEOUT_SECONDS);
+
+                while (jobs.isBusy() && System.nanoTime() < deadline) {
+                    Thread.sleep(5);
+                }
+
+                assertFalse(jobs.isBusy(), "the job never finished failing");
+            }
+
+            assertEquals(0, swallowed.size(),
+                    "the report was written to whatever System.err happened to be at the "
+                            + "time, which during shutdown is a queue nothing will drain: "
+                            + swallowed.toString(java.nio.charset.StandardCharsets.UTF_8));
+        } finally {
+            System.setErr(real);
+        }
+    }
+
+    @Test
     @DisplayName("a cancelled job is not a result and not a failure")
     void cancellingIsItsOwnOutcome() throws Exception {
         // The distinction the third callback exists to keep. Handing a

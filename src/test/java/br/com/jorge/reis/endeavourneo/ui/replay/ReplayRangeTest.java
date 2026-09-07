@@ -54,6 +54,56 @@ class ReplayRangeTest {
         ReplayBase.release();
     }
 
+    /** @return every date picker in the transport, in the order they were added */
+    private static java.util.List<DatePicker> pickersIn(java.awt.Container where) {
+        java.util.List<DatePicker> found = new java.util.ArrayList<>();
+
+        for (java.awt.Component each : where.getComponents()) {
+            if (each instanceof DatePicker picker) {
+                found.add(picker);
+            } else if (each instanceof java.awt.Container inside) {
+                found.addAll(pickersIn(inside));
+            }
+        }
+
+        return found;
+    }
+
+    @Test
+    @DisplayName("typing a date past the window corrects it instead of throwing")
+    void correctingTheEndDoesNotThrow() throws Exception {
+        // The correction was made from inside the very notification that
+        // announced the change: both pickers report through a DocumentListener,
+        // and setDate writes to that same document. Swing answers that with
+        // IllegalStateException("Attempt to mutate in notification"), thrown on
+        // the interface thread the moment somebody typed a date outside the
+        // window -- and, quietly, the windowDays ceiling was then never applied
+        // by that field at all.
+        //
+        // The throw reaches this test because invokeAndWait carries it back.
+        ReplayPanel[] panel = new ReplayPanel[1];
+
+        javax.swing.SwingUtilities.invokeAndWait(() -> panel[0] = new ReplayPanel());
+
+        java.util.List<DatePicker> pickers = pickersIn(panel[0]);
+
+        assertTrue(pickers.size() >= 2,
+                "the fixture is wrong: the transport has " + pickers.size() + " date pickers");
+
+        DatePicker from = pickers.get(0);
+        DatePicker until = pickers.get(1);
+
+        javax.swing.SwingUtilities.invokeAndWait(() -> from.setDate(MONDAY));
+        javax.swing.SwingUtilities.invokeAndWait(() -> until.setDate(MONDAY.plusYears(3)));
+
+        // The correction now happens in the next event, so drain it.
+        javax.swing.SwingUtilities.invokeAndWait(() -> { });
+
+        assertTrue(until.date() != null && !until.date().isAfter(
+                        MONDAY.plusDays(ReplayPreferences.windowDays())),
+                "three years past the start was left standing: " + until.date());
+    }
+
     private static ReplaySession over(LocalDate from, LocalDate to) {
         return new ReplaySession(base, from, to, 0);
     }
