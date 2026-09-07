@@ -201,6 +201,109 @@ class MainWindowTest {
         assertEquals(300, cell.height, "four windows should make two rows");
     }
 
+    /** Ten one-minute bars, enough for a header that promises more than a truncation leaves. */
+    private static br.com.jorge.reis.endeavourneo.domain.market.PriceSeries tenBars() {
+        return new br.com.jorge.reis.endeavourneo.domain.market.PriceSeries() {
+
+            @Override
+            public int size() {
+                return 10;
+            }
+
+            @Override
+            public long timeAt(int index) {
+                return 1_756_000_000_000L + index * 60_000L;
+            }
+
+            @Override
+            public double openAt(int index) {
+                return 100_000 + index;
+            }
+
+            @Override
+            public double highAt(int index) {
+                return 100_010 + index;
+            }
+
+            @Override
+            public double lowAt(int index) {
+                return 99_990 + index;
+            }
+
+            @Override
+            public double closeAt(int index) {
+                return 100_005 + index;
+            }
+        };
+    }
+
+    @Test
+    @DisplayName("a series that will not read draws NOTHING, never invented prices")
+    void anUnreadableSeriesDrawsNothing(@org.junit.jupiter.api.io.TempDir
+                                        java.nio.file.Path folder) throws Exception {
+        // The one thing a chart must never do, and seriesFor's own javadoc says
+        // so: "prices that are not the market's, drawn without a word". The
+        // catch for a file that will not read fell straight through to the
+        // synthetic walk, so a corrupt file became two thousand invented prices
+        // under the instrument's name. The message went to the console, where it
+        // scrolls away; the chart stayed, looking like a market.
+        // The folder the catalogue will look in, asked rather than guessed: a
+        // series lives under its GROUP, and the group of winbroken-1m is
+        // winbroken, not win. Guessing win put the file where nothing looked.
+        java.nio.file.Path where = folder.resolve("winbroken").resolve("1m");
+
+        java.nio.file.Files.createDirectories(where);
+
+        java.nio.file.Path file = where.resolve("winbroken-1m.bin");
+
+        // TRUNCATED, not garbage. Garbage fails the header check, and then
+        // SeriesCatalog.has says no and the window falls back to the default
+        // series without ever reaching the branch under test -- which is what
+        // the first draft of this fixture did.
+        //
+        // A file whose header is intact and whose body is short is the real
+        // failure: a write interrupted, a bad disk. has() says yes, because it
+        // reads only the header; read() then throws, because the header
+        // promises more bars than the file holds.
+        br.com.jorge.reis.endeavourneo.domain.market.MarketFile.write(file, tenBars(), 1);
+
+        try (java.nio.channels.FileChannel channel = java.nio.channels.FileChannel.open(file,
+                java.nio.file.StandardOpenOption.WRITE)) {
+            channel.truncate(32);
+        }
+
+        java.nio.file.Path was = SeriesCatalog.folder();
+
+        SeriesCatalog.useFolderForTest(folder);
+
+        try {
+            // AFTER pointing the catalogue at the temporary folder, which the
+            // first draft did not: has() was asking the real data folder about a
+            // name that only exists here, and answering no for the wrong reason.
+            assertTrue(SeriesCatalog.has("winbroken-1m"),
+                    "the fixture is wrong: the catalogue refuses this file outright, so the "
+                            + "branch under test is never reached");
+
+            onEdt(window -> {
+                try {
+                    String title = window.open("winbroken-1m");
+
+                    assertNotNull(title, "the chart did not open at all");
+
+                    int drawn = window.chartNamed(title).canvas().series().size();
+
+                    assertEquals(0, drawn,
+                            "a file that will not read drew " + drawn + " prices the market "
+                                    + "never traded");
+                } finally {
+                    window.closeCharts();
+                }
+            });
+        } finally {
+            SeriesCatalog.useFolderForTest(was);
+        }
+    }
+
     @Test
     @DisplayName("a chart opened for a series that is gone carries the name it really opened")
     void aMissingSeriesDoesNotKeepItsName() throws Exception {

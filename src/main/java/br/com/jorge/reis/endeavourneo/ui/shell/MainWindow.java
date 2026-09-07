@@ -381,8 +381,23 @@ public final class MainWindow extends JFrame {
         } catch (java.io.IOException e) {
             console.write(Messages.get("console.seriesFailed", name, String.valueOf(e.getMessage())));
             status.say(Messages.get("console.seriesFailed", name, String.valueOf(e.getMessage())));
+
+            // EMPTY, and not the walk. The paragraph above says the walk is
+            // never the answer when a series exists and fails to read, and this
+            // catch used to fall straight through to it: a file that would not
+            // open became two thousand invented prices drawn under the
+            // instrument's name. The message went to the console, where it
+            // scrolls away; the chart stayed, looking like a market.
+            //
+            // Empty draws nothing, which is what is known. Whoever reads the
+            // window sees no prices and the reason beside them, instead of
+            // prices that were never traded.
+            return PriceSeries.empty();
         }
 
+        // Only here: no series of that name at all. On a machine where the data
+        // folder has not been found yet, the application still opens and still
+        // draws something.
         console.write(Messages.get("console.seriesMissing", SeriesCatalog.folder().toString()));
 
         return new RandomWalkSeries(2_000, 135_000.0);
