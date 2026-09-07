@@ -312,14 +312,6 @@ public final class Renko implements Aggregation {
     }
 
     /**
-     * @param from where a previous stretch left the renko, or null to begin
-     * @return the bricks this source laid, and where the renko now stands
-     *
-     * <p>Splitting a source in two and running this over each half gives the
-     * same bricks as running it over the whole. That is the property the
-     * session-by-session build rests on, and it is a test.</p>
-     */
-    /**
      * @return the grid level at or below that price
      *
      * <p><b>Brick boundaries sit on an absolute price grid</b>, at multiples of
@@ -403,6 +395,14 @@ public final class Renko implements Aggregation {
         return (int) count;
     }
 
+    /**
+     * @param from where a previous stretch left the renko, or null to begin
+     * @return the bricks this source laid, and where the renko now stands
+     *
+     * <p>Splitting a source in two and running this over each half gives the
+     * same bricks as running it over the whole. That is the property the
+     * session-by-session build rests on, and it is a test.</p>
+     */
     public Continued applyFrom(PriceSeries source, Carry from) {
         if (source == null || source.size() == 0) {
             return new Continued(PriceSeries.empty(),

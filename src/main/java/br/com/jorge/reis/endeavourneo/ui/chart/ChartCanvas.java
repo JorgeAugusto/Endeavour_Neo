@@ -84,7 +84,6 @@ public final class ChartCanvas extends JComponent {
     /** Roughly how many pixels apart the horizontal grid lines should sit. */
     private static final int GRID_SPACING = 56;
 
-    /** Flatter than this and the candles are a line; taller and they leave the screen. */
     /**
      * How far past the last bar the window may go, as a share of its width.
      *
@@ -110,6 +109,7 @@ public final class ChartCanvas extends JComponent {
      */
     private static final double BIRTH_MARGIN = 0.10;
 
+    /** Flatter than this and the candles are a line; taller and they leave the screen. */
     private static final double MINIMUM_STRETCH = 0.1;
 
     private static final double MAXIMUM_STRETCH = 20.0;
@@ -173,6 +173,16 @@ public final class ChartCanvas extends JComponent {
             DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
 
     /**
+     * The footer reading, which has less room than the cursor tag.
+     *
+     * <p>Beside the other four rather than inline where it is used. It was the
+     * fifth date pattern in this file and the only one written at the point of
+     * use, which is how a set of formats drifts apart one edit at a time.</p>
+     */
+    private static final DateTimeFormatter FOOTER_TIME =
+            DateTimeFormatter.ofPattern("dd/MM HH:mm");
+
+    /**
      * The dotted line between one period and the next.
      *
      * <p>Short dashes with an equal gap: long dashes read as a drawing the
@@ -233,14 +243,6 @@ public final class ChartCanvas extends JComponent {
      */
     private final transient java.util.List<Overlay> overlays = new java.util.ArrayList<>();
 
-    /**
-     * Told when the overlays change in a way that should be WRITTEN DOWN.
-     *
-     * <p>Separate from {@link #onOverlaysRedrawn} because the two questions are
-     * not the same one, and answering them together was a bug: applying a layout
-     * has to redraw everything showing the overlays, and must NOT be written
-     * down -- the layout bar would capture back what it has just applied.</p>
-     */
     /**
      * The panes drawn from this chart's viewport.
      *
@@ -485,20 +487,6 @@ public final class ChartCanvas extends JComponent {
     }
 
     /**
-     * Control on its own toggles the mode.
-     *
-     * <p><b>On its own is the whole difficulty.</b> Binding the release of
-     * Control would also fire after Ctrl+C, Ctrl+V and every other shortcut, so
-     * copying text would silently switch the chart into measuring mode. The
-     * dispatcher below watches for another key arriving while Control is held
-     * and, if one does, treats the release as the end of a shortcut rather than
-     * as the gesture.</p>
-     *
-     * <p>Registered only while the canvas is on screen. A dispatcher left
-     * installed after the chart closes keeps a reference to it and keeps
-     * reacting to keys for a window that is gone.</p>
-     */
-    /**
      * Typing a digit anywhere on the chart opens the period window.
      *
      * <p>Bound for the whole window rather than the focused component: the chart
@@ -525,6 +513,20 @@ public final class ChartCanvas extends JComponent {
         }
     }
 
+    /**
+     * Control on its own toggles the mode.
+     *
+     * <p><b>On its own is the whole difficulty.</b> Binding the release of
+     * Control would also fire after Ctrl+C, Ctrl+V and every other shortcut, so
+     * copying text would silently switch the chart into measuring mode. The
+     * dispatcher below watches for another key arriving while Control is held
+     * and, if one does, treats the release as the end of a shortcut rather than
+     * as the gesture.</p>
+     *
+     * <p>Registered only while the canvas is on screen. A dispatcher left
+     * installed after the chart closes keeps a reference to it and keeps
+     * reacting to keys for a window that is gone.</p>
+     */
     private void installControlToggle() {
         java.awt.KeyEventDispatcher dispatcher = event -> {
             if (event.getKeyCode() != java.awt.event.KeyEvent.VK_CONTROL) {
@@ -564,7 +566,6 @@ public final class ChartCanvas extends JComponent {
         });
     }
 
-    /** @param newSeries the data to draw; showing the most recent bars */
     /**
      * Replaces every overlay at once, WITHOUT reporting a change.
      *
@@ -640,12 +641,15 @@ public final class ChartCanvas extends JComponent {
             return "";
         }
 
+        // THE SAME ROUNDING THE AXIS USES, and for the reason formatFor states:
+        // fixed decimals either print 177.600,00 on an index or round a currency
+        // pair away. This was a third copy of the rule with two places hard
+        // coded, and it had already drifted from the axis and from the cursor
+        // tag, which both read formatFor(gridStep(...)).
         return java.time.Instant.ofEpochMilli(series.timeAt(bar))
                 .atZone(java.time.ZoneId.systemDefault())
-                .format(java.time.format.DateTimeFormatter.ofPattern("dd/MM HH:mm"))
-                + "   " + new java.text.DecimalFormat("#,##0.00",
-                        java.text.DecimalFormatSymbols.getInstance(java.util.Locale.getDefault()))
-                        .format(series.closeAt(bar));
+                .format(FOOTER_TIME)
+                + "   " + formatFor(gridStep(viewport())).format(series.closeAt(bar));
     }
 
     /**
@@ -678,7 +682,15 @@ public final class ChartCanvas extends JComponent {
         this.onSeriesChanged = listener == null ? () -> { } : listener;
     }
 
-    /** @param listener told when the overlays change and should be stored */
+    /**
+     * @param listener told when the overlays change in a way that should be
+     *                 WRITTEN DOWN
+     *
+     * <p>Separate from {@link #onOverlaysRedrawn} because the two questions are
+     * not the same one, and answering them together was a bug: applying a layout
+     * has to redraw everything showing the overlays, and must NOT be written
+     * down -- the layout bar would capture back what it has just applied.</p>
+     */
     public void onOverlaysChanged(Runnable listener) {
         this.onOverlaysChanged = listener == null ? () -> { } : listener;
     }
@@ -975,17 +987,6 @@ public final class ChartCanvas extends JComponent {
     }
 
     /**
-     * Builds the renko from the exchange's own ticks, if it can, off this thread.
-     *
-     * <p>Only when EVERY session on screen has ticks: a renko built partly from
-     * ticks and partly from candles would change density halfway across and
-     * look like the market did it. Measured, the two differ by 5% to 23% — see {@link RenkoSource}.</p>
-     *
-     * <p>The result is dropped if the period changed while it was being built.
-     * A reader who types 11 and then 55 must not be shown the eleven, arriving
-     * late and looking authoritative.</p>
-     */
-    /**
      * Which export the bricks come from, and the renko growing out of it.
      *
      * <p>Set when a replay is dropped on this chart, because the replay already
@@ -1110,6 +1111,18 @@ public final class ChartCanvas extends JComponent {
         return null;
     }
 
+    /**
+     * Builds the renko from the exchange's own ticks, if it can, off this thread.
+     *
+     * <p>Only when EVERY session on screen has ticks: a renko built partly from
+     * ticks and partly from candles would change density halfway across and look
+     * like the market did it. Measured, the two differ by 5% to 23% — see
+     * {@link RenkoSource}.</p>
+     *
+     * <p>The result is dropped if the period changed while it was being built.
+     * A reader who types 11 and then 55 must not be shown the eleven, arriving
+     * late and looking authoritative.</p>
+     */
     private void rebuildFromTicks() {
         // Dropped FIRST, on every path out of here. It used to be dropped only
         // where a new one was about to be built, so leaving renko for minutes
@@ -1350,14 +1363,6 @@ public final class ChartCanvas extends JComponent {
     }
 
     /**
-     * @return whether the growing renko could be carried to the replay's clock
-     *
-     * <p>Only what printed since the last frame is folded. The ruler carries
-     * across, so the bricks line up with the ones already laid -- that property
-     * is what makes the cheap path give the same answer as the expensive
-     * one.</p>
-     */
-    /**
      * @return the replay's own clock, which moves inside a bar as well as
      *         between bars
      *
@@ -1380,6 +1385,14 @@ public final class ChartCanvas extends JComponent {
                 .atZone(java.time.ZoneId.systemDefault()).toLocalDate();
     }
 
+    /**
+     * @return whether the growing renko could be carried to the replay's clock
+     *
+     * <p>Only what printed since the last frame is folded. The ruler carries
+     * across, so the bricks line up with the ones already laid -- that property
+     * is what makes the cheap path give the same answer as the expensive
+     * one.</p>
+     */
     private boolean extendBricks() {
         if (source == null || source.size() == 0) {
             return false;
@@ -1401,7 +1414,24 @@ public final class ChartCanvas extends JComponent {
                 return false;
             }
 
-            growing.advance(day, now + 1);
+            if (growingFrom != null) {
+                // ASKED FOR ON THE LOADER THREAD, before advance() goes looking.
+                // TickRenko.advance calls load(), which reads the session from
+                // disk if it is not resident -- ninety megabytes, on the
+                // interface thread, at the instant the replay crosses midnight.
+                // Requesting the day and the one after it means the file is
+                // already in memory when the clock gets there.
+                growingFrom.request(day);
+                growingFrom.request(day.plusDays(1));
+            }
+
+            if (!growing.advance(day, now + 1) && fromTicks && this.series != null) {
+                // NOTHING PRINTED since the last frame, so there is nothing new
+                // to show. This used to rebuild the whole view anyway -- every
+                // brick copied into a new series, twenty-five times a second,
+                // for a chart that had not changed.
+                return false;
+            }
         } catch (java.io.IOException | IllegalArgumentException e) {
             // A session that will not read, or an order this renko cannot take.
             // Dropping back to the candle fold is wrong-but-visible; carrying
@@ -1433,6 +1463,17 @@ public final class ChartCanvas extends JComponent {
     }
 
     private void refold() {
+        // WHERE THE READER WAS, kept across a fold that changes no bar. Turning
+        // the renko tails on and off goes through setPeriod and lands here, and
+        // it threw the zoom and the position away every time -- a switch that
+        // decorates the bricks was re-framing the chart. The tails are
+        // Renko.withWicks, decoration of a bar, and the brick count is the same
+        // either side of the switch.
+        int wasSize = this.series == null ? 0 : this.series.size();
+        int wasVisible = this.visibleBars;
+        int wasMargin = this.rightMargin;
+        int wasFirst = this.firstBar;
+
         // The candles first, always. They are instant, so the chart is never
         // blank; when the ticks are available the bricks arrive a moment later
         // and replace them. Waiting for the ticks instead would freeze the
@@ -1448,6 +1489,19 @@ public final class ChartCanvas extends JComponent {
         for (Overlay overlay : overlays) {
             overlay.calculate(this.series);
         }
+        if (wasSize > 0 && this.series.size() == wasSize) {
+            // Same bars, different decoration: the reader stays exactly where
+            // they were.
+            this.visibleBars = wasVisible;
+            this.rightMargin = wasMargin;
+            this.firstBar = clampFirstBar(wasFirst);
+
+            repaint();
+            onSeriesChanged.run();
+
+            return;
+        }
+
         this.visibleBars = Math.min(DEFAULT_VISIBLE_BARS, Math.max(1, this.series.size()));
 
         // A fresh series opens with air on the right, not glued to the frame: a
@@ -1660,15 +1714,6 @@ public final class ChartCanvas extends JComponent {
     }
 
     /**
-     * @param current the factor now
-     * @param deltaY how far the mouse moved down since the drag started
-     * @return the new factor, clamped
-     *
-     * <p>Dragging UP stretches. It matches the gesture: pulling the axis taller
-     * makes the chart taller. Separate from the mouse handling so the arithmetic
-     * can be tested without a window.</p>
-     */
-    /**
      * @param anchor the bar under the cursor before the zoom
      * @param x where the cursor is, in pixels from the left of the component
      * @param plotWidth how wide the PLOT is -- the component less the price axis
@@ -1694,6 +1739,15 @@ public final class ChartCanvas extends JComponent {
         return (int) Math.round(anchor - share * bars);
     }
 
+    /**
+     * @param current the factor now
+     * @param deltaY how far the mouse moved down since the drag started
+     * @return the new factor, clamped
+     *
+     * <p>Dragging UP stretches. It matches the gesture: pulling the axis taller
+     * makes the chart taller. Separate from the mouse handling so the arithmetic
+     * can be tested without a window.</p>
+     */
     static double stretchForDrag(double current, int deltaY) {
         double scaled = current * Math.exp(-deltaY * DRAG_SENSITIVITY);
 
@@ -1804,7 +1858,6 @@ public final class ChartCanvas extends JComponent {
         return stretch;
     }
 
-    /** Back to the automatic vertical scale. */
     /** Back to the automatic vertical scale, centred, with no slide. */
     public void resetStretch() {
         stretch = 1.0;

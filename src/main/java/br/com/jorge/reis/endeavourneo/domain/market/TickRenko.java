@@ -143,16 +143,6 @@ public final class TickRenko {
     }
 
     /**
-     * Folds in the part of a session that had happened by then.
-     *
-     * @param when the instant the replay has reached
-     * @return whether anything was added
-     *
-     * <p>For the session being played: only the ticks up to the moment on the
-     * clock. The session is NOT marked as folded, because the rest of it is
-     * still to come — call {@link #add} once the day is over.</p>
-     */
-    /**
      * Lays whatever the market has printed since the last call.
      *
      * @param day the session being played
@@ -319,6 +309,16 @@ public final class TickRenko {
         return advancing;
     }
 
+    /**
+     * Folds in the part of a session that had happened by then.
+     *
+     * @param when the instant the replay has reached
+     * @return whether anything was added
+     *
+     * <p>For the session being played: only the ticks up to the moment on the
+     * clock. The session is NOT marked as folded, because the rest of it is
+     * still to come — call {@link #add} once the day is over.</p>
+     */
     public boolean addUpTo(LocalDate day, long when) throws IOException {
         TickSeries session = library.load(day);
 

@@ -264,6 +264,80 @@ class ChartViewTest {
     }
 
     @Test
+    @DisplayName("ligar e desligar as caldas do renko nao mexe no zoom nem na posicao")
+    void togglingTheWicksKeepsTheView() {
+        // The tails are Renko.withWicks -- decoration of a bar, same brick count
+        // either side of the switch. Flipping it went through setPeriod into
+        // refold, which re-framed the chart as if the series were new: the
+        // reader lost their zoom and their place to a switch that changes how a
+        // brick is drawn.
+        ChartCanvas canvas = new ChartCanvas();
+
+        canvas.setSeries(bars(2_000));
+        canvas.setPeriod(new br.com.jorge.reis.endeavourneo.domain.market.Renko(10, 2, true),
+                "10R", "10R");
+        canvas.scrollTo(40);
+
+        int was = canvas.firstVisibleBar();
+
+        canvas.setWicks(false);
+
+        assertEquals(was, canvas.firstVisibleBar(),
+                "turning the tails off moved the reader");
+
+        canvas.setWicks(true);
+
+        assertEquals(was, canvas.firstVisibleBar(),
+                "turning the tails back on moved the reader");
+    }
+
+    @Test
+    @DisplayName("o rodape arredonda o preco pela regra do eixo, nao por uma terceira")
+    void theFooterRoundsLikeTheAxis() throws IOException {
+        // Three copies of one rule lived in this file, and they had already
+        // drifted: the axis and the cursor tag read formatFor(gridStep(...)),
+        // and the footer had two decimals hard coded. formatFor says why fixed
+        // places cannot be right -- they either print 177.600,00 on an index or
+        // round a currency pair away.
+        String source = Files.readString(CANVAS, StandardCharsets.UTF_8);
+        int at = source.indexOf("public String cursorReading() {");
+
+        assertTrue(at > 0, "cursorReading is not where this looks");
+
+        String body = source.substring(at, source.indexOf("\n    }", at));
+
+        assertTrue(body.contains("formatFor(gridStep("),
+                "the footer rounds by a rule of its own");
+        assertTrue(!body.contains("DecimalFormat"),
+                "the footer still builds its own format");
+        assertTrue(!body.contains("ofPattern("),
+                "the footer still writes its own date pattern");
+    }
+
+    @Test
+    @DisplayName("o replay pede o pregao antes de precisar dele, e nao redesenha o que nao mudou")
+    void theReplayAsksAheadAndRedrawsOnlyWhatMoved() throws IOException {
+        // TickRenko.advance calls load(), which reads the session from disk when
+        // it is not resident -- ninety megabytes, on the interface thread, at
+        // the instant the replay crosses midnight. And live() rebuilt the whole
+        // brick series on every frame, twenty-five times a second, for a chart
+        // that had not changed.
+        String source = Files.readString(CANVAS, StandardCharsets.UTF_8);
+        int at = source.indexOf("private boolean extendBricks() {");
+
+        assertTrue(at > 0, "extendBricks is not where this looks");
+
+        String body = source.substring(at, at + 2_600);
+
+        assertTrue(body.contains("growingFrom.request(day)"),
+                "the session is not asked for before advance goes looking");
+        assertTrue(body.contains("growingFrom.request(day.plusDays(1))"),
+                "the next session is never asked for, so midnight blocks");
+        assertTrue(body.contains("if (!growing.advance(day, now + 1)"),
+                "the answer from advance is thrown away and the view rebuilt anyway");
+    }
+
+    @Test
     @DisplayName("a biblioteca de ticks nunca e trocada sem ser fechada")
     void theTickLibraryIsClosedBeforeItIsReplaced() throws IOException {
         // Two workers landing one after the other dropped the earlier library on
