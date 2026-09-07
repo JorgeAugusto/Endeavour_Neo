@@ -122,7 +122,14 @@ public final class SeriesWindow extends JDialog {
      */
     private transient Runnable onChanged = () -> { };
 
-    private SeriesWindow(Window owner) {
+    /**
+     * Package-visible so a test can build one without putting it on screen.
+     *
+     * <p>{@link #open(Window)} is the way in for everything else, and it is
+     * where the one-window rule lives: two of these editing the same series
+     * would each write their own whole list of segments over the other's.</p>
+     */
+    SeriesWindow(Window owner) {
         super(owner, Messages.get("series.title"), ModalityType.MODELESS);
 
         // Series AND tick sources. The tape is a series of the same market at
@@ -416,21 +423,93 @@ public final class SeriesWindow extends JDialog {
         return days.isEmpty() ? LocalDate.now() : days.first();
     }
 
+    /**
+     * Shows the series at once, and reads its days behind the window.
+     *
+     * <p><b>The days used to be read right here.</b> For a tick source that is
+     * a directory listing and costs nothing; for a bar series it is the whole
+     * file -- {@code SeriesCatalog.open} says it plainly, "six years of
+     * one-minute bars is 39 MB" -- and then a walk over every bar to find where
+     * each session breaks. On the interface thread, in the constructor, and
+     * again on every move of the combo. Opening <i>Tools -> Series</i> froze the
+     * whole application until the read finished, and switching series froze it
+     * again: no cursor, no footer, nothing to say what it was doing. The house
+     * rule is written thirty files away in {@code MainWindow}: "the interface
+     * thread is the one thread that may not spend them".</p>
+     *
+     * <p>Everything except the days comes from the settings file, which is
+     * cheap, so the segments are listed and editable from the first frame. The
+     * days fill in the two things that need them -- the range under the combo
+     * and the sessions column -- when they arrive.</p>
+     */
     private void load() {
-        editing = String.valueOf(series.getSelectedItem());
+        String key = String.valueOf(series.getSelectedItem());
 
-        // The counts go blank when this comes back empty; the segments are
-        // still listed and still editable, which is what this window is for.
-        days = Segmentable.sessionsOf(editing);
+        editing = key;
 
-        about.setText(days.isEmpty()
-                ? Messages.get("series.unreadable")
-                : Messages.get("series.about", days.first().format(DAY),
-                        days.last().format(DAY), String.format("%,d", days.size())));
-
-        model.replaceAll(Segmentation.of(editing));
-        segmentsOnly.setSelected(Segmentation.segmentsOnly(editing));
+        model.replaceAll(Segmentation.of(key));
+        segmentsOnly.setSelected(Segmentation.segmentsOnly(key));
         refreshWarning();
+
+        // Empty until the answer comes back, and SAYING so. The counts read
+        // zero meanwhile, and a zero that means "not yet" has to look different
+        // from a zero that means "none", or the reader believes it.
+        days = new java.util.TreeSet<>();
+
+        about.setText(Messages.get("series.reading"));
+
+        readDays(key);
+    }
+
+    /**
+     * Reads one key's days off the interface thread and hands them back to it.
+     *
+     * <p>The answer is dropped when the combo has moved on: a series that takes
+     * seconds to read finishes after the reader has already chosen another one,
+     * and posting it then would label the new series with the old one's dates.
+     * Later readers do not cancel earlier ones -- they only outlive them.</p>
+     */
+    private void readDays(String key) {
+        new javax.swing.SwingWorker<java.util.NavigableSet<LocalDate>, Void>() {
+
+            @Override
+            protected java.util.NavigableSet<LocalDate> doInBackground() {
+                return Segmentable.sessionsOf(key);
+            }
+
+            @Override
+            protected void done() {
+                if (!key.equals(editing)) {
+                    return;
+                }
+
+                try {
+                    days = get();
+                } catch (java.util.concurrent.ExecutionException e) {
+                    // Same answer the read itself gives for a file that is
+                    // gone: no map, and the segments still editable.
+                    days = new java.util.TreeSet<>();
+                } catch (InterruptedException e) {
+                    days = new java.util.TreeSet<>();
+
+                    Thread.currentThread().interrupt();
+                }
+
+                about.setText(days.isEmpty()
+                        ? Messages.get("series.unreadable")
+                        : Messages.get("series.about", days.first().format(DAY),
+                                days.last().format(DAY), String.format("%,d", days.size())));
+
+                // The sessions column is drawn from days, and nothing else told
+                // the table they had changed.
+                model.countsChanged();
+            }
+        }.execute();
+    }
+
+    /** @return what the window says about the series it is showing; for the test of the read */
+    String about() {
+        return about.getText();
     }
 
     private void save() {
@@ -506,6 +585,11 @@ public final class SeriesWindow extends JDialog {
         void replaceAll(List<Segment> found) {
             segments.clear();
             segments.addAll(found);
+            fireTableDataChanged();
+        }
+
+        /** The days arrived; only the sessions column moves, but it moves everywhere. */
+        void countsChanged() {
             fireTableDataChanged();
         }
 
