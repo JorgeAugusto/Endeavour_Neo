@@ -84,91 +84,32 @@ enquanto a fase 3 gastaria dias de limite para prevenir isso.
 
 ---
 
-## 3. Os 47 ALTA da auditoria (6 já corrigidos)
+## 3. Os 52 ALTA: fechados
 
-Detalhe completo em `auditoria/a1-series.md`, `a2-renko-ticks.md`,
-`a3-chartcanvas.md`, `a4-layout-eixos.md`, `a5-indicadores.md`, `a6-replay.md`, `a7a-platform.md`, `a7b-shell-series.md`, `a8a-testes-dominio.md`, `a8b-testes-interface.md`. Evidência das verificadas em `auditoria/00-estado.md`.
+**Todos corrigidos em 06 e 07/09/2026**, cada um com o teste que faltava. A suíte
+foi de 449 para **500**. O detalhe achado por achado, com o commit de cada um,
+está em `auditoria/00-verificacao.md`.
 
-| # | onde | o quê | verificado |
-|---|---|---|---|
-| A1-1 | `Timeframe.java:309` | escala acima de 1440 min colapsa em D1 e carimba à meia-noite | ✅ |
-| A2-1 | `ReplaySeries.java:173` | replay congela para sempre quando `pathFor` devolve null | — |
-| A2-2 | `Renko.java:418` | `made` não zera entre extremos; **as caldas saem curtas** | ✅ |
-| A3-1 | `ChartCanvas.java:1206` | sem decimação: 1,05 M barras varridas cinco vezes por repintura | ✅ |
-| A3-2 | `ChartCanvas.java:1011` | 4 varreduras e 3 `Files.walk` **na EDT** antes do SwingWorker | — |
-| A3-3 | `ChartCanvas.java:1094` | replay troca a série sem recalcular overlays: média de candle sobre tijolo | — |
-| A3-4 | `ChartCanvas.java:1084` | guarda compara só o período; construção velha substitui a série ao vivo | ✅ |
-| A4-1 | `OverlayLegend.java:201` | `hoveredBar()` cru: legenda imprime `—` assim que o ponteiro sai do canvas | ✅ |
-| A4-2 | `ChartHeader.java:359` | tooltip varre 1,05 M barras convertendo fuso **na EDT**, a cada `mouseMoved` | ✅ |
-| A4-3 | `LineStyle.java:54` | dois `int[]` por repintura e `drawPolyline` de 1 M pontos; sem decimação | ✅ |
-| A5-1 | `OwnScale.java:145` | `smooth` é idêntico ao `map`: a interpolação nunca agiu | ✅ |
-| A5-2 | `OwnPeriodTest.java:154` | teste sem dentes; só afirma teto, deu a licença falsa ao A5-1 | ✅ |
-| A5-3 | `MovingAverageDialog.java:114` | spinner aceita shift −500: a barra `i` lê a média de `i+3` | ✅ |
-| A5-4 | `StudyStack.java:121` | `calculate` síncrono na EDT em cinco pontos; 1 M de barras trava a janela | ✅ |
-| A6-1 | `ReplayPanel.java:600` | o `done()` nunca aplica a velocidade: combo diz 60, replay anda a 1× | ✅ |
-| A6-2 | `ReplayPanel.java:195` | o campo "Até" se corrige dentro da notificação do `Document`: `IllegalStateException` na EDT | — |
-| A6-3 | `ReplaySession.java:706` | o congelamento eterno do A2 visto de fora: ícone em "tocando", 25 `refresh()`/s para sempre | — |
-| A6-4 | `ReplaySession.java:263` | "carregando ticks..." sem saída quando a leitura falha | — |
-| A6-5 | `ReplayFeed.java:150` | varredura da série inteira no `ActionListener` do combo | — |
-| A6-6 | `ReplaySessionTest.java:152` | `assertEquals(x.size(), x.size())` — tautologia | ✅ |
-| A6-7 | `ReplayRangeTest.java:179` | teto puro; apagar `MOST_SESSIONS` não quebra o teste | ✅ |
-| A7a-1 | `JobService.java:285` | `OutOfMemoryError` escapa do `catch` e vira **sucesso com valor nulo** | ✅ |
-| A7a-2 | `JobService.java:170` | trabalho cancelado não dispara callback nenhum; `isCancelled()` volta a `false` | — |
-| A7a-3 | `JobServiceTest.java:144` | `assertTrue(a \|\| b)` com `b` afirmado sozinho na linha seguinte | — |
-| A7a-4 | `LayerBoundaryTest.java:120` | só lê linhas `import `; referência qualificada passa invisível | ✅ |
-| A7a-5 | `SeriesCatalog.java:314` | a série **ajustada** recebe o rótulo `WINFUT`; as cruas viram variantes | ✅ |
-| A7b-1 | `MainWindow.java:1035` | sair pelo menu apaga todos os gráficos do workspace | ✅ **corrigido** |
-| A7b-3 | `Segmentable.java:122` | 824.881 barras varridas no `ActionListener` do combo | — |
-| A7b-4 | `MainWindow.java:362` | série que falha ao ler vira `RandomWalkSeries` sob o nome do instrumento | ✅ |
-| A7b-5 | `MainWindow.java:420` | ternário de ramos idênticos; o workspace nunca se conserta | ✅ **corrigido** |
-| A7b-6 | `SeriesWindow` | MODELESS sem registro: a última a fechar apaga o que a outra gravou | — |
-| A8a-1 | `TimeframeTest` | **nenhuma escala acima de 30 min**; `ofMinutes` não aparece no arquivo | ✅ |
-| A8a-4 | `TickRenkoTest.java:142` | `assertTrue(half < whole)` não fixa valor; lookahead de um negócio passa | ✅ |
-| A8a-7 | `SeriesMergeTest` | `joinsInOrder` lê quatro `closeAt` e **zero `timeAt`** | — |
-| A8b-1 | `BollingerBandsTest:182` | teto só; o meio honesto e o que lê a barra não fechada cabem os dois | — |
-| A8b-2 | `MovingAverageTest` | **zero testes de escala própria**; `setOwnPeriod` não aparece | — |
-| A8b-3 | `RelativeStrengthTest` | idem; escala própria só em round-trip de texto | — |
-| A8b-4 | `MovingAverageTest:130` | só shift +1; o spinner aceita −500 e `setShift` não grampeia | — |
-| A8b-5 | `SeriesSummaryTest:146` | afirma só que diferem; inverter o ternário passa | ✅ |
-| A8b-6 | `OverlayLegend` | 632 linhas, **zero testes**; reverter a correção deixa a suíte verde | ✅ |
+Um dos 52 era **falso positivo**, e a causa foi a partição da auditoria: eu
+excluí o `OwnPeriodTest` do escopo do agente A8b porque a área A5 já o havia
+coberto, e o agente então reportou que a média em escala maior não tinha teste
+nenhum. Tinha.
 
-### O padrão que se repetiu três vezes: teste que afirma só um teto
+### O que se aprendeu, e vale mais que a lista
 
-Três dos vinte e um ALTA são testes sem dentes, e os três têm a mesma forma —
-`assertTrue(x <= limite)` e nenhuma asserção de piso:
+**Onze dos 52 eram testes.** Não código quebrado: testes que passavam enquanto o
+produto estava errado. Três tinham a mesma forma — `assertTrue(x <= limite)` sem
+nenhuma asserção de piso — e cada um deixou passar um defeito real.
 
-| teste | deixou passar |
-|---|---|
-| `RenkoWickBoundsTest` | a calda curta do A2-2 |
-| `OwnPeriodTest.interpolationStaysBehind` | a interpolação que nunca agiu (A5-1) |
-| `ReplayRangeTest.thereIsACap` | nada ainda — mas apagar `MOST_SESSIONS` passa |
-| `LayerBoundaryTest` | qualquer referência qualificada a `ui` fora de um `import` |
-| `TickRenkoTest:142` | um negócio de lookahead por quadro no caminho dos ticks |
-| `SeriesMergeTest.joinsInOrder` | esquecer `- starts[part]` em `ConcatSeries.timeAt` |
+**A única forma de saber se um teste tem dentes é quebrar o produto e olhar.**
+Isso foi feito para toda correção desta rodada, e pegou dois testes meus que não
+afirmavam nada: um exercitava um ramo que a correção não tocava, outro fechava um
+serviço antes de o trabalho falhar.
 
-E o pior de todos não é asserção fraca, é ausência: o `TimeframeTest` **nunca
-dobra acima de 30 minutos**, então o defeito do `Timeframe:309` não tinha teste
-para atravessar.
-
-Mais um que é pior que teto: `ReplaySessionTest:152` compara uma expressão
-consigo mesma.
-
-**Vale uma lente transversal só disto** quando as áreas acabarem: `grep` por
-método de teste cujas asserções sejam todas `assertTrue` com `<=` ou `>=`, sem
-nenhum `assertEquals` de valor.
-
-### O outro padrão: nada decima
-
-Cinco achados são a mesma ferida em lugares diferentes — 1 M de barras varridas
-na EDT: `ChartCanvas.java:1206` (A3-1), `ChartHeader.java:359` (A4-2),
-`LineStyle.java:54` (A4-3), `StudyStack.java:121` (A5-4), `ReplayFeed.java:150`
-(A6-5) e `MainWindow.java:354` (A7a, o mais caro de todos). É **uma correção
-só**, feita no `Viewport`, não seis.
-
-E existe um serviço pronto para isso que ninguém usa: o `JobService` tem
-**dois `submit` no repositório inteiro**, e o javadoc de um deles
-(`MainWindow:863`) diz que ele não faz nada útil e para ser apagado quando
-houver trabalho de verdade. O trabalho de verdade são esses seis.
+**Medir antes de corrigir mudou o que era para ser feito três vezes.** A auditoria
+apontou "varredura de 1 M de barras" e o custo real era a rasterização; ia
+construir uma pirâmide com cache e não precisou de nenhuma; ia mandar o recálculo
+de indicador para outra thread e o custo inteiro era um `List<Double>`.
 
 ---
 

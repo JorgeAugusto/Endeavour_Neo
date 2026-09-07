@@ -9,9 +9,19 @@ ou corrigiu o que o agente disse, está dito.
 
 | estado | quantos |
 |---|---:|
-| **CORRIGIDO** — código alterado e teste que falhou antes | 16 |
-| **VERIFICADO** — confirmado no código, ainda aberto | 36 |
-| refutado | 0 |
+| **CORRIGIDO** — código alterado e teste que falhou antes | **51** |
+| **refutado** — falso positivo, causado pela partição | **1** |
+| ainda aberto | **0** |
+
+> **Fechado em 07/09/2026.** Os 52 ALTA foram corrigidos, cada um com o teste que
+> faltava, e a suíte foi de 449 para **500**.
+
+O único refutado é o **A8b-2**, e a causa fui eu: o relatório diz que a média em
+escala maior não tem teste nenhum, e tem — o `OwnPeriodTest`, que afirma valores
+exatos e quebraria na hora. O agente concluiu "não existe" porque **eu excluí
+aquele arquivo do escopo dele** no briefing, já que a área A5 o havia coberto.
+Partição mal feita produz achado falso, e isso vale registrar junto com os
+verdadeiros.
 
 Nenhum ALTA caiu na conferência. Isso é um dado sobre a qualidade dos agentes,
 não sobre a minha: eles exigiam `arquivo:linha` e trecho literal, e tentavam
@@ -56,7 +66,28 @@ morta ao lado fazia a entrada ser descartada antes de alguém tentar construí-l
 
 ---
 
-## Verificados e ainda abertos
+## Os que estavam abertos, e o commit que fechou cada um
+
+O que segue e a descricao do que cada defeito ERA, mantida porque e o registro do
+que foi encontrado. Todos foram corrigidos.
+
+| # | commit |
+|---|---|
+| A2-1, A6-3, A6-4, A8a-3 — o congelamento do replay | `82ac622` |
+| A3-1, A4-3 — a rasterizacao sem decimacao | `9bc1d60` |
+| A3-2, A4-2, A6-5, A7b-3 — as varreduras de pregoes | `2d3ef08`, `1a38fcf` |
+| A3-3, A3-4 — a costura do replay com o renko | `13cae96` |
+| A5-3, A8b-1, A8b-3, A8b-4 — deslocamento e escala maior | `2073990` |
+| A5-4 — o recalculo de indicador | `b087aa6` |
+| A6-2, L1-2 — notificacao e relatorio perdido | `7f9aaeb` |
+| A6-6, A6-7, A7a-3, A7a-4, A7b-7, A7b-8 — os testes sem dentes | `3d92810` |
+| A7a-2 — cancelamento que nao avisa | `3d92810` |
+| A7a-5 — o rotulo igual ao nome do mercado | `e382689` |
+| A7b-4 — serie que nao le virava passeio aleatorio | `06e7027` |
+| A7b-6, L2-1 — janela unica e fuso do mercado | `e1774ce` |
+| A8a-4, A8a-5, A8a-6, A8a-7, A8b-5 — os buracos de cobertura | `b0add5e` |
+
+### O que era cada um
 
 ### Congelamento do replay — o mesmo defeito por dentro e por fora
 
