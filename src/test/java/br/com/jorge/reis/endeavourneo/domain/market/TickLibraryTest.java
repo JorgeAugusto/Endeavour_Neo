@@ -496,40 +496,80 @@ class TickLibraryTest {
     }
 
     @Test
-    @DisplayName("uma varredura que falha nao vira lista vazia em silencio")
-    void aFailedScanKeepsWhatItFound() throws IOException {
-        // Files.walk throws for a subdirectory with no permission, a circular
-        // link, a network volume that dropped -- none of which means "nothing
-        // was exported", which is exactly what returning an empty list says.
-        // And the walk is lazy, so the throw can arrive halfway: the sessions
-        // already found were being thrown away with it.
+    @DisplayName("uma varredura que falha PELO MEIO guarda o que ja tinha achado")
+    void aFailedScanKeepsWhatItFound(@org.junit.jupiter.api.io.TempDir
+            java.nio.file.Path folder) throws IOException {
+        // A subdirectory with no permission, a circular link, a network volume
+        // that dropped. None of them means "nothing was exported", which is what
+        // an empty list says -- and the walk is LAZY, so the failure arrives
+        // after some sessions have already been listed.
         //
-        // Read from the source, because forcing the walk to fail portably is a
-        // test about the operating system rather than about this. The comment
-        // just above the catch says the individual nulls do not deserve a
-        // message; the whole listing failing is not one of those.
-        String source = java.nio.file.Files.readString(
-                java.nio.file.Path.of("src", "main", "java", "br", "com", "jorge", "reis",
-                        "endeavourneo", "domain", "market", "TickLibrary.java"),
-                java.nio.charset.StandardCharsets.UTF_8);
+        // THIS USED TO READ THE SOURCE, and matched three substrings inside it.
+        // Collections.emptyList(), new ArrayList<>(), or List.of( ) with a space
+        // all put the defect straight back and passed all three. The walk is
+        // handed in now, so the halfway failure can simply be arranged.
+        // The two good ones are WRITTEN: a session is recognised by reading its
+        // header, not by the name of the file, so a path that leads nowhere is
+        // not a session and would have made this pass for the wrong reason.
+        java.time.LocalDate first = java.time.LocalDate.of(2021, 1, 4);
+        java.time.LocalDate second = java.time.LocalDate.of(2021, 1, 5);
 
-        int at = source.indexOf("public List<LocalDate> exported()");
+        session(folder, first, 100_000);
+        session(folder, second, 100_500);
 
-        assertTrue(at > 0, "exported is not where this looks");
+        TickLibrary library = new TickLibrary(folder, "winfut", TickSource.METATRADER);
 
-        int caught = source.indexOf("catch (IOException", at);
+        try {
 
-        assertTrue(caught > at, "the scan no longer catches anything");
+            java.util.concurrent.atomic.AtomicInteger seen =
+                    new java.util.concurrent.atomic.AtomicInteger();
 
-        // The rescue is what follows the catch, up to the next member.
-        int ends = source.indexOf("    public ", caught);
-        String rescue = source.substring(caught, ends < 0 ? source.length() : ends);
+            java.util.stream.Stream<java.nio.file.Path> walk = java.util.stream.Stream
+                    .of(library.fileFor(first), library.fileFor(second),
+                            library.fileFor(java.time.LocalDate.of(2021, 1, 6)))
+                    .map(each -> {
+                        if (seen.incrementAndGet() == 3) {
+                            throw new java.io.UncheckedIOException(
+                                    new IOException("the volume went away"));
+                        }
 
-        assertFalse(rescue.contains("return List.of();"),
-                "a failed scan still answers with an empty list");
-        assertTrue(rescue.contains("System.err"),
-                "a failed scan still says nothing about why");
-        assertTrue(rescue.contains("days.size()"),
-                "a failed scan does not say how much it did find");
+                        return each;
+                    });
+
+            assertEquals(java.util.List.of(first, second), library.daysIn(walk),
+                    "a walk that failed halfway threw away the sessions it had already "
+                            + "found: the tree shows fewer playable days than exist, and "
+                            + "nothing says why");
+        } finally {
+            library.close();
+        }
+    }
+
+    @Test
+    @DisplayName("e a falha do meio e UncheckedIOException, que o catch antigo nunca via")
+    void themidwalkFailureIsUnchecked(@org.junit.jupiter.api.io.TempDir
+            java.nio.file.Path folder) {
+        // Files.walk is lazy, and the stream wraps what the traversal throws in
+        // UncheckedIOException -- a RuntimeException, never an IOException. The
+        // catch that sat below the walk could only ever see the failure to START
+        // it, and the case its own comment described went straight past it, out
+        // of exported(), and took the tree build with it.
+        //
+        // Asserted as "does not throw", which is the whole of it: before, this
+        // came out of the method.
+        TickLibrary library = new TickLibrary(folder, "winfut", TickSource.METATRADER);
+
+        try {
+            java.util.stream.Stream<java.nio.file.Path> walk = java.util.stream.Stream
+                    .<java.nio.file.Path>generate(() -> {
+                        throw new java.io.UncheckedIOException(
+                                new IOException("permission denied"));
+                    });
+
+            assertTrue(library.daysIn(walk).isEmpty(),
+                    "a walk that failed before finding anything did not answer empty");
+        } finally {
+            library.close();
+        }
     }
 }

@@ -311,10 +311,48 @@ public final class TickLibrary implements AutoCloseable {
             return List.of();
         }
 
-        List<LocalDate> days = new ArrayList<>();
-
         // Four: the source, the year, the month, the file.
         try (var files = Files.walk(folder, 4)) {
+            return daysIn(files);
+        } catch (IOException e) {
+            // The walk could not even START -- the folder went away between the
+            // check above and here. Nothing was found, so there is nothing to
+            // keep, but there is still something to say.
+            System.err.println(folder + ": the tick sessions could not be listed ("
+                    + e + ")");
+
+            return List.of();
+        }
+    }
+
+    /**
+     * @param files the walk, WHICH MAY THROW PARTWAY THROUGH
+     * @return the sessions it managed to list, by date, sorted
+     *
+     * <p>A method of its own so the halfway failure can be handed to it. The
+     * only test that guarded this read the SOURCE of {@code exported} and
+     * matched three substrings in it: {@code return List.of();} absent, {@code
+     * System.err} present, {@code days.size()} present. Three ways of putting
+     * the defect straight back -- {@code Collections.emptyList()}, {@code new
+     * ArrayList<>()}, {@code List.of( )} with a space -- pass all three. And the
+     * slice it read ran to the end of the file, because {@code exported} happens
+     * to be the last method: the day somebody adds one after it, the test starts
+     * measuring something else without a word.</p>
+     *
+     * <p><b>And it caught the wrong exception.</b> {@code Files.walk} is lazy: a
+     * subdirectory with no permission, a circular link, a network volume that
+     * dropped, all throw while the stream is being CONSUMED, and the stream
+     * wraps them in {@code UncheckedIOException} -- which is a {@code
+     * RuntimeException} and was never a {@code IOException}. The catch below the
+     * walk could only ever see the failure to START it. The very case its own
+     * comment described -- "the walk is lazy, so the throw can come halfway" --
+     * went straight past it and out of {@code exported}, taking the sessions
+     * already found with it and the tree build after it.</p>
+     */
+    List<LocalDate> daysIn(java.util.stream.Stream<java.nio.file.Path> files) {
+        List<LocalDate> days = new ArrayList<>();
+
+        try {
             files.filter(file -> file.getFileName().toString()
                             .startsWith(instrument + "-"))
                     .forEach(file -> {
@@ -329,13 +367,10 @@ public final class TickLibrary implements AutoCloseable {
                             days.add(day);
                         }
                     });
-        } catch (IOException e) {
-            // WHAT WAS FOUND, and a word about why the rest is missing. Files.walk
-            // throws for a subdirectory with no permission, a circular link, a
-            // network volume that dropped -- none of which means "nothing was
-            // exported", which is what returning an empty list says. And the walk
-            // is lazy, so the throw can come halfway: the sessions already found
-            // were being discarded too.
+        } catch (java.io.UncheckedIOException e) {
+            // WHAT WAS FOUND, and a word about why the rest is missing. None of
+            // the ways a walk breaks means "nothing was exported", which is what
+            // an empty list says.
             //
             // The comment above says the individual nulls do not deserve a
             // message. This is not one of those: it is the whole listing
