@@ -69,9 +69,18 @@ import java.util.List;
  * are drawn in a flat grey, as the reference product draws them, so the first
  * brick that was really traded can be seen — see {@link Untraded}.</p>
  *
- * <p>Volume is accumulated between bricks and split equally among however many
- * complete at once. That split is a convention, not a measurement: the data does
- * not say which part of a minute's volume belonged to which brick.</p>
+ * <p><b>Volume is accumulated between bricks and given whole to the FIRST of a
+ * batch</b>, the rest of that batch getting none. It is the seventh of the rules
+ * measured against the reference product, and it is a convention rather than a
+ * measurement either way: a minute does not say which part of its volume
+ * belonged to which brick, so any answer is invented. What can be said is where
+ * the volume arrived, and it arrived by the time the first brick completed.</p>
+ *
+ * <p>This paragraph used to claim the volume was split equally, and so did the
+ * comparison with ta4j below — which listed the split as a difference between
+ * the two. There is no such difference: the code has always handed the whole
+ * accumulator to the first brick. Two paragraphs describing a behaviour the
+ * class does not have are worse than none, because a reader trusts them.</p>
  *
  * <h2>Against ta4j, which was read before this was written</h2>
  *
@@ -85,8 +94,9 @@ import java.util.List;
  *       could not read this project's data at all. That alone settled whether to
  *       write this.</li>
  *   <li><b>It gives all the volume to the first brick</b> of a batch and zero to
- *       the rest. Zero is as much a claim as a share is; we spread it, and say
- *       here that it is a convention.</li>
+ *       the rest — and so, it turns out, do we. This entry used to say the
+ *       opposite, that ours spread it. Two things had to be true for that to go
+ *       unnoticed: nothing reads brick volume yet, and nothing tested it.</li>
  *   <li><b>It advances the timestamps</b> so bricks from one bar differ. That is
  *       required by its own series, which will not take two bars at the same
  *       instant. Our chart places bricks by index, so we can keep the true time

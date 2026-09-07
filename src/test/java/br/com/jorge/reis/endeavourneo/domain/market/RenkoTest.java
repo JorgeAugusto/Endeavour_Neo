@@ -167,18 +167,124 @@ class RenkoTest {
     }
 
     @Test
-    @DisplayName("a level TOUCHED lays a brick, even if the close comes back")
-    void touchingTheLevelIsEnough() {
-        // The discriminating case. Price reaches 115 and closes back at 102.
-        // Reading closes alone, nothing happened; reading what was reached, the
-        // level went through and the brick belongs on the chart.
+    @DisplayName("a level PASSED lays a brick, even if the close comes back")
+    void passingTheLevelIsWhatCounts() {
+        // The name used to say TOUCHED, which is the opposite of the rule this
+        // project measured against the reference product: a brick completes when
+        // price goes PAST the level, and the arithmetic that says so subtracts an
+        // epsilon precisely so that landing exactly on it does not count. The
+        // fixture never noticed, because 115 is past 110 either way.
+        //
+        // What is being pinned here is the other half: reading closes alone,
+        // nothing happened -- the close came back to 102. Reading what was
+        // REACHED, the level went through and the brick belongs on the chart.
         PriceSeries bricks = Renko.of(10).apply(ohlc(
                 new double[]{100, 100, 100, 100},
                 new double[]{100, 115, 100, 102}));
 
         assertEquals(1, bricks.size(),
-                "the level was reached and no brick was laid: this is the closes-only reading");
+                "the level was passed and no brick was laid: this is the closes-only reading");
         assertEquals(110.0, bricks.closeAt(0));
+    }
+
+    @Test
+    @DisplayName("landing EXACTLY on the level lays nothing")
+    void touchingTheLevelIsNotEnough() {
+        // The case the test above claimed to be about and never exercised. The
+        // rule measured against the reference product is that price has to go
+        // PAST the level, which is why the count subtracts an epsilon before
+        // taking the ceiling. Reaching 110 exactly, from 100, with a brick of
+        // 10, is reaching the level and not passing it.
+        //
+        // Without this, that epsilon could be deleted and every renko test in
+        // this file would stay green.
+        PriceSeries bricks = Renko.of(10).apply(ohlc(
+                new double[]{100, 100, 100, 100},
+                new double[]{100, 110, 100, 105}));
+
+        assertEquals(0, bricks.size(),
+                "price stopped exactly on the level and a brick was laid anyway");
+
+        // And one tick past it does lay one, so the fixture is sensitive at the
+        // boundary rather than merely quiet.
+        assertEquals(1, Renko.of(10).apply(ohlc(
+                new double[]{100, 100, 100, 100},
+                new double[]{100, 110.01, 100, 105})).size(),
+                "price went past the level and nothing was laid");
+    }
+
+    /** The ohlc fixture, with a volume on every bar. */
+    private static PriceSeries withVolume(double volume, double[]... bars) {
+        PriceSeries plain = ohlc(bars);
+
+        return new PriceSeries() {
+
+            @Override
+            public int size() {
+                return plain.size();
+            }
+
+            @Override
+            public long timeAt(int index) {
+                return plain.timeAt(index);
+            }
+
+            @Override
+            public double openAt(int index) {
+                return plain.openAt(index);
+            }
+
+            @Override
+            public double highAt(int index) {
+                return plain.highAt(index);
+            }
+
+            @Override
+            public double lowAt(int index) {
+                return plain.lowAt(index);
+            }
+
+            @Override
+            public double closeAt(int index) {
+                return plain.closeAt(index);
+            }
+
+            @Override
+            public double volumeAt(int index) {
+                return volume;
+            }
+        };
+    }
+
+    @Test
+    @DisplayName("the volume of a batch goes WHOLE to its first brick")
+    void volumeGoesToTheFirstBrickOfABatch() {
+        // Rule seven, and until now nothing checked it -- which is how the class
+        // javadoc came to say the opposite, twice, one of them listing the split
+        // as a difference from ta4j that does not exist.
+        //
+        // A jump to 140 over a brick of ten lays THREE bricks from one bar, not
+        // four: 110, 120 and 130 are passed, and 140 is only reached. That is
+        // rule four again, and the number is left as three here on purpose --
+        // writing four is the mistake this fixture is shaped to catch.
+        //
+        // That bar's volume arrived by the time the first of them completed;
+        // which part of it belonged to which brick is not something a minute
+        // says, so any division would be invented. The convention is to give it
+        // whole to the first.
+        PriceSeries bricks = Renko.of(10).apply(withVolume(1_000,
+                new double[]{100, 100, 100, 100},
+                new double[]{100, 140, 100, 140}));
+
+        assertEquals(3, bricks.size(),
+                "reaching 140 passes 110, 120 and 130, and only reaches 140");
+        assertEquals(1_000.0, bricks.volumeAt(0), 1e-9,
+                "the first brick of the batch did not get the volume");
+
+        for (int brick = 1; brick < bricks.size(); brick++) {
+            assertEquals(0.0, bricks.volumeAt(brick), 1e-9,
+                    "brick " + brick + " was given a share of a volume that arrived before it");
+        }
     }
 
     @Test

@@ -279,12 +279,6 @@ public final class Timeframe implements Aggregation {
     }
 
     /**
-     * @return a key that is equal for two bars of the same output bar
-     *
-     * <p>Built from local calendar fields, never from the epoch — that is the
-     * whole point of this class. See the two failures described above.</p>
-     */
-    /**
      * @return when the bucket holding that instant begins
      *
      * <p>What a candle's timestamp means: 09:00, not 09:00:59 because that is
@@ -312,6 +306,17 @@ public final class Timeframe implements Aggregation {
                 + slot * 60_000L;
     }
 
+    /**
+     * @return a key that is equal for two bars of the same output bar
+     *
+     * <p>Built from local calendar fields, never from the epoch — that is the
+     * whole point of this class. See the two failures described above.</p>
+     *
+     * <p>This paragraph sat above {@code startOf} instead, in front of that
+     * method's own javadoc. Java keeps the last one, so it documented nothing and
+     * this method had none at all — and it is the method that decides where a day
+     * ends.</p>
+     */
     long bucketOf(long millis, ZoneId zone) {
         ZonedDateTime local = Instant.ofEpochMilli(millis).atZone(zone);
 
