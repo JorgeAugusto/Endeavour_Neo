@@ -1077,8 +1077,7 @@ public final class ChartCanvas extends JComponent {
      * came from one export and half from another would change density in the
      * middle, which is the same mistake as mixing candles with ticks.</p>
      */
-    private br.com.jorge.reis.endeavourneo.domain.market.TickSource sourceForBricks(
-            java.util.List<java.time.LocalDate> days) {
+    private br.com.jorge.reis.endeavourneo.domain.market.TickSource sourceForBricks() {
         if (replaying) {
             // The feed decides, and only the feed. A bar replay answers null
             // here and its bricks are folded from the bars on screen -- the same
@@ -1127,8 +1126,7 @@ public final class ChartCanvas extends JComponent {
         }
 
         java.util.List<java.time.LocalDate> onScreen = RenkoSource.sessionsIn(source);
-        br.com.jorge.reis.endeavourneo.domain.market.TickSource which =
-                sourceForBricks(onScreen);
+        br.com.jorge.reis.endeavourneo.domain.market.TickSource which = sourceForBricks();
 
         if (which == null) {
             // No export holds every session on screen. "Every" and not "some":
@@ -1224,6 +1222,12 @@ public final class ChartCanvas extends JComponent {
                     br.com.jorge.reis.endeavourneo.domain.market.TickRenko built = get();
 
                     if (replaying) {
+                        // CLOSED FIRST. Two workers landing one after the other
+                        // dropped the earlier library on the floor -- a reading
+                        // thread and up to three sessions of ticks, held for the
+                        // life of the application, once per race.
+                        stopGrowing();
+
                         growing = built;
                         growingFrom = library;
 
@@ -1285,19 +1289,19 @@ public final class ChartCanvas extends JComponent {
     /**
      * @return whether a renko may be built for what this chart is showing
      *
-     * <p>The library is closed. It is opened to answer one question, from a
-     * modal dialog, and was then dropped with its reading thread alive -- once
-     * per opening of that dialog, for the life of the application.</p>
+     * <p><b>The same question the builder asks, asked the same way.</b> This
+     * used to ask a narrower one -- only the MetaTrader export, while {@link
+     * #sourceForBricks} tries the Profit tape first and says why. An instrument
+     * whose sessions exist only on the tape was refused here by a guard that the
+     * builder beside it would have satisfied, and the reader was told there are
+     * no recorded ticks for the sessions on screen when there are.</p>
+     *
+     * <p>With the invented walk allowed -- which is the default -- any series
+     * may be drawn as renko, and that is what RenkoSource.allows answers for a
+     * reader who has said missing ticks may be filled in.</p>
      */
-    private boolean renkoAllowed() {
-        try (br.com.jorge.reis.endeavourneo.domain.market.TickLibrary library =
-                     new br.com.jorge.reis.endeavourneo.domain.market.TickLibrary(
-                             br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.ticksOf(
-                                     RenkoSource.rootOf(instrument)),
-                             RenkoSource.rootOf(instrument),
-                             br.com.jorge.reis.endeavourneo.domain.market.TickSource.METATRADER)) {
-            return RenkoSource.allows(series, library, ChartPreferences.syntheticTicks());
-        }
+    boolean renkoAllowed() {
+        return ChartPreferences.syntheticTicks() || sourceForBricks() != null;
     }
 
     /** @param name what the chart is showing, so its tick sessions can be found */
@@ -1664,6 +1668,32 @@ public final class ChartCanvas extends JComponent {
      * makes the chart taller. Separate from the mouse handling so the arithmetic
      * can be tested without a window.</p>
      */
+    /**
+     * @param anchor the bar under the cursor before the zoom
+     * @param x where the cursor is, in pixels from the left of the component
+     * @param plotWidth how wide the PLOT is -- the component less the price axis
+     * @param bars how many bars will be visible after the zoom
+     * @return where the window should start so that bar stays under the cursor
+     *
+     * <p>The bar under the cursor stays under the cursor. Zooming around the
+     * centre instead makes the reader chase what they were looking at, and it is
+     * the single thing that most makes a chart feel wrong.</p>
+     *
+     * <p><b>Over the PLOT, not over the component.</b> {@code Viewport.barAt}
+     * maps across {@code plotBounds().width}, and this divided by the whole
+     * width instead -- some sixty pixels more. The fraction came out about a
+     * tenth too small at 640 wide, so the anchored bar slid left at every step
+     * of zoom, against the promise in the paragraph above.</p>
+     *
+     * <p>Apart from the listener so the arithmetic can be checked without a
+     * window, the same way {@link #stretchForDrag} is.</p>
+     */
+    static int firstBarForZoom(int anchor, int x, int plotWidth, int bars) {
+        double share = x / (double) Math.max(1, plotWidth);
+
+        return (int) Math.round(anchor - share * bars);
+    }
+
     static double stretchForDrag(double current, int deltaY) {
         double scaled = current * Math.exp(-deltaY * DRAG_SENSITIVITY);
 
@@ -1696,6 +1726,11 @@ public final class ChartCanvas extends JComponent {
     public void removeNotify() {
         RulerMode.forget(followRuler);
         ChartPreferences.forget(followDrawing);
+
+        // NOT stopGrowing() here, on purpose: re-parenting between docked and
+        // floating passes through removeNotify too, and a replay would lose its
+        // renko every time the reader undocked the window. The holder calls
+        // releaseTicks() when the chart actually closes -- see there.
 
         super.removeNotify();
     }
@@ -1810,6 +1845,15 @@ public final class ChartCanvas extends JComponent {
         into.put(prefix + "priceOffset", String.valueOf(priceOffset));
         into.put(prefix + "period", periodCode);
         into.put(prefix + "style", style instanceof LineStyle ? "line" : "candle");
+
+        // HOW FAR ALONG, which the javadoc above promises and this did not
+        // write: a chart left in March 2021 came back on the last bar, and
+        // setting one up again is most of the work.
+        //
+        // The distance from the END, not firstBar itself. The series grows
+        // between one session and the next -- a night of minutes is 566 bars --
+        // so a raw index would point somewhere else every morning.
+        into.putInt(prefix + "fromEnd", Math.max(0, series.size() - firstBar));
     }
 
     /** Puts the chart back the way {@link #storeView} found it. */
@@ -1833,7 +1877,13 @@ public final class ChartCanvas extends JComponent {
                         Math.max(MINIMUM_VISIBLE_BARS, series.size())));
 
         rightMargin = Math.max(0, from.getInt(prefix + "rightMargin", rightMargin));
-        firstBar = clampFirstBar(series.size() - visibleBars + rightMargin);
+
+        // Back to where the reader was, measured from the end. Absent -- a
+        // workspace written before this was stored -- falls back to the end of
+        // the series, which is where every chart used to reopen.
+        int fromEnd = from.getInt(prefix + "fromEnd", visibleBars - rightMargin);
+
+        firstBar = clampFirstBar(series.size() - Math.max(0, fromEnd));
 
         repaint();
         onScaleChanged.run();
@@ -2676,6 +2726,15 @@ public final class ChartCanvas extends JComponent {
 
         @Override
         public void mousePressed(MouseEvent e) {
+            // THE LEFT BUTTON ONLY. installContextMenu registers a second
+            // adapter for the popup trigger, and JPopupMenu.show does not stop
+            // the event reaching this one: in measuring mode, a right click to
+            // open the menu wiped the measurement, and outside it the right
+            // button still armed the drag.
+            if (!javax.swing.SwingUtilities.isLeftMouseButton(e)) {
+                return;
+            }
+
             Rectangle jump = jumpBounds();
 
             if (jump != null && jump.contains(e.getPoint())) {
@@ -2730,6 +2789,12 @@ public final class ChartCanvas extends JComponent {
 
         @Override
         public void mouseClicked(MouseEvent e) {
+            if (!javax.swing.SwingUtilities.isLeftMouseButton(e)) {
+                // A double right click used to recentre the chart, throwing the
+                // reader zoom away on the way to a context menu.
+                return;
+            }
+
             // Two clicks on the plot put everything back: scale, slide and
             // position. It is the way out of any arrangement the reader has got
             // themselves into, and it needs no button and no menu.
@@ -2840,16 +2905,12 @@ public final class ChartCanvas extends JComponent {
                 return;
             }
 
-            // The bar under the cursor stays under the cursor. Zooming around
-            // the centre instead makes the reader chase what they were looking
-            // at, and it is the single thing that most makes a chart feel wrong.
             int anchor = viewport().barAt(e.getX());
-            double share = (e.getX() - 0.0) / Math.max(1, getWidth());
-
             int zoomed = (int) Math.round(visibleBars * (e.getWheelRotation() > 0 ? 1.25 : 0.8));
 
             visibleBars = Math.max(MINIMUM_VISIBLE_BARS, Math.min(zoomed, series.size()));
-            firstBar = clampFirstBar((int) Math.round(anchor - share * visibleBars));
+            firstBar = clampFirstBar(firstBarForZoom(anchor, e.getX(),
+                    plotBounds().width, visibleBars));
 
             repaint();
         }
