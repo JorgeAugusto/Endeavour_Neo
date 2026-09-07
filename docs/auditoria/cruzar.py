@@ -26,7 +26,10 @@ AQUI = os.path.dirname(os.path.abspath(__file__))
 # "### B1-4. titulo" seguidos de uma linha "`arquivo:linha`".
 LINHA_INDICE = re.compile(r'^-\s+\*\*([A-Z]\d+[a-z]?-\d+)\*\*\s+`([^`]+)`\s+—\s+(.*)$')
 CABECALHO = re.compile(r'^###\s+([A-Z]\d+[a-z]?-\d+)[.\s]\s*(.*)$')
-REFERENCIA = re.compile(r'^`([^`]+)`\s*$')
+# A referencia aparece de tres jeitos nos relatorios: sozinha numa linha,
+# depois de "**Onde:**", ou solta no meio de um paragrafo. O que todas tem em
+# comum e um `Algo.java` entre crases, as vezes com :linha depois.
+REFERENCIA = re.compile(r'`([^`]*\.java[^`]*)`')
 
 
 def arquivo_de(referencia):
@@ -103,8 +106,8 @@ def achados_dos_relatorios(pasta):
             ident, titulo = achado.groups()
             referencia = ''
 
-            for adiante in linhas[at + 1:at + 6]:
-                encontrado = REFERENCIA.match(adiante.strip())
+            for adiante in linhas[at + 1:at + 10]:
+                encontrado = REFERENCIA.search(adiante)
 
                 if encontrado:
                     referencia = encontrado.group(1)
