@@ -39,7 +39,7 @@ def add(ident, title, sev, where):
     rows.append([ident, title, sev, where])
 
 
-for path in sorted(glob.glob(os.path.join(d, 'a*.md'))):
+for path in (sorted(glob.glob(os.path.join(d, 'a*.md'))) + sorted(glob.glob(os.path.join(d, 'l*.md')))):
     sev = '?'
     pending = None
 

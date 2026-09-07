@@ -10,7 +10,7 @@ relatórios inteiros custaria um quarto multiplicador em cima do corpus, que
 foi exatamente como a tentativa v1 queimou 1,5 milhão de tokens sem entregar
 nada.
 
-## ALTA (51)
+## ALTA (56)
 
 - **A1-1** `Timeframe.java:307` — Qualquer escala em minutos acima de 1.440 vira silenciosamente D1, com todas as barras carimbadas à meia-noite
 - **A2-1** `ReplaySeries.java:173-213` — O replay congela para sempre quando um minuto não tem caminho de preços, e o comentário afirma o contrário
@@ -63,8 +63,13 @@ nada.
 - **A8b-4** `ui/chart/overlay/MovingAverageTest.java:128-138` — o deslocamento só é testado para a frente; para trás ele lê o futuro
 - **A8b-5** `ui/chart/SeriesSummaryTest.java:133-148` — "diz se veio de ticks ou de candles" passa com os dois rótulos trocados
 - **A8b-6** `ausência. src/main/.../ui/chart/OverlayLegend.java` — a legenda não tem um único teste, e a correção que acabou de entrar nela está solta
+- **L1-1** `ui/replay/ReplayWindow.java:51 e :60-66 contra` — Trocar o idioma com um replay aberto deixa a sessão viva: o `Timer` não para, os 340 MB de ticks não saem e a thread de leitura fica
+- **L1-2** `Launcher.java:83 + platform/JobService.java:390-394 +` — O relatório de falha que o `JobService` existe para não perder é entregue à EDT pelo *shutdown hook*, e some
+- **L2-1** `src/main/java/br/com/jorge/reis/endeavourneo/domain/market/Aggregation.java:55` — O único caminho de dobra que a aplicação usa não aceita fuso, e por isso nunca usa o do mercado
+- **L2-2** `src/main/java/br/com/jorge/reis/endeavourneo/ui/chart/ChartCanvas.java:1896` — O eixo do tempo agrupa epoch millis por divisão, sem fuso nenhum: a semana do gráfico começa na quinta
+- **L3-1** `src/main/java/br/com/jorge/reis/endeavourneo/ui/chart/ChartLayouts.java:141-143` — O layout padrão nomeia um indicador que não existe, e por isso desenha nada
 
-## MÉDIA (104)
+## MÉDIA (133)
 
 - **A1-2** `Timeframe.java:237-239` — `Timeframe.fold` decide "esta série não tem volume" olhando só a barra 0, e apaga todos os volumes já somados
 - **A1-3** `Timeframe.java:250-271` — Em `Timeframe`, o javadoc de `bucketOf` está colado em `startOf`, e `bucketOf` fica sem nenhum
@@ -170,8 +175,37 @@ nada.
 - **A8b-13** `ui/chart/overlay/BollingerBandsTest.java:212-254` — o traço da linha do meio das bandas nunca chega ao desenho
 - **A8b-14** `ui/chart/MeasurementTest.java:86-91` — o tempo decorrido da régua só tem piso, nunca um valor
 - **A8b-15** `ausência` — o caminho de pintura nunca vê mais de três barras
+- **L1-3** `ui/replay/ReplayFeed.java:149-171 (sessions()) chamado da EDT em` — A EDT trava no cadeado de um `ConcurrentHashMap` que o job de partida segura por 40-100 ms por chave
+- **L1-4** `domain/market/TickLibrary.java:213-227 contra` — Um arquivo de ticks corrompido mata a thread de leitura sem avisar, e o replay fica com o play morto para sempre
+- **L1-5** `ui/shell/Navigator.java:350-352` — `Navigator.tickSessions` é o único lugar que cria uma `TickLibrary` sem `try/finally close()`
+- **L1-6** `ui/chart/ChartCanvas.java:1154-1162` — `ChartCanvas.renkoAllowed()` abre uma `TickLibrary` e nunca a fecha, no meio de um diálogo modal
+- **L1-7** `platform/JobService.java:114-121` — O retorno de um job roda com o monitor do `Handle` na mão quando `whenDone` é chamado depois de o job já ter terminado
+- **L2-3** `domain/market/ReplaySeries.java:180 e :302-306 contra` — Dentro de um mesmo quadro do replay há dois "agoras": o renko anda por tempo de negócio, o candle anda por contagem de ticks
+- **L3-2** `único ponto de limpeza do arquivo de trabalho:` — Nenhuma chave de gráfico é apagada quando o gráfico fecha
+- **L3-3** `ui/chart/ChartHolder.java:185` — A chave de um gráfico colapsa toda pontuação, e o `#` de segmento com ela
+- **L3-4** `ui/chart/ChartLayouts.java:317-333` — Uma entrada de layout sem parâmetro numérico desaparece na leitura, e os dois analisadores discordam
+- **L3-5** `domain/market/TickLibrary.java:58 e :202` — `TickLibrary` tem `close()` mas não declara `AutoCloseable`
+- **-** `ui/replay/ReplayFeed.java:113` — fecha (`finally`, linha 122)
+- **-** `ui/replay/ReplayFeed.java:153` — fecha (`finally`, linha 158)
+- **-** `ui/series/Segmentable.java:133` — fecha (`finally`, linha 140)
+- **L3-6** `domain/market/MetaTraderTicks.java:137-145 e` — `close()` dentro de `finally` cru: a falha real é substituída pela falha ao fechar
+- **L3-7** `platform/SeriesCatalog.java:458-476` — A lista de séries aposentadas junta com vírgula sem escapar, e ninguém a escreve
+- **L3-8** `ui/shell/MainWindow.java:301 sobre platform/Settings.java:373-381` — Com dez gráficos ou mais, eles reabrem fora de ordem
+- **L3-9** `ui/chart/ChartLayout.java:41` — Os records de layout guardam `List` sem construtor compacto
+- **L3-10** `domain/market/MarketFile.java:154-156` — `MarketFile.write` trunca o arquivo antes de saber se consegue escrevê-lo
+- **L3-11** `ui/chart/ChartLayouts.java:142 com ui/chart/LayoutBar.java:110 e :494-502` — O nome do layout padrão é gravado traduzido, e a seleção se perde ao trocar de idioma
+- **L4-1** `src/main/java/br/com/jorge/reis/endeavourneo/ui/chart/PeriodCatalog.java:224-251` — O catálogo de períodos escreve em português dentro do Java, e a busca por nome só funciona em português
+- **L4-2** `src/main/java/br/com/jorge/reis/endeavourneo/ui/chart/PeriodCatalog.java:104` — A unidade "pts" está no bundle numa tela e grudada no Java na outra
+- **L4-3** `src/main/java/br/com/jorge/reis/endeavourneo/platform/Language.java:96` — Trocar o idioma não move o `Locale` da JVM, e metade do que o leitor vê não é do bundle
+- **L4-4** `src/main/resources/messages.properties (e as mesmas linhas em` — Dezoito linhas de bundle que ninguém lê, e uma delas é uma chave trocada sem apagar a antiga
+- **L4-5** `src/main/java/br/com/jorge/reis/endeavourneo/ui/chart/MovingAverageDialog.java:296` — Quatro maneiras de escrever "enum → rótulo", e o `MovingAverageDialog` inteiro é uma cópia do `Forms`
+- **L4-6** `src/main/java/br/com/jorge/reis/endeavourneo/ui/chart/BarReadout.java:62-67` — Os dois quadros flutuantes do gráfico compartilham três constantes e discordam na quarta
+- **L4-7** `ui/chart/MovingAverageDialog.java:117 e` — O título do diálogo de indicador tem prefixo em dois deles e não tem nos outros dois
+- **L4-8** `src/main/resources/messages_pt_BR.properties` — Catorze linhas do bundle brasileiro estão sem acento, não quatro
+- **L4-9** `ui/shell/MainWindow.java:95 e ui/shell/CollapsiblePane.java:56-57` — Duas caixas de preferências convivendo, e o cabeçalho de uma delas mente
+- **L4-10** `ui/chart/PeriodCatalog.java:97` — Três javadocs ainda citam o tamanho de tijolo que o repositório corrigiu
 
-## BAIXA (98)
+## BAIXA (115)
 
 - **-** `PriceSeries.java:66-98` — a série vazia não sobrescreve `volumeAt`; os cinco
 - **-** `ArraySeries.java:70-81` — o construtor aceita arrays de tamanhos diferentes.
@@ -271,3 +305,20 @@ nada.
 - **A8b-20** `ui/chart/OverlayCatalogTest.java:61-62` — `everyKindIsUsable` pergunta o valor antes de calcular
 - **-** `SeriesSummary` — qual rótulo corresponde a qual fonte
 - **-** `Measurement.elapsed()` — nenhum valor fixado. A8b-14.
+- **L1-8** `platform/JobService.java:320-338 e :375-380` — Cada `report()` e cada `say()` de um job posta um `invokeLater` que revalida o rodapé
+- **L1-9** `domain/market/TickLibrary.java:136-140` — `TickLibrary.at()` é `synchronized` e está no caminho do quadro de replay
+- **L1-10** `ui/replay/ReplayWindow.java:34 contra :60-66` — O javadoc de `ReplayWindow` diz que a sessão sobrevive ao fechamento; o ouvinte logo abaixo a mata
+- **L2-4** `ui/chart/RandomWalkSeries.java:56-58` — A série de demonstração se carimba pelo relógio de parede
+- **L3-12** `domain/market/ProfitTrades.java:215 e :222-225; mesma forma em` — Uma linha de CSV mais longa que o buffer perde a cauda em silêncio
+- **L3-13** `domain/market/ProfitTrades.java:250 e domain/market/MetaTraderTicks.java:183` — Uma alocação por negócio e por tick, dentro do laço de conversão
+- **L3-14** `domain/market/TapeFile.java:358-366` — O nome de corretora tem o comprimento gravado sem conferência
+- **L3-15** `ui/chart/ChartLayouts.java:127-134 contra :221-231` — O javadoc de `parsePanes` diz que a altura vem da primeira linha; o código usa a última
+- **L3-16** `ui/chart/ChartLayouts.java:29` — `{@link Preferences}` não resolve: a classe não existe neste projeto
+- **L4-11** `(sem referência)` — O separador de campos tem três grafias
+- **L4-12** `(sem referência)` — `action.preferences.mnemonic = P` não sublinha nada, em nenhum dos dois idiomas
+- **L4-13** `(sem referência)` — Dois itens de menu sem mnemônico enquanto os outros treze têm
+- **L4-14** `(sem referência)` — `dd/MM/yyyy` fixado em quatro lugares, e anunciado ao leitor inglês
+- **L4-15** `(sem referência)` — `TICK = 5.0` declarado duas vezes
+- **L4-16** `(sem referência)` — Os defaults das divisórias escritos duas vezes
+- **L4-17** `(sem referência)` — `Navigator.displayOf` é um delegate de uma linha com o javadoc do delegado copiado
+- **L4-18** `(sem referência)` — `Appearance.install` devolve texto literal em três linhas, não uma

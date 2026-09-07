@@ -1,6 +1,6 @@
 # Estado da auditoria
 
-Atualizado em 06/09/2026, 18:45. **As nove áreas estão concluídas.** Este arquivo existe para a auditoria sobreviver
+Atualizado em 06/09/2026, 20:10. **A auditoria está completa: nove áreas e quatro lentes.** Este arquivo existe para a auditoria sobreviver
 a uma compactação de contexto ou a uma sessão nova: o que está aqui não depende
 de ninguém lembrar da conversa.
 
@@ -22,7 +22,34 @@ Método e partição: [../AUDITORIA.md](../AUDITORIA.md)
 | A7b — casca, preferências, janela de séries | 5.071 | 277.987 | 8 ALTA, 15 MÉDIA, 12 BAIXA | `a7b-shell-series.md` |
 | A8a — os testes de domínio | 3.831 | 209.261 | 7 ALTA, 6 MÉDIA, 5 BAIXA | `a8a-testes-dominio.md` |
 | A8b — os testes de interface | 4.315 | 220.324 | 6 ALTA, 9 MÉDIA, 5 BAIXA | `a8b-testes-interface.md` |
-| **soma** | **38.737** | **2.108.675** | **47 ALTA, 104 MÉDIA, 97 BAIXA** | |
+| **soma das áreas** | **38.737** | **2.108.675** | **47 ALTA, 104 MÉDIA, 97 BAIXA** | |
+
+## As quatro lentes transversais
+
+Não auditam uma área: auditam **uma pergunta em todo o código**, por `grep`
+dirigido, lendo ±40 linhas em volta de cada ocorrência, e recebendo o índice dos
+253 achados com ordem de reportar só o que as áreas não viram.
+
+| lente | a pergunta | tokens | achados |
+|---|---|---:|---|
+| L1 | a thread está certa, e o que foi ligado é desligado? | 159.899 | 2 ALTA, 5 MÉDIA, 3 BAIXA |
+| L2 | algum número desenhado sabe do futuro? | 156.676 | 2 ALTA, 1 MÉDIA, 1 BAIXA |
+| L3 | o que abre fecha, o que grava dá a volta, o que aloca cabe? | 212.856 | 1 ALTA, 10 MÉDIA, 5 BAIXA |
+| L4 | o texto está no bundle, e o que devia ser um é um? | 212.592 | 0 ALTA, 10 MÉDIA, 8 BAIXA |
+| **soma das lentes** | | **742.023** | **5 ALTA, 26 MÉDIA, 17 BAIXA** |
+
+| **TOTAL DA AUDITORIA** | | **2.850.698** | **52 ALTA, 130 MÉDIA, 114 BAIXA** |
+
+### A estimativa das lentes errou por 4,6×
+
+O desenho previa **~0,1× o corpus** por lente, ou seja algo perto de 40k cada.
+Custaram **185k em média**. A razão é que `grep` dirigido reduz o que se **lê**,
+não o que se **julga**: a L3 abriu 68 ferramentas e a L4, 79 — mais que qualquer
+área. Uma lente boa confere cada ocorrência e escreve por que 23 das 24 estão
+certas, e essa conta não cabe em 40k.
+
+**Para a próxima auditoria: ~185k por lente, não 40k.** Ainda é barato perto de
+uma área (54 tok/linha × 5.000 linhas), mas não é troco.
 
 ## Áreas pendentes
 
@@ -390,6 +417,92 @@ que os achados:
 
 **Cinco das seis podem ser desfeitas sem que nada avise.**
 
+### ✅ L2-1 — o fuso parametrizado nunca chega à produção
+
+A interface `Aggregation` declara **só** `apply(PriceSeries source)`; não existe
+assinatura com fuso. E o `Timeframe`:
+
+```java
+@Override
+public PriceSeries apply(PriceSeries source) {
+    return apply(source, defaultZone());     // ZoneId.systemDefault()
+}
+```
+
+Os seis chamadores de produção usam o de um argumento (`ChartCanvas:1200,1287`,
+`MovingAverage:346`, `BollingerBands:383`, `RelativeStrength:342`,
+`SlowStochastic:490`). O `apply(source, zone)` correto só é chamado do
+`TimeframeTest`, que fixa `America/Sao_Paulo`. **O teste prova um comportamento
+que a aplicação nunca executa** — uma terceira espécie de teste sem dentes, nem
+asserção fraca nem cobertura ausente: exercita uma sobrecarga que o produto não
+chama. **Confirmado.**
+
+### ✅ L2-2 — o eixo de tempo divide em UTC, e o próprio código proíbe isso
+
+```java
+ZonedDateTime time = Instant.ofEpochMilli(series.timeAt(i)).atZone(zone);  // :1895
+long bucket = series.timeAt(i) / (step * 60_000L);                         // :1896
+```
+
+Duas linhas seguidas na mesma pintura, uma com fuso e a outra sem. `TIME_STEPS`
+termina em **10.080** — uma semana em minutos — e aí a conta é exatamente
+`epochDay / 7`. O `Timeframe:298` diz por escrito: *"Not epochDay / 7, which
+starts weeks on a Thursday because 1970-01-01 was one."* **A divisão semanal do
+eixo marca quintas.** **Confirmado.**
+
+### ✅ L1-1 — a janela de replay não se solta na troca de idioma
+
+```java
+addWindowListener(new WindowAdapter() {
+    @Override
+    public void windowClosing(WindowEvent e) {   // ReplayWindow:63
+        panel.release();
+    }
+});
+```
+
+`MainWindow.relaunch():820` chama `replay.dispose()`, e `dispose()` dispara
+`windowClosed`, **nunca** `windowClosing` — este só vem do X da janela. O
+`release()` não roda: o `Timer` de 40 ms segue avançando o mercado, `ticks.close()`
+não roda, e `replay = null` apaga a última referência. **Não sobra caminho para
+parar. Confirmado.**
+
+### ✅ L3-1 — o layout padrão constrói lista vazia
+
+Rastro de um renome incompleto:
+
+| onde | diz |
+|---|---|
+| `MovingAverage.java:255` | `nameKey()` devolve **`overlay.movingAverage`** |
+| `ChartLayouts.java:143` | o layout padrão pede **`overlay.ema`** |
+| `messages.properties:143` | `overlay.ema = EMA` — a chave **existe** no bundle |
+| `SettingsTest.java:87` | o fixture do teste usa **`overlay.ema`** |
+| `ChartLayout:100`, `ChartLayouts:35`, `Overlay:46` | os javadocs dão `overlay.ema` de exemplo |
+
+O catálogo procura por `nameKey`, não acha, devolve `null`, e o
+`ChartLayout.build()` descarta nulos em silêncio — de propósito, para tolerar
+layout de versão futura. **O `SettingsTest:87` passa porque usa a chave morta**:
+prova a ida e volta do texto, nunca a construção. Quarta espécie de teste sem
+dentes — o fixture compartilha o erro do produto.
+
+Ressalva de escopo: quem abre um gráfico pelo caminho normal **vê** as três
+médias, porque o `MainWindow:445` as adiciona em código. O que não funciona é o
+*layout nomeado*. **Confirmado.**
+
+### ✅ L4-3 — trocar o idioma não move o `Locale` da JVM
+
+```java
+public static void install() {
+    Messages.setLocale(remembered().locale());   // Language:96 -- e só isso
+}
+```
+
+Dez sítios leem `Locale.getDefault()` direto (`BarReadout:256`,
+`ChartCanvas:163,647,2289`, `OverlayLegend:314`, `RulerReadout:157`,
+`Sessions:118`, `StudyPane:886`, `DatePicker:183,196`), e os botões dos
+`JOptionPane` o Swing escolhe sozinho. Em inglês numa máquina brasileira, a
+pergunta sai em inglês com botões **Sim** e **Não**. **Confirmado.**
+
 ---
 
 ## O que está LIMPO e foi conferido
@@ -406,6 +519,26 @@ degenerados guardados. **O `Reordering` resistiu** à tentativa de quebra pela
 ordem de avaliação dos argumentos. **O `Sessions` duplicado NÃO divergiu** — os
 dois usam a mesma expressão de virada de dia, então é dívida de camada, não
 ALTA.
+
+**Não há leitura de preço futuro no `endeavour_neo`** (L2) — a resposta à pergunta
+mais cara de errar do projeto. Das 28 ocorrências de `size()-1`, 13 estão no
+caminho de dados e todas são seguras; os irmãos do deslocamento negativo **não
+existem** (`shift` só aparece na média, conferido um a um nas bandas, no RSI e no
+estocástico); o `OwnScale` cumpre a regra do último candle fechado por
+construção.
+
+**24 aberturas de arquivo, 23 fecham** (L3), e as quatro `Files.walk` estão todas
+em try-com-recursos. **`java.util.prefs.Preferences` não é usada em lugar
+nenhum**, o que mata a suspeita do corte silencioso em 8.192 caracteres. Zero
+coleções mutáveis escapando por getter; zero serialização Java.
+
+**`removeXListener` não aparece uma vez na base** (L1), e está certo: conferido um
+a um nos 84 casos de widget próprio. `invokeAndWait` não existe; nenhum
+`doInBackground` toca componente.
+
+**Nenhuma chave usada no Java falta no bundle** (L4) — zero, conferido por script
+contra os `enum` que alimentam as cinco famílias que usam `get` sem `orElse`.
+Nenhum construtor de componente carrega texto.
 
 **`SeriesMap` e `RangeBar` decimam, e do jeito certo** (A7b) — o eixo é o
 **índice de pregão**: 1.494 entradas contra 824.881 barras, **552× menor**, com
