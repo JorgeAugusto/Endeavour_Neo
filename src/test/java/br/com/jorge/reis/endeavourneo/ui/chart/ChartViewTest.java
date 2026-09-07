@@ -18,6 +18,7 @@
 package br.com.jorge.reis.endeavourneo.ui.chart;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -78,37 +79,135 @@ class ChartViewTest {
     }
 
     @Test
-    @DisplayName("os tratadores de mouse conferem QUAL botao foi")
-    void theMouseHandlersAskWhichButton() throws IOException {
+    @DisplayName("o botao DIREITO nao arrasta o grafico")
+    void therightButtonDoesNotPan() {
         // installContextMenu registers a second adapter for the popup trigger,
-        // and JPopupMenu.show does not stop the event reaching the first one. In
-        // measuring mode a right click to open the menu wiped the measurement;
-        // outside it the right button armed the drag, and a double right click
-        // recentred the chart, throwing away the zoom.
+        // and JPopupMenu.show does not stop the event reaching the first one:
+        // the right button armed the pan on its way to the menu.
         //
-        // Read from the source because the alternative is driving real mouse
-        // events through a component, which this package has already decided
-        // against -- see the note at the head of ChartCanvasTest.
-        String whole = Files.readString(CANVAS, StandardCharsets.UTF_8);
+        // THIS USED TO READ THE SOURCE. It matched the word isLeftMouseButton
+        // inside the first 700 characters of each handler -- comments included
+        // -- which says nothing about where the guard sits or what it protects.
+        // Moving the jump-to-end block ABOVE the guard puts the defect back in
+        // its most visible form and leaves the word exactly where it was; so
+        // does reducing the guard to an if without a return. And in the other
+        // direction it cried wolf: rewriting the guard as e.getButton() !=
+        // BUTTON1 -- the same thing -- made it fail against correct code.
+        //
+        // Driving the handlers needs no window. The listeners are reachable
+        // through getMouseListeners, which is what the component itself hands
+        // to the toolkit, and a MouseEvent has a public constructor.
+        ChartCanvas canvas = sized(1_000);
 
-        // From the Mouse class down. The popup adapter installed higher up has
-        // its own mousePressed and is right not to ask: its question is
-        // isPopupTrigger, and it is the listener this one was fighting with.
-        int mouse = whole.indexOf("private final class Mouse extends MouseAdapter {");
+        canvas.scrollTo(300);
 
-        assertTrue(mouse > 0, "the Mouse listener is not where this looks");
+        int was = canvas.firstVisibleBar();
 
-        String source = whole.substring(mouse);
-        int pressed = source.indexOf("public void mousePressed(MouseEvent e) {");
-        int clicked = source.indexOf("public void mouseClicked(MouseEvent e) {");
+        press(canvas, java.awt.event.MouseEvent.BUTTON3, 400, 200);
+        drag(canvas, 200, 200);
 
-        assertTrue(pressed > 0 && clicked > 0, "the handlers are not where this looks");
+        assertEquals(was, canvas.firstVisibleBar(),
+                "the right button armed the drag: on the way to the context menu the "
+                        + "reader loses their place");
 
-        for (int at : new int[]{pressed, clicked}) {
-            String head = source.substring(at, Math.min(source.length(), at + 700));
+        // And the left one does, or the assertion above is satisfied by a chart
+        // that cannot pan at all.
+        press(canvas, java.awt.event.MouseEvent.BUTTON1, 400, 200);
+        drag(canvas, 200, 200);
 
-            assertTrue(head.contains("isLeftMouseButton"),
-                    "a mouse handler acts on every button: " + head.lines().findFirst());
+        assertNotEquals(was, canvas.firstVisibleBar(),
+                "the left button no longer pans either: the fixture proves nothing");
+    }
+
+    @Test
+    @DisplayName("dois cliques com o botao DIREITO nao recentram o grafico")
+    void adoubleRightClickDoesNotRecentre() {
+        // Two clicks put scale, slide and position back. On the right button
+        // that meant the reader threw their zoom away on the way to the menu.
+        ChartCanvas canvas = sized(1_000);
+
+        canvas.scrollTo(300);
+
+        int was = canvas.firstVisibleBar();
+
+        click(canvas, java.awt.event.MouseEvent.BUTTON3, 2, 400, 200);
+
+        assertEquals(was, canvas.firstVisibleBar(),
+                "a double right click recentred the chart, throwing the zoom away");
+
+        click(canvas, java.awt.event.MouseEvent.BUTTON1, 2, 400, 200);
+
+        assertNotEquals(was, canvas.firstVisibleBar(),
+                "a double LEFT click no longer recentres: the fixture proves nothing");
+    }
+
+    @Test
+    @DisplayName("o botao DIREITO na insignia de ir-para-o-fim nao vai para o fim")
+    void therightButtonDoesNotJumpToTheEnd() {
+        // THE ORDER of the guard, not only its presence. Move the jump block
+        // above it -- which looks like nothing, and which the test that read the
+        // source could not see, because the word isLeftMouseButton stayed inside
+        // the same 700 characters -- and the right button throws the reader to
+        // the end of the series on its way to the context menu.
+        //
+        // The badge sits at the top right of the PLOT, which is the component
+        // less the price strip: 800 - 62 wide, a 26-pixel square 14 from each
+        // edge, so its middle is at (711, 27).
+        ChartCanvas canvas = sized(1_000);
+
+        canvas.scrollTo(300);
+
+        press(canvas, java.awt.event.MouseEvent.BUTTON3, 711, 27);
+
+        assertEquals(300, canvas.firstVisibleBar(),
+                "the right button pressed the jump badge and threw the reader to the "
+                        + "end of the series");
+
+        // And the left one does jump, which is also what proves the badge is
+        // where this test says it is.
+        press(canvas, java.awt.event.MouseEvent.BUTTON1, 711, 27);
+
+        assertNotEquals(300, canvas.firstVisibleBar(),
+                "the badge is not at these coordinates, so nothing above was tested");
+    }
+
+    /** @return a canvas with a size, so the strips are where the pixels say they are */
+    private static ChartCanvas sized(int count) {
+        ChartCanvas canvas = new ChartCanvas();
+
+        canvas.setSize(800, 600);
+        canvas.setSeries(bars(count));
+
+        return canvas;
+    }
+
+    private static void press(ChartCanvas canvas, int button, int x, int y) {
+        java.awt.event.MouseEvent event = new java.awt.event.MouseEvent(canvas,
+                java.awt.event.MouseEvent.MOUSE_PRESSED, System.currentTimeMillis(),
+                0, x, y, 1, false, button);
+
+        for (java.awt.event.MouseListener each : canvas.getMouseListeners()) {
+            each.mousePressed(event);
+        }
+    }
+
+    private static void click(ChartCanvas canvas, int button, int times, int x, int y) {
+        java.awt.event.MouseEvent event = new java.awt.event.MouseEvent(canvas,
+                java.awt.event.MouseEvent.MOUSE_CLICKED, System.currentTimeMillis(),
+                0, x, y, times, false, button);
+
+        for (java.awt.event.MouseListener each : canvas.getMouseListeners()) {
+            each.mouseClicked(event);
+        }
+    }
+
+    private static void drag(ChartCanvas canvas, int x, int y) {
+        java.awt.event.MouseEvent event = new java.awt.event.MouseEvent(canvas,
+                java.awt.event.MouseEvent.MOUSE_DRAGGED, System.currentTimeMillis(),
+                0, x, y, 0, false, java.awt.event.MouseEvent.NOBUTTON);
+
+        for (java.awt.event.MouseMotionListener each : canvas.getMouseMotionListeners()) {
+            each.mouseDragged(event);
         }
     }
 
@@ -289,29 +388,6 @@ class ChartViewTest {
 
         assertEquals(was, canvas.firstVisibleBar(),
                 "turning the tails back on moved the reader");
-    }
-
-    @Test
-    @DisplayName("o rodape arredonda o preco pela regra do eixo, nao por uma terceira")
-    void theFooterRoundsLikeTheAxis() throws IOException {
-        // Three copies of one rule lived in this file, and they had already
-        // drifted: the axis and the cursor tag read formatFor(gridStep(...)),
-        // and the footer had two decimals hard coded. formatFor says why fixed
-        // places cannot be right -- they either print 177.600,00 on an index or
-        // round a currency pair away.
-        String source = Files.readString(CANVAS, StandardCharsets.UTF_8);
-        int at = source.indexOf("public String cursorReading() {");
-
-        assertTrue(at > 0, "cursorReading is not where this looks");
-
-        String body = source.substring(at, source.indexOf("\n    }", at));
-
-        assertTrue(body.contains("formatFor(gridStep("),
-                "the footer rounds by a rule of its own");
-        assertTrue(!body.contains("DecimalFormat"),
-                "the footer still builds its own format");
-        assertTrue(!body.contains("ofPattern("),
-                "the footer still writes its own date pattern");
     }
 
     @Test

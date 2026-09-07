@@ -2623,7 +2623,7 @@ public final class ChartCanvas extends JComponent {
      * would either print 177.600,00 on an index or round a currency pair to
      * uselessness.</p>
      */
-    private static DecimalFormat formatFor(double step) {
+    static DecimalFormat formatFor(double step) {
         int decimals = step >= 1.0 ? 0 : (int) Math.min(6, Math.ceil(-Math.log10(step)));
 
         StringBuilder pattern = new StringBuilder("#,##0");
@@ -2637,14 +2637,14 @@ public final class ChartCanvas extends JComponent {
                 DecimalFormatSymbols.getInstance(Locale.getDefault()));
     }
 
-    private double gridStep(Viewport viewport) {
+    double gridStep(Viewport viewport) {
         double span = viewport.highestPrice() - viewport.lowestPrice();
 
         return niceStep(span * GRID_SPACING / Math.max(1, getHeight()));
     }
 
     /** @return the closest 1, 2 or 5 times a power of ten at or above {@code target} */
-    private static double niceStep(double target) {
+    static double niceStep(double target) {
         if (!(target > 0.0)) {
             return 1.0;
         }
