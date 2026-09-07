@@ -19,6 +19,7 @@ package br.com.jorge.reis.endeavourneo.ui.chart.overlay;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
@@ -144,15 +145,38 @@ class OwnPeriodTest {
         sloped.setInterpolated(true);
         sloped.calculate(minutes());
 
+        MovingAverage stepped = onFiveMinutes();
         PriceSeries series = minutes();
 
-        // Smoother, and still never ahead of the market.
+        // TEETH, and the reason they are here. This test used to assert only
+        // the ceiling below, and it passed for the whole life of the option
+        // while OwnScale.smooth was arithmetically identical to OwnScale.map:
+        // the ramp was measured across an interval every bar had already gone
+        // past, so the fraction was always clamped to 1. "Never ahead of the
+        // market" cannot tell a sloped line from a flat one, and a flat line is
+        // exactly what a broken interpolation produces.
+        assertNotEquals(stepped.valueAt(12)[0], sloped.valueAt(12)[0], 1e-9,
+                "the sloped line equals the stepped one: interpolation did nothing");
+
+        // It has to MOVE, bar by bar, inside one coarse bar.
+        for (int bar = 11; bar <= 14; bar++) {
+            assertTrue(sloped.valueAt(bar)[0] > sloped.valueAt(bar - 1)[0],
+                    "bar " + bar + " did not slope past bar " + (bar - 1));
+        }
+
         for (int bar = 0; bar < series.size(); bar++) {
             double value = sloped.valueAt(bar)[0];
 
             if (Double.isFinite(value)) {
+                // Never ahead of the market...
                 assertTrue(value <= series.closeAt(bar),
                         "interpolation reached bar " + bar + " with " + value);
+
+                // ...and never ahead of the step it is walking towards either.
+                // The ramp arrives at the closed value, it does not overshoot
+                // it: sloping is allowed to lag, never to lead.
+                assertTrue(value <= stepped.valueAt(bar)[0] + 1e-9,
+                        "bar " + bar + " sloped past the closed value it aims at");
             }
         }
     }

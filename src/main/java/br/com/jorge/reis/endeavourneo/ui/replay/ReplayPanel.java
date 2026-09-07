@@ -603,6 +603,13 @@ public final class ReplayPanel extends JPanel {
                 try {
                     session = get();
 
+                    // The combo is restored from the workspace before its
+                    // listeners exist, so the restore fires nothing, and a
+                    // session is born at 1x however the combo reads. Every
+                    // session after the first started slow while the control
+                    // beside it said 60. The speed belongs to the reader, not
+                    // to the last time they happened to touch the control.
+                    session.setSpeed((Integer) speed.getSelectedItem());
                     session.watch(refresh);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();

@@ -417,7 +417,13 @@ public final class MainWindow extends JFrame {
         // zoom levels. Fronting instead -- the semantics of an IDE tab, one
         // editor per file -- is wrong for a chart and was the previous
         // behaviour.
-        String title = uniqueTitle(SeriesCatalog.has(name) ? series : series);
+        // The guard is on ASKED, not on name: name has already fallen back to
+        // defaultName, so has(name) is true either way and the ternary compared
+        // nothing -- both its branches were the same expression. When the asked
+        // series is gone, the window has to carry the name of what actually
+        // opened, or rememberCharts writes the dead name back and the entry
+        // never repairs itself, which is what the comment above promises.
+        String title = uniqueTitle(SeriesCatalog.has(asked) ? series : name);
 
         // The NAME, not the key. See ChartHolder.label.
         String shown = SeriesCatalog.displayOf(name)
@@ -1033,6 +1039,14 @@ public final class MainWindow extends JFrame {
     }
 
     private void exit() {
+        // FIRST, and the whole reason prepareToLeave exists: closeCharts runs
+        // one close per chart, and every close calls rememberCharts, which
+        // rewrites the open list one chart shorter until it is empty. The X on
+        // the title bar always took this precaution; leaving by the menu did
+        // not, and quietly emptied the workspace of every chart the reader had
+        // arranged. See the guard in rememberCharts, which describes exactly
+        // this and was simply never armed on this path.
+        prepareToLeave();
         closeCharts();
         storeLayout();
         dispose();

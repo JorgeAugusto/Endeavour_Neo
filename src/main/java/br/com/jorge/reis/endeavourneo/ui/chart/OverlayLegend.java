@@ -198,7 +198,14 @@ public final class OverlayLegend extends JComponent {
                 return;
             }
 
-            int bar = canvas.hoveredBar();
+            // hoveredBar is -1 whenever the pointer is not over the canvas, and
+            // this legend sits ABOVE the canvas -- so the pointer crosses it on
+            // the way in and every row printed a dash instead of a value. The
+            // fall-back is the one lastVisibleBar was written for; its own
+            // javadoc says "what a legend reads when the mouse is away", and
+            // the study panes below have always used it. This one did not.
+            int under = canvas.hoveredBar();
+            int bar = under >= 0 ? under : canvas.lastVisibleBar();
 
             paintDrop(g, overlays.size());
 

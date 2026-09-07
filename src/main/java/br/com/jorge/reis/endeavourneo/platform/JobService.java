@@ -282,9 +282,17 @@ public final class JobService implements AutoCloseable {
             try {
                 value = work.run(progressFor(handle));
                 stopped = handle.isCancelled();
-            } catch (Exception | StackOverflowError e) {
+            } catch (Throwable e) {
                 // Caught here rather than left to the pool: an exception that
                 // reaches the executor disappears without a trace.
+                //
+                // Throwable, not Exception: the likeliest failure this service
+                // will ever see is OutOfMemoryError, because the work it runs
+                // reads a million bars at a time. Catching Exception left that
+                // one -- and only that one -- to escape past the catch and run
+                // the finally with failure still null, which settled the job as
+                // a SUCCESS carrying a null value. The single failure this
+                // class exists to report was the single one it could not.
                 failure = e;
             } finally {
                 // Settle BEFORE leaving the running list, so a listener woken

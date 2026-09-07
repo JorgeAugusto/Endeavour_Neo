@@ -141,15 +141,31 @@ public final class OwnScale {
                 continue;
             }
 
-            long from = coarse.timeAt(closed);
-            long to = closed + 1 < coarse.size() ? coarse.timeAt(closed + 1) : from;
-            long span = to - from;
+            // The ramp runs across the bar still FORMING, not across the one
+            // that already closed. slow[closed] only became knowable at the
+            // instant coarse bar `closed` shut -- which is timeAt(closed + 1),
+            // never timeAt(closed) -- so that instant is where the line leaves
+            // the previous value and starts walking towards it.
+            //
+            // Measuring from timeAt(closed) instead put the whole ramp behind
+            // every bar that reaches this code: indexOfClosed only answers
+            // `closed` once timeAt(closed + 1) has passed, so the fraction was
+            // always at or past 1, clamped to 1, and the result was always
+            // slow[closed] -- arithmetically identical to map(). The option was
+            // on by default in three indicators and had never bent a line.
+            long shut = coarse.timeAt(closed + 1);
+            // The forming bar has no close yet, so its width is unknown; the
+            // one before it is the only honest estimate available.
+            long ends = closed + 2 < coarse.size()
+                    ? coarse.timeAt(closed + 2)
+                    : shut + (shut - coarse.timeAt(closed));
+            long span = ends - shut;
 
             if (span <= 0) {
                 continue;
             }
 
-            double along = Math.max(0.0, Math.min(1.0, (fine.timeAt(i) - from) / (double) span));
+            double along = Math.max(0.0, Math.min(1.0, (fine.timeAt(i) - shut) / (double) span));
 
             into[i] = slow[closed - 1] + (slow[closed] - slow[closed - 1]) * along;
         }
