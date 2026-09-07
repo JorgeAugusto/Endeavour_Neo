@@ -1038,6 +1038,14 @@ public final class ChartCanvas extends JComponent {
         java.util.List<java.time.LocalDate> days = onScreen;
         Object asked = period;
 
+        // The SOURCE as well as the period. The guard in done() compared only
+        // the period, and attachReplay and detachReplay swap the source without
+        // touching it -- so a build started before a replay was dropped came
+        // back afterwards, passed the guard, and put bricks of the plain series
+        // on top of the replay's. That is the candle-and-tick mixing this whole
+        // path exists to prevent, arriving by the one door it did not watch.
+        PriceSeries askedOf = source;
+
         // A replay KEEPS its renko, so the next frame can extend it instead of
         // folding the whole session again -- 0,018 ms against 0,105 s. An
         // ordinary chart has no next frame, so it folds once and lets go.
@@ -1082,7 +1090,7 @@ public final class ChartCanvas extends JComponent {
 
             @Override
             protected void done() {
-                if (asked != period) {
+                if (asked != period || askedOf != source) {
                     library.close();
 
                     return;
@@ -1183,11 +1191,8 @@ public final class ChartCanvas extends JComponent {
             // The bricks grew from the ticks themselves. Falling through to the
             // candle fold below would throw them away and replace them with a
             // renko of the replay's bars, which is the mixing this exists to
-            // stop.
-            for (Overlay overlay : overlays) {
-                overlay.calculate(this.series);
-            }
-
+            // stop. The overlays were recalculated inside extendBricks, which is
+            // where every caller gets it and none can forget it.
             this.visibleBars = Math.max(1, Math.min(visibleBars,
                     Math.max(1, this.series.size())));
             this.firstBar = clampFirstBar(this.series.size() - visibleBars + rightMargin);
@@ -1275,6 +1280,19 @@ public final class ChartCanvas extends JComponent {
         // Showing only the settled ones is what made the replay jump.
         this.series = growing.live();
         this.fromTicks = true;
+
+        // HERE, and not in the callers. Both of them change the series to a
+        // renko of ticks, and an overlay still holding what it worked out from
+        // the candles is a moving average of minutes drawn across bricks --
+        // wrong, and wrong in a way that looks like an indicator rather than
+        // like a fault. seriesGrew did recalculate; the SwingWorker that first
+        // builds the renko did not, and its comment excused it by saying the
+        // next frame is a fortieth of a second away. It is -- while the replay
+        // is PLAYING. Paused, there is no next frame, and the stale line stays
+        // on the screen for as long as the reader looks at it.
+        for (Overlay each : overlays) {
+            each.calculate(this.series);
+        }
 
         return true;
     }

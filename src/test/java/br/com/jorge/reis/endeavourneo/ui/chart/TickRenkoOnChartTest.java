@@ -268,6 +268,34 @@ class TickRenkoOnChartTest {
                         + "a day that has none");
     }
 
+    @Test
+    @DisplayName("a build started on another series is dropped when the series changes")
+    void aBuildForAnotherSeriesIsNotShown(@TempDir Path folder) throws Exception {
+        // The sibling of aLateBuildIsNotShown, and the door that one did not
+        // watch. The guard in done() compared only the PERIOD, and a replay
+        // being dropped on a chart swaps the SOURCE without touching it -- so a
+        // renko of the plain series came back afterwards and landed on top of
+        // the replay's, which is exactly the candle-and-tick mixing this whole
+        // path exists to prevent.
+        //
+        // Said here with twoDays, whose second day has no ticks: a renko built
+        // for THAT series is refused outright, so isFromTicks turning true can
+        // only be the stale build for the first one arriving late.
+        session(folder);
+
+        ChartCanvas canvas = showing(folder);
+
+        canvas.setPeriod(new Renko(55, 2), "55R", "55R");
+        canvas.setSeries(twoDays());
+
+        Thread.sleep(300);
+        SwingUtilities.invokeAndWait(() -> { });
+
+        assertFalse(canvas.isFromTicks(),
+                "a renko built for the series that was on screen BEFORE was drawn over "
+                        + "the one that is on screen now");
+    }
+
     /** The session with ticks, and the next day, which has none. */
     private static PriceSeries twoDays() {
         PriceSeries first = minutes();
@@ -307,6 +335,63 @@ class TickRenkoOnChartTest {
                 return index < first.size() ? first.closeAt(index) : 101_050;
             }
         };
+    }
+
+    @Test
+    @DisplayName("the indicators follow the bricks, not the minutes they replaced")
+    void overlaysAreRecalculatedOnTheBricks(@TempDir Path folder) throws Exception {
+        // An overlay holds what it worked out, and what it worked out belongs to
+        // one series. When the ticks replace the candle renko the series under
+        // it changes completely -- different length, different prices -- and an
+        // average still holding the minutes is a line of one market drawn across
+        // another.
+        //
+        // seriesGrew always recalculated. The SwingWorker that first builds the
+        // renko did not, and excused it in a comment: the next frame is a
+        // fortieth of a second away. So it is, while the replay is PLAYING.
+        // Paused -- or on a chart with no replay at all, which is this test --
+        // there is no next frame.
+        session(folder);
+
+        ChartCanvas canvas = showing(folder);
+
+        br.com.jorge.reis.endeavourneo.ui.chart.overlay.MovingAverage average =
+                new br.com.jorge.reis.endeavourneo.ui.chart.overlay.MovingAverage(3);
+
+        canvas.addOverlay(average);
+
+        // THE REPLAY BRANCH, and the first draft of this test forgot it: with no
+        // tick source the build lands in show(), which always recalculated, so
+        // the test passed with the fix removed. It proved nothing until this
+        // line, which is the difference between a test and a decoration.
+        canvas.setTickSource(
+                br.com.jorge.reis.endeavourneo.domain.market.TickSource.METATRADER);
+        canvas.setPeriod(new Renko(55, 2), "55R", "55R");
+
+        settle(canvas);
+
+        assertTrue(canvas.isFromTicks(), "the chart stayed on the candle renko");
+
+        // The same average, worked out fresh on what is actually on screen. If
+        // the canvas recalculated, the two agree bar for bar; if it did not,
+        // they disagree wherever the two series do -- which is everywhere.
+        br.com.jorge.reis.endeavourneo.ui.chart.overlay.MovingAverage reference =
+                new br.com.jorge.reis.endeavourneo.ui.chart.overlay.MovingAverage(3);
+
+        reference.calculate(canvas.series());
+
+        for (int bar = 0; bar < canvas.series().size(); bar++) {
+            double drawn = average.valueAt(bar)[0];
+            double right = reference.valueAt(bar)[0];
+
+            if (Double.isNaN(right)) {
+                continue;
+            }
+
+            assertEquals(right, drawn, 1e-9,
+                    "bar " + bar + ": the average still holds what it worked out from "
+                            + "the minutes, and the chart is showing bricks");
+        }
     }
 
     @Test
