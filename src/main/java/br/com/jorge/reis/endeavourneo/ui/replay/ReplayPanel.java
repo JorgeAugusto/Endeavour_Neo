@@ -229,6 +229,21 @@ public final class ReplayPanel extends JPanel {
         until.setDate(keepInWindow(from, readDate("replay.to", from),
                 ReplayPreferences.windowDays()));
 
+        // AND THEN THE FEED HAS THE LAST WORD. followFeed runs from top(),
+        // higher up in this constructor, and moves the pickers onto a day the
+        // chosen feed actually has -- and these three lines then wrote the
+        // remembered dates straight over that answer, without asking the feed
+        // anything. Reopening the transport on a tape of nine sessions with a
+        // date remembered from 2021 left the calendar all grey and the field
+        // holding a day that feed has never heard of. Nothing downstream
+        // corrected it: settle only fits `until` to `date`, and requestDay
+        // checks "unreadable" and "end before start" and nothing else.
+        //
+        // Last, because the remembered dates are the reader's preference and the
+        // feed's sessions are a fact. A preference that cannot be honoured is
+        // moved to the nearest thing that can.
+        followFeed();
+
         refresh();
     }
 
@@ -287,8 +302,19 @@ public final class ReplayPanel extends JPanel {
         release();
     }
 
+    /**
+     * Whether this panel has been let go of.
+     *
+     * <p>Set on the way out and never cleared: a released panel is not reused,
+     * it is replaced. What it guards is the session still being built when the
+     * window closed -- see the worker's {@code done}.</p>
+     */
+    private transient boolean released;
+
     /** Ends whatever is playing and gives every chart following it back. */
     public void release() {
+        released = true;
+
         if (session != null) {
             session.forget(refresh);
             session.stop();
@@ -569,6 +595,11 @@ public final class ReplayPanel extends JPanel {
         if (session != null) {
             session.forget(refresh);
             session.stop();
+
+            // AND FORGOTTEN. Stopping it left the field pointing at a session
+            // that is over, so everything between here and the new one's arrival
+            // was talking to a dead clock.
+            session = null;
         }
 
         br.com.jorge.reis.endeavourneo.platform.Settings workspace =
@@ -612,7 +643,28 @@ public final class ReplayPanel extends JPanel {
                 building = false;
 
                 try {
-                    session = get();
+                    ReplaySession built = get();
+
+                    if (released) {
+                        // NOBODY IS WATCHING THIS ANY MORE. release() ran while
+                        // this was building -- the window closing does it, and
+                        // so does every change of language, which closes and
+                        // rebuilds the whole shell. Adopting here put a live
+                        // session, with its tick library open, onto a panel that
+                        // is gone and will never call stop(): the loader's
+                        // thread and up to three resident sessions of ticks,
+                        // 340 MB, held until the process ends.
+                        //
+                        // It is a narrow window -- the four seconds a session
+                        // takes to build -- and it is the one path in this area
+                        // where something AutoCloseable is opened and not closed
+                        // by whoever opened it.
+                        built.stop();
+
+                        return;
+                    }
+
+                    session = built;
 
                     adopt(session);
                 } catch (InterruptedException e) {

@@ -104,6 +104,80 @@ class PlayableDaysTest {
     }
 
     @Test
+    @DisplayName("a data lembrada de outro feed nao sobrevive a abertura do transporte")
+    void arememberedDateFromAnotherFeedDoesNotSurvive(@TempDir Path folder)
+            throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeFalse(
+                java.awt.GraphicsEnvironment.isHeadless(), "no graphics environment");
+
+        // followFeed exists to move the pickers onto a day the chosen feed
+        // actually has -- its javadoc says why: "switching from six years of
+        // minutes to a tape of eight sessions leaves both pickers holding a day
+        // that feed has never heard of". In the constructor it ran BEFORE the
+        // remembered dates were restored, and those three lines then wrote over
+        // its answer without asking the feed anything.
+        //
+        // Reopening the transport on a tape of two sessions with a date
+        // remembered from 2021: the calendar came up all grey and the field held
+        // a day that feed has never had. Nothing downstream corrected it -- the
+        // range fitter only fits the end to the start, and requestDay checks
+        // "unreadable" and "end before start" and nothing else.
+        ReplayBase.at(folder, LocalDate.of(2026, 9, 1));
+
+        Path ticks = SeriesCatalog.ticksOf("win");
+
+        tape(ticks, LocalDate.of(2026, 9, 1));
+        tape(ticks, LocalDate.of(2026, 9, 3));
+
+        ReplayFeed tape = ReplayFeed.of("win", TickSource.PROFIT);
+
+        var workspace = br.com.jorge.reis.endeavourneo.platform.Settings.workspace();
+
+        workspace.put("replay.feed", tape.saved());
+        workspace.put("replay.from", "2021-01-04");
+        workspace.put("replay.to", "2021-01-04");
+
+        ReplayPanel[] panel = new ReplayPanel[1];
+
+        javax.swing.SwingUtilities.invokeAndWait(() -> panel[0] = new ReplayPanel());
+
+        try {
+            java.util.List<DatePicker> pickers = pickersIn(panel[0]);
+
+            assertTrue(pickers.size() >= 2,
+                    "the fixture is wrong: the transport has " + pickers.size()
+                            + " date pickers");
+
+            LocalDate showing = pickers.get(0).date();
+
+            assertTrue(tape.sessions().contains(showing),
+                    "the transport opened holding " + showing + ", which this tape has "
+                            + "never had: the calendar is all grey and the button is lit "
+                            + "and dead, with nothing saying why");
+        } finally {
+            javax.swing.SwingUtilities.invokeAndWait(panel[0]::release);
+
+            workspace.remove("replay.feed");
+            workspace.remove("replay.from");
+            workspace.remove("replay.to");
+        }
+    }
+
+    private static java.util.List<DatePicker> pickersIn(java.awt.Container where) {
+        java.util.List<DatePicker> found = new java.util.ArrayList<>();
+
+        for (java.awt.Component each : where.getComponents()) {
+            if (each instanceof DatePicker picker) {
+                found.add(picker);
+            } else if (each instanceof java.awt.Container inside) {
+                found.addAll(pickersIn(inside));
+            }
+        }
+
+        return found;
+    }
+
+    @Test
     @DisplayName("the calendar accepts what it was given, and weekdays when it was given nothing")
     void theCalendarFollowsTheFeed() {
         DatePicker picker = new DatePicker(LocalDate.of(2026, 9, 1));
