@@ -86,6 +86,13 @@ public record ChartLayout(String name, List<Entry> entries, List<Pane> panes) {
 
                 if (study != null) {
                     study.applyAppearance(entry.appearance());
+
+                    // The other half, and it was missing here while the price
+                    // overlays' own path -- Entry.build, forty lines down -- has
+                    // always had it. Two answers to "how does an Entry become an
+                    // Overlay", and the panes' one was the wrong one.
+                    study.setVisible(entry.visible());
+
                     found.add(study);
                 }
             }

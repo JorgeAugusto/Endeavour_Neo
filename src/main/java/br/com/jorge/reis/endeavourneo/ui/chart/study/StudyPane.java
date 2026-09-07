@@ -726,18 +726,22 @@ public final class StudyPane extends JComponent {
     }
 
     /**
-     * @return {@code {low, high}} covering everything in the pane
+     * @return {@code {low, high}} covering everything the pane is SHOWING
      *
      * <p>The union, so nothing inside is ever drawn off the top. With every
      * indicator here agreeing on its range -- which is what
      * {@link StudyStack#fits} exists to guarantee -- the union IS that range,
      * and this costs nothing.</p>
+     *
+     * <p>Package-visible for the test that says a hidden study stops stretching
+     * it. Reading it off the screen would be reading pixels; this is the number
+     * the pixels come from.</p>
      */
-    private double[] range(Viewport viewport) {
+    double[] range(Viewport viewport) {
         double low = Double.MAX_VALUE;
         double high = -Double.MAX_VALUE;
 
-        for (Overlay study : studies) {
+        for (Overlay study : showing()) {
             double[] fixed = study.bounds();
 
             if (fixed != null) {
@@ -764,10 +768,37 @@ public final class StudyPane extends JComponent {
         return bottom - (value - low) / (high - low) * (bottom - top);
     }
 
+    /**
+     * @return the studies that take part in the drawing
+     *
+     * <p><b>One answer, because there were four questions.</b> Four loops walked
+     * the same list and exactly one of them asked whether the study was visible.
+     * Hiding a line therefore hid the line and nothing else: the study went on
+     * stretching the pane's vertical scale, went on drawing its twenty and
+     * eighty across it, and went on dictating the numbers written up the right
+     * edge. Hiding an indicator that deforms the scale did not give the scale
+     * back.</p>
+     *
+     * <p>The header is deliberately NOT filtered. It is where a hidden study is
+     * turned back on, and one that vanished from it could not be -- so it lists
+     * everything, and showing which are off is the header's own job.</p>
+     */
+    private List<Overlay> showing() {
+        List<Overlay> found = new ArrayList<>(studies.size());
+
+        for (Overlay study : studies) {
+            if (study.isVisible()) {
+                found.add(study);
+            }
+        }
+
+        return found;
+    }
+
     private void paintLevels(Graphics2D g, int top, int bottom, double low, double high) {
         List<Integer> drawn = new ArrayList<>();
 
-        for (Overlay study : studies) {
+        for (Overlay study : showing()) {
             for (Overlay.Level level : study.levels()) {
                 int at = (int) Math.round(y(level.at(), top, bottom, low, high));
 
@@ -788,11 +819,7 @@ public final class StudyPane extends JComponent {
 
     private void paintLines(Graphics2D g, Viewport viewport,
                             int top, int bottom, double low, double high) {
-        for (Overlay study : studies) {
-            if (!study.isVisible()) {
-                continue;
-            }
-
+        for (Overlay study : showing()) {
             List<Color> colours = study.colours();
             List<java.awt.Stroke> strokes = study.strokes();
 
@@ -848,7 +875,7 @@ public final class StudyPane extends JComponent {
         // The levels first, because they are the ones worth reading: twenty and
         // eighty are where a stochastic says something, and the ends of the
         // scale only say how tall the pane is.
-        for (Overlay study : studies) {
+        for (Overlay study : showing()) {
             for (Overlay.Level level : study.levels()) {
                 int at = (int) Math.round(y(level.at(), top, bottom, low, high));
 

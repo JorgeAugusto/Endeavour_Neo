@@ -234,6 +234,114 @@ class PaneSharingTest {
     }
 
     @Test
+    @DisplayName("esconder um estudo devolve a escala do painel")
+    void ahiddenStudyStopsStretchingTheScale() {
+        // Four loops walked the pane's list of studies and exactly ONE of them
+        // asked whether the study was visible. So hiding a line hid the line and
+        // nothing else: the study went on stretching the vertical scale, went on
+        // drawing its levels across it, and went on dictating the numbers up the
+        // right edge. Hiding an indicator that deforms the scale did not give
+        // the scale back -- which is most of the reason to hide one.
+        //
+        // TWO AVERAGES, because those are the ones that fit themselves to the
+        // data: a stochastic and an RSI both run nought to a hundred by
+        // definition, so hiding either of them could not change the scale, and
+        // addTo refuses anything else beside them on purpose. Two moving
+        // averages of the same rising line have different ranges -- the fast one
+        // reaches higher, because the slow one lags -- so the top of the pane is
+        // the fast one's, and hiding it has to bring the top down.
+        canvas.setSeries(rising(400));
+
+        StudyPane pane = stack.show(
+                new br.com.jorge.reis.endeavourneo.ui.chart.overlay.MovingAverage(5));
+
+        assertTrue(stack.addTo(pane,
+                        new br.com.jorge.reis.endeavourneo.ui.chart.overlay
+                                .MovingAverage(50)),
+                "the second average was refused, so the pane holds one study and "
+                        + "nothing below is being tested");
+
+        stack.recalculate();
+
+        double[] both = pane.range(canvas.plotViewport());
+
+        pane.studies().get(0).setVisible(false);
+
+        double[] slowOnly = pane.range(canvas.plotViewport());
+
+        assertTrue(slowOnly[1] < both[1],
+                "hiding the study that reaches highest did not bring the top of the pane "
+                        + "down: the line disappeared and its effect on the scale did not, "
+                        + "which is most of the reason to hide one. " + both[1] + " -> "
+                        + slowOnly[1]);
+    }
+
+    /** A line that only goes up, so a fast average always sits above a slow one. */
+    private static br.com.jorge.reis.endeavourneo.domain.market.PriceSeries rising(int count) {
+        return new br.com.jorge.reis.endeavourneo.domain.market.PriceSeries() {
+
+            @Override
+            public int size() {
+                return count;
+            }
+
+            @Override
+            public long timeAt(int index) {
+                return 1_756_000_000_000L + index * 60_000L;
+            }
+
+            @Override
+            public double openAt(int index) {
+                return 100 + index;
+            }
+
+            @Override
+            public double highAt(int index) {
+                return 100 + index;
+            }
+
+            @Override
+            public double lowAt(int index) {
+                return 100 + index;
+            }
+
+            @Override
+            public double closeAt(int index) {
+                return 100 + index;
+            }
+        };
+    }
+
+    @Test
+    @DisplayName("um estudo escondido volta escondido")
+    void ahiddenStudyComesBackHidden() {
+        // The third field of a layout Entry is whether the eye is open, and the
+        // way OUT wrote true whatever the study said, while the way BACK never
+        // read it at all. The price overlays' own path has always carried it --
+        // two answers to "how does an Entry become an Overlay", and the panes'
+        // one was wrong at both ends.
+        //
+        // Latent today, because only the price legend has an eye to click. It is
+        // not dead: paintLines already asks isVisible(), so the expensive half of
+        // the rule is written and waiting. The day the eye reaches the pane
+        // header, hiding a study and reopening the chart would bring it back lit
+        // -- and the defect would look like it belonged to the new feature.
+        StudyPane pane = stack.show(new SlowStochastic(8, 3));
+
+        stack.addTo(pane, new SlowStochastic(21, 5));
+
+        pane.studies().get(0).setVisible(false);
+
+        stack.restore(stack.remembered());
+
+        assertFalse(stack.panes().get(0).studies().get(0).isVisible(),
+                "the study came back with its eye open: hiding one and reopening the "
+                        + "chart undoes the hiding");
+        assertTrue(stack.panes().get(0).studies().get(1).isVisible(),
+                "the one that was showing came back hidden");
+    }
+
+    @Test
     @DisplayName("recalcular alcanca todos, nao so o primeiro")
     void recalculatingReachesAll() {
         StudyPane pane = stack.show(new SlowStochastic(8, 3));

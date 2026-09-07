@@ -239,8 +239,13 @@ public final class StudyStack extends JPanel {
                     new ArrayList<>();
 
             for (Overlay study : pane.studies()) {
+                // ASKED, not assumed. The third field of Entry is whether the
+                // eye is open, and this wrote true whatever the study said -- so
+                // the way out threw the answer away and the way back in had
+                // nothing to restore.
                 inside.add(new br.com.jorge.reis.endeavourneo.ui.chart.ChartLayout.Entry(
-                        study.nameKey(), study.parameters(), true, study.appearance()));
+                        study.nameKey(), study.parameters(), study.isVisible(),
+                        study.appearance()));
             }
 
             found.add(new br.com.jorge.reis.endeavourneo.ui.chart.ChartLayout.Pane(
