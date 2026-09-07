@@ -468,7 +468,13 @@ class RenkoTest {
         assertTrue(Renko.of(10).withForming(true).withWicks(false).hasForming());
         assertTrue(Renko.of(10).withWicks(false).withForming(true).hasWicks() == false);
         assertEquals("10 renko", Renko.of(10).label());
-        assertEquals("10 renko sem calda", Renko.of(10).withWicks(false).label());
+        // NEUTRAL, and the same either way: the label used to carry an
+        // interface string in one language -- the only one in the whole of
+        // domain, outside the bundle, and misspelt. The interface builds its
+        // own label and setWicks carries the existing one across, so nothing on
+        // screen lost anything.
+        assertEquals("10 renko", Renko.of(10).withWicks(false).label());
+        assertEquals("10 renko", Renko.of(10).label());
     }
 
     @Test

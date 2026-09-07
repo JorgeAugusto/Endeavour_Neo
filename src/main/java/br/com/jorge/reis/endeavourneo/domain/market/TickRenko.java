@@ -79,6 +79,9 @@ public final class TickRenko {
 
     private Renko.Carry carry;
 
+    /** The settled bricks as a series, kept until one more is laid. */
+    private transient PriceSeries builtBricks;
+
     /** The session being advanced through, and how far into it. */
     private LocalDate advancing;
 
@@ -340,6 +343,12 @@ public final class TickRenko {
 
         PriceSeries laid = made.bricks();
 
+        if (laid.size() > 0) {
+            // A brick was laid, so the built view is out of date. Nothing else
+            // touches these four lists.
+            builtBricks = null;
+        }
+
         for (int i = 0; i < laid.size(); i++) {
             untraded.set(bricks.size(), Untraded.at(laid, i));
             counts.add(Counted.at(laid, i));
@@ -362,8 +371,21 @@ public final class TickRenko {
         return bricks.size();
     }
 
-    /** @return the bricks as a series the chart can draw */
+    /**
+     * @return the bricks as a series the chart can draw
+     *
+     * <p><b>Built once and kept until a brick is laid.</b> This copied
+     * everything on every call -- an array of every row, two long arrays filled
+     * by unboxing an {@code ArrayList<Long>}, and a clone of the {@code BitSet}
+     * -- and {@link #live} calls it, which {@code ChartCanvas.extendBricks}
+     * calls on every frame of a replay. O(n) per frame with n growing all
+     * session: a long replay turned a chart into a copier.</p>
+     */
     public PriceSeries bricks() {
+        if (builtBricks != null) {
+            return builtBricks;
+        }
+
         double[][] rows = bricks.toArray(new double[0][]);
         long[] times = new long[stamps.size()];
 
@@ -372,13 +394,14 @@ public final class TickRenko {
         }
 
         java.util.BitSet gaps = (java.util.BitSet) untraded.clone();
+
         long[] made = new long[counts.size()];
 
         for (int i = 0; i < made.length; i++) {
             made[i] = counts.get(i);
         }
 
-        return new Marked() {
+        builtBricks = new Marked() {
 
             @Override
             public boolean untradedAt(int index) {
@@ -425,6 +448,8 @@ public final class TickRenko {
                 return rows[index][4];
             }
         };
+
+        return builtBricks;
     }
 
     /** A series that says which bars hold no trade, and how many the rest hold. */

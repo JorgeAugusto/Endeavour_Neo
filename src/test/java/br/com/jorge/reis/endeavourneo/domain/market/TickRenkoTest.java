@@ -20,6 +20,8 @@ package br.com.jorge.reis.endeavourneo.domain.market;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -515,6 +517,42 @@ class TickRenkoTest {
                 assertEquals(one.openAt(i), many.openAt(i), 1e-9, "open at " + i);
                 assertEquals(one.closeAt(i), many.closeAt(i), 1e-9, "close at " + i);
             }
+        } finally {
+            library.close();
+        }
+    }
+
+    @Test
+    @DisplayName("as caixas assentadas sao montadas uma vez, nao a cada quadro")
+    void theSettledBricksAreBuiltOnce(@TempDir Path folder) throws IOException {
+        // live() starts with bricks(), and ChartCanvas.extendBricks calls live()
+        // on every frame of a replay. bricks() copied everything each time: an
+        // array of every row, two long arrays filled by unboxing an ArrayList,
+        // and a clone of the BitSet. O(n) per frame with n growing all session,
+        // which turns a long replay into a copier.
+        session(folder, DAY, WALK);
+
+        TickLibrary library = new TickLibrary(folder, "winfut", TickSource.METATRADER);
+
+        try {
+            TickRenko renko = new TickRenko(new Renko(10, 2), library);
+
+            renko.add(DAY);
+
+            PriceSeries first = renko.bricks();
+
+            assertSame(first, renko.bricks(),
+                    "the settled bricks were built again for a renko that did not move");
+
+            // And a fold that lays bricks does invalidate it, or the chart would
+            // stop showing what arrived.
+            session(folder, DAY.plusDays(1), WALK);
+            renko.add(DAY.plusDays(1));
+
+            assertNotSame(first, renko.bricks(),
+                    "a brick was laid and the old view came back");
+            assertTrue(renko.bricks().size() > first.size(),
+                    "the new view does not hold the bricks that were laid");
         } finally {
             library.close();
         }

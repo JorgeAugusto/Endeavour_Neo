@@ -74,7 +74,17 @@ public final class TickLibrary implements AutoCloseable {
     private final TickSource source;
 
     /**
-     * What is loaded, newest use last.
+     * What is loaded, in the order it arrived.
+     *
+     * <p><b>Insertion order, not use.</b> This said "newest use last" and the
+     * map is a plain {@code LinkedHashMap} -- the access-order constructor was
+     * never used, and {@code at} only calls {@code get}, which moves nothing.
+     * Nothing anywhere records a use.</p>
+     *
+     * <p>Nor should it: what decides the discard is {@link #keep}, and it keeps
+     * the days NEAREST the one being played. The class comment says why -- a
+     * replay walks forwards, so the session furthest in DAYS is the one least
+     * likely to be wanted next, whatever was read last.</p>
      *
      * <p>Access is synchronised on the map itself. It is touched by the loader
      * thread and by whoever is drawing, which are never the same thread.</p>
@@ -320,7 +330,19 @@ public final class TickLibrary implements AutoCloseable {
                         }
                     });
         } catch (IOException e) {
-            return List.of();
+            // WHAT WAS FOUND, and a word about why the rest is missing. Files.walk
+            // throws for a subdirectory with no permission, a circular link, a
+            // network volume that dropped -- none of which means "nothing was
+            // exported", which is what returning an empty list says. And the walk
+            // is lazy, so the throw can come halfway: the sessions already found
+            // were being discarded too.
+            //
+            // The comment above says the individual nulls do not deserve a
+            // message. This is not one of those: it is the whole listing
+            // failing, and the reader is about to be shown a shorter list of
+            // playable days with nothing to say why.
+            System.err.println(folder + ": the tick sessions could not all be"
+                    + " listed (" + e + "); showing the " + days.size() + " found");
         }
 
         days.sort(null);

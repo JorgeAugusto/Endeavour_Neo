@@ -494,5 +494,42 @@ class TickLibraryTest {
             }
         };
     }
-}
 
+    @Test
+    @DisplayName("uma varredura que falha nao vira lista vazia em silencio")
+    void aFailedScanKeepsWhatItFound() throws IOException {
+        // Files.walk throws for a subdirectory with no permission, a circular
+        // link, a network volume that dropped -- none of which means "nothing
+        // was exported", which is exactly what returning an empty list says.
+        // And the walk is lazy, so the throw can arrive halfway: the sessions
+        // already found were being thrown away with it.
+        //
+        // Read from the source, because forcing the walk to fail portably is a
+        // test about the operating system rather than about this. The comment
+        // just above the catch says the individual nulls do not deserve a
+        // message; the whole listing failing is not one of those.
+        String source = java.nio.file.Files.readString(
+                java.nio.file.Path.of("src", "main", "java", "br", "com", "jorge", "reis",
+                        "endeavourneo", "domain", "market", "TickLibrary.java"),
+                java.nio.charset.StandardCharsets.UTF_8);
+
+        int at = source.indexOf("public List<LocalDate> exported()");
+
+        assertTrue(at > 0, "exported is not where this looks");
+
+        int caught = source.indexOf("catch (IOException", at);
+
+        assertTrue(caught > at, "the scan no longer catches anything");
+
+        // The rescue is what follows the catch, up to the next member.
+        int ends = source.indexOf("    public ", caught);
+        String rescue = source.substring(caught, ends < 0 ? source.length() : ends);
+
+        assertFalse(rescue.contains("return List.of();"),
+                "a failed scan still answers with an empty list");
+        assertTrue(rescue.contains("System.err"),
+                "a failed scan still says nothing about why");
+        assertTrue(rescue.contains("days.size()"),
+                "a failed scan does not say how much it did find");
+    }
+}

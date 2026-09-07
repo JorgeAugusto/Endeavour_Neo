@@ -206,6 +206,20 @@ public final class Renko implements Aggregation {
         return reversal;
     }
 
+    /**
+     * @return how tall the brick is, and that this is a renko
+     *
+     * <p><b>Nothing here is interface text.</b> It used to return "renko sem
+     * calda" for a renko with the tails off -- the only screen string in the
+     * whole of {@code domain}, outside the resource bundle, in one language, and
+     * misspelt at that: "calda" is syrup and the word is "cauda". The layer
+     * boundary test guards imports, and this walked through it as data.</p>
+     *
+     * <p>Nothing is lost by dropping the qualifier. The interface builds its own
+     * label -- {@code PeriodCatalog} writes "11R - 50 pts" -- and {@code
+     * setWicks} carries the existing label across on purpose, so this is never
+     * asked again when the tails are switched.</p>
+     */
     @Override
     public String label() {
         // Trimmed of a pointless ".0": the brick is usually a round number of
@@ -214,7 +228,7 @@ public final class Renko implements Aggregation {
                 ? String.valueOf((long) brick)
                 : String.valueOf(brick);
 
-        return height + (wicks ? " renko" : " renko sem calda");
+        return height + " renko";
     }
 
     @Override
