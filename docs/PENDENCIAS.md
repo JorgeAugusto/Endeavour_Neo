@@ -61,10 +61,10 @@ evidência do agente, que é como as auditorias do `endeavour` sempre fizeram.
 
 ---
 
-## 3. Os 21 ALTA abertos da auditoria
+## 3. Os 47 ALTA da auditoria (6 já corrigidos)
 
 Detalhe completo em `auditoria/a1-series.md`, `a2-renko-ticks.md`,
-`a3-chartcanvas.md`, `a4-layout-eixos.md`, `a5-indicadores.md`, `a6-replay.md`. Evidência das verificadas em `auditoria/00-estado.md`.
+`a3-chartcanvas.md`, `a4-layout-eixos.md`, `a5-indicadores.md`, `a6-replay.md`, `a7a-platform.md`, `a7b-shell-series.md`, `a8a-testes-dominio.md`, `a8b-testes-interface.md`. Evidência das verificadas em `auditoria/00-estado.md`.
 
 | # | onde | o quê | verificado |
 |---|---|---|---|
@@ -89,6 +89,25 @@ Detalhe completo em `auditoria/a1-series.md`, `a2-renko-ticks.md`,
 | A6-5 | `ReplayFeed.java:150` | varredura da série inteira no `ActionListener` do combo | — |
 | A6-6 | `ReplaySessionTest.java:152` | `assertEquals(x.size(), x.size())` — tautologia | ✅ |
 | A6-7 | `ReplayRangeTest.java:179` | teto puro; apagar `MOST_SESSIONS` não quebra o teste | ✅ |
+| A7a-1 | `JobService.java:285` | `OutOfMemoryError` escapa do `catch` e vira **sucesso com valor nulo** | ✅ |
+| A7a-2 | `JobService.java:170` | trabalho cancelado não dispara callback nenhum; `isCancelled()` volta a `false` | — |
+| A7a-3 | `JobServiceTest.java:144` | `assertTrue(a \|\| b)` com `b` afirmado sozinho na linha seguinte | — |
+| A7a-4 | `LayerBoundaryTest.java:120` | só lê linhas `import `; referência qualificada passa invisível | ✅ |
+| A7a-5 | `SeriesCatalog.java:314` | a série **ajustada** recebe o rótulo `WINFUT`; as cruas viram variantes | ✅ |
+| A7b-1 | `MainWindow.java:1035` | sair pelo menu apaga todos os gráficos do workspace | ✅ **corrigido** |
+| A7b-3 | `Segmentable.java:122` | 824.881 barras varridas no `ActionListener` do combo | — |
+| A7b-4 | `MainWindow.java:362` | série que falha ao ler vira `RandomWalkSeries` sob o nome do instrumento | ✅ |
+| A7b-5 | `MainWindow.java:420` | ternário de ramos idênticos; o workspace nunca se conserta | ✅ **corrigido** |
+| A7b-6 | `SeriesWindow` | MODELESS sem registro: a última a fechar apaga o que a outra gravou | — |
+| A8a-1 | `TimeframeTest` | **nenhuma escala acima de 30 min**; `ofMinutes` não aparece no arquivo | ✅ |
+| A8a-4 | `TickRenkoTest.java:142` | `assertTrue(half < whole)` não fixa valor; lookahead de um negócio passa | ✅ |
+| A8a-7 | `SeriesMergeTest` | `joinsInOrder` lê quatro `closeAt` e **zero `timeAt`** | — |
+| A8b-1 | `BollingerBandsTest:182` | teto só; o meio honesto e o que lê a barra não fechada cabem os dois | — |
+| A8b-2 | `MovingAverageTest` | **zero testes de escala própria**; `setOwnPeriod` não aparece | — |
+| A8b-3 | `RelativeStrengthTest` | idem; escala própria só em round-trip de texto | — |
+| A8b-4 | `MovingAverageTest:130` | só shift +1; o spinner aceita −500 e `setShift` não grampeia | — |
+| A8b-5 | `SeriesSummaryTest:146` | afirma só que diferem; inverter o ternário passa | ✅ |
+| A8b-6 | `OverlayLegend` | 632 linhas, **zero testes**; reverter a correção deixa a suíte verde | ✅ |
 
 ### O padrão que se repetiu três vezes: teste que afirma só um teto
 
@@ -100,6 +119,13 @@ Três dos vinte e um ALTA são testes sem dentes, e os três têm a mesma forma 
 | `RenkoWickBoundsTest` | a calda curta do A2-2 |
 | `OwnPeriodTest.interpolationStaysBehind` | a interpolação que nunca agiu (A5-1) |
 | `ReplayRangeTest.thereIsACap` | nada ainda — mas apagar `MOST_SESSIONS` passa |
+| `LayerBoundaryTest` | qualquer referência qualificada a `ui` fora de um `import` |
+| `TickRenkoTest:142` | um negócio de lookahead por quadro no caminho dos ticks |
+| `SeriesMergeTest.joinsInOrder` | esquecer `- starts[part]` em `ConcatSeries.timeAt` |
+
+E o pior de todos não é asserção fraca, é ausência: o `TimeframeTest` **nunca
+dobra acima de 30 minutos**, então o defeito do `Timeframe:309` não tinha teste
+para atravessar.
 
 Mais um que é pior que teto: `ReplaySessionTest:152` compara uma expressão
 consigo mesma.
@@ -112,8 +138,32 @@ nenhum `assertEquals` de valor.
 
 Cinco achados são a mesma ferida em lugares diferentes — 1 M de barras varridas
 na EDT: `ChartCanvas.java:1206` (A3-1), `ChartHeader.java:359` (A4-2),
-`LineStyle.java:54` (A4-3), `StudyStack.java:121` (A5-4) e `ReplayFeed.java:150`
-(A6-5). É **uma correção só**, feita no `Viewport`, não cinco.
+`LineStyle.java:54` (A4-3), `StudyStack.java:121` (A5-4), `ReplayFeed.java:150`
+(A6-5) e `MainWindow.java:354` (A7a, o mais caro de todos). É **uma correção
+só**, feita no `Viewport`, não seis.
+
+E existe um serviço pronto para isso que ninguém usa: o `JobService` tem
+**dois `submit` no repositório inteiro**, e o javadoc de um deles
+(`MainWindow:863`) diz que ele não faz nada útil e para ser apagado quando
+houver trabalho de verdade. O trabalho de verdade são esses seis.
+
+---
+
+## 3b. As seis correções de `423d15a` estão quase todas desprotegidas
+
+| correção | teste que a segura |
+|---|---|
+| `OwnScale.smooth` | ✅ `OwnPeriodTest`, três dentes novos |
+| `OverlayLegend` | ❌ **nenhum** |
+| `JobService` | ❌ nenhum |
+| `MainWindow.exit` | ❌ `MainWindowTest:220` exercita só o `windowClosing` |
+| `MainWindow` ternário | ❌ nenhum |
+| `ReplayPanel` velocidade | ❌ nenhum |
+
+**Cinco das seis podem ser desfeitas sem que nada avise.** Dar dentes a elas vem
+antes de corrigir mais defeitos: a lição desta auditoria inteira é que correção
+sem teste é meia correção, e quatro dos sete ALTA de teste existem exatamente
+porque alguém consertou algo e não prendeu.
 
 ---
 

@@ -1,6 +1,6 @@
 # Estado da auditoria
 
-Atualizado em 06/09/2026, 17:10. Este arquivo existe para a auditoria sobreviver
+Atualizado em 06/09/2026, 18:45. **As nove áreas estão concluídas.** Este arquivo existe para a auditoria sobreviver
 a uma compactação de contexto ou a uma sessão nova: o que está aqui não depende
 de ninguém lembrar da conversa.
 
@@ -18,7 +18,11 @@ Método e partição: [../AUDITORIA.md](../AUDITORIA.md)
 | A4 — holder, layout, legenda, eixos, estilo | 5.167 | 212.208 | 3 ALTA, 9 MÉDIA, 9 BAIXA | `a4-layout-eixos.md` |
 | A5 — indicadores, estudos, painéis, diálogos | 5.259 | 238.174 | 4 ALTA, 10 MÉDIA, 10 BAIXA | `a5-indicadores.md` |
 | A6 — replay (produção + os 9 testes) | 4.034 | 201.644 | 7 ALTA, 12 MÉDIA, 7 BAIXA | `a6-replay.md` |
-| **soma** | **23.291** | **1.183.630** | **21 ALTA, 60 MÉDIA, 64 BAIXA** | |
+| A7a — platform e Launcher (+ 8 testes) | 2.229 | 217.473 | 5 ALTA, 14 MÉDIA, 11 BAIXA | `a7a-platform.md` |
+| A7b — casca, preferências, janela de séries | 5.071 | 277.987 | 8 ALTA, 15 MÉDIA, 12 BAIXA | `a7b-shell-series.md` |
+| A8a — os testes de domínio | 3.831 | 209.261 | 7 ALTA, 6 MÉDIA, 5 BAIXA | `a8a-testes-dominio.md` |
+| A8b — os testes de interface | 4.315 | 220.324 | 6 ALTA, 9 MÉDIA, 5 BAIXA | `a8b-testes-interface.md` |
+| **soma** | **38.737** | **2.108.675** | **47 ALTA, 104 MÉDIA, 97 BAIXA** | |
 
 ## Áreas pendentes
 
@@ -26,11 +30,8 @@ Método e partição: [../AUDITORIA.md](../AUDITORIA.md)
 |---|---:|---:|
 | A4 — holder, layout, legenda, eixos, estilo | 5.167 | ~310k |
 | A5 — indicadores, estudos, painéis, diálogos | 6.929 | ~415k |
-| A7a — platform e Launcher | 2.429 | ~125k |
-| A7b — shell, settings, series | 5.071 | ~260k |
-| A8a — testes de domínio | ~4.600 | ~275k |
-| A8b — testes de interface | ~8.300 | ~500k |
-| **restante** | **20.400** | **~1,0M** |
+| A8b — os testes de interface | 4.315 | ~235k |
+| **restante** | **4.315** | **~235k** |
 
 Depois das nove áreas: as **quatro lentes transversais** (EDT, tempo/lookahead,
 persistência, i18n) por `grep` dirigido, e só então a **verificação
@@ -238,6 +239,157 @@ Só `<=`, e o fixture não tem dez anos de dado — apagar `MOST_SESSIONS` do
 produto não quebra o teste. **Terceiro teste sem dentes da auditoria**, e o
 terceiro do mesmo formato: asserção de teto onde faltava a de piso.
 
+### ✅ A7a — a base AJUSTADA é a que recebe o nome canônico
+
+`SeriesCatalog.displayOf:314` tira a escala, tira o prefixo do instrumento, e usa
+o que sobra como sufixo:
+
+```java
+if (rest.startsWith(instrument)) {
+    rest = rest.substring(instrument.length());
+}
+
+String market = Messages.market(instrument);
+
+return rest.isBlank() ? market
+        : market + "-" + rest.replace("-", "").toUpperCase(Locale.ROOT);
+```
+
+Para `win-1m` — a série **ajustada por razão** — não sobra nada, então ela cai no
+ramo `rest.isBlank()` e recebe `Messages.market("win")`, que o bundle resolve na
+linha 59: `navigator.group.win = WINFUT`.
+
+| arquivo | na tela |
+|---|---|
+| `win-1m` (**ajustada**) | **WINFUT** |
+| `winfut-1m` (crua, TESTE) | WINFUT-FUT |
+| `winn-1m` (crua, BUSCA) | WINFUT-N |
+| `winfut-full-1m` (crua) | WINFUT-FULL |
+
+Está ao contrário: a base que inflava os anos antigos em até 67% é a que parece
+canônica, e as três cruas parecem variantes dela. A ajustada já saiu do
+repositório, mas a função que a batiza continua, e um workspace salvo a traz de
+volta com esse nome. **Confirmado.**
+
+### ✅ A7a — `JobService.java:285` relata OOM como sucesso
+
+```java
+} catch (Exception | StackOverflowError e) {
+    failure = e;
+} finally {
+    handle.settle(value, failure, stopped);
+```
+
+Um `OutOfMemoryError` — a falha mais provável deste aplicativo, com 1 M de
+barras — não é `Exception` nem `StackOverflowError`. Escapa do `catch`, o
+`finally` roda com `failure == null` e `value == null`, e o chamador recebe um
+**sucesso com valor nulo**. **Confirmado.**
+
+### ✅ A7a — `LayerBoundaryTest.java:120` não tem dentes
+
+```java
+if (!trimmed.startsWith("import ")) {
+    continue;
+}
+```
+
+Referência totalmente qualificada passa invisível — e **é assim que este
+repositório escreve**: `br.com.jorge.reis.endeavourneo.platform.Settings.workspace()`
+(`ReplayPanel:188`), `platform.Messages.market(...)` (`SeriesCatalog:331`). A
+regra está cumprida hoje por sorte, não por vigilância. **Quarto teste sem
+dentes da auditoria.**
+
+### ✅ A7b — sair pelo menu apaga todos os gráficos abertos
+
+```java
+private void exit() {
+    closeCharts();
+```
+
+`closeCharts` roda um fechamento por gráfico, e cada fechamento chama
+`rememberCharts`, que reescreve a lista aberta uma entrada mais curta até
+esvaziá-la. O guarda existe (`rememberCharts:253`, `if (leaving || restoring)`) e
+**o comentário dele descreve este defeito exato**: *"Closing the application
+closes every chart, and each close would rewrite this list one chart shorter
+until it was empty."* O X da barra de título arma o guarda via `prepareToLeave`;
+o menu não armava. **Confirmado. CORRIGIDO em `423d15a`.**
+
+### ✅ A7b — ternário de ramos idênticos
+
+```java
+String title = uniqueTitle(SeriesCatalog.has(name) ? series : series);
+```
+
+Os dois ramos são a mesma expressão. A guarda pertence a `asked`, porque `name`
+já caiu para `defaultName()` na linha 412 e `has(name)` é verdadeiro dos dois
+lados. **Confirmado. CORRIGIDO em `423d15a`.**
+
+### ✅ A7b — série que falha ao ler vira ruído desenhado
+
+O `catch (IOException)` de `seriesFor:362` avisa no console e no rodapé, e então
+**cai** na linha 369, `return new RandomWalkSeries(2_000, 135_000.0)`. O javadoc
+do próprio método diz que isso é *"never the answer when a series exists and
+fails to read"*. O aviso atenua, mas o gráfico desenha preços inventados sob o
+nome do instrumento. **Confirmado. NÃO corrigido** — a decisão de o que
+desenhar no lugar é dele.
+
+### ✅ A8a — `TimeframeTest` não exercita escala nenhuma acima de 30 minutos
+
+O arquivo usa `ONE_MINUTE`, `FIVE_MINUTES`, `DAILY` e `WEEKLY`. **`ofMinutes` não
+aparece uma única vez**, e é exatamente por ali que passa o defeito do
+`Timeframe:309` (escala acima de 1440 min colapsa em meia-noite). Não é asserção
+fraca: é **buraco de cobertura inteiro**. `MOST_MINUTES = 43_200` deixa o leitor
+digitar até 30 dias, e nenhum teste vai por lá. **Confirmado.**
+
+### ✅ A8a — `TickRenkoTest.java:142` não fixa valor
+
+```java
+assertTrue(half.size() < whole.size(),
+        "the half-played session drew " + half.size()
+                + " bricks, the same as the whole day");
+```
+
+Desigualdade estrita e nada mais: no fixture literal, 1 e 2 tijolos passam os
+dois. É o único teste que guarda "o replay só vê o que já chegou" no caminho
+dos ticks, e um lookahead de um negócio por quadro sobrevive a ele.
+**Confirmado.**
+
+### ✅ A8b — `SeriesSummaryTest.java:146` não diz qual é qual
+
+```java
+assertTrue(ticks != null && !ticks.equals(candles),
+        "a chart built from ticks and one built from candles read the same");
+```
+
+Afirma só que os dois textos **diferem**. Inverter o ternário do
+`SeriesSummary:75` — `fromTicks ? "summary.source.candles" : "...ticks"` —
+mantém a diferença e faz o resumo dizer "candles" para um gráfico feito de
+ticks. O próprio teste se chama *"the line that matters most"*. **Confirmado.**
+
+### ✅ A8b — `OverlayLegend` tem 632 linhas e **zero** testes
+
+`Get-ChildItem -Recurse -Filter "*Legend*"` sobre `src/test` não devolve nada.
+Apagar a correção de `423d15a` deixa os 449 testes verdes. **Confirmado.**
+
+---
+
+## As seis correções de `423d15a`: quais estão protegidas?
+
+A A8b entrou no meio do commit, releu o fonte depois dele e trocou a pergunta de
+"o defeito existe?" para "a correção está protegida?". A resposta importa mais
+que os achados:
+
+| correção | teste que a segura |
+|---|---|
+| `OwnScale.smooth` | ✅ `OwnPeriodTest`, três dentes novos |
+| `OverlayLegend` | ❌ **nenhum** — reverter deixa a suíte verde |
+| `JobService` | ❌ nenhum |
+| `MainWindow.exit` | ❌ `MainWindowTest:220` exercita só o `windowClosing` |
+| `MainWindow` ternário | ❌ nenhum |
+| `ReplayPanel` velocidade | ❌ nenhum |
+
+**Cinco das seis podem ser desfeitas sem que nada avise.**
+
 ---
 
 ## O que está LIMPO e foi conferido
@@ -254,6 +406,19 @@ degenerados guardados. **O `Reordering` resistiu** à tentativa de quebra pela
 ordem de avaliação dos argumentos. **O `Sessions` duplicado NÃO divergiu** — os
 dois usam a mesma expressão de virada de dia, então é dívida de camada, não
 ALTA.
+
+**`SeriesMap` e `RangeBar` decimam, e do jeito certo** (A7b) — o eixo é o
+**índice de pregão**: 1.494 entradas contra 824.881 barras, **552× menor**, com
+busca binária manual (`SeriesMap:126`) e aritmética pura para posicionar; o
+`RangeBar` guarda três `int`. **É o modelo para corrigir as seis varreduras na
+EDT.** A ressalva: a decimação está certa no desenho e ausente na aquisição.
+
+**Os dois bundles têm 331 chaves cada, diferença zero** nos dois sentidos (A7a),
+e as 88 chaves da área da casca existem nos dois arquivos (A7b).
+
+**Cancelar cancela mesmo nas quatro páginas de preferências** (A7b), inclusive no
+`JSpinner` (`COMMIT_OR_REVERT`). Ressalva: **não existe teste algum para
+`ui/settings`**.
 
 **O `map` e o `indexOfClosed` do `OwnScale` estão corretos** (A5) — não leem o
 futuro, conferidos passo a passo com bordas de 1 e 2 barras grossas. Os quatro
@@ -275,9 +440,17 @@ idiomas, e a extração do `LinePen` foi fiel ao `Pen` interno removido em
 | A4 | 5.167 | 212.208 | 41,1 |
 | A5 | 5.259 | 238.174 | 45,3 |
 | A6 | 4.034 | 201.644 | 50,0 |
-| | **23.291** | **1.183.630** | **50,8** |
+| A7a | 2.229 | 217.473 | 97,6 |
+| A7b | 5.071 | 277.987 | 54,8 |
+| A8a | 3.831 | 209.261 | 54,6 |
+| A8b | 4.315 | 220.324 | 51,1 |
+| | **38.737** | **2.108.675** | **54,4** |
 
-**Use 51 tokens por linha** nas projeções. O número sobe com a quantidade de
+**Use 54 tokens por linha** (nove medições), e saiba que o número varia muito: a A7a custou
+**97,6 por linha**, o dobro da média, porque o `platform/` é pequeno e cruzado —
+o agente leu 331 chaves de dois bundles, oito testes e os chamadores espalhados
+pelo projeto todo. **Área pequena e muito referenciada custa mais por linha que
+área grande e fechada.** nas projeções. O número sobe com a quantidade de
 regras a conferir e de arquivos cruzados — a estimativa inicial de 12,5 tok/linha
 errou por 4,8×.
 
