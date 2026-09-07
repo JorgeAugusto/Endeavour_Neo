@@ -19,6 +19,7 @@ package br.com.jorge.reis.endeavourneo.domain.market;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -29,6 +30,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -41,6 +43,9 @@ import org.junit.jupiter.api.io.TempDir;
 class TapeFileTest {
 
     private static final Charset ENCODING = Charset.forName("windows-1252");
+
+    /** Tag, version, day, count -- what {@code TapeFile} writes before the trades. */
+    private static final int HEADER_BYTES = 8 + Integer.BYTES + Integer.BYTES + Long.BYTES;
 
     private static final String HEAD = "Ativo;Data;Hora;Comprador;Preço;Quantidade;"
             + "Vendedor;Tipo";
@@ -297,4 +302,74 @@ class TapeFileTest {
             assertTrue(tape.hasAggressor(i));
         }
     }
+
+    /** One trade, and nobody named. */
+    private static Path nameless(Path folder) throws IOException {
+        Path file = folder.resolve("win-2026-09-01.tape");
+
+        try (TapeFile.Writer writer = new TapeFile.Writer(file, LocalDate.of(2026, 9, 1))) {
+            writer.add(9 * 3_600_000, 179_385, 500, 85, 262, Aggressor.DIRECT);
+        }
+
+        return file;
+    }
+
+    @Test
+    @DisplayName("um dicionario vazio e escrito; um dicionario ausente e recusado")
+    void theEmptyDictionaryIsWrittenAndAMissingOneIsRefused(@TempDir Path folder)
+            throws IOException {
+        // The two halves of the same defect. The writer skipped the dictionary
+        // whenever it was empty, and the reader met a file ending exactly where
+        // the trades stop -- which is ALSO what a truncated file looks like, and
+        // what a converter that writes five million trades and forgets to name
+        // the brokers produces. It read back clean with all thirty-one names
+        // gone, in a format whose whole claim is that it drops no column, and
+        // the comment guarding that branch said "a session in which nobody
+        // traded".
+        Path file = nameless(folder);
+        TickSeries tape = TapeFile.read(file);
+
+        assertEquals(1, tape.size(), "the trade did not survive an empty dictionary");
+        assertNull(tape.brokerName(85), "a name arrived from a session that named nobody");
+
+        // Now the same file with those four bytes gone: the shape the reader
+        // used to accept, and the one it must now refuse.
+        Path lost = folder.resolve("lost.tape");
+
+        byte[] whole = Files.readAllBytes(file);
+
+        Files.write(lost, Arrays.copyOf(whole, whole.length - Integer.BYTES));
+
+        IOException thrown = assertThrows(IOException.class, () -> TapeFile.read(lost));
+
+        assertTrue(thrown.getMessage().contains("no broker dictionary"), thrown.getMessage());
+        assertTrue(thrown.getMessage().contains("lost.tape"), thrown.getMessage());
+    }
+
+    @Test
+    @DisplayName("um agressor zero e recusado na leitura, com o nome do arquivo")
+    void aZeroAggressorIsRefusedWhereTheFileIs(@TempDir Path folder) throws IOException {
+        // The header promises a byte that is an Aggressor and never zero, and
+        // nothing enforced it. A zero became the index -1 inside aggressorAt and
+        // threw ArrayIndexOutOfBoundsException -- a RuntimeException, so it went
+        // straight through TickLibrary.queue, which catches IOException, and
+        // surfaced later on the painting or replay thread with nothing left to
+        // say which file it came from.
+        Path file = nameless(folder);
+        byte[] whole = Files.readAllBytes(file);
+
+        // The aggressor is the last byte of the record: millis, price, quantity,
+        // buyer, seller, then this.
+        whole[HEADER_BYTES + TapeFile.RECORD_BYTES - 1] = 0;
+
+        Path damaged = folder.resolve("damaged.tape");
+
+        Files.write(damaged, whole);
+
+        IOException thrown = assertThrows(IOException.class, () -> TapeFile.read(damaged));
+
+        assertTrue(thrown.getMessage().contains("damaged.tape"), thrown.getMessage());
+        assertTrue(thrown.getMessage().contains("aggressor 0"), thrown.getMessage());
+    }
 }
+

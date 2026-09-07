@@ -19,7 +19,6 @@ package br.com.jorge.reis.endeavourneo.domain.market;
 
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneId;
 
 /**
  * The path a bar really took, from the exchange's own ticks.
@@ -41,21 +40,14 @@ public final class RecordedTicks implements TickPath {
 
     private final TickLibrary library;
 
-    private final ZoneId zone;
-
     private final TickPath fallback;
 
     /**
      * @param fallback what to use where there are no ticks, or null to refuse
      */
     public RecordedTicks(TickLibrary library, TickPath fallback) {
-        this(library, fallback, ZoneId.systemDefault());
-    }
-
-    public RecordedTicks(TickLibrary library, TickPath fallback, ZoneId zone) {
         this.library = library;
         this.fallback = fallback;
-        this.zone = zone;
     }
 
     /** @return whether that bar can be drawn from real ticks right now */
@@ -98,7 +90,7 @@ public final class RecordedTicks implements TickPath {
             return fallback == null ? null : fallback.pathFor(series, index);
         }
 
-        double[] path = new double[count];
+        double[] traded = new double[count];
         int at = 0;
 
         for (int i = first; i < ticks.size() && ticks.timeAt(i) < to; i++) {
@@ -106,8 +98,53 @@ public final class RecordedTicks implements TickPath {
             // and animating a bar down to zero and back would be a spike no
             // trade made. See TickBars for what this cost.
             if (ticks.hasLast(i) && ticks.lastAt(i) > 0) {
-                path[at++] = ticks.lastAt(i);
+                traded[at++] = ticks.lastAt(i);
             }
+        }
+
+        return bracketed(traded, series.openAt(index), series.closeAt(index));
+    }
+
+    /**
+     * @return the trades with the bar's own open in front and its close behind
+     *
+     * <p>What {@link TickPath#pathFor} publishes: <b>opening price first and
+     * closing price last</b>. The recorded trades do not honour that on their
+     * own and have no reason to -- the candles are folded from the minute base
+     * and the ticks come from a separate export, two sources that need not
+     * agree on the ends of a minute. {@link SyntheticTicks} does honour it,
+     * so the two implementations of one interface disagreed about the contract
+     * the interface exists to state.</p>
+     *
+     * <p>Visible: the forming bar animated up to the last recorded trade and
+     * then SNAPPED to the stored close the instant it completed -- once a bar,
+     * all session, on exactly the days whose ticks we have.</p>
+     *
+     * <p>Bracketed rather than overwritten. Replacing the first and last trades
+     * would throw two real prices away, and either of them can be the bar's
+     * high or its low.</p>
+     */
+    private static double[] bracketed(double[] traded, double open, double close) {
+        boolean ahead = Double.isFinite(open) && traded[0] != open;
+        boolean behind = Double.isFinite(close) && traded[traded.length - 1] != close;
+
+        if (!ahead && !behind) {
+            return traded;
+        }
+
+        double[] path = new double[traded.length + (ahead ? 1 : 0) + (behind ? 1 : 0)];
+        int at = 0;
+
+        if (ahead) {
+            path[at++] = open;
+        }
+
+        System.arraycopy(traded, 0, path, at, traded.length);
+
+        at += traded.length;
+
+        if (behind) {
+            path[at] = close;
         }
 
         return path;
@@ -153,7 +190,22 @@ public final class RecordedTicks implements TickPath {
         return found;
     }
 
-    private LocalDate dayOf(long when) {
-        return Instant.ofEpochMilli(when).atZone(zone).toLocalDate();
+    /**
+     * @return which session that instant belongs to
+     *
+     * <p><b>The exchange's zone, asked for once and never held.</b> This used to
+     * carry a zone of its own, handed in at construction, and it decided only
+     * WHICH FILE to open: the session inside computed its own midnight in the
+     * machine's zone regardless. On a machine set to anything but the market's
+     * the two disagreed, so a bar was matched to a session whose ticks were
+     * hours away from it, the window {@code [from, to)} caught none of them,
+     * and every bar fell through to the synthetic walk -- silently, because
+     * "no ticks for this bar" is a normal answer.</p>
+     *
+     * <p>One zone now, {@link Timeframe#defaultZone}, read by this and by the
+     * session alike. Two places that must agree cannot be given two answers.</p>
+     */
+    private static LocalDate dayOf(long when) {
+        return Instant.ofEpochMilli(when).atZone(Timeframe.defaultZone()).toLocalDate();
     }
 }

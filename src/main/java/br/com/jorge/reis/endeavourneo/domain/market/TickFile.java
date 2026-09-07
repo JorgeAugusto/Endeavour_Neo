@@ -27,7 +27,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.Arrays;
 
 /**
@@ -391,7 +390,16 @@ public final class TickFile {
 
             // Worked out once. Doing it per tick would call the calendar 4,4
             // million times to produce the same number.
-            this.midnight = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli();
+            //
+            // THE EXCHANGE'S ZONE, not the machine's. The file stores a day and
+            // a count of milliseconds since ITS midnight -- local wall time with
+            // no zone in it -- so whoever reads it decides which midnight that
+            // was. Reading it in the machine's zone put every tick of a session
+            // hours away from the bars of the same session on any machine not
+            // set to the market, and nothing said so: RecordedTicks simply found
+            // no ticks in the bar's window and drew the synthetic walk.
+            this.midnight =
+                    date.atStartOfDay(Timeframe.defaultZone()).toInstant().toEpochMilli();
         }
 
         @Override

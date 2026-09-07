@@ -26,7 +26,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -50,11 +49,19 @@ import java.util.Map;
  *          buyer      short, unsigned, the broker's code
  *          seller     short, unsigned
  *          aggressor  byte, an {@link Aggressor} and never zero
- * brokers  count      int
+ * brokers  count      int, always written, zero included
  *          code       short, unsigned
  *          length     short, the name's bytes
  *          name       UTF-8
  * </pre>
+ *
+ * <p><b>The count is written even when it is zero</b>, which is what separates
+ * "this session named no brokers" from "this file lost its dictionary". It used
+ * to be skipped on an empty dictionary, and the reader met a file ending exactly
+ * where the trades stop -- the same shape either way. A converter that wrote
+ * five million trades and forgot to name the brokers produced a file that read
+ * back clean with every name gone, in a format whose whole point is to drop no
+ * column.</p>
  *
  * <h2>Why the brokers are at the END</h2>
  *
@@ -85,6 +92,14 @@ public final class TapeFile {
     private static final byte[] MAGIC = "ENDVTAPE".getBytes(StandardCharsets.US_ASCII);
 
     private static final int VERSION = 1;
+
+    /**
+     * The aggressors, held once.
+     *
+     * <p>{@code values()} clones its array on every call, and this is asked per
+     * trade over sessions of five million.</p>
+     */
+    private static final Aggressor[] KINDS = Aggressor.values();
 
     private static final int HEADER_BYTES = 8 + Integer.BYTES + Integer.BYTES + Long.BYTES;
 
@@ -171,6 +186,21 @@ public final class TapeFile {
                     buyer[at] = buffer.getShort() & 0xFFFF;
                     seller[at] = buffer.getShort() & 0xFFFF;
                     aggressor[at] = buffer.get();
+
+                    // Checked HERE, where the file is still in hand. The header
+                    // promises a byte that is an Aggressor and never zero, and
+                    // nothing enforced it: a zero -- another version, a converter
+                    // with a bug, a damaged sector -- became the index -1 and
+                    // threw ArrayIndexOutOfBoundsException out of aggressorAt,
+                    // which is a RuntimeException, so it walked straight through
+                    // TickLibrary.queue (that catches IOException) and blew up
+                    // later on the painting or replay thread, far from the file
+                    // that caused it. Refusing the file on read, with its name
+                    // in the message, is what MarketFile and TickFile do.
+                    if (aggressor[at] < 1 || aggressor[at] > KINDS.length) {
+                        throw new IOException(file + ": trade " + at + " says aggressor "
+                                + aggressor[at] + ", and there are " + KINDS.length);
+                    }
                 }
             }
 
@@ -184,10 +214,15 @@ public final class TapeFile {
         Map<Integer, String> names = new LinkedHashMap<>();
 
         if (channel.size() == at) {
-            // A session in which nobody traded. Legal, and not worth an
-            // exception: the trades are the file, and a dictionary of none is
-            // what a session of none has.
-            return names;
+            // NOT "a session in which nobody traded", which is what this said
+            // and what it was reached by only in a writer that no longer
+            // exists: the count is written even when it is zero, so a
+            // well-formed file always has four bytes here. Ending at the last
+            // trade means the dictionary never got written -- a truncated file,
+            // or one from a converter with this bug -- and reading on would
+            // hand back a session whose thirty-one brokers are all null.
+            throw new IOException(file + ": the trades end at " + at
+                    + " and the file ends with them: no broker dictionary");
         }
 
         channel.position(at);
@@ -343,11 +378,14 @@ public final class TapeFile {
             }
         }
 
+        /**
+         * Writes the dictionary, <b>even when it is empty</b>.
+         *
+         * <p>Returning early on an empty one made "no brokers were named" and
+         * "the dictionary was never written" the same file. Four bytes of zero
+         * cost nothing and tell the reader which of the two it is holding.</p>
+         */
         private void writeBrokers() throws IOException {
-            if (brokers.isEmpty()) {
-                return;
-            }
-
             ByteBuffer out = ByteBuffer.allocate(Integer.BYTES).order(ByteOrder.BIG_ENDIAN);
 
             out.putInt(brokers.size());
@@ -397,8 +435,6 @@ public final class TapeFile {
     /** What {@link #read} hands back. */
     private static final class Session implements TickSeries {
 
-        private static final ZoneId ZONE = ZoneId.systemDefault();
-
         private final LocalDate date;
 
         private final int[] millis;
@@ -427,7 +463,15 @@ public final class TapeFile {
             this.seller = seller;
             this.aggressor = aggressor;
             this.brokers = brokers;
-            this.midnight = date.atStartOfDay(ZONE).toInstant().toEpochMilli();
+
+            // The EXCHANGE's zone, and read now rather than at class load. The
+            // file stores a day and milliseconds since its midnight, with no
+            // zone in it; the machine's zone is not that midnight unless the
+            // machine happens to be set to the market. See TickFile, which had
+            // the same defect, and Timeframe.useZone, which is where the one
+            // answer is set.
+            this.midnight =
+                    date.atStartOfDay(Timeframe.defaultZone()).toInstant().toEpochMilli();
         }
 
         @Override
@@ -528,9 +572,19 @@ public final class TapeFile {
             return true;
         }
 
+        /**
+         * @return who crossed the spread on that trade
+         *
+         * <p>Off {@link TapeFile#KINDS} and not {@code Aggressor.values()}, which clones
+         * the array on every call: {@code TapeFileTest} alone walks a whole
+         * session asking this, and a real session is five million trades.</p>
+         *
+         * <p>The subtraction is safe because {@link TapeFile#read} refuses any file
+         * whose aggressor byte is outside the enum -- see there.</p>
+         */
         @Override
         public Aggressor aggressorAt(int index) {
-            return Aggressor.values()[aggressor[index] - 1];
+            return KINDS[aggressor[index] - 1];
         }
 
         @Override
