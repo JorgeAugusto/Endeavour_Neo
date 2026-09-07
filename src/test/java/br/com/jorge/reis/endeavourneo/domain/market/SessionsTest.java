@@ -288,4 +288,44 @@ class SessionsTest {
         assertTrue(Sessions.of(null, SAO_PAULO).isEmpty());
         assertTrue(Sessions.of(days(none, 4), SAO_PAULO).isEmpty());
     }
+
+    @Test
+    @DisplayName("a sobrecarga de um argumento responde no fuso do MERCADO")
+    void theOneArgumentOverloadUsesTheMarketZone() {
+        // Every fold in the project reads Timeframe.defaultZone, which the
+        // launcher sets from data.zone -- and this fell back to the machine.
+        // The five production callers all use this overload; the two-argument
+        // one is called from a test and nowhere else, which is the same trap
+        // Timeframe.useZone documents about itself.
+        //
+        // Brisbane is UTC+10 with no daylight saving, so 09:00 in Sao Paulo is
+        // 22:00 there and the session runs past local midnight -- which is the
+        // whole point: three sessions become more than three dates, and every
+        // one of them is a day the market never traded.
+        ZoneId was = Timeframe.defaultZone();
+
+        try {
+            Timeframe.useZone(SAO_PAULO);
+
+            int inTheMarket = Sessions.of(days(new int[]{57 * 3}, 57)).size();
+
+            Timeframe.useZone(ZoneId.of("Australia/Brisbane"));
+
+            int tenHoursEast = Sessions.of(days(new int[]{57 * 3}, 57)).size();
+
+            assertEquals(3, inTheMarket, "three sessions were not three days");
+            assertTrue(tenHoursEast > inTheMarket,
+                    "the session did not cross local midnight, so this fixture "
+                            + "proves nothing: " + tenHoursEast + " dates");
+
+            // And back in the market zone it is three again, so the difference
+            // above is the zone and not the fixture.
+            Timeframe.useZone(SAO_PAULO);
+
+            assertEquals(3, Sessions.of(days(new int[]{57 * 3}, 57)).size());
+        } finally {
+            Timeframe.useZone(was);
+            Sessions.forget();
+        }
+    }
 }

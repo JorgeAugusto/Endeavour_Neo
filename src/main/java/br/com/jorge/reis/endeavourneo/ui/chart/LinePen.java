@@ -152,6 +152,14 @@ public final class LinePen {
 
         Sample(LinePen pen) {
             this.pen = pen;
+
+            // ONCE, HERE. This used to run inside paintComponent, and
+            // JComponent.setBorder compares by reference while
+            // createLineBorder returns a new object every call: each paint
+            // installed a different border, which asked for another paint. An
+            // endless repaint loop on the interface thread for as long as the
+            // moving-average, RSI or stochastic dialog stayed open.
+            setBorder(BorderFactory.createLineBorder(ChartColors.grid()));
         }
 
         @Override
@@ -166,8 +174,6 @@ public final class LinePen {
             try {
                 g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
                         RenderingHints.VALUE_ANTIALIAS_ON);
-
-                setBorder(BorderFactory.createLineBorder(ChartColors.grid()));
 
                 if (!isEnabled()) {
                     // Nothing drawn. A sample of a line that will not be drawn

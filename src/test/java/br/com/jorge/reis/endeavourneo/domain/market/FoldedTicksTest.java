@@ -132,4 +132,44 @@ class FoldedTicksTest {
         assertEquals(3, FoldedTicks.over(folder, "win", TickSource.METATRADER,
                 List.of(tuesday), ZONE).size());
     }
+
+    @Test
+    @DisplayName("um pregao exportado e ilegivel nao some calado")
+    void anUnreadableSessionIsNotSilent(@TempDir Path folder) throws IOException {
+        // Two answers used to be one. A day that was never exported comes back
+        // empty and that is the truth; a day that WAS exported and will not read
+        // came back empty too, so a corrupt session vanished from the middle of
+        // a chart with no gap and no word -- swallowing exactly the refusals
+        // TapeFile and TickFile spend their guards to produce.
+        LocalDate day = LocalDate.of(2021, 1, 4);
+
+        session(folder, day, 3, 118_000);
+
+        Path file = TickSource.METATRADER.fileFor(folder, "win", day);
+        byte[] whole = java.nio.file.Files.readAllBytes(file);
+
+        // The header survives -- so the file still says it is that session --
+        // and the body is cut in the middle of a tick.
+        java.nio.file.Files.write(file, java.util.Arrays.copyOf(whole, whole.length - 7));
+
+        java.io.PrintStream was = System.err;
+        java.io.ByteArrayOutputStream said = new java.io.ByteArrayOutputStream();
+
+        try {
+            System.setErr(new java.io.PrintStream(said, true,
+                    java.nio.charset.StandardCharsets.UTF_8));
+
+            assertEquals(0, FoldedTicks.day(folder, "win", TickSource.METATRADER,
+                    day, ZONE).size(), "a truncated session came back with bars");
+        } finally {
+            System.setErr(was);
+        }
+
+        String message = said.toString(java.nio.charset.StandardCharsets.UTF_8);
+
+        assertTrue(message.contains(file.getFileName().toString()),
+                "the file that will not read was not named: " + message);
+        assertTrue(!message.isBlank(),
+                "an exported session was dropped from the chart without a word");
+    }
 }

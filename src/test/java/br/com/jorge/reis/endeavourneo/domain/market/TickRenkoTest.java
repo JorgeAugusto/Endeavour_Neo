@@ -557,4 +557,38 @@ class TickRenkoTest {
             library.close();
         }
     }
+
+    @Test
+    @DisplayName("addUpTo e terminal: add depois nao dobra o pregao de novo")
+    void addUpToIsTerminalForThatDay(@TempDir Path folder) throws IOException {
+        // The javadoc used to say the session was not marked as folded because
+        // the rest of it was still to come, and to call add() once the day was
+        // over. Following that instruction folds the WHOLE session again on top
+        // of what addUpTo already laid: add reads the file from the start, the
+        // ruler carries, and the morning is laid twice with every brick after it
+        // displaced. The guard in add that would have stopped it -- "already
+        // folded, do nothing" -- was the very thing addUpTo declined to arm.
+        session(folder, DAY, WALK);
+
+        TickLibrary library = new TickLibrary(folder, "winfut", TickSource.METATRADER);
+
+        try {
+            TickSeries ticks = library.load(DAY);
+            long halfway = ticks.timeAt(ticks.size() / 2);
+
+            TickRenko renko = new TickRenko(new Renko(10, 2), library);
+
+            renko.addUpTo(DAY, halfway);
+
+            int afterHalf = renko.size();
+
+            assertTrue(afterHalf > 0, "the fixture laid no brick at all");
+
+            assertFalse(renko.add(DAY), "add folded a day that addUpTo had finished");
+            assertEquals(afterHalf, renko.size(),
+                    "the session was folded a second time on top of itself");
+        } finally {
+            library.close();
+        }
+    }
 }

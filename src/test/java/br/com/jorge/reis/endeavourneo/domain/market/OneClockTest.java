@@ -150,14 +150,27 @@ class OneClockTest {
             ReplaySeries replay = new ReplaySeries(day, 0, 0,
                     new RecordedTicks(library, null));
 
-            for (int frame = 0; frame < 1_400 && replay.size() == 1; frame++) {
+            // COUNTED, and asserted at the end. The loop used to be guarded by
+            // `replay.size() == 1`, which is FALSE before the first frame --
+            // nothing is forming until market time is spent -- so it never ran
+            // once and this test asserted nothing at all, ever. It went green
+            // through the whole defect it was written for.
+            int checked = 0;
+
+            for (int frame = 0; frame < 1_400; frame++) {
                 replay.advanceMarketTime(40);
+
+                if (replay.size() != 1) {
+                    break;
+                }
 
                 int folded = trades.countUntil(replay.clock() + 1);
 
                 if (folded == 0) {
                     continue;
                 }
+
+                checked++;
 
                 double high = Double.NEGATIVE_INFINITY;
                 double low = Double.POSITIVE_INFINITY;
@@ -167,17 +180,27 @@ class OneClockTest {
                     low = Math.min(low, trades.closeAt(i));
                 }
 
-                // The candle may sit ONE trade behind: the renko is asked about
-                // the clock inclusive and the candle takes a price when the
-                // clock reaches it. What it may not do is lag by hundreds, which
-                // is what walking by position did.
-                assertTrue(replay.highAt(0) >= high - 5.0,
-                        "frame " + frame + ": the renko has seen " + high
-                                + " and the candle is still at " + replay.highAt(0));
-                assertTrue(replay.lowAt(0) <= low + 5.0,
-                        "frame " + frame + ": the renko has seen " + low
-                                + " and the candle is still at " + replay.lowAt(0));
+                // BOTH SIDES. The first version of this asserted only that the
+                // candle was not BEHIND, so adding five seconds to the replay
+                // clock -- showing the future -- passed it unchanged. A one-way
+                // assertion about two rulers agreeing is not about them
+                // agreeing at all.
+                //
+                // And exactly, with no slack: countUntil(clock() + 1) selects
+                // the trades with time <= now, and spendStamped takes the
+                // prices with when <= now. They are the same set, so the candle
+                // and the renko have seen the same trades and nothing else.
+                assertEquals(high, replay.highAt(0), 1e-9,
+                        "frame " + frame + ": the renko has seen up to " + high
+                                + " and the candle shows " + replay.highAt(0));
+                assertEquals(low, replay.lowAt(0), 1e-9,
+                        "frame " + frame + ": the renko has seen down to " + low
+                                + " and the candle shows " + replay.lowAt(0));
             }
+
+            assertTrue(checked > 100,
+                    "the loop compared the two panels only " + checked
+                            + " times: it is not exercising the minute");
         } finally {
             library.close();
         }

@@ -1410,7 +1410,15 @@ public final class ChartCanvas extends JComponent {
             if (growing.advancing() != null && day.isBefore(growing.advancing())) {
                 // The replay was stopped and started somewhere earlier. The
                 // renko cannot walk backwards, so it is built again from
-                // scratch rather than carried into a past it already left.
+                // scratch rather than carried into a past it already left --
+                // and "built again" has to actually happen. It did not: this
+                // returned false and nothing rebuilt anything, so the caller
+                // fell back to the candle fold and left fromTicks saying the
+                // bricks came from ticks. Permanently, until the chart was
+                // reopened.
+                stopGrowing();
+                refold();
+
                 return false;
             }
 
@@ -1430,7 +1438,14 @@ public final class ChartCanvas extends JComponent {
                 // to show. This used to rebuild the whole view anyway -- every
                 // brick copied into a new series, twenty-five times a second,
                 // for a chart that had not changed.
-                return false;
+                //
+                // TRUE, not false. The renko is still good and still on screen;
+                // false is the answer for "this renko has to be abandoned", and
+                // returning it here made a quiet frame look like a failure --
+                // the caller swapped the tick renko for the candle renko, which
+                // lays 5% to 23% more bricks, and fromTicks went on claiming
+                // otherwise.
+                return true;
             }
         } catch (java.io.IOException | IllegalArgumentException e) {
             // A session that will not read, or an order this renko cannot take.
@@ -2173,7 +2188,15 @@ public final class ChartCanvas extends JComponent {
 
         boolean byDays = axisSpeaksInDays(viewport);
 
-        for (int i = viewport.firstBar(); i < viewport.lastBar() && i < series.size(); i++) {
+        // A PIXEL COLUMN AT A TIME, not a bar: with the default window of a
+        // hundred thousand bars this built a ZonedDateTime per bar per frame,
+        // and the label is thrown away the moment it touches the previous one.
+        // The two style classes already step this way, and Viewport.barsPerColumn
+        // exists for exactly this.
+        int perColumn = Math.max(1, viewport.barsPerColumn());
+
+        for (int i = viewport.firstBar(); i < viewport.lastBar() && i < series.size();
+                i += perColumn) {
             ZonedDateTime time = Instant.ofEpochMilli(series.timeAt(i)).atZone(zone);
             long bucket = axisBucket(time, step);
 
@@ -2256,7 +2279,11 @@ public final class ChartCanvas extends JComponent {
 
         java.time.LocalDate current = null;
 
-        for (int i = viewport.firstBar(); i <= limit; i++) {
+        // Same reason as the time axis above: the band is dropped the moment
+        // it is too narrow for its own name, so the work per bar is thrown away.
+        int perColumn = Math.max(1, viewport.barsPerColumn());
+
+        for (int i = viewport.firstBar(); i <= limit; i += perColumn) {
             java.time.LocalDate day = null;
 
             if (i < limit) {

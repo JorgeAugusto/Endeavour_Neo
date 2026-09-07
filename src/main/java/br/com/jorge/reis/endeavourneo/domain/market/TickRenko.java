@@ -319,11 +319,28 @@ public final class TickRenko {
      * @return whether anything was added
      *
      * <p>For the session being played: only the ticks up to the moment on the
-     * clock. The session is NOT marked as folded, because the rest of it is
-     * still to come — call {@link #add} once the day is over.</p>
+     * clock.</p>
+     *
+     * <p><b>TERMINAL for that day.</b> The javadoc used to say the session was
+     * not marked as folded because the rest of it was still to come, and to
+     * call {@link #add} once the day was over. Following that instruction folds
+     * the WHOLE session again on top of what this already laid: {@code add}
+     * reads the file from the start, and the ruler carries, so the morning is
+     * laid twice and every brick after it is displaced. The guard in {@code add}
+     * that would have stopped it -- "already folded, do nothing" -- was the very
+     * thing this method declined to arm.
+     *
+     * <p>What a replay wants is {@link #advance}, which keeps its place in the
+     * session and carries on from it. This is for folding a session up to an
+     * instant and being done with it.</p>
      */
     public boolean addUpTo(LocalDate day, long when) throws IOException {
         TickSeries session = library.load(day);
+
+        // Marked whatever happens, including for a day with no ticks: what this
+        // promises is that the day will not be folded again, and a day that
+        // added nothing is still a day this was asked about.
+        folded.add(day);
 
         if (session == null || session.size() == 0) {
             return false;

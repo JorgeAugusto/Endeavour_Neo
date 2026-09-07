@@ -216,6 +216,41 @@ E depois as quatro lentes transversais, que **não releem os arquivos**: recebem
 padrões de `grep` e leem ±40 linhas em volta de cada ocorrência, mais a lista do
 que as áreas já acharam.
 
+### O que a auditoria II já entregou
+
+| área | linhas lidas | ALTA | MÉDIA | BAIXA |
+|---|---:|---:|---:|---:|
+| B1 séries e formatos | 4.527 | 2 | 11 | 8 |
+| B2 renko e replay | 2.774 | 2 | 10 | 8 |
+| B3 `ChartCanvas` | 2.983 | 2 | 8 | 9 |
+| B4 moldura | 8.198 | 1 | 13 | 17 |
+| B5 indicadores | 4.375 | 1 | 9 | 8 |
+| B8a testes de domínio | 7.620 | 4 | 9 | 6 |
+| | | **12** | **60** | **56** |
+
+**Vale mais que a contagem:** a segunda passada achou defeito em código que eu
+escrevi nesta mesma noite, e achou-o porque não sabia que eu o tinha escrito.
+
+- **B3-1 e B3-9** dizem que duas das minhas mudanças no `ChartCanvas` abriram
+  caso novo. B3-1 é grave: `extendBricks` passou a devolver `false` tanto para
+  "não consegui" quanto para "nada mudou", e quem lê entende o primeiro — troca
+  o renko de ticks pelo de candles, que assenta de 5% a 23% mais tijolos, e
+  `fromTicks` continua dizendo que veio dos ticks.
+- **B2-1 e B8a-1** dizem que o `OneClockTest` que escrevi para provar a
+  correção do L2-3 **afirma só um lado**: ele verifica que o candle não está
+  atrás do renko, então adiantar o relógio — mostrar o futuro, que é o defeito
+  que a classe existe para impedir — passava intacto.
+- **B1-2** é o `FoldedTicks` de ontem à noite engolindo `IOException`: um pregão
+  exportado e ilegível sumia do meio do gráfico sem buraco e sem palavra.
+- **B8a-4** é a melhor delas e não é sobre código novo: **nenhum teste do
+  domínio lê máxima, mínima ou volume de uma barra FECHADA do replay**. As duas
+  fixtures tinham abertura = máxima = mínima = fechamento, então trocar
+  `highAt` por `lowAt` dentro do `ReplaySeries` — virar todo o gráfico de
+  história de cabeça para baixo — deixava a suíte inteira verde.
+
+Isso é o argumento inteiro a favor de reauditar em vez de continuar corrigindo
+a lista velha, e ele apareceu sozinho.
+
 ---
 
 ## Diário — cada passo, com o commit

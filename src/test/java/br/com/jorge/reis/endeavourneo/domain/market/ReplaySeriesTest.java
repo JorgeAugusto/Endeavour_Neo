@@ -292,4 +292,92 @@ class ReplaySeriesTest {
         assertTrue(later - started < 60_000,
                 "a quarter of a bar moved the clock a whole bar: " + (later - started));
     }
+
+    /** A day whose four numbers are all different, and whose volume is real. */
+    private static PriceSeries shaped() {
+        return new PriceSeries() {
+
+            @Override
+            public int size() {
+                return 6;
+            }
+
+            @Override
+            public long timeAt(int index) {
+                return 1_756_000_000_000L + index * 60_000L;
+            }
+
+            @Override
+            public double openAt(int index) {
+                return 100 + index * 10;
+            }
+
+            @Override
+            public double highAt(int index) {
+                return 107 + index * 10;
+            }
+
+            @Override
+            public double lowAt(int index) {
+                return 98 + index * 10;
+            }
+
+            @Override
+            public double closeAt(int index) {
+                return 103 + index * 10;
+            }
+
+            @Override
+            public double volumeAt(int index) {
+                return 1_000 + index;
+            }
+        };
+    }
+
+    @Test
+    @DisplayName("uma barra FECHADA devolve os quatro numeros guardados, e o volume")
+    void aClosedBarIsTheStoredBar() {
+        // Every fixture in this file had open == high == low == close, so
+        // swapping highAt for lowAt inside ReplaySeries -- turning every history
+        // candle upside down -- kept the whole suite green. Four numbers that
+        // are all different is the only fixture that can tell them apart.
+        PriceSeries day = shaped();
+        ReplaySeries replay = new ReplaySeries(day, 4);
+
+        for (int i = 0; i < 4; i++) {
+            assertEquals(day.openAt(i), replay.openAt(i), 1e-9, "open at " + i);
+            assertEquals(day.highAt(i), replay.highAt(i), 1e-9, "high at " + i);
+            assertEquals(day.lowAt(i), replay.lowAt(i), 1e-9, "low at " + i);
+            assertEquals(day.closeAt(i), replay.closeAt(i), 1e-9, "close at " + i);
+            assertEquals(day.volumeAt(i), replay.volumeAt(i), 1e-9, "volume at " + i);
+        }
+    }
+
+    @Test
+    @DisplayName("a barra em formacao cresce entre os extremos, e nunca passa deles")
+    void theFormingBarStaysInsideTheStoredOne() {
+        // And the other half: while a bar forms it may show less than the bar
+        // holds, and never more. A forming high above the stored high is a price
+        // the minute did not reach.
+        PriceSeries day = shaped();
+        ReplaySeries replay = new ReplaySeries(day, 0, 0,
+                (bars, index) -> new double[]{
+                    bars.openAt(index), bars.lowAt(index),
+                    bars.highAt(index), bars.closeAt(index)});
+
+        for (int frame = 0; frame < 300; frame++) {
+            replay.advanceMarketTime(1_000);
+
+            int last = replay.size() - 1;
+
+            if (last < 0 || last >= day.size()) {
+                continue;
+            }
+
+            assertTrue(replay.highAt(last) <= day.highAt(last) + 1e-9,
+                    "frame " + frame + ": the forming bar went above the minute high");
+            assertTrue(replay.lowAt(last) >= day.lowAt(last) - 1e-9,
+                    "frame " + frame + ": the forming bar went below the minute low");
+        }
+    }
 }

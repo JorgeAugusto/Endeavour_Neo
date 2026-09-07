@@ -57,9 +57,23 @@ public final class Sessions {
     /**
      * @param series the bars to walk; null is an empty answer, not a fault
      * @return the days it holds, in order
+     *
+     * <p><b>The market's zone, not the machine's.</b> Every fold in the project
+     * reads {@link Timeframe#defaultZone}, which the launcher sets from {@code
+     * data.zone}; this fell back to the machine and the five production callers
+     * all use this overload -- the two-argument one is called from a test and
+     * nowhere else, which is the same trap {@code Timeframe.useZone} documents
+     * about itself.</p>
+     *
+     * <p>East of about UTC+6 the WIN session, 09:00 to 18:25 in Sao Paulo,
+     * crosses local midnight: 1.494 sessions become some 2.900 dates. The renko
+     * then refuses to build because a session on screen "has no ticks", the
+     * transport offers days that never traded, and the summary shows twice the
+     * sessions. And the error is CONSISTENT, because the cache keys on the zone
+     * -- which makes it harder to notice, not easier.</p>
      */
     public static NavigableSet<LocalDate> of(PriceSeries series) {
-        return of(series, ZoneId.systemDefault());
+        return of(series, Timeframe.defaultZone());
     }
 
     /**
@@ -115,7 +129,7 @@ public final class Sessions {
             return new TreeSet<>();
         }
 
-        ZoneId at = zone == null ? ZoneId.systemDefault() : zone;
+        ZoneId at = zone == null ? Timeframe.defaultZone() : zone;
         int size = series.size();
         Answer known = ANSWERED.get(series);
 

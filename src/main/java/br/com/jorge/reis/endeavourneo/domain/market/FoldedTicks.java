@@ -83,6 +83,12 @@ public final class FoldedTicks {
      * <p>Empty rather than an exception, and empty rather than bars from
      * somewhere else: a chart of the ticks shows ticks, and where there are none
      * it shows nothing.</p>
+     *
+     * <p><b>A file that IS there and will not read is a different answer.</b> It
+     * comes back empty too -- the caller has one series to draw and no way to
+     * show a hole -- but it says so, because a corrupt session vanishing from
+     * the middle of a chart with nothing said is the failure this format spends
+     * its refusals to avoid.</p>
      */
     public static PriceSeries day(Path folder, String instrument, TickSource source,
             LocalDate day, ZoneId zone) {
@@ -95,6 +101,15 @@ public final class FoldedTicks {
         try {
             return Timeframe.ONE_MINUTE.fold(TickBars.of(source.read(file)), zone);
         } catch (IOException e) {
+            // NOT THE SAME as the day above. That one was never exported and an
+            // empty series is the truth; this one WAS exported and will not
+            // read, and answering with the same silence takes a corrupt session
+            // out of the middle of a chart with no gap and no word -- and
+            // swallows exactly the refusals TapeFile and TickFile were built to
+            // produce, each of which names the file and what is wrong with it.
+            System.err.println(file + ": exported and unreadable, so it is missing"
+                    + " from the chart (" + e + ")");
+
             return PriceSeries.empty();
         }
     }
