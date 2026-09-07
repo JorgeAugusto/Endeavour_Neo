@@ -577,14 +577,6 @@ public final class SlowStochastic implements Overlay {
                 continue;
             }
 
-            if (kind == MovingAverage.Kind.EXPONENTIAL) {
-                previous = Double.isNaN(previous) ? from[i]
-                        : from[i] * weight + previous * (1.0 - weight);
-                into[i] = previous;
-
-                continue;
-            }
-
             if (held == span) {
                 // Full: the oldest is where the next one goes.
                 sum -= window[next];
@@ -598,6 +590,27 @@ public final class SlowStochastic implements Overlay {
 
             if (held < average) {
                 into[i] = Double.NaN;
+
+                continue;
+            }
+
+            if (kind == MovingAverage.Kind.EXPONENTIAL) {
+                // AFTER the window, not before it, and seeded with that
+                // window's arithmetic mean. This branch used to sit at the top
+                // of the loop: it wrote a value on the very first finite point,
+                // seeded from that one number, so the stochastic began drawing
+                // `average` bars earlier than the javadoc right above says it
+                // does, with a hook at the left edge -- and the signal line,
+                // being the smoothing of this one, inherited the hook.
+                //
+                // Three behaviours for one idea, in one project: this, the
+                // arithmetic branch below (which does wait), and
+                // MovingAverage.exponential, whose own comment says why the
+                // seed is the first window and not the first price. This is now
+                // the same as that one, number for number.
+                previous = Double.isNaN(previous) ? sum / average
+                        : from[i] * weight + previous * (1.0 - weight);
+                into[i] = previous;
 
                 continue;
             }

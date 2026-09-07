@@ -585,4 +585,34 @@ class RenkoTest {
             }
         }
     }
+
+    @Test
+    @DisplayName("um lote de caixas grande demais e recusado, nao assentado")
+    void anImpossibleNumberOfBricksIsRefused() {
+        // There was no ceiling at all. A cast of a double past Integer.MAX_VALUE
+        // saturates in silence, and laydown then walked that many times
+        // allocating a double[5] each pass -- on the interface thread, since the
+        // candle renko is folded synchronously from ChartCanvas.refold. A hang,
+        // or an OutOfMemoryError, in place of a sentence.
+        //
+        // Not hypothetical: TickBars records a renko climbing from zero to
+        // 120.000 and laying two thousand bricks no trade made, because rows
+        // stating zero for everything were read as prices. That source is
+        // filtered now; Renko is public, takes any brick above zero, and reads
+        // candles, ticks and tape alike.
+        //
+        // One brick past the ceiling on purpose: laying 100.001 of them is
+        // quick, so this fails as an assertion rather than as a hang if the
+        // check ever goes away.
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                () -> Renko.of(1).apply(closes(0, 100_002)),
+                "a hundred thousand bricks from one bar were laid without a word");
+
+        assertTrue(thrown.getMessage().contains("100001"), thrown.getMessage());
+
+        // And the saturating case, which is the one that used to hang: a brick
+        // small enough that the count does not fit in an int.
+        assertThrows(IllegalArgumentException.class,
+                () -> Renko.of(1e-9).apply(closes(0, 1_000)));
+    }
 }

@@ -172,6 +172,8 @@ public final class TickRenko {
      * frame would be the same mistake one layer down.</p>
      */
     public boolean advance(LocalDate day, long when) throws IOException {
+        boolean tail = false;
+
         if (!day.equals(advancing)) {
             if (advancing != null && day.isBefore(advancing)) {
                 // Backwards would carry the ruler back with it, and nothing in
@@ -179,6 +181,19 @@ public final class TickRenko {
                 throw new IllegalArgumentException(day + " comes before " + advancing
                         + ", which this renko is already advancing through");
             }
+
+            // THE TAIL OF THE SESSION BEING LEFT, which used to be dropped on
+            // the way out. The clock stops wherever the replay stopped looking
+            // -- somewhere inside the last bar it drew -- and everything printed
+            // after that instant was lost: the state was replaced, and the day
+            // was already in `folded`, so add() refuses to finish it.
+            //
+            // What goes missing is the closing auction, the largest print of the
+            // day. The carry then crosses the night from a place the market
+            // never stopped at, the ruler is offset for the whole rest of the
+            // replay, and nothing on the chart says so.
+            tail = advancingBars != null && advanced < advancingBars.size()
+                    && fold(advancingBars.range(advanced, advancingBars.size()));
 
             TickSeries session = library.load(day);
 
@@ -190,6 +205,15 @@ public final class TickRenko {
             // Marked as folded so a later add() of the same day cannot lay it
             // a second time on top of what advance() already laid.
             folded.add(day);
+
+            if (advancingBars == null) {
+                // The session that closed is finished, so nothing is being
+                // built any more. Leaving the old edge would draw yesterday's
+                // half-brick over a day that has not opened.
+                forming = null;
+
+                return tail;
+            }
         }
 
         if (advancingBars == null) {
@@ -199,7 +223,9 @@ public final class TickRenko {
         int upTo = advancingBars.countUntil(when);
 
         if (upTo <= advanced) {
-            return false;
+            // The tail is still an answer of yes: it laid bricks, and a caller
+            // told "nothing was added" would skip the repaint that shows them.
+            return tail;
         }
 
         boolean laid = fold(advancingBars.range(advanced, upTo));
@@ -215,7 +241,7 @@ public final class TickRenko {
         forming = carry == null ? null : renko.withForming(true).formingAt(carry, price);
         formingStamp = advancingBars.timeAt(upTo - 1);
 
-        return laid;
+        return laid || tail;
     }
 
     /**

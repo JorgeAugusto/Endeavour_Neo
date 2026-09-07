@@ -465,4 +465,58 @@ class TickRenkoTest {
             library.close();
         }
     }
+
+    @Test
+    @DisplayName("o replay que cruza a noite nao perde o rabo do pregao anterior")
+    void crossingTheNightFoldsWhatIsLeftBehind(@TempDir Path folder) throws IOException {
+        // The clock stops wherever the replay stopped looking, which is inside
+        // the last bar it drew, and everything the market printed after that
+        // instant used to be dropped: the state was replaced on the way into the
+        // next day, and the day was already marked folded, so add() refused to
+        // finish it.
+        //
+        // What went missing is the closing auction, the largest print of the
+        // day. The carry then crossed the night from a place the market never
+        // stopped at, and the ruler stayed offset for the whole rest of the
+        // replay with nothing on the chart to say so.
+        int[] tuesday = new int[WALK.length];
+
+        for (int i = 0; i < WALK.length; i++) {
+            tuesday[i] = WALK[i] + 100;
+        }
+
+        session(folder, DAY, WALK);
+        session(folder, DAY.plusDays(1), tuesday);
+
+        TickLibrary library = new TickLibrary(folder, "winfut", TickSource.METATRADER);
+
+        try {
+            TickRenko whole = new TickRenko(new Renko(10, 2), library);
+
+            whole.add(DAY);
+            whole.add(DAY.plusDays(1));
+
+            TickSeries monday = library.load(DAY);
+
+            TickRenko replay = new TickRenko(new Renko(10, 2), library);
+
+            // Stopped halfway through Monday, the way a reader who watched the
+            // morning and then jumped to the next session leaves it.
+            replay.advance(DAY, monday.timeAt(monday.size() / 2));
+            replay.advance(DAY.plusDays(1), Long.MAX_VALUE);
+
+            PriceSeries one = whole.bricks();
+            PriceSeries many = replay.bricks();
+
+            assertEquals(one.size(), many.size(),
+                    "crossing the night laid a different number of bricks");
+
+            for (int i = 0; i < one.size(); i++) {
+                assertEquals(one.openAt(i), many.openAt(i), 1e-9, "open at " + i);
+                assertEquals(one.closeAt(i), many.closeAt(i), 1e-9, "close at " + i);
+            }
+        } finally {
+            library.close();
+        }
+    }
 }

@@ -76,6 +76,42 @@ public final class TradeTally {
         // Empty: nothing has arrived yet.
     }
 
+    /**
+     * @return whether that tally holds the same numbers
+     *
+     * <p>By VALUE, and the reason is {@link Renko.Carry}: a record compares its
+     * components with {@code equals}, so without this two carries holding the
+     * same figures were two different carries. The one test that compared them
+     * — <i>an empty session moved the ruler</i> — passed only because the empty
+     * path hands the same object straight back, which is a property of that
+     * path and not of the ruler the test claimed to be checking.</p>
+     */
+    @Override
+    public boolean equals(Object other) {
+        if (this == other) {
+            return true;
+        }
+
+        if (!(other instanceof TradeTally that)) {
+            return false;
+        }
+
+        return trades == that.trades
+                && Double.compare(volume, that.volume) == 0
+                && first == that.first
+                && summarised == that.summarised;
+    }
+
+    @Override
+    public int hashCode() {
+        return java.util.Objects.hash(trades, volume, first, summarised);
+    }
+
+    @Override
+    public String toString() {
+        return (summarised ? "unknown trades" : trades + " trades") + ", " + volume;
+    }
+
     /** @return a copy, so folding a stretch never writes through the caller's carry */
     public TradeTally copy() {
         TradeTally other = new TradeTally();

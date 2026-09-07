@@ -105,6 +105,17 @@ import java.util.List;
  */
 public final class Renko implements Aggregation {
 
+    /**
+     * The most bricks one move may lay before the move is refused.
+     *
+     * <p>Generous on purpose, because it is a guard and not a rule: the whole
+     * recorded range of WIN — sixty thousand points to a hundred and ninety —
+     * is about 43.000 bricks of the smallest size the interface offers. A
+     * single bar that lays more than this did not move; a price or a brick is
+     * wrong.</p>
+     */
+    private static final int MOST_BRICKS = 100_000;
+
     private final double brick;
 
     private final int reversal;
@@ -229,7 +240,36 @@ public final class Renko implements Aggregation {
      */
     public record Carry(double anchor, int direction,
                         double sinceLow, double sinceHigh, double pending,
-                        TradeTally tally) { }
+                        TradeTally tally) {
+
+        /**
+         * Refuses a carry that cannot have come from a renko, and takes its own
+         * copy of the tally.
+         *
+         * <p>There was nothing here, and the proof that invalid states were
+         * reachable sat downstream: {@link #applyFrom} had to defend itself
+         * against {@code from.tally() == null}. A guard against a state the type
+         * allows is the type admitting it should not.</p>
+         *
+         * <p>The tally is <b>mutable</b>, so a record that merely kept the
+         * reference let two carries share one accumulator. {@code applyFrom}
+         * copied on the way in and the guarantee lived in the caller; here it
+         * lives in the type, where a caller cannot forget it.</p>
+         */
+        public Carry {
+            if (direction < -1 || direction > 1) {
+                throw new IllegalArgumentException(
+                        "a brick goes up, down or nowhere, not " + direction);
+            }
+
+            if (sinceLow > sinceHigh) {
+                throw new IllegalArgumentException("the run since the last brick reaches down to "
+                        + sinceLow + " and up to " + sinceHigh + ", which is backwards");
+            }
+
+            tally = tally == null ? new TradeTally() : tally.copy();
+        }
+    }
 
     /**
      * @param bricks what was laid
@@ -339,7 +379,28 @@ public final class Renko implements Aggregation {
 
         // The epsilon is what makes "exactly on the level" round the right way:
         // a move of precisely one brick has to come out as zero completed.
-        return (int) Math.ceil(moved / brick - 1e-9) - 1;
+        double count = Math.ceil(moved / brick - 1e-9) - 1;
+
+        if (count > MOST_BRICKS) {
+            // REFUSED, and refused HERE, where the two numbers that produced it
+            // are still in hand. There was no ceiling at all: a cast of a double
+            // past Integer.MAX_VALUE saturates in silence, and laydown then
+            // walked that many times allocating a double[5] each pass -- on the
+            // interface thread, since the candle renko is folded synchronously
+            // from ChartCanvas.refold. A hang, or an OutOfMemoryError, in place
+            // of a sentence.
+            //
+            // It is not a hypothetical: TickBars records a renko climbing from
+            // zero to 120.000 and laying two thousand bricks no trade made,
+            // because rows stating zero for everything were read as prices.
+            // That source is filtered now; this one is public, takes any brick
+            // above zero, and reads candles, ticks and tape alike.
+            throw new IllegalArgumentException("a move of " + moved + " over a brick of "
+                    + brick + " would lay " + (long) count
+                    + " bricks, and no market moves that far: the price or the brick is wrong");
+        }
+
+        return (int) count;
     }
 
     public Continued applyFrom(PriceSeries source, Carry from) {

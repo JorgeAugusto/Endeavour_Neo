@@ -22,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
+import br.com.jorge.reis.endeavourneo.ui.chart.overlay.MovingAverage;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -245,5 +246,48 @@ class SlowStochasticTest {
         study.calculate(PriceSeries.empty());
 
         assertTrue(Double.isNaN(study.valueAt(0)[0]));
+    }
+
+    @Test
+    @DisplayName("a exponencial aquece igual a aritmetica, e comeca na media da primeira janela")
+    void theExponentialWarmsUpToo() {
+        // The exponential branch used to sit at the TOP of the loop, before the
+        // window bookkeeping: it wrote a value on the very first finite point,
+        // seeded from that one number. So the slow line began `average` bars
+        // earlier than the javadoc over the method says it does, with a hook at
+        // the left edge -- and the signal line, which is this smoothing applied
+        // twice, inherited the hook. A reader comparing with the reference
+        // product sees two lines that do not match at the start.
+        //
+        // Three behaviours for one idea lived in this project: this one, the
+        // arithmetic branch beside it (which waits), and
+        // MovingAverage.exponential, whose own comment says the seed is the
+        // first window and not the first price. They agree now.
+        SlowStochastic exponential = new SlowStochastic(4, 3);
+        SlowStochastic arithmetic = new SlowStochastic(4, 3);
+
+        exponential.setKind(MovingAverage.Kind.EXPONENTIAL);
+
+        PriceSeries bars = climbing(20);
+
+        exponential.calculate(bars);
+        arithmetic.calculate(bars);
+
+        for (int i = 0; i < bars.size(); i++) {
+            assertEquals(Double.isNaN(arithmetic.valueAt(i)[0]),
+                    Double.isNaN(exponential.valueAt(i)[0]),
+                    "bar " + i + ": the two kinds start at different bars");
+            assertEquals(Double.isNaN(arithmetic.valueAt(i)[1]),
+                    Double.isNaN(exponential.valueAt(i)[1]),
+                    "bar " + i + ": the two signal lines start at different bars");
+        }
+
+        // And on this staircase every raw ratio is a hundred once the window
+        // fills, so the first exponential value -- the mean of its first window
+        // -- is a hundred, exactly as the arithmetic one is. Seeded from a
+        // single point it would be a hundred too; what the loop above catches is
+        // WHERE it appears, which is the whole defect.
+        assertEquals(100.0, exponential.valueAt(19)[0], 1e-9);
+        assertEquals(100.0, exponential.valueAt(19)[1], 1e-9);
     }
 }

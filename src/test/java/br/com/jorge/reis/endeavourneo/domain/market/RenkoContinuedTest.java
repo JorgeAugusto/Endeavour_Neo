@@ -18,6 +18,8 @@
 package br.com.jorge.reis.endeavourneo.domain.market;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import br.com.jorge.reis.endeavourneo.ui.chart.RandomWalkSeries;
@@ -168,5 +170,61 @@ class RenkoContinuedTest {
         assertEquals(0, nothing.bricks().size());
         assertEquals(first.carry(), nothing.carry(),
                 "an empty session moved the ruler");
+    }
+
+    @Test
+    @DisplayName("dois carries com os mesmos numeros sao o mesmo carry")
+    void twoCarriesWithTheSameNumbersAreEqual() {
+        // A record compares its components with equals, and TradeTally had
+        // none, so two carries holding identical figures were different
+        // carries. The one test that compared them -- anEmptyPieceIsHarmless,
+        // just above -- passed for the wrong reason: applyFrom hands the SAME
+        // OBJECT back on the empty path, so it was asserting identity and
+        // calling it equality. Replacing that return with a freshly built carry
+        // of the same values, which is an entirely reasonable refactoring,
+        // broke it without anything having got worse.
+        TradeTally one = new TradeTally();
+        TradeTally other = new TradeTally();
+
+        Renko.Carry left = new Renko.Carry(136_000, 1, 135_900, 136_100, 42, one);
+        Renko.Carry right = new Renko.Carry(136_000, 1, 135_900, 136_100, 42, other);
+
+        assertNotSame(one, other);
+        assertEquals(left, right, "two carries with the same numbers came out different");
+        assertEquals(left.hashCode(), right.hashCode());
+    }
+
+    @Test
+    @DisplayName("o carry tira sua propria copia do acumulador")
+    void aCarryDoesNotShareItsTally() {
+        // TradeTally is mutable. A record that merely kept the reference let two
+        // carries share one accumulator, and emptying it through either emptied
+        // both. applyFrom copied on the way in, so the guarantee lived in the
+        // caller -- which is where a caller can forget it.
+        TradeTally tally = new TradeTally();
+        Renko.Carry carry = new Renko.Carry(136_000, 0, 136_000, 136_000, 0, tally);
+
+        assertNotSame(tally, carry.tally(), "the carry kept the caller's accumulator");
+    }
+
+    @Test
+    @DisplayName("um carry que nao poderia ter vindo de um renko e recusado")
+    void anImpossibleCarryIsRefused() {
+        // There was no validation at all, and the proof that invalid states were
+        // reachable sat downstream: applyFrom had to defend itself against a
+        // null tally. A guard against a state the type allows is the type
+        // admitting it should not.
+        assertThrows(IllegalArgumentException.class,
+                () -> new Renko.Carry(136_000, 2, 135_900, 136_100, 0, new TradeTally()),
+                "a brick that goes two ways was accepted");
+
+        assertThrows(IllegalArgumentException.class,
+                () -> new Renko.Carry(136_000, 1, 136_100, 135_900, 0, new TradeTally()),
+                "a run reaching further down than up was accepted");
+
+        // And a null tally is a start, not a crash: it is what the first ever
+        // carry of a renko looks like.
+        assertEquals(new TradeTally(),
+                new Renko.Carry(0, 0, 0, 0, 0, null).tally());
     }
 }
