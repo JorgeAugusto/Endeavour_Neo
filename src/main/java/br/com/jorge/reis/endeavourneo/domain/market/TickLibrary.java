@@ -55,7 +55,7 @@ import java.util.concurrent.Executors;
  * #load} is the blocking one, and is for callers that are already off the
  * interface thread.</p>
  */
-public final class TickLibrary {
+public final class TickLibrary implements AutoCloseable {
 
     /** The session playing, one ahead, one behind. */
     public static final int RESIDENT = 3;
@@ -199,10 +199,34 @@ public final class TickLibrary {
         }
     }
 
+    /**
+     * Stops the reading thread and lets the sessions go.
+     *
+     * <p><b>The class says {@code AutoCloseable} so the compiler can help.</b>
+     * It had this method and did not declare the interface, so try-with-resources
+     * was not available and every owner had to remember a {@code finally} --
+     * seven of them did, and the ones that did not held a thread and up to three
+     * sessions of ticks, which is hundreds of megabytes, for as long as the
+     * application ran. A resource that must be closed and does not say so leaves
+     * the remembering to people.</p>
+     */
+    @Override
     public void close() {
         loader.shutdownNow();
 
         forget();
+    }
+
+    /**
+     * @return whether this one has been closed
+     *
+     * <p>So an owner can be asked whether it let go, which is the only way to
+     * say "this was closed" in a test without reaching for the thread. A live
+     * one holds a reading thread and up to {@link #RESIDENT} sessions of
+     * ticks.</p>
+     */
+    public boolean isClosed() {
+        return loader.isShutdown();
     }
 
     private void queue(LocalDate day) {

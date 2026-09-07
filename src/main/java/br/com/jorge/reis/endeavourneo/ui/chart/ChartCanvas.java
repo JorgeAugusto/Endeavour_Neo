@@ -1017,6 +1017,20 @@ public final class ChartCanvas extends JComponent {
         stopGrowing();
     }
 
+    /**
+     * Lets go of the tick export this chart was growing bricks from.
+     *
+     * <p>For the holder to call when the chart CLOSES, and not from
+     * removeNotify: re-parenting between docked and floating passes through
+     * removeNotify too, and a replay would lose its renko every time the reader
+     * undocked the window. Until this existed, the library survived the chart --
+     * a reading thread and up to three sessions of ticks, for the life of the
+     * application, per chart ever closed with a replay on it.</p>
+     */
+    public void releaseTicks() {
+        stopGrowing();
+    }
+
     private void stopGrowing() {
         growing = null;
 
@@ -1091,6 +1105,12 @@ public final class ChartCanvas extends JComponent {
             return;
         }
 
+        // ownership: handed to the worker below, which either closes it or gives
+        // it to growingFrom -- and stopGrowing closes that, from setTickSource,
+        // from the next rebuild, and now from the holder when the chart closes.
+        // Said out loud because it is the one construction here that no
+        // try-with-resources can express, and because TickLibraryClosingTest
+        // reads these lines looking for exactly this.
         br.com.jorge.reis.endeavourneo.domain.market.TickLibrary library =
                 new br.com.jorge.reis.endeavourneo.domain.market.TickLibrary(
                         br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.ticksOf(
@@ -1229,15 +1249,22 @@ public final class ChartCanvas extends JComponent {
         return fromTicks;
     }
 
-    /** @return whether a renko may be built for what this chart is showing */
+    /**
+     * @return whether a renko may be built for what this chart is showing
+     *
+     * <p>The library is closed. It is opened to answer one question, from a
+     * modal dialog, and was then dropped with its reading thread alive -- once
+     * per opening of that dialog, for the life of the application.</p>
+     */
     private boolean renkoAllowed() {
-        return RenkoSource.allows(series,
-                new br.com.jorge.reis.endeavourneo.domain.market.TickLibrary(
-                        br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.ticksOf(
-                                RenkoSource.rootOf(instrument)),
-                        RenkoSource.rootOf(instrument),
-                        br.com.jorge.reis.endeavourneo.domain.market.TickSource.METATRADER),
-                ChartPreferences.syntheticTicks());
+        try (br.com.jorge.reis.endeavourneo.domain.market.TickLibrary library =
+                     new br.com.jorge.reis.endeavourneo.domain.market.TickLibrary(
+                             br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.ticksOf(
+                                     RenkoSource.rootOf(instrument)),
+                             RenkoSource.rootOf(instrument),
+                             br.com.jorge.reis.endeavourneo.domain.market.TickSource.METATRADER)) {
+            return RenkoSource.allows(series, library, ChartPreferences.syntheticTicks());
+        }
     }
 
     /** @param name what the chart is showing, so its tick sessions can be found */

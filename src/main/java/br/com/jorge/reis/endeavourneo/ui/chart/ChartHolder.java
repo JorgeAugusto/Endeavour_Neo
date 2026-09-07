@@ -573,6 +573,13 @@ public final class ChartHolder {
         }
 
         store();
+
+        // The tick export the canvas was growing bricks from. It outlived the
+        // chart until this line: a reading thread and up to three sessions of
+        // ticks, held for the life of the application, for every chart ever
+        // closed while a replay was on it.
+        canvas.releaseTicks();
+
         detachFromDocked();
         detachFromFloating();
         onClosed.run();

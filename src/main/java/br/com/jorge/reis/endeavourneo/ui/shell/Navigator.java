@@ -347,9 +347,17 @@ public final class Navigator extends JPanel {
 
         for (br.com.jorge.reis.endeavourneo.domain.market.TickSource source
                 : br.com.jorge.reis.endeavourneo.domain.market.TickSource.values()) {
-            List<java.time.LocalDate> days =
-                    new br.com.jorge.reis.endeavourneo.domain.market.TickLibrary(
-                            folder, instrument, source).exported();
+            List<java.time.LocalDate> days;
+
+            // Closed. It was built for one question -- which days were exported
+            // -- and then dropped with its reading thread still alive, once per
+            // tick source, every time the tree was rebuilt. The tree is rebuilt
+            // whenever a series changes.
+            try (br.com.jorge.reis.endeavourneo.domain.market.TickLibrary library =
+                         new br.com.jorge.reis.endeavourneo.domain.market.TickLibrary(
+                                 folder, instrument, source)) {
+                days = library.exported();
+            }
 
             if (days.isEmpty()) {
                 continue;
