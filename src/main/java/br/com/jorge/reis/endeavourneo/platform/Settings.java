@@ -67,7 +67,20 @@ import java.util.Properties;
  */
 public final class Settings {
 
-    private static final Path HOME = Path.of(System.getProperty("user.home"), ".endeavourneo");
+    /**
+     * Where the two files live.
+     *
+     * <p><b>{@code endeavourneo.home} overrides the home directory</b>, and the
+     * suite sets it. The seam on the constructor below has always existed and
+     * says why; what it could not reach were the two instances everything
+     * actually uses, which were built straight from {@code user.home}. So a test
+     * that opened a window wrote the reader's own list of open charts -- their
+     * layout, their instruments -- and every run of the suite replaced it. The
+     * guard was built and never armed.</p>
+     */
+    private static final Path HOME = Path.of(
+            System.getProperty("endeavourneo.home", System.getProperty("user.home")),
+            ".endeavourneo");
 
     private static final Settings SETTINGS = new Settings("settings.properties",
             "Endeavour Neo -- what you chose. Safe to copy to another machine.");

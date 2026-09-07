@@ -70,6 +70,22 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>${maven-surefire-plugin.version}</version>
+                <configuration>
+                    <systemPropertyVariables>
+                        <!--
+                            The suite gets a home of its own, under target.
+
+                            Without this the tests write the reader's real
+                            settings and workspace: opening a window in a test
+                            runs rememberCharts, which replaces their list of
+                            open charts with whatever the test opened. Every run
+                            of the suite did that. Settings has documented the
+                            need for this seam since it was written; what was
+                            missing was somebody setting it.
+                        -->
+                        <endeavourneo.home>${project.build.directory}/test-home</endeavourneo.home>
+                    </systemPropertyVariables>
+                </configuration>
             </plugin>
 
             <plugin>

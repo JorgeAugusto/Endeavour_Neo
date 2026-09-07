@@ -100,6 +100,18 @@ final class ReplayBase {
         MarketFile.write(file, walk(stamps), 1);
         SeriesCatalog.forget();
 
+        // AND the feed's own map of playable days, which is static and which the
+        // tests using this fixture only clear on the way OUT. The first test of a
+        // class therefore inherited whatever the class before it left -- and what
+        // it left could be the days of the reader's REAL series, reached through
+        // the catalogue's fallback search. It surfaced the moment the suite
+        // stopped sharing the reader's settings: a fixture of plain weekdays was
+        // being matched against a real September, which is missing Independence
+        // Day because the market was shut.
+        //
+        // Cleared here, because here is where a test says "this is the base now".
+        ReplayFeed.forget();
+
         return "winfull-1m";
     }
 
