@@ -1,0 +1,235 @@
+# Índice dos achados da auditoria II
+
+Uma linha por achado: **id · arquivo · título**. O detalhe — trecho literal,
+consequência, correção e a tentativa de refutação — está no relatório da área.
+
+Este arquivo existe para as **lentes transversais**: elas recebem esta lista e a
+ordem de reportar **só o que estas áreas não viram**. Entregar os relatórios
+inteiros custaria um multiplicador em cima do corpus, que foi como a primeira
+tentativa de auditoria queimou 1,5 milhão de tokens sem entregar nada.
+
+Gerado por `docs/auditoria/cruzar.py`.
+
+## ALTA (26)
+
+- **B1-1** `Sessions.java` — `Sessions` responde no fuso da máquina; tudo que dobra barra responde no fuso do mercado
+- **B1-2** `FoldedTicks.java` — `FoldedTicks.day` engole `IOException` e devolve série vazia — um arquivo corrompido some do gráfico sem uma palavra
+- **B2-1** `OneClockTest.java` — O teste do "um relógio só" é unilateral: passa com leitura do futuro
+- **B2-2** `TickRenko.java` — `addUpTo` seguido de `add`, como o javadoc manda, assenta o começo do pregão duas vezes
+- **B3-1** `` — Um quadro em que nada imprimiu troca o renko de ticks pelo renko de candles
+- **B3-2** `` — O eixo de tempo e a faixa de dias constroem um `ZonedDateTime` por barra visível, a cada quadro
+- **B4-1** `LinePen.java` — `LinePen.Sample` chama `setBorder` dentro do `paintComponent`: laço de repintura sem fim na EDT
+- **B5-1** `` — Os estudos são calculados sobre a série CRUA e desenhados nos índices da série FOLDADA
+- **B6-1** `ReplaySession.java` — Um replay de ticks com mais de dois pregões passa a animar com o passeio inventado, sem dizer
+- **B6-2** `ReplaySession.java` — `isEmpty()` só é verdadeiro quando não há histórico — e em produção há sempre 30 dias
+- **B6-3** `ReplaySession.java` — `forgetEnding` não é chamado em `src/main`: o vazamento que ele foi criado para fechar continua aberto, e um teste diz que não
+- **B7a-1** `SeriesCatalog.java` — `openUntil` devolve a série inteira e ignora o `upTo` quando ela está no cache
+- **B7a-2** `Settings.java` — Arquivo de configuração ilegível é esvaziado e depois SOBRESCRITO — perda total
+- **B7a-3** `Settings.java` — Um `\uXXXX` malformado impede a aplicação de arrancar, ao contrário do que o javadoc promete
+- **B7b-1** `MainWindow.java` — A tranca "só pelos segmentos" não vale para fonte de ticks — e é justo o dado de teste que ela existe para proteger
+- **B7b-2** `SeriesWindow.java` — A janela de séries lê a série INTEIRA na thread da interface, na construção e a cada troca da combo
+- **B7b-3** `MainWindow.java` — Javadoc grudado no membro errado, sistematicamente — sete lugares, e dois deles descrevem uma assinatura que não é a do membro
+- **B8a-1** `OneClockTest.java` — `OneClockTest` inteiro passa com o candle lendo o FUTURO
+- **B8a-2** `JobServiceTest.java` — `JobServiceTest`: apagar o relatório de última chance deixa o teste verde
+- **B8a-3** `TickLibraryTest.java` — `aFailedScanKeepsWhatItFound` procura um literal, não um comportamento
+- **B8a-4** `HistoryBeforeReplayTest.java` — Nenhum teste lê máxima, mínima ou volume de uma barra JÁ FECHADA do replay
+- **B8b-1** `RelativeStrengthTest.java` — O único teste da escala própria do IFR passa com o indicador desenhando NADA
+- **B8b-2** `ChartViewTest.java` — O teste dos botões do mouse casa uma string dentro de 700 caracteres, não a ordem em que o guarda age
+- **B8b-3** `ChartViewTest.java` — O teste do vazamento da biblioteca de ticks olha só a PRIMEIRA atribuição, e 600 caracteres antes dela
+- **B8b-4** `ChartViewTest.java` — O teste do replay que "pede o pregão antes" casa três strings numa fatia de 2.600 caracteres
+- **B8b-5** `ChartViewTest.java` — O rodapé: o teste lê o código-fonte de `cursorReading()`, sendo que o método é público e devolve o número
+
+## MÉDIA (99)
+
+- **B1-3** `Timeframe.java` — Barra de vários dias recebe a meia-noite — o instante que o javadoc do próprio método diz que não deve carregar
+- **B1-4** `Timeframe.java` — A escala de vários dias é ancorada no dia zero da era — que foi uma quinta-feira
+- **B1-5** `TapeFile.java` — A ordem de declaração de `Aggressor` é o formato do arquivo, e nada em `Aggressor.java` diz isso
+- **B1-6** `ProfitTrades.java` — `ProfitTrades.convert` chama `Aggressor.values()` por trade — a alocação que `TapeFile.KINDS` existe para evitar
+- **B1-7** `MetaTraderTicks.java` — Alocação por linha nos dois conversores, numa classe cujo javadoc se gaba de não alocar por linha
+- **B1-8** `Segmentable.java` — "A directory listing, not a read: this costs nothing" — `exported()` abre e lê o cabeçalho de todo arquivo
+- **B1-9** `TickLibrary.java` — `TickLibrary.close()` corre com o carregador: a biblioteca fechada pode voltar a segurar 113 MB e avisar o observador
+- **B1-10** `TickLibrary.java` — `residentDays()` promete "oldest use first"; o campo que ele lê já documenta que nada registra uso
+- **B1-11** `ProfitTrades.java` — `finally` fecha duas vezes e apaga a exceção original nos dois conversores
+- **B1-12** `SeriesMerge.java` — `SeriesMerge.stepAt` devolve 0 — o valor de "junção sadia" — quando a exportação antiga inteira foi descartada
+- **B1-13** `` — A coluna `Ativo` da exportação do Profit é descartada, num formato que declara guardar todas
+- **B1-14** `` — `ChartCanvas.axisBucket` é uma segunda resposta para o que `Timeframe.bucketOf` decide
+- **B1-15** `MetaTraderTicks.java` — `whole()` engole caractere inválido; `grouped()`, no outro conversor, recusa
+- **B2-3** `SyntheticTicks.java` — Os números resolvidos de `BUSY` não saem da fórmula que o código usa
+- **B2-4** `Renko.java` — "Os três compartilham um carimbo. Nada mais é verdade" — e o código faz outra coisa
+- **B2-5** `Untraded.java` — A regra do "tijolo cinza" documentada não está implementada em lugar nenhum
+- **B2-6** `ReplaySeries.java` — `advanceMarketTime` descarta o resto que o próprio javadoc promete guardar
+- **B2-7** `ReplaySeries.java` — `startForming` devolve `false` deixando `path` apontando para um vetor vazio
+- **B2-8** `TickRenko.java` — Ao trocar de pregão, o tijolo em formação de ontem fica na tela
+- **B2-9** `TickRenko.java` — A guarda de ordem de `add` lê o último **inserido**, e `advance` insere sem a mesma checagem
+- **B2-10** `TickRenko.java` — "Feito para rodar fora da thread da interface" — e o único chamador de produção é a EDT
+- **B2-11** `` — `Carry.pending` e `Carry.tally().volume()` são duas respostas para a mesma pergunta, e nada as mantém iguais
+- **B2-12** `ReplaySeries.java` — `measureBar` lê só as duas primeiras barras da série
+- **B3-3** `ChartCanvas.java` — `paintOverlays` aloca um `double[]` por barra e por linha, e lê a mesma linha várias vezes
+- **B3-4** `ChartCanvas.java` — O atalho de dígito é do WINDOW, e com dois gráficos abertos ele abre a janela de período do gráfico errado
+- **B3-5** `ChartCanvas.java` — Control sozinho alterna o modo uma vez por gráfico na tela — com dois, não alterna nada
+- **B3-6** `ChartCanvas.java` — `restoreView` remonta um renko sem passar pela guarda que `askForPeriod` respeita
+- **B3-7** `ChartCanvas.java` — `restoreView` mede a posição contra uma série que ainda não chegou, e `refold` depois zera tudo
+- **B3-8** `` — Trocar o estilo pelo `restoreView` não avisa ninguém, e o arquivo conhece os estilos pelo nome
+- **B3-9** `ChartCanvas.java` — `rebuildFromTicks` faz a mesma pergunta até três vezes, na EDT, cada uma percorrendo a série inteira
+- **B3-10** `ChartCanvas.java` — `cursorReading()` constrói o viewport duas vezes, e é chamado a cada movimento do mouse
+- **B4-2** `` — Um gráfico que reabre flutuante nunca restaura a vista: escala, estilo, zoom e posição na série são escritos e nunca lidos
+- **B4-3** `` — O javadoc de `syntheticTicks()` é o de `hollowCandles()` — e `hollowCandles()` fica sem nenhum
+- **B4-4** `RenkoSource.java` — `RenkoSource.allows` converte data por barra na EDT, com um comentário dizendo que não converte
+- **B4-5** `PeriodCatalog.java` — Texto de tela em português dentro do código, em `PeriodCatalog`
+- **B4-6** `LayoutBar.java` — Apagar um layout à esquerda do selecionado troca o gráfico de layout em silêncio
+- **B4-7** `ChartLayouts.java` — `ChartLayouts.save` grava o arquivo uma vez por chave, na EDT, e o javadoc promete uma atomicidade que não existe
+- **B4-8** `Forms.java` — `MovingAverageDialog` carrega cópias privadas de tudo o que `Forms` existe para não duplicar
+- **B4-9** `ChartColors.java` — `ChartColors` aloca um `Color` e consulta o `UIManager` por elemento desenhado
+- **B4-10** `RulerReadout.java` — A régua mostra o mesmo número duas vezes, com dois arredondamentos e dois rótulos
+- **B4-11** `` — `Pane.build()` ignora `visible`; `Entry.build()` o respeita — duas respostas para "como um Entry vira um Overlay"
+- **B4-12** `OverlayLegend.java` — A legenda constrói um `DecimalFormat` por linha, a cada pintura
+- **B4-13** `ChartLayouts.java` — `ChartLayouts.copyName` entra em laço infinito quando a chave do bundle falta
+- **B4-14** `` — `styleChoice` é uma segunda resposta para "qual estilo", e discorda do canvas depois de `restoreView`
+- **B5-2** `OwnScale.java` — `OwnScale.indexOfClosed` não é chamado por ninguém, e os dois comentários sobre ele se contradizem
+- **B5-3** `BollingerBands.java` — `valueAt` aloca um `double[]` por barra, no laço de cálculo e no de pintura
+- **B5-4** `` — Todo recálculo de estudo acontece na EDT
+- **B5-5** `StudyStack.java` — A visibilidade de um estudo se perde na ida e volta pelo layout
+- **B5-6** `StudyPane.java` — Só o desenho das linhas respeita `isVisible()`; cabeçalho, faixa e níveis ignoram
+- **B5-7** `StudyPane.java` — Um `DecimalFormat` novo por número escrito na tela
+- **B5-8** `MovingAverage.java` — Duas cópias da regra "qual preço da barra é este `Source`"
+- **B5-9** `StudyPane.java` — O painel se remove do container de dentro do próprio `mousePressed`
+- **B5-10** `MovingAverage.java` — O javadoc do construtor de varargs descreve campos que ele não lê
+- **B6-4** `` — Abrir o transporte faz varredura recursiva de disco na EDT, duas vezes
+- **B6-5** `` — Nada reaquece o calendário depois de `forget()`; a próxima troca de feed paga o custo na EDT
+- **B6-6** `` — As datas lembradas atropelam a correção que `followFeed` acabou de fazer
+- **B6-7** `ReplaySession.java` — Quatro javadoc colados no membro errado em `ReplaySession`, e o primeiro deles mente
+- **B6-8** `` — A janela do replay é medida em dias de calendário e documentada em pregões
+- **B6-9** `ReplayPanel.java` — Uma sessão construída depois de a janela ser descartada fica viva e nunca é fechada
+- **B7a-4** `SeriesCatalog.java` — `SeriesCatalog.forget()` não tem nenhum chamador de produção: o gancho `whenForgotten` é código morto
+- **B7a-5** `SeriesCatalog.java` — `forget()` corre os ouvintes na thread de quem chamou, sem guarda de exceção e sem forma de cancelar registo
+- **B7a-6** `` — `setFolder` e `setRetired` não são chamados por ninguém; `data.directory` e `data.retired` são lidas e nunca escritas
+- **B7a-7** `SeriesCatalog.java` — `data.groups`, `data.scales` e `data.roles` substituem os valores de omissão em vez de os completar
+- **B7a-8** `Settings.java` — Nenhum dos dois arquivos carrega versão de formato: não há de onde migrar
+- **B7a-9** `Settings.java` — Falha de escrita é engolida por inteiro; `_unsaved` é escrita, nunca lida e nunca limpa
+- **B7a-10** `Settings.java` — Cada `put` grava o arquivo inteiro, na EDT, e não atomicamente
+- **B7a-11** `` — O carimbo de data em cada gravação anula o motivo declarado de ordenar as chaves
+- **B7a-12** `JobService.java` — `stage` e `fraction` são do serviço, não do trabalho: dois jobs sobrepõem-se
+- **B7a-13** `JobService.java` — `onChange` não tem forma de cancelar registo, e a mudança de idioma reconstrói a janela
+- **B7a-14** `JobService.java` — Uma falha sem ouvinte é silenciosa durante toda a sessão, e o javadoc diz o contrário
+- **B7a-15** `Messages.java` — Javadoc colado no membro errado, em três lugares
+- **B7a-16** `SeriesCatalog.java` — `displayOf` não retira a escala quando ela não é o sufixo — `btcusdt-1m-1y` sai como "Bitcoin-1M1Y"
+- **B7a-17** `SeriesCatalog.java` — `namesIn` engole a falha de disco e devolve lista vazia
+- **B7a-18** `` — `namesIn` reanalisa as configurações uma vez por arquivo
+- **B7b-4** `MainWindow.java` — O `SwingWorker` dos ticks escreve num gráfico que já foi fechado
+- **B7b-5** `MainWindow.java` — O caminho de ticks lê o export inteiro mesmo quando o que foi pedido é um segmento
+- **B7b-6** `MainWindow.java` — `followConsoleFold` sobrescreve a posição que acabou de guardar, e devolve o console a uma posição de outra sessão
+- **B7b-7** `` — Trocar de idioma abandona um `StatusBar` para sempre dentro do `JobService`
+- **B7b-8** `Console.java` — O console recebe UTF-8 e o decodifica byte a byte: todo acento vindo de `System.out` sai trocado
+- **B7b-9** `Navigator.java` — O javadoc do `Navigator` diz que uma sessão de ticks não abre nada, quatro linhas antes do código que a faz abrir
+- **B7b-10** `` — "A leaf with no name — a tick session, a message — opens nothing": a folha de *Estudos* abre um gráfico
+- **B7b-11** `SegmentDialog.java` — Editar um segmento "em diante" fecha-o na última sessão em disco, sem dizer
+- **B8a-5** `FoldedTicksTest.java` — A fixture de `aDayThatWasNotExportedIsEmpty` não consegue ver o fallback que o comentário acusa
+- **B8a-6** `FoldedTicksTest.java` — `onlyTheSessionsAsked` promete ordem no nome e afirma só o tamanho
+- **B8a-7** `TickRenkoTest.java` — `theFormingBrickIsNeverCounted`: o laço de vinte quadros não dobra nada
+- **B8a-8** `RenkoTest.java` — `theCountNeverFalls`: vazio passa, e a fixture não distingue abertura de fechamento
+- **B8a-9** `ThemeSwitchTest.java` — `ThemeSwitchTest` deixa o look-and-feel instalado para todos os testes seguintes
+- **B8a-10** `` — `LanguageTest` escreve nas configurações reais do leitor fora do Maven
+- **B8a-11** `BundleKeysTest.java` — `BundleKeysTest` nunca confere que as chaves usadas no código existem
+- **B8a-12** `TickLibraryClosingTest.java` — `everyOwnerCloses` desliga a si mesmo em silêncio quando o CWD não é a raiz
+- **B8a-13** `` — Sete laços de asserção que passam sobre o conjunto vazio
+- **B8b-6** `PeriodCatalogTest.java` — `zeroSearchesRatherThanBuilds`: laço que não assere nada se a lista voltar vazia
+- **B8b-7** `` — Três testes do renko de ticks aseveram uma AUSÊNCIA depois de um `Thread.sleep` fixo
+- **B8b-8** `ReplayHousekeepingTest.java` — `changingTheListenerDoesNotStackAnother` compara dois contadores sem exigir que nenhum deles seja maior que zero
+- **B8b-9** `CollapsiblePaneTest.java` — `CollapsiblePaneTest` grava a configuração REAL do leitor — e é o único que nem sob Maven fica isolado
+- **B8b-10** `` — Testes de interface gravam `settings`/`workspace` reais quando a suíte roda do jeito documentado (sem Maven)
+- **B8b-11** `` — `assumeFalse(isHeadless())` desliga 11 testes de uma vez, e em silêncio
+- **B8b-12** `ReplayEndsTest.java` — `ReplayEndsTest` é o único teste de replay sem fixture e sem isolamento do catálogo
+- **B8b-13** `` — Texto de interface em português escrito à mão dentro dos testes
+
+## BAIXA (90)
+
+- **B1-16** `` — `PriceSeries.empty()` responde volume, e recusa as outras cinco perguntas
+- **B1-17** `` — `ArraySeries` não valida nada
+- **B1-18** `` — `SegmentedSeries` e `ConcatSeries` não carregam `Untraded` nem `Counted`
+- **B1-19** `TapeFile.java` — `TapeFile.isTape` valida a versão contra a constante de `TickFile`
+- **B1-20** `MetaTraderTicks.java` — Linha maior que 512 bytes é truncada em silêncio, e os offsets fixos leem bytes velhos
+- **B1-21** `ProfitTrades.java` — "Fifteen bytes a trade" — são dezenove
+- **B1-22** `` — `TickLibrary.load` não olha o conjunto `loading`
+- **B1-23** `TickLibrary.java` — O domínio escreve em `System.err`
+- **B2-13** `Renko.java` — O javadoc de `settle` documenta quatro parâmetros que o método não tem, e omite o que tem
+- **B2-14** `` — Dois pares de números do javadoc de `SyntheticTicks` discordam entre si
+- **B2-15** `SyntheticTicks.java` — As duas primeiras guardas de `draw` são inalcançáveis
+- **B2-16** `TickRenko.java` — `withForming(true)` aloca um `Renko` por quadro para nada
+- **B2-17** `Renko.java` — `Carry` copia o tally na entrada e entrega o original na saída
+- **B2-18** `Renko.java` — `laydown` aloca por tijolo, num laço que roda na EDT
+- **B2-19** `` — `anyVolume` ignora o volume que veio no `carry`
+- **B2-20** `ReplaySeries.java` — O volume da barra em formação nunca chega ao total
+- **B3-11** `` — O javadoc de `clampFirstBar` diz "meia tela"; a constante diz três quartos, e diz que meia foi recusada
+- **B3-12** `ChartCanvas.java` — `mouseReleased` é o único tratador sem conferência de botão, e o teste não olha para ele
+- **B3-13** `` — Três guardas que não guardam
+- **B3-14** `ChartCanvas.java` — A variável local `replaying` esconde o campo `replaying`, que acabou de nascer
+- **B3-15** `ChartCanvas.java` — Javadoc de `storeView` com dois `@param` na mesma linha
+- **B3-16** `` — Duas portas públicas para a mesma resposta, e um apelido sem função
+- **B3-17** `ChartCanvas.java` — `setPeriod` compara períodos por identidade, e o atalho nunca pega para renko
+- **B3-18** `` — Alocação por quadro no caminho de pintura
+- **B3-19** `` — O javadoc de classe lista cinco camadas; `paintComponent` pinta dez
+- **B4-15** `` — Quatro javadoc grudados no membro errado
+- **B4-16** `` — Código morto
+- **B4-17** `` — `ChartLayouts`: o javadoc nomeia uma classe que o arquivo não usa, e o teto de 40 entradas perdeu a origem
+- **B4-18** `` — `parsePanes` lê altura e minimizado da **última** linha do painel; o javadoc diz "da primeira"
+- **B4-19** `Reordering.java` — A guarda de `Reordering.move` só está correta por causa da ordem de avaliação dos argumentos, e nada diz isso
+- **B4-20** `LineStyle.java` — `LineStyle` deixa o antialiasing ligado quando a dica anterior era nula
+- **B4-21** `BarReadout.java` — O comentário de "contra anterior" promete a comparação de pregão e entrega a da barra anterior
+- **B4-22** `` — Duas classes chamadas `Sessions`
+- **B4-23** `` — A linha sob o ponteiro na legenda não é a linha destacada
+- **B4-24** `Sessions.java` — `formatChange` diz "sempre com sinal" e imprime 0,00% sem sinal
+- **B4-25** `` — `BarReadout` e `RulerReadout` carregam quatro auxiliares idênticos
+- **B4-26** `` — `OwnScale.map` e `OwnScale.smooth` repetem o mesmo ponteiro corrente
+- **B4-27** `` — `Forms.field` constrói um `JTextField` descartável por linha só para medir uma altura
+- **B4-28** `InsertOverlayDialog.java` — `InsertOverlayDialog` injeta texto do bundle em HTML sem escapar, onde `SeriesSummary` escapa
+- **B4-29** `` — `Kind.minimum`/`maximum` só são obedecidos pelo diálogo, não pelo caminho de carga
+- **B4-30** `RandomWalkSeries.java` — `RandomWalkSeries`: a instrução de apagar está velha e a promessa de determinismo é meia
+- **B4-31** `` — "Usar período próprio" pode ficar marcado sem período escolhido
+- **B5-11** `` — Ramo inalcançável repetido em `map` e em `smooth`
+- **B5-12** `` — Imports não usados
+- **B5-13** `StochasticDialog.java` — `average.setEnabled(true)` incondicional
+- **B5-14** `RelativeStrength.java` — `transient` em classes que não são serializáveis
+- **B5-15** `` — Dois javadoc empilhados: `stroke()` fica sem documentação e a dela vai parar em `paintUnder`
+- **B5-16** `` — Os padrões do catálogo repetem as constantes em vez de usá-las
+- **B5-17** `StudyPane.java` — O nome do indicador na tela sai de `List.toString()`
+- **B5-18** `MovingAverage.java` — `computeOver` troca o campo `values` por baixo de si mesma
+- **B6-10** `` — Código morto que ainda promete um carregador que já existe
+- **B6-11** `DatePicker.java` — `DatePicker.setDate(null)` estoura, embora o construtor trate null
+- **B6-12** `` — Cor de erro fixa no código, metade seguindo o tema e metade não
+- **B6-13** `` — Alocação por pintura nos glifos do transporte
+- **B6-14** `` — O calendário fala o idioma da máquina, não o da aplicação
+- **B6-15** `` — `isRecorded()` não tem chamador no produto
+- **B7a-19** `Theme.java` — O javadoc de `Theme.PREFS` fala de um mecanismo que a classe já não usa
+- **B7a-20** `SeriesCatalog.java` — `secondsOf` pode lançar dentro de um comparador
+- **B7a-21** `` — Um `cancel()` que chega depois do fim deixa o `Handle` na lista para sempre
+- **B7a-22** `` — Estado global mutável sem `volatile`
+- **B7a-23** `LayerBoundaryTest.java` — O javadoc de `LayerBoundaryTest` descreve uma isenção que já não existe
+- **B7a-24** `ReplayFeed.java` — `followTheCatalog` protege o registo com teste-e-age
+- **B7a-25** `pom.xml` — `endeavourneo.home` só é definida pelo surefire
+- **B7a-26** `Launcher.java` — `theme.remember()` grava a cada arranque, mesmo sem argumento
+- **B7b-12** `MainWindow.java` — `seriesFor` recebe um `title` que nunca usa — e o javadoc órfão diz que ele é usado
+- **B7b-13** `` — `uniqueTitleOf` é código morto
+- **B7b-14** `` — Quatro imports e um campo sem uso em `SeriesWindow`
+- **B7b-15** `SeriesWindow.java` — Combo vazia grava um segmento sob a chave literal `"null"`
+- **B7b-16** `` — Os gráficos voltam fora de ordem a partir do décimo
+- **B7b-17** `MainWindow.java` — O fundo do desktop é cinza-escuro fixo, contra a regra que o próprio pacote defende
+- **B7b-18** `SegmentDialog.java` — Texto de tela fora do bundle em `SegmentDialog`
+- **B7b-19** `` — Em modo somente-leitura o botão de fechar tem dois listeners que fazem a mesma coisa
+- **B7b-20** `SettingsDialog.java` — O diálogo de preferências nunca é disposto quando fechado pelo X
+- **B7b-21** `AppearancePage.java` — Condição morta em `AppearancePage.apply`
+- **B7b-22** `` — `RangeBar.move` codifica o par num inteiro com um multiplicador mágico
+- **B7b-23** `` — `SeriesColors.taken` é `public` no meio de irmãos de pacote
+- **B7b-24** `MainWindow.java` — O campo `leaving` é declarado no meio dos métodos, sob o javadoc de outro membro
+- **B7b-25** `` — `relaunch` refaz à mão os passos de `leave()`, na ordem trocada
+- **B8a-14** `RenkoTest.java` — Metade de `everyBoundaryIsOnTheGrid` compara constante com constante
+- **B8a-15** `RenkoWickBoundsTest.java` — Dois testes de domínio importam de `ui`
+- **B8a-16** `` — `assertTrue(x == false)` onde cabe `assertFalse`
+- **B8a-17** `` — `OrphanJavadocTest`: nome com erro de digitação e teto que só sobe
+- **B8a-18** `BundleKeysTest.java` — O leitor de `.properties` do `BundleKeysTest` não é um leitor de `.properties`
+- **B8a-19** `SeriesCatalogTest.java` — `noSeriesWearsTheMarketsName` deriva o esperado da própria resposta do produto
+- **B8b-14** `NavigatorTreeTest.java` — Um teste que testa o próprio fixture
+- **B8b-15** `ChartLayoutTest.java` — `copyNamesDoNotCollide`: a segunda asserção é satisfeita por qualquer nome não usado
+- **B8b-16** `NavigatorTreeTest.java` — Javadoc grudado no membro errado
+- **B8b-17** `` — Componente Swing construído fora da EDT em vários testes
+- **B8b-18** `PeriodCatalogTest.java` — `listedRenkoAnimates`: laço vacuável, mas coberto pelo vizinho
+- **B8b-19** `SegmentChipTest.java` — Hedge morto sobre uma constante

@@ -79,11 +79,18 @@ def achados_dos_relatorios(pasta):
         gravidade = '?'
 
         for at, linha in enumerate(linhas):
-            if linha.startswith('## '):
-                texto = linha[3:].upper()
+            # Um cabecalho de qualquer nivel cujo texto e uma gravidade. Os
+            # relatorios usam "# ALTA" e "## ALTA" indistintamente, e ler so um
+            # dos dois deixou 163 dos 215 achados sem gravidade.
+            #
+            # A guarda e "nao casa o padrao de achado", e nao "nao tem a letra
+            # B": esta ultima matava tambem "# BAIXA", que comeca por B, e
+            # jogava as BAIXA todas para a gravidade anterior.
+            if linha.startswith('#') and not CABECALHO.match(linha.rstrip()):
+                texto = linha.lstrip('#').strip().upper()
 
                 for nivel in ('ALTA', 'MÉDIA', 'MEDIA', 'BAIXA'):
-                    if nivel in texto:
+                    if texto.startswith(nivel) or ('ACHADOS ' + nivel) in texto:
                         gravidade = 'MÉDIA' if nivel == 'MEDIA' else nivel
 
                 continue
