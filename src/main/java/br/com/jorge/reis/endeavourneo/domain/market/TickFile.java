@@ -25,6 +25,7 @@ import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.time.LocalDate;
 import java.util.Arrays;
@@ -205,6 +206,31 @@ public final class TickFile {
 
         private final Path file;
 
+        /**
+         * Where the bytes go until the session is whole.
+         *
+         * <p><b>The file on disk is not touched until there is a whole session to
+         * put there.</b> This used to open the target itself with {@code
+         * TRUNCATE_EXISTING} and write the header before the first line of the
+         * export had been read -- so the session already on disk, complete and
+         * checked and possibly the only copy, was gone the moment the converter
+         * decided that day had started. If the next line of the export was the one
+         * that made it refuse everything, the good day no longer existed.</p>
+         *
+         * <p>And what was left in its place LOOKED whole: close() rewrites the
+         * header with the count of what it managed to write, so the file is
+         * internally consistent -- the size matches the count, sessionOf answers
+         * with the date, the library lists the day as exported. Nothing told the
+         * program or the reader that the session ended where the error was.</p>
+         *
+         * <p>Same discipline the count already used -- do not commit until the
+         * answer is known -- one level up.</p>
+         */
+        private final Path working;
+
+        /** Whether the caller gave up on this session; see {@link #discard}. */
+        private boolean abandoned;
+
         private final LocalDate date;
 
         private final FileChannel channel;
@@ -219,10 +245,11 @@ public final class TickFile {
         public Writer(Path file, LocalDate date) throws IOException {
             this.file = file;
             this.date = date;
+            this.working = file.resolveSibling(file.getFileName() + ".parcial");
 
             Files.createDirectories(file.toAbsolutePath().getParent());
 
-            this.channel = FileChannel.open(file, StandardOpenOption.CREATE,
+            this.channel = FileChannel.open(working, StandardOpenOption.CREATE,
                     StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING);
 
             // A header with a count of zero, rewritten on close once the real
@@ -275,6 +302,10 @@ public final class TickFile {
 
         @Override
         public void close() throws IOException {
+            if (abandoned || !channel.isOpen()) {
+                return;
+            }
+
             try {
                 flush();
 
@@ -283,7 +314,44 @@ public final class TickFile {
             } finally {
                 channel.close();
             }
+
+            commit(working, file);
         }
+
+        /**
+         * Throws the half-written session away, leaving what was on disk alone.
+         *
+         * <p>For the failure path, and the converters call it from the {@code
+         * finally} that is only reached when something threw. Closing there
+         * instead would commit whatever had been written so far, which is the
+         * whole defect this pair exists to prevent.</p>
+         */
+        public void discard() throws IOException {
+            abandoned = true;
+
+            channel.close();
+
+            Files.deleteIfExists(working);
+        }
+
+        /**
+         * Puts the finished session where it belongs, in one step.
+         *
+         * <p>Atomic where the file system offers it, which is what makes "the old
+         * session, or the new one, and never half of either" true even if the
+         * machine goes down in the middle. Where it does not, a plain replace is
+         * still far better than writing in place: the window in which neither file
+         * is whole is a rename instead of a whole conversion.</p>
+         */
+        private static void commit(Path from, Path to) throws IOException {
+            try {
+                Files.move(from, to, StandardCopyOption.REPLACE_EXISTING,
+                        StandardCopyOption.ATOMIC_MOVE);
+            } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+                Files.move(from, to, StandardCopyOption.REPLACE_EXISTING);
+            }
+        }
+
 
         private void flush() throws IOException {
             buffer.flip();

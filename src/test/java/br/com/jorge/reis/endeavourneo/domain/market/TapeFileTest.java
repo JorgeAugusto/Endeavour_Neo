@@ -371,5 +371,65 @@ class TapeFileTest {
         assertTrue(thrown.getMessage().contains("damaged.tape"), thrown.getMessage());
         assertTrue(thrown.getMessage().contains("aggressor 0"), thrown.getMessage());
     }
-}
 
+    @Test
+    @DisplayName("uma conversao recusada nao toca no pregao que ja estava no disco")
+    void arefusedConversionLeavesTheGoodSessionAlone(@TempDir Path folder)
+            throws IOException {
+        // TWO defects that added up, and neither showed on screen.
+        //
+        // The writer opened the TARGET with TRUNCATE_EXISTING and wrote the
+        // header before the first line of the export had been read: the session
+        // already on disk -- complete, checked, possibly the only copy -- was
+        // gone the moment the converter decided that day had started. And what
+        // replaced it looked WHOLE, because the failure path closed the writer,
+        // and close rewrites the header with the count of what it managed. The
+        // size matched the count, the date read back, and the library listed the
+        // day as exported: a session that "ended at 11:00" with nothing saying
+        // so.
+        //
+        // The three refusal tests beside this one stop at assertThrows and never
+        // look at the disk, which is why this stood.
+        Path ticks = folder.resolve("ticks");
+
+        // A good session, converted and read back, the way an import leaves one.
+        ProfitTrades.convert(exportOf(folder, "bom.csv", NEWEST_FIRST), ticks, "win", null);
+
+        Path session = TickSource.PROFIT.fileFor(ticks, "win",
+                java.time.LocalDate.of(2026, 9, 1));
+
+        assertTrue(java.nio.file.Files.isRegularFile(session), "the fixture wrote nothing");
+
+        int whole = TapeFile.read(session).size();
+        long bytes = java.nio.file.Files.size(session);
+
+        assertEquals(5, whole, "the good session is not the five trades of the fixture");
+
+        // The same day again, from an export that fails IN THE MIDDLE OF
+        // WRITING. That distinction is the whole test: an unknown aggressor or
+        // an oversize quantity is refused while the CSV is being READ, before a
+        // writer for that day exists, so nothing on disk was ever at risk. A
+        // trade that goes backwards in time is caught by add(), after the
+        // trades before it are already in the file.
+        //
+        // The export arrives newest first and the converter walks it backwards,
+        // so this order reaches add() as 09:00:00, 09:00:02, then 09:00:01.
+        List<String> broken = List.of(
+                "WINFUT;01/09/2026;09:00:01;3 - XP;179.390;1;85 - BTG;Comprador",
+                "WINFUT;01/09/2026;09:00:02;3 - XP;179.395;1;85 - BTG;Comprador",
+                "WINFUT;01/09/2026;09:00:00;85 - BTG;179.385;500;262 - MIRAE;Direto");
+
+        assertThrows(IllegalArgumentException.class, () -> ProfitTrades.convert(
+                exportOf(folder, "ruim.csv", broken), ticks, "win", null));
+
+        assertEquals(whole, TapeFile.read(session).size(),
+                "the refused conversion replaced the good session with a short one");
+        assertEquals(bytes, java.nio.file.Files.size(session),
+                "the session on disk was rewritten by a conversion that was refused");
+
+        // And nothing was left lying about under the session's own name.
+        assertFalse(java.nio.file.Files.exists(
+                        session.resolveSibling(session.getFileName() + ".parcial")),
+                "the half-written session was left on disk");
+    }
+}

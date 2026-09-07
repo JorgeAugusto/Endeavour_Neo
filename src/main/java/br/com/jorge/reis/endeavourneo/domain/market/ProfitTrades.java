@@ -138,11 +138,18 @@ public final class ProfitTrades {
                 writer = null;
             }
         } finally {
-            // Only reached when something threw: the normal path closed it
-            // above. Without this a failed conversion leaves a file open and a
-            // header still claiming zero trades.
+            // DISCARDED, not closed, and this branch is only reached when
+            // something threw: the normal path finished the session and set the
+            // writer to null.
+            //
+            // Closing here would COMMIT whatever had been written so far --
+            // close() rewrites the header with the count it managed -- and the
+            // result is a short session that looks whole: the size matches the
+            // count, the date reads back, the library lists the day as
+            // exported. A refused conversion would replace a good session with
+            // a day that ends where the error was, and nothing would say so.
             if (writer != null) {
-                writer.close();
+                writer.discard();
             }
         }
 
