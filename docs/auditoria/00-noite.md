@@ -301,7 +301,7 @@ cima do corpus inteiro, 1,5 milhão de tokens e zero relatórios.
 
 | | |
 |---|---|
-| suíte | **537 → 572 verdes** |
+| suíte | **537 → 583 verdes** |
 | commits | 19 |
 | auditoria II | 10 áreas + 4 lentes, **51.138 linhas** |
 | achados novos | **32 ALTA · 121 MÉDIA · 107 BAIXA** |
@@ -404,3 +404,68 @@ registro porque não estavam em auditoria nenhuma:
 E um teste que eu escrevi **não tinha dentes** — passava com o produto
 quebrado. Só apareceu porque quebrei o produto de propósito para conferir.
 Está corrigido; a lição vai para a fase 3.
+
+### 07/09, 04h às 07h — fases 1 (fim), 2 e 3
+
+| lote | achados | commit |
+|---|---|---|
+| A varredura que emudecia, as caixas remontadas, o rótulo em português | fase 1 | `f6f6640` |
+| O briefing da segunda passada, e este diário | — | `77a4836` |
+| A ferramenta que confronta as duas passadas | — | `9c7a44c` |
+| O que não se soltava, o calendário que não sabia, a preposição em java | fase 1 | `9e87cf5` |
+| As sete ALTA da segunda passada, e o teste que nunca rodou | B1..B6 | `e541da7` |
+| O quadro parado, que trocava os tijolos em silêncio | B5-2 | `9b2c469` |
+| O estudo na escala errada, o cache que engolia o trecho, o arquivo que apagava tudo | B7a | `30e30f7` |
+| O índice dos 215 achados, e o parser que quase o inventou | — | `5f32210` |
+| As dez áreas fechadas, e as quatro correções minhas que a segunda leitura derrubou | — | `e3bfe05` |
+| O extrator passa a entender as três formas de referência | — | `d3de376` |
+| A fase 3, com as duas auditorias confrontadas | — | `7c95406` |
+
+O que a fase 2 e a fase 3 acharam, e que nenhuma outra coisa acharia:
+
+- **Cinco defeitos nas minhas próprias correções desta noite**, e quatro estavam
+  erradas ou pela metade: o gancho `whenForgotten` pendurado num `forget()` sem
+  chamador, o `openUntil` com um buraco no cache (mil barras onde cabem 300), o
+  `forgetEnding` sem chamador, e o `OneClockTest` que **nunca rodava** porque a
+  guarda do laço é falsa antes do primeiro quadro. Corrigir e reauditar na mesma
+  noite não é redundância: é a única leitura que pega a correção fresca.
+- **`data.zone` era lida pelo Launcher e escrita por ninguém.** A correção de
+  fuso inteira foi construída e nunca armada. Invisível na máquina do autor, que
+  fica no fuso do mercado — a classe de defeito que só existe onde o código não
+  é escrito.
+
+### 07/09, manhã — fase 4
+
+| item | o que era | commit |
+|---|---|---|
+| **L3-1** | Conversão recusada apagava o pregão bom e deixava um curto no lugar | `0ead241` |
+| **B7b-2** | A janela de séries lia a série inteira na thread da interface | `2f60bcf` |
+| **L1-1** | Trocar de idioma deixava a saída padrão presa ao console da janela morta | `e2ae2ae` |
+| **B7b-1** | A tranca "só pelos segmentos" não valia para fonte de ticks | `351410d` |
+| **B8b-1** | O único teste da escala própria do IFR passava com o IFR desenhando NADA | `df5c531` |
+| **B8b-2, B8b-5** | Botões do mouse e arredondamento do preço, medidos em vez de lidos | `b38029e` |
+| **B8b-3, B8b-4** | A biblioteca que cresce, medida — e uma premissa do relatório caiu | `0e55307` |
+| **B8a-3** | A varredura que falha PELO MEIO nunca caía no catch que a esperava | `03cd5a9` |
+| **B7b-3** | Javadoc inerte: 23 para zero, e o teto saiu do teste | `7a9627d` |
+
+**As 32 ALTA da auditoria II estão fechadas.** Cada uma com o teste que faltava,
+e cada teste provado quebrando o produto de propósito.
+
+Três coisas que a fase 4 achou e que não estavam em auditoria nenhuma:
+
+- **`Files.walk` e preguicoso, e o que ele lanca pelo meio e
+  `UncheckedIOException`.** O `catch (IOException)` embaixo do walk so podia ver
+  a falha de COMECAR. O caso que o comentario dele descrevia -- "the walk is
+  lazy, so the throw can come halfway" -- passava reto, saia do metodo levando os
+  pregoes ja achados e derrubava a construcao da arvore atras. O comentario
+  estava certo sobre o mundo e errado sobre o proprio codigo, que e a forma de
+  comentario mais cara que existe.
+- **Duas premissas dos relatorios nao se sustentam**, e estao registradas onde
+  foram refutadas: trocar `step >= 1.0` por `step > 1.0` e a mesma funcao (para
+  passo maior ou igual a 1, `-log10(passo)` e zero ou negativo e o `ceil` disso e
+  zero de qualquer jeito), e tirar `request(day.plusDays(1))` nao trava a
+  meia-noite, porque `TickLibrary.request` ja enfileira o dia, o seguinte e o
+  anterior.
+- **Dois javadoc inertes descreviam comportamento que a aplicação já não tem.**
+  Um javadoc que não está preso a nada para de ser mantido, e depois para de ser
+  verdade.
