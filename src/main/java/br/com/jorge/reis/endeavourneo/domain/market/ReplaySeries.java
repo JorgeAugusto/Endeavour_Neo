@@ -197,15 +197,39 @@ public final class ReplaySeries implements PriceSeries {
      * discarding the remainder would mean nothing ever arrived at all.</p>
      */
     public void advanceMarketTime(long millis) {
+        owed += Math.max(0L, millis);
+
         if (ticks == null) {
-            // No tick generator: fall back to whole bars, which is what the
-            // chart got before this existed.
-            advance((int) Math.max(0, millis / barMillis));
+            // No tick generator: whole bars, which is what the chart got before
+            // this existed -- THROUGH `owed`, like everything else.
+            //
+            // This used to be advance(millis / barMillis) on the raw argument,
+            // which does the very thing the paragraph above calls fatal: at one
+            // times speed a frame is forty milliseconds, 40 / 60_000 is zero,
+            // and the remainder was dropped. Called frame after frame it never
+            // advanced at all: a series built with no generator -- which is what
+            // the two-argument constructor makes, and what its own javadoc
+            // describes as "null to jump bar by bar" -- sat still for ever with
+            // the play icon lit. The same symptom the long comment below
+            // describes as already fixed in the other branch.
+            long whole = Math.max(1L, barMillis);
+            int bars = (int) (owed / whole);
+
+            owed -= (long) bars * whole;
+
+            if (bars > 0) {
+                // advance() clears `owed` on purpose -- a jump to a bar boundary
+                // leaves no half bar behind -- so what is left over is put back
+                // after it.
+                long left = owed;
+
+                advance(bars);
+
+                owed = left;
+            }
 
             return;
         }
-
-        owed += Math.max(0L, millis);
 
         while (owed > 0) {
             if (path == null && !startForming()) {
@@ -314,6 +338,18 @@ public final class ReplaySeries implements PriceSeries {
         now = day.timeAt(completed);
 
         if (path == null || path.length == 0) {
+            // BOTH of them. This cleared `when` and left `path` pointing at the
+            // empty array, and everything downstream reads `path != null` as
+            // "there is a bar forming": size() counted a bar that does not
+            // exist, forming(completed) went true, and high/low/close answered
+            // with the PREVIOUS bar's numbers. The next call divided the frame
+            // by path.length -- by zero.
+            //
+            // Unreachable today, because no generator here returns an empty
+            // array; the defect is the guard leaving the object in a state its
+            // own readers cannot make sense of, and the barrier hiding that is a
+            // property of two other classes rather than of this one.
+            path = null;
             when = null;
 
             // No path for this bar, and none invented. Happens where there are

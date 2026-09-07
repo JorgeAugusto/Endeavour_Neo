@@ -380,4 +380,71 @@ class ReplaySeriesTest {
                     "frame " + frame + ": the forming bar went below the minute low");
         }
     }
+
+    @Test
+    @DisplayName("sem gerador de ticks o relogio ainda anda, quadro a quadro")
+    void withoutatickGeneratorTheClockStillMoves() {
+        // The javadoc of advanceMarketTime says what is at stake: "at one times
+        // speed a frame is forty milliseconds and a price arrives every few
+        // seconds; discarding the remainder would mean nothing ever arrived at
+        // all". The branch for a series with no generator did exactly that --
+        // advance(millis / barMillis) on the raw argument, and 40 / 60_000 is
+        // zero. Called frame after frame it never advanced.
+        //
+        // A public branch, documented in the constructor as "null to jump bar by
+        // bar", broken, and with no test: none of the five calls in this suite
+        // used a series with a null generator.
+        ReplaySeries replay = new ReplaySeries(bars(120), 0);
+
+        int before = replay.size();
+
+        // Twenty-five frames a second, at one times, for two minutes of market:
+        // three thousand frames of forty milliseconds. Not one of them is a whole
+        // bar by itself, which is the whole point -- the bar has to be built out
+        // of the remainders.
+        for (int frame = 0; frame < 3_000; frame++) {
+            replay.advanceMarketTime(40L);
+        }
+
+        assertEquals(before + 2, replay.size(),
+                "the replay did not move at all: every frame divided to zero bars and "
+                        + "the remainder was thrown away, so the transport sat still with "
+                        + "the play icon lit");
+    }
+
+    /** Bars of one minute, closing at their own index. */
+    private static PriceSeries bars(int count) {
+        return new PriceSeries() {
+
+            @Override
+            public int size() {
+                return count;
+            }
+
+            @Override
+            public long timeAt(int index) {
+                return 1_756_000_000_000L + index * 60_000L;
+            }
+
+            @Override
+            public double openAt(int index) {
+                return 100 + index;
+            }
+
+            @Override
+            public double highAt(int index) {
+                return 101 + index;
+            }
+
+            @Override
+            public double lowAt(int index) {
+                return 99 + index;
+            }
+
+            @Override
+            public double closeAt(int index) {
+                return 100 + index;
+            }
+        };
+    }
 }
