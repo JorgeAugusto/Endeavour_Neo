@@ -653,14 +653,26 @@ public final class ReplaySession {
         return isRange() ? at.format(DAY_AND_CLOCK) : at.toLocalTime().format(CLOCK);
     }
 
-    /** @return where the replay is going, so the transport shows the far end */
+    /**
+     * @return where the replay is going, so the transport shows the far end
+     *
+     * <p><b>Read off the session, not assumed.</b> It used to be nine in the
+     * morning plus a fixed number of minutes, which says the same thing for a
+     * full day, a half day before a holiday, and a session the exchange stopped
+     * early. The number was invented, and the fixture that tested it was written
+     * to match the invention — so the two agreed and neither was ever compared
+     * with a market.</p>
+     */
     public String endText() {
+        java.time.LocalTime close = Instant.ofEpochMilli(live.end())
+                .atZone(ZoneId.systemDefault()).toLocalTime();
+
         if (!isRange()) {
-            return OPEN.plusMinutes(MINUTES - 1L).format(DateTimeFormatter.ofPattern("HH:mm"));
+            return close.format(DateTimeFormatter.ofPattern("HH:mm"));
         }
 
         return until.format(DateTimeFormatter.ofPattern("dd/MM"))
-                + " " + OPEN.plusMinutes(MINUTES - 1L).format(DateTimeFormatter.ofPattern("HH:mm"));
+                + " " + close.format(DateTimeFormatter.ofPattern("HH:mm"));
     }
 
     /** @param ending run when the session ends, to give a chart back its data */

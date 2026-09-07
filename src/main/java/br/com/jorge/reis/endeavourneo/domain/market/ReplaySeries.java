@@ -141,6 +141,24 @@ public final class ReplaySeries implements PriceSeries {
         return completed >= day.size() && path == null;
     }
 
+    /**
+     * @return the instant this session ENDS, read off the bars it holds
+     *
+     * <p>The same number {@link #clock} settles on once everything has been
+     * revealed, reached the other way: from the last bar of the day rather than
+     * from how much of it has been played. The transport labels the far end of
+     * its scrubber with this, and used to label it with a constant — nine in the
+     * morning plus a fixed number of minutes — which is a guess about a session
+     * rather than a reading of one.</p>
+     */
+    public long end() {
+        if (day.size() == 0) {
+            return 0L;
+        }
+
+        return day.timeAt(day.size() - 1) + barMillis;
+    }
+
     /** @return how far through the SESSION it is, ignoring the history */
     public double progress() {
         int playable = day.size() - origin;
@@ -324,7 +342,18 @@ public final class ReplaySeries implements PriceSeries {
 
         long start = day.timeAt(size() - 1);
 
-        if (path == null || path.length <= 1) {
+        if (path == null) {
+            // NOTHING IS FORMING, so the clock stands at the END of the last bar
+            // revealed, not at its start. size() counts the forming bar, so the
+            // moment one completes the count drops by one and this line starts
+            // reading the bar BEFORE -- and returning its start sent the clock
+            // backwards by almost a whole bar, once per bar, for the whole
+            // session. Anything reading the clock to decide what had happened
+            // yet -- the tick renko does exactly that -- saw time undo itself.
+            return start + barMillis;
+        }
+
+        if (path.length <= 1) {
             return start;
         }
 

@@ -136,7 +136,14 @@ public final class TickBars implements PriceSeries {
 
     @Override
     public double volumeAt(int index) {
-        return ticks.volumeAt(trades[index]);
+        int trade = trades[index];
+
+        // ASKED FIRST, because TickSeries has a separate hasVolume for a reason:
+        // a row that carried no size is not a row that traded nothing. Returning
+        // the raw number turned "we do not know" into a measured zero -- and a
+        // zero is a claim, one that a volume indicator draws as a flat floor and
+        // that an average of volume quietly divides by.
+        return ticks.hasVolume(trade) ? ticks.volumeAt(trade) : Double.NaN;
     }
 
     /**

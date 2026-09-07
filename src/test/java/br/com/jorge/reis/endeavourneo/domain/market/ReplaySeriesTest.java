@@ -77,6 +77,46 @@ class ReplaySeriesTest {
     }
 
     @Test
+    @DisplayName("the clock never goes backwards, bar after bar")
+    void theClockNeverGoesBackwards() {
+        // It did, once per bar, for the whole session. size() counts the forming
+        // bar, so the moment one completed the count dropped by one and the
+        // clock started reading the bar BEFORE -- from its START. The clock
+        // therefore walked forward across a minute and then jumped back almost
+        // the whole of it.
+        //
+        // Time undoing itself is not a cosmetic fault here: the tick renko asks
+        // the clock what has happened yet, and lays bricks up to that instant.
+        ReplaySeries replay = new ReplaySeries(day(), 0, 0,
+                (bars, index) -> new double[]{index, index + 0.5, index + 1});
+
+        long previous = replay.clock();
+
+        for (int frame = 0; frame < 400; frame++) {
+            replay.advanceMarketTime(15_000L);
+
+            long now = replay.clock();
+
+            assertTrue(now >= previous,
+                    "the clock went back " + (previous - now) + " ms at frame " + frame);
+
+            previous = now;
+        }
+    }
+
+    @Test
+    @DisplayName("with nothing forming, the clock stands at the END of the last bar")
+    void theClockStandsAtTheEndOfWhatIsRevealed() {
+        // What "now" means when no bar is being built: everything revealed has
+        // happened, so the clock is past the last of it. Standing at that bar's
+        // start would say the minute it covers has not been played -- and it has.
+        ReplaySeries replay = new ReplaySeries(day(), 3);
+
+        assertEquals(day().timeAt(2) + 60_000L, replay.clock(),
+                "the clock is standing at the start of a bar that already finished");
+    }
+
+    @Test
     @DisplayName("a minute with no ticks appears WHOLE, and the replay keeps going")
     void aMinuteWithoutTicksDoesNotFreeze() {
         // The freeze, written as the test that was missing. A minute with no
@@ -197,7 +237,16 @@ class ReplaySeriesTest {
 
         replay.advance(3);
 
-        assertEquals(day.timeAt(2), replay.clock(), "the clock is the last bar that arrived");
+        // The END of the third bar, not its start. Three bars have been revealed,
+        // which means the minute the third one covers has been played -- standing
+        // at its start would say it had not.
+        //
+        // This line used to expect the start, and that expectation was the
+        // defect written down: with nothing forming, the clock read the bar
+        // BEFORE the one it had been walking through, so it went backwards by
+        // almost a whole bar every time a bar completed.
+        assertEquals(day.timeAt(2) + 60_000L, replay.clock(),
+                "the clock is standing at the start of a bar that already finished");
     }
 
     @Test

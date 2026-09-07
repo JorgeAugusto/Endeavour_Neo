@@ -229,6 +229,12 @@ public final class Timeframe implements Aggregation {
         double[] closes = new double[total];
         double[] volumes = new double[total];
 
+        // Whether anything was measured for the bar being built. Per BUCKET, and
+        // not once for the whole series: the rule below -- that zero is a
+        // measurement and "we do not know" is not the same statement -- is about
+        // one output bar, so it has to be decided one output bar at a time.
+        boolean measured = false;
+
         int out = -1;
         long currentBucket = Long.MIN_VALUE;
 
@@ -236,8 +242,13 @@ public final class Timeframe implements Aggregation {
             long bucket = bucketOf(source.timeAt(i), at);
 
             if (bucket != currentBucket) {
+                if (out >= 0 && !measured) {
+                    volumes[out] = Double.NaN;
+                }
+
                 currentBucket = bucket;
                 out++;
+                measured = false;
 
                 times[out] = startOf(source.timeAt(i), at);
                 opens[out] = source.openAt(i);
@@ -253,20 +264,17 @@ public final class Timeframe implements Aggregation {
 
             double volume = source.volumeAt(i);
 
-            // Only finite volumes are added. A series with no volume at all
-            // therefore ends at zero, not NaN -- see below.
             if (Double.isFinite(volume)) {
                 volumes[out] += volume;
+                measured = true;
             }
         }
 
         int kept = out + 1;
 
-        // A series that carries no volume must not come out claiming zero: zero
-        // is a measurement, and "there was no trading" is a different statement
-        // from "we do not know".
-        if (!Double.isFinite(source.volumeAt(0))) {
-            java.util.Arrays.fill(volumes, 0, kept, Double.NaN);
+        // The last bucket, which the loop never closes.
+        if (out >= 0 && !measured) {
+            volumes[out] = Double.NaN;
         }
 
         return new ArraySeries(

@@ -139,6 +139,45 @@ class TimeframeTest {
     }
 
     @Test
+    @DisplayName("a first bar with no volume does not erase the volume of the rest")
+    void oneBarWithoutVolumeDoesNotEraseTheOthers() {
+        // The decision used to be taken from bar ZERO alone: if the first bar of
+        // the whole series carried no volume, every summed volume in the result
+        // was replaced by NaN. One auction bar at the front, or one quote-only
+        // row, and the volume of six years went away -- silently, because NaN
+        // draws as nothing and nothing looks like a series that has no volume.
+        bar(LocalDateTime.of(2026, 9, 2, 9, 0), 100, 101, 99, 100, Double.NaN);
+        bar(LocalDateTime.of(2026, 9, 2, 9, 1), 100, 102, 99, 101, 7);
+        bar(LocalDateTime.of(2026, 9, 2, 9, 2), 101, 103, 100, 102, 5);
+
+        PriceSeries five = Timeframe.FIVE_MINUTES.apply(series(), SAO_PAULO);
+
+        assertEquals(12.0, five.volumeAt(0), 1e-9,
+                "the volume that WAS measured was thrown away because the first bar "
+                        + "had none");
+    }
+
+    @Test
+    @DisplayName("a bar nobody measured says so, instead of claiming zero")
+    void anUnmeasuredBarIsNotZero() {
+        // The other half, and the reason the decision is per BUCKET: zero is a
+        // measurement -- "nothing traded" -- and it is a different statement from
+        // "we do not know". A five-minute bar built only from rows that carried
+        // no volume knows nothing about volume.
+        bar(LocalDateTime.of(2026, 9, 2, 9, 0), 100, 101, 99, 100, Double.NaN);
+        bar(LocalDateTime.of(2026, 9, 2, 9, 1), 100, 102, 99, 101, Double.NaN);
+        bar(LocalDateTime.of(2026, 9, 2, 9, 5), 101, 103, 100, 102, 9);
+
+        PriceSeries five = Timeframe.FIVE_MINUTES.apply(series(), SAO_PAULO);
+
+        assertEquals(2, five.size());
+        assertTrue(Double.isNaN(five.volumeAt(0)),
+                "a bar built from rows that carried no volume came out claiming zero");
+        assertEquals(9.0, five.volumeAt(1), 1e-9,
+                "and the next bar, which WAS measured, has to keep its number");
+    }
+
+    @Test
     @DisplayName("the stamp is the SLOT's start, even when the bars are not aligned to it")
     void theStampIsTheSlotAndNotTheFirstBar() {
         // The test above cannot see this, and that is the point of adding one.
