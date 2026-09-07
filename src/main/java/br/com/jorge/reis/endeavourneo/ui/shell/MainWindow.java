@@ -370,7 +370,11 @@ public final class MainWindow extends JFrame {
      */
     private PriceSeries seriesFor(String name, String title) {
         try {
-            java.util.Optional<PriceSeries> series = SeriesCatalog.open(name);
+            // A WINDOW of the most recent bars, not the file. See
+            // ChartPreferences.window: six years of minutes is 39 MB read to
+            // draw a screen showing a month, and no terminal does that.
+            java.util.Optional<PriceSeries> series = SeriesCatalog.open(name,
+                    br.com.jorge.reis.endeavourneo.ui.chart.ChartPreferences.window());
 
             if (series.isPresent()) {
                 console.write(Messages.get("console.seriesLoaded", name,

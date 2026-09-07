@@ -619,6 +619,50 @@ public final class SeriesCatalog {
         return Optional.of(series);
     }
 
+    /**
+     * @param name a series's name, as {@link #names()} gives it
+     * @param bars how many of the MOST RECENT bars to read
+     * @return the last {@code bars} bars, or empty if there is no such series
+     * @throws IOException if there is one and it cannot be read
+     *
+     * <p><b>A window, anchored to the right.</b> What a reader opens a chart to
+     * see is the recent end of it; six years of one-minute bars is 39 MB read to
+     * draw a screen that shows a month. Every terminal worth the name does this
+     * -- the reference product loads 10.000 by default and 100.000 at its top
+     * licence, MetaTrader 4 stops the chart at 65.000 while keeping 512.000 on
+     * disk, and NinjaTrader loads five days of minutes.</p>
+     *
+     * <p><b>Not cached.</b> The whole-file {@link #open(String)} is, because
+     * everything asking for it wants the same thing; a window is asked for with
+     * a size, and holding one window would hand the next caller somebody else's.
+     * Reading 100.000 bars is 4,8 MB and a seek.</p>
+     */
+    public static Optional<PriceSeries> open(String name, int bars) throws IOException {
+        if (bars <= 0) {
+            return open(name);
+        }
+
+        SoftReference<PriceSeries> held = LOADED.get(name);
+        PriceSeries whole = held == null ? null : held.get();
+
+        if (whole != null && whole.size() <= bars) {
+            // The file is already in memory and is no bigger than the window.
+            // Reading it again to get fewer bars than it holds would be work for
+            // nothing.
+            return Optional.of(whole);
+        }
+
+        Path file = fileOf(name);
+
+        if (!MarketFile.isSeries(file)) {
+            return Optional.empty();
+        }
+
+        int total = MarketFile.countIn(file);
+
+        return Optional.of(MarketFile.read(file, Math.max(0, total - bars), bars));
+    }
+
     /** Drops what is held in memory. The files are untouched. */
     public static void forget() {
         LOADED.clear();

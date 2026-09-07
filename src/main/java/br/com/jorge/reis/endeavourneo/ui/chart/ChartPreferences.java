@@ -156,6 +156,62 @@ public final class ChartPreferences {
         announce();
     }
 
+    private static final String WINDOW = "chart.window";
+
+    /** The smallest window worth offering; below this a chart shows less than a month. */
+    public static final int LEAST_WINDOW = 1_000;
+
+    /**
+     * The largest.
+     *
+     * <p>Five hundred thousand one-minute bars is around a thousand trading
+     * sessions -- four years -- and 24 MB. Past that the reader is no longer
+     * looking at a chart, they are measuring over the whole base, and that is
+     * what a measurement loads the file for.</p>
+     */
+    public static final int MOST_WINDOW = 500_000;
+
+    /**
+     * A hundred thousand: the reference product's top licence.
+     *
+     * <p>About two hundred trading sessions of one-minute bars, and 4,8 MB.</p>
+     */
+    public static final int WINDOW_DEFAULT = 100_000;
+
+    /**
+     * @return how many of the most recent bars a chart loads
+     *
+     * <p><b>A window, not the file.</b> Six years of one-minute bars is 39 MB
+     * read to draw a screen that shows a month of them, and every terminal
+     * worth the name loads a window instead: the reference product does 10.000
+     * by default and 100.000 at its top licence, MetaTrader 4 stops the chart at
+     * 65.000 while keeping 512.000 on disk, NinjaTrader loads five days of
+     * minutes. A hundred thousand one-minute bars is around two hundred trading
+     * sessions and 4,8 MB.</p>
+     *
+     * <p>Zero or less means the whole file, which is what a measurement over the
+     * entire base wants and what the reader can still ask for.</p>
+     */
+    public static int window() {
+        int kept = PREFS.getInt(WINDOW, WINDOW_DEFAULT);
+
+        // Clamped on the way OUT as well as on the way in: a hand-edited file,
+        // or one written by a version with other limits, must not make a chart
+        // read four hundred megabytes because a digit was typed twice.
+        return Math.max(LEAST_WINDOW, Math.min(kept, MOST_WINDOW));
+    }
+
+    public static void setWindow(int bars) {
+        int wanted = Math.max(LEAST_WINDOW, Math.min(bars, MOST_WINDOW));
+
+        if (window() == wanted) {
+            return;
+        }
+
+        PREFS.putInt(WINDOW, wanted);
+        announce();
+    }
+
     public static boolean hollowCandles() {
         return hollowCandles;
     }

@@ -83,12 +83,37 @@ public final class MarketFile {
         }
     }
 
+    /** @return how many bars the file holds, without reading any of them */
+    public static int countIn(Path file) throws IOException {
+        try (FileChannel channel = FileChannel.open(file, StandardOpenOption.READ)) {
+            return header(channel, file).count;
+        }
+    }
+
     /**
      * @param file a file written by the first Endeavour
      * @return every bar in it
      * @throws IOException if the file is missing, truncated or not one of ours
      */
     public static PriceSeries read(Path file) throws IOException {
+        return read(file, 0, Integer.MAX_VALUE);
+    }
+
+    /**
+     * @param file a file written by the first Endeavour
+     * @param from the first bar wanted, counted from the start of the file
+     * @param wantedCount how many to read; more than there are reads to the end
+     * @return those bars
+     * @throws IOException if the file is missing, truncated or not one of ours
+     *
+     * <p><b>A slice, because the records are fixed.</b> Each is a long and five
+     * doubles, so bar {@code i} begins at {@code HEADER_BYTES + i * RECORD_BYTES}
+     * and there is nothing to search for. Six years of one-minute bars is 39 MB
+     * and the reader is almost always looking at a month of it; loading the file
+     * to draw a screen is the sort of cost that never shows up as a defect and
+     * is paid on every open.</p>
+     */
+    public static PriceSeries read(Path file, int from, int wantedCount) throws IOException {
         try (FileChannel channel = FileChannel.open(file, StandardOpenOption.READ)) {
             Header head = header(channel, file);
 
@@ -104,7 +129,11 @@ public final class MarketFile {
                         + channel.size());
             }
 
-            int size = head.count;
+            int first = Math.max(0, Math.min(from, head.count));
+            int size = (int) Math.max(0, Math.min((long) wantedCount, head.count - first));
+
+            channel.position(HEADER_BYTES + (long) first * RECORD_BYTES);
+
             long[] times = new long[size];
             double[] opens = new double[size];
             double[] highs = new double[size];

@@ -67,6 +67,62 @@ class MarketFileTest {
         Files.write(file, buffer.array());
     }
 
+    /** A file of {@code count} bars, closing at 0, 1, 2 ... */
+    private static Path counted(Path folder, int count) throws IOException {
+        double[][] bars = new double[count][];
+
+        for (int i = 0; i < count; i++) {
+            bars[i] = bar(1_000L + i, i, i, i, i, 1);
+        }
+
+        Path file = folder.resolve("counted.bin");
+
+        write(file, "ENDVCNDL", 1, 1, count, bars);
+
+        return file;
+    }
+
+    @Test
+    @DisplayName("a slice reads the bars asked for, and no others")
+    void aSliceIsExactlyTheBarsAskedFor(@TempDir Path folder) throws IOException {
+        // The records are fixed at 48 bytes, so bar i begins at 24 + i * 48 and
+        // there is nothing to search for. That is what lets a chart read a
+        // window instead of six years to draw a month -- and it is arithmetic,
+        // which is exactly the kind of thing that is wrong by one and looks
+        // right.
+        Path file = counted(folder, 100);
+
+        PriceSeries slice = MarketFile.read(file, 10, 5);
+
+        assertEquals(5, slice.size());
+        assertEquals(10.0, slice.closeAt(0), "the slice did not start where it was asked to");
+        assertEquals(14.0, slice.closeAt(4), "the slice did not end where it was asked to");
+        assertEquals(1_010L, slice.timeAt(0), "the stamps came from the wrong bars");
+    }
+
+    @Test
+    @DisplayName("a slice past the end stops at the end instead of failing")
+    void aSliceIsClampedToWhatIsThere(@TempDir Path folder) throws IOException {
+        Path file = counted(folder, 100);
+
+        assertEquals(10, MarketFile.read(file, 90, 500).size(),
+                "asking for more than is left did not stop at the last bar");
+        assertEquals(0, MarketFile.read(file, 100, 10).size(),
+                "starting past the end gave bars that are not there");
+        assertEquals(0, MarketFile.read(file, 500, 10).size());
+        assertEquals(100, MarketFile.read(file, 0, Integer.MAX_VALUE).size(),
+                "asking for everything did not give everything");
+    }
+
+    @Test
+    @DisplayName("the count is read from the header, without reading a single bar")
+    void theCountComesFromTheHeader(@TempDir Path folder) throws IOException {
+        // What makes "the LAST hundred thousand" answerable: the window is
+        // anchored to the right, so its start is total - window, and asking for
+        // total must not mean reading the file.
+        assertEquals(100, MarketFile.countIn(counted(folder, 100)));
+    }
+
     /** {time, open, high, low, close, volume} */
     private static double[] bar(long time, double open, double high,
                                 double low, double close, double volume) {

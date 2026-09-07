@@ -50,6 +50,17 @@ public final class ChartPage implements SettingsPage {
 
     private final JCheckBox hollow = new JCheckBox(Messages.get("settings.chart.hollow"));
 
+    /**
+     * How many of the most recent bars a chart loads.
+     *
+     * <p>A spinner and not a list of tiers: the reference product's steps are
+     * its licences, not a judgement about what is useful, and the reader here
+     * has one licence and a machine of their own.</p>
+     */
+    private final javax.swing.JSpinner window = new javax.swing.JSpinner(
+            new javax.swing.SpinnerNumberModel(ChartPreferences.WINDOW_DEFAULT,
+                    ChartPreferences.LEAST_WINDOW, ChartPreferences.MOST_WINDOW, 10_000));
+
     public ChartPage() {
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
 
@@ -92,6 +103,33 @@ public final class ChartPage implements SettingsPage {
 
         panel.add(hollow);
         panel.add(hollowHint);
+
+        JPanel row = new JPanel();
+
+        row.setLayout(new BoxLayout(row, BoxLayout.X_AXIS));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        JLabel label = new JLabel(Messages.get("settings.chart.window"));
+
+        label.setLabelFor(window);
+        label.setDisplayedMnemonic(Messages.mnemonic("settings.chart.window"));
+
+        window.setMaximumSize(window.getPreferredSize());
+
+        row.add(label);
+        row.add(Box.createHorizontalStrut(8));
+        row.add(window);
+        row.add(Box.createHorizontalGlue());
+
+        JLabel windowHint = new JLabel(Messages.get("settings.chart.window.hint"));
+
+        windowHint.setAlignmentX(Component.LEFT_ALIGNMENT);
+        windowHint.setBorder(BorderFactory.createEmptyBorder(0, 24, 8, 0));
+        windowHint.setEnabled(false);
+
+        panel.add(Box.createVerticalStrut(8));
+        panel.add(row);
+        panel.add(windowHint);
         panel.add(Box.createVerticalGlue());
     }
 
@@ -113,6 +151,7 @@ public final class ChartPage implements SettingsPage {
         horizontalGrid.setSelected(ChartPreferences.horizontalGrid());
         verticalGrid.setSelected(ChartPreferences.verticalGrid());
         hollow.setSelected(ChartPreferences.hollowCandles());
+        window.setValue(ChartPreferences.window());
     }
 
     @Override
@@ -121,5 +160,6 @@ public final class ChartPage implements SettingsPage {
         ChartPreferences.setHorizontalGrid(horizontalGrid.isSelected());
         ChartPreferences.setVerticalGrid(verticalGrid.isSelected());
         ChartPreferences.setHollowCandles(hollow.isSelected());
+        ChartPreferences.setWindow(((Number) window.getValue()).intValue());
     }
 }
