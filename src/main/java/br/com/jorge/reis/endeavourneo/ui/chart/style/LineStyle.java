@@ -51,12 +51,71 @@ public final class LineStyle implements ChartStyle {
             return;
         }
 
-        int[] xs = new int[to - from];
-        int[] ys = new int[to - from];
+        // ONE COLUMN AT A TIME below a pixel per bar, and the allocation was the
+        // smaller of the two things wrong with a point per bar: at a whole
+        // series this handed the rasteriser a polyline of 825.000 points and
+        // took 2.084 ms a repaint, measured. It also threw away two arrays of
+        // that length on every frame, 6,6 MB of garbage each.
+        //
+        // A column gets TWO points, its lowest close and its highest, in the
+        // order the market reached them. One point a column would be faster
+        // still and would quietly erase every spike narrower than a pixel --
+        // and a spike is what a reader zooms out to find. Two points reach the
+        // same vertical extent the crowded line reached.
+        //
+        // Both arrays are now bounded by the plot's WIDTH rather than by the
+        // series: a step of one only happens when the bars are at least a pixel
+        // wide, and then there are at most `width` of them on screen.
+        int step = viewport.barsPerColumn();
+        int columns = (to - from + step - 1) / step;
 
-        for (int i = from; i < to; i++) {
-            xs[i - from] = (int) Math.round(viewport.x(i));
-            ys[i - from] = (int) Math.round(viewport.y(series.closeAt(i)));
+        int[] xs = new int[step == 1 ? columns : columns * 2];
+        int[] ys = new int[xs.length];
+        int points = 0;
+
+        for (int i = from; i < to; i += step) {
+            int stop = Math.min(i + step, to);
+            int x = (int) Math.round((viewport.x(i) + viewport.x(stop - 1)) / 2.0);
+
+            if (step == 1) {
+                xs[points] = x;
+                ys[points] = (int) Math.round(viewport.y(series.closeAt(i)));
+
+                points++;
+
+                continue;
+            }
+
+            double lowest = series.closeAt(i);
+            double highest = lowest;
+            int lowAt = i;
+            int highAt = i;
+
+            for (int k = i + 1; k < stop; k++) {
+                double close = series.closeAt(k);
+
+                if (close < lowest) {
+                    lowest = close;
+                    lowAt = k;
+                }
+
+                if (close > highest) {
+                    highest = close;
+                    highAt = k;
+                }
+            }
+
+            boolean fellFirst = lowAt <= highAt;
+
+            xs[points] = x;
+            ys[points] = (int) Math.round(viewport.y(fellFirst ? lowest : highest));
+
+            points++;
+
+            xs[points] = x;
+            ys[points] = (int) Math.round(viewport.y(fellFirst ? highest : lowest));
+
+            points++;
         }
 
         // Antialiasing only here. On candles it blurs the one-pixel body of a
@@ -67,7 +126,7 @@ public final class LineStyle implements ChartStyle {
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g.setColor(ChartColors.foreground());
         g.setStroke(new BasicStroke(1.4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-        g.drawPolyline(xs, ys, xs.length);
+        g.drawPolyline(xs, ys, points);
 
         if (previous != null) {
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, previous);
