@@ -81,7 +81,13 @@ class StatusStripTest {
         List<String> found = new ArrayList<>();
 
         for (Component each : bar.getComponents()) {
-            if (each instanceof JLabel label && each.getX() >= 0
+            // WIDTH as well as position. Reading only getX() >= 0 meant a label
+            // squeezed to nothing counted as being on screen: setBounds(x, y, 0,
+            // h) passed every test in this file, including the one below that
+            // says the message never goes. "Parked off to the left" and "here but
+            // zero pixels wide" are the same thing to a reader, and were opposite
+            // things to this method.
+            if (each instanceof JLabel label && each.getX() >= 0 && each.getWidth() > 0
                     && !label.getText().isBlank()) {
                 found.add(label.getText());
             }
@@ -143,6 +149,32 @@ class StatusStripTest {
     void theMessageStays() {
         assertTrue(onScreen(120).stream().anyMatch(each -> each.startsWith("Segmento")),
                 "the message was dropped, and it is the one thing this bar is for");
+    }
+
+    @Test
+    @DisplayName("a mensagem tem largura de verdade, nao so uma posicao")
+    void theMessageKeepsItsFloor() {
+        // What the test above could not say. It asked whether the message was on
+        // screen, and "on screen" was read off the x alone -- so a message
+        // squeezed to zero pixels satisfied it. The bar promises the message a
+        // floor of width and drops fields from the right to pay for it; that
+        // floor is the thing to assert.
+        for (int width : new int[]{2000, 600, 300, 160, 120}) {
+            bar.setSize(width, 24);
+            bar.doLayout();
+
+            int message = -1;
+
+            for (Component each : bar.getComponents()) {
+                if (each instanceof JLabel label && label.getText().startsWith("Segmento")) {
+                    message = each.getWidth();
+                }
+            }
+
+            assertTrue(message > 0,
+                    "at " + width + " px the message was " + message + " pixels wide, which "
+                            + "is not on screen however positive its x is");
+        }
     }
 
     @Test

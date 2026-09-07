@@ -169,17 +169,72 @@ class JobServiceTest {
                 return steps.get();
             });
 
-            handle.whenDone(value -> finished.countDown());
+            handle.whenStopped(finished::countDown);
 
             assertTrue(started.await(TIMEOUT_SECONDS, TimeUnit.SECONDS), "the job never started");
 
             handle.cancel();
 
-            assertTrue(finished.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)
-                            || steps.get() < 1_000,
-                    "the job ignored the cancellation and ran to the end");
+            // WHAT THIS LINE USED TO BE, and why it is worth the paragraph:
+            //
+            //   assertTrue(finished.await(...) || steps.get() < 1_000, ...);
+            //   assertTrue(steps.get() < 1_000, ...);
+            //
+            // The second operand of that disjunction is asserted alone on the
+            // very next line, so the disjunction asserted nothing at all. And
+            // because the callback it waited on was whenDone -- which a
+            // cancelled job never reaches -- the await always ran its full ten
+            // seconds and always timed out. The test paid ten seconds a run to
+            // check nothing, and the defect it was pointed at (a cancelled job
+            // telling nobody it had stopped) lived behind it untouched.
+            assertTrue(finished.await(TIMEOUT_SECONDS, TimeUnit.SECONDS),
+                    "the job was cancelled and nobody was told: a caller that raised a "
+                            + "spinner on submit has no moment at which to lower it");
             assertTrue(steps.get() < 1_000,
                     "the job completed all 1000 steps despite being cancelled after the first");
+        }
+    }
+
+    @Test
+    @DisplayName("a cancelled job is not a result and not a failure")
+    void cancellingIsItsOwnOutcome() throws Exception {
+        // The distinction the third callback exists to keep. Handing a
+        // cancellation to whenDone would make "it finished" and "I stopped it"
+        // the same event, and a caller cannot tell a half-written answer from a
+        // whole one that way.
+        AtomicBoolean done = new AtomicBoolean(false);
+        AtomicBoolean failed = new AtomicBoolean(false);
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch stopped = new CountDownLatch(1);
+
+        try (JobService jobs = new JobService()) {
+            JobService.Handle<Integer> handle = jobs.submit("test", progress -> {
+                started.countDown();
+
+                while (!progress.cancelled()) {
+                    Thread.sleep(2);
+                }
+
+                return 7;
+            });
+
+            handle.whenDone(value -> done.set(true))
+                    .whenFailed(error -> failed.set(true))
+                    .whenStopped(stopped::countDown);
+
+            assertTrue(started.await(TIMEOUT_SECONDS, TimeUnit.SECONDS), "the job never started");
+
+            handle.cancel();
+
+            assertTrue(stopped.await(TIMEOUT_SECONDS, TimeUnit.SECONDS),
+                    "the stop was never announced");
+
+            // Drain the interface thread: if a result or a failure were also
+            // posted, this is where they would arrive.
+            SwingUtilities.invokeAndWait(() -> { });
+
+            assertFalse(done.get(), "a cancelled job was delivered as a result");
+            assertFalse(failed.get(), "a cancelled job was delivered as a failure");
         }
     }
 

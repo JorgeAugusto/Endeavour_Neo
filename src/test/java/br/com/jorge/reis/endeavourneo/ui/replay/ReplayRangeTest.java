@@ -173,10 +173,24 @@ class ReplayRangeTest {
     @Test
     @DisplayName("a mistyped year asks for a capped number of sessions, not a decade")
     void thereIsACap() {
-        int oneDay = barsOf(over(MONDAY, MONDAY));
-        int tenYears = barsOf(over(MONDAY, MONDAY.plusYears(10)));
-
-        assertTrue(tenYears <= ReplaySession.MOST_SESSIONS * oneDay,
-                "the cap did not hold: " + tenYears / oneDay + " sessions");
+        // A CEILING WITH NOTHING UNDER IT was what stood here:
+        //
+        //   int tenYears = barsOf(over(MONDAY, MONDAY.plusYears(10)));
+        //   assertTrue(tenYears <= MOST_SESSIONS * oneDay, ...);
+        //
+        // The fixture holds a handful of days, so ten years OF THE FIXTURE is a
+        // handful too, far under any cap. Deleting MOST_SESSIONS from the
+        // product left that assertion true and this test green. The cap is a
+        // property of the RANGE, not of how much data is on disk, so it is asked
+        // of the range.
+        assertEquals(ReplaySession.MOST_SESSIONS,
+                ReplaySession.sessionsIn(MONDAY, MONDAY.plusYears(10)).size(),
+                "ten years was not pulled back to the cap");
+        assertEquals(1, ReplaySession.sessionsIn(MONDAY, MONDAY).size(),
+                "one day is one session");
+        assertEquals(5, ReplaySession.sessionsIn(MONDAY, MONDAY.plusDays(4)).size(),
+                "Monday to Friday is five sessions");
+        assertEquals(5, ReplaySession.sessionsIn(MONDAY, MONDAY.plusDays(6)).size(),
+                "the weekend was counted as sessions");
     }
 }

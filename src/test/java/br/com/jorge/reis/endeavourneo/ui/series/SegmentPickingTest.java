@@ -18,6 +18,7 @@
 package br.com.jorge.reis.endeavourneo.ui.series;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import br.com.jorge.reis.endeavourneo.domain.market.Segment;
@@ -186,25 +187,53 @@ class SegmentPickingTest {
 
     // ------------------------------------------------------------ the segments
 
-    @Test
-    @DisplayName("o mapa desenha os segmentos que ja existem sem reclamar dos abertos")
-    void anOpenEndedSegmentIsDrawnToTheEnd() {
+    /** @return what the map paints, so the test can look at it rather than at itself */
+    private static java.awt.image.BufferedImage painted(List<Segment> existing) {
         SeriesMap map = new SeriesMap();
 
-        map.showSeries(tenSessions(), List.of(
-                new Segment("treino", LocalDate.of(2026, 1, 5), LocalDate.of(2026, 1, 9)),
-                Segment.from("resto", LocalDate.of(2026, 1, 12))));
-
+        map.showSeries(tenSessions(), existing);
         map.setSize(520, 60);
         map.showFresh(new Segment("novo", LocalDate.of(2026, 1, 6),
                 LocalDate.of(2026, 1, 7)), true);
 
-        // Painting is what would throw, so paint it.
         java.awt.image.BufferedImage canvas = new java.awt.image.BufferedImage(
                 520, 60, java.awt.image.BufferedImage.TYPE_INT_ARGB);
 
         map.paint(canvas.getGraphics());
 
-        assertEquals(10, map.days().size());
+        return canvas;
+    }
+
+    @Test
+    @DisplayName("o mapa desenha os segmentos que ja existem sem reclamar dos abertos")
+    void anOpenEndedSegmentIsDrawnToTheEnd() {
+        // THE ASSERTION HERE USED TO BE assertEquals(10, map.days().size()),
+        // which is the number showSeries was just handed and which nothing in
+        // the painting can change. The name promises the map DRAWS the segment
+        // to the end; the test only proved that painting did not throw.
+        //
+        // So it looks at the ink. An open-ended segment runs to the last session,
+        // and the way to say that without knowing any colour is to paint the same
+        // map twice -- once with the open segment and once without -- and require
+        // the right-hand end to come out different.
+        Segment closed = new Segment("treino",
+                LocalDate.of(2026, 1, 5), LocalDate.of(2026, 1, 9));
+        Segment open = Segment.from("resto", LocalDate.of(2026, 1, 12));
+
+        java.awt.image.BufferedImage with = painted(List.of(closed, open));
+        java.awt.image.BufferedImage without = painted(List.of(closed));
+
+        int rightEnd = 520 - SeriesMap.SIDE - 2;
+        int middle = 2 + 34 / 2;
+
+        assertNotEquals(without.getRGB(rightEnd, middle), with.getRGB(rightEnd, middle),
+                "the open-ended segment was not drawn at the far end of the map");
+
+        // And it is not painting the WHOLE track: the days before it must look
+        // the same either way, or this is measuring a background change.
+        int beforeIt = SeriesMap.SIDE + 2;
+
+        assertEquals(without.getRGB(beforeIt, middle), with.getRGB(beforeIt, middle),
+                "adding one segment repainted the days before it as well");
     }
 }

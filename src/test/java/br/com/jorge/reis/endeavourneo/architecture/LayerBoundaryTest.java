@@ -17,6 +17,7 @@
  */
 package br.com.jorge.reis.endeavourneo.architecture;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -106,6 +107,40 @@ class LayerBoundaryTest {
                         + String.join("\n    ", violations));
     }
 
+    /**
+     * @return whether the line is prose rather than code
+     *
+     * <p>A heuristic, and it only needs to be one: a comment naming a class it
+     * warns about must not be read as using it, and this project's comments name
+     * classes constantly. The cases it misses -- a package name inside a string
+     * literal, a block comment whose continuation lines do not start with an
+     * asterisk -- would produce a false ALARM, which is read and dismissed, not
+     * a false silence, which is not read at all.</p>
+     */
+    private static boolean isComment(String trimmed) {
+        return trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*");
+    }
+
+    @Test
+    @DisplayName("the scan itself reads more than imports")
+    void theScanHasTeeth() {
+        // The guard's own guard. Both tests above pass, and passed for a long
+        // time while the scan read only lines beginning with "import " -- so
+        // they passed whether or not the rule held. A test of a rule is worth
+        // only as much as the reading behind it, and that reading deserves its
+        // own assertions.
+        String qualified = "        br.com.jorge.reis.endeavourneo.ui.chart.ChartColors.up();";
+
+        assertFalse(isComment(qualified));
+        assertTrue(qualified.contains(FORBIDDEN[0]),
+                "a fully qualified call is exactly what the old scan walked past");
+
+        // And prose about the rule is not a breach of it.
+        assertTrue(isComment("// never import br.com.jorge.reis.endeavourneo.ui here"));
+        assertTrue(isComment("* see br.com.jorge.reis.endeavourneo.ui.chart.ChartCanvas"));
+        assertTrue(isComment("/* br.com.jorge.reis.endeavourneo.ui */"));
+    }
+
     private static List<String> scan(java.util.function.Predicate<Path> where,
                                      String[] forbidden) throws IOException {
         assumeTrue(Files.isDirectory(SOURCES), "not running from the project root");
@@ -117,7 +152,14 @@ class LayerBoundaryTest {
                 for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
                     String trimmed = line.strip();
 
-                    if (!trimmed.startsWith("import ")) {
+                    // EVERY line of code, not only the imports. Reading imports
+                    // alone was a guard with no teeth: a fully qualified name in
+                    // the middle of a method reaches the same class and needs no
+                    // import at all, and THIS REPOSITORY WRITES THAT WAY -- see
+                    // any of the br.com.jorge.reis.endeavourneo.platform.Settings
+                    // calls dotted through the interface. The rule was being kept
+                    // by habit, not by the test that claims to keep it.
+                    if (isComment(trimmed)) {
                         continue;
                     }
 

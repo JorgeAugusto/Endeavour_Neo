@@ -191,7 +191,31 @@ class ReplaySessionTest {
         replay.seekFraction(1.0);
 
         assertEquals(1.0, replay.progress());
-        assertEquals(replay.series().size(), replay.series().size());
+
+        // The line here used to be
+        //
+        //   assertEquals(replay.series().size(), replay.series().size());
+        //
+        // -- the same expression on both sides, which is true of every possible
+        // implementation of seekFraction, including one that does nothing. What
+        // "finishes the day" means is that the whole session is revealed and
+        // nothing is left forming, and that is what is asserted now.
+        int atTheEnd = replay.series().size();
+
+        replay.seekFraction(0.0);
+
+        assertTrue(atTheEnd > replay.series().size(),
+                "the far end revealed no more of the day than the near end did");
+
+        replay.seekFraction(1.0);
+
+        assertEquals(atTheEnd, replay.series().size(), "seeking is not repeatable");
+
+        // Nothing further to reveal: stepping past the end must not grow it.
+        replay.step(50);
+
+        assertEquals(atTheEnd, replay.series().size(),
+                "the day was finished and stepping revealed more of it");
     }
 
     @Test

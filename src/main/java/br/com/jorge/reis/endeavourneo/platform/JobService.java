@@ -100,6 +100,8 @@ public final class JobService implements AutoCloseable {
 
         private boolean wasCancelled;
 
+        private Runnable onStopped;
+
         private T value;
 
         private Throwable error;
@@ -137,6 +139,27 @@ public final class JobService implements AutoCloseable {
             return this;
         }
 
+        /**
+         * @param action what to do when the job stopped because it was asked to
+         *
+         * <p><b>A third outcome, and not a fourth kind of failure.</b> Stopping
+         * on request is neither a result nor a fault, which is why deliver()
+         * hands it to neither -- and for a long time that meant it was handed to
+         * NOBODY, so a caller that had put a spinner up on submit had no moment
+         * at which to take it down. Cancelling looked exactly like a job that
+         * never finished.</p>
+         *
+         * <p>Optional, like the other two: a caller with nothing to undo simply
+         * does not set it.</p>
+         */
+        public synchronized Handle<T> whenStopped(Runnable action) {
+            this.onStopped = action;
+
+            deliver();
+
+            return this;
+        }
+
         /** Last chance for a failure nobody handled to be seen at all. */
         synchronized void reportIfUnclaimed() {
             if (settled && !delivered && error != null) {
@@ -168,8 +191,23 @@ public final class JobService implements AutoCloseable {
             }
 
             if (wasCancelled) {
-                // Stopping on request is not a result and not a failure.
+                // Stopping on request is not a result and not a failure -- and
+                // for a long time that was taken to mean it was nothing at all,
+                // so nobody was told. A caller that raised a spinner on submit
+                // had no moment at which to lower it, and a cancelled job was
+                // indistinguishable from one still running.
+                //
+                // With no handler registered yet, stay pending, exactly as the
+                // other two outcomes do: whoever chains whenStopped next gets it.
+                if (onStopped == null) {
+                    return;
+                }
+
+                Runnable handler = onStopped;
+
                 delivered = true;
+
+                onEdt(handler);
 
                 return;
             }

@@ -316,8 +316,13 @@ public final class ReplaySession {
      * rather than sixty thousand. Weekends are skipped rather than generated and
      * hidden: an empty Saturday in the middle would put a boundary in the
      * concatenation that no bar lands on.</p>
+     *
+     * <p>Package-private so the cap can be asked about directly. Asked through a
+     * built session instead, it cannot be: the answer is then bounded by how
+     * much data the fixture happens to hold, and a fixture of a few days is far
+     * under any cap however broken the cap is.</p>
      */
-    private static List<LocalDate> sessionsIn(LocalDate from, LocalDate to) {
+    static List<LocalDate> sessionsIn(LocalDate from, LocalDate to) {
         List<LocalDate> days = new ArrayList<>();
 
         for (LocalDate walking = from;
