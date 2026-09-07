@@ -113,6 +113,21 @@ public final class Settings {
         load();
     }
 
+    /**
+     * @param file where to keep it
+     * @param banner the line written at the top
+     * @return a settings file of its own
+     *
+     * <p>The constructor above is the seam and it is package-visible, which is
+     * enough for a test in this package and not for one anywhere else. A test of
+     * the launcher needs the same seam from the root package, and the
+     * alternative -- writing into the home directory of whoever runs the suite
+     * -- is not a test, it is a side effect.</p>
+     */
+    public static Settings at(Path file, String banner) {
+        return new Settings(file, banner);
+    }
+
     /** @return the reader's choices: theme, chart and replay options */
     public static Settings settings() {
         return SETTINGS;

@@ -50,6 +50,65 @@ import javax.swing.SwingUtilities;
  */
 public final class Launcher {
 
+    /**
+     * The calendar this market keeps, when the reader has not said otherwise.
+     *
+     * <p>WIN is the mini-index of B3, which trades in Sao Paulo. Every fold in
+     * the program asks {@code Timeframe.defaultZone} where a day begins, and
+     * without this the answer was the machine's clock -- correct in Brazil and
+     * wrong everywhere else, silently, because a daily bar looks like a daily
+     * bar either way.</p>
+     */
+    private static final String MARKET_ZONE = "America/Sao_Paulo";
+
+    /**
+     * Tells the domain which calendar a day is cut by, BEFORE anything folds.
+     *
+     * <p>Every fold that is not handed a zone lands on {@code
+     * Timeframe.defaultZone}, and that used to be the machine's -- so a machine
+     * outside Sao Paulo cut the day at the wrong hour, in silence, because a
+     * daily bar looks like a daily bar either way. The domain cannot ask the
+     * settings for this, so the settings tell it.</p>
+     *
+     * <p><b>And now it has a default.</b> This read {@code data.zone} and
+     * nothing on earth wrote it: no {@code put}, no preferences page, no
+     * default. The correction was built and never armed, and every machine fell
+     * through to its own clock -- which is the defect the paragraph above
+     * describes, still standing behind the line that describes it.</p>
+     *
+     * <p>Written back on first launch so the reader can SEE it and change it. A
+     * setting that exists only as a default is a setting nobody knows they have,
+     * and the whole reason these live in plain text is that they can be looked
+     * at.</p>
+     *
+     * <p>Package-visible so a test can hand it a settings file of its own. On
+     * the author's machine this changes nothing, which is exactly why it went
+     * unnoticed for as long as it did.</p>
+     */
+    static void useMarketZone(br.com.jorge.reis.endeavourneo.platform.Settings from) {
+        String market = from.get("data.zone", null);
+
+        if (market == null) {
+            market = MARKET_ZONE;
+
+            from.put("data.zone", MARKET_ZONE);
+        }
+
+        if (market.isBlank()) {
+            return;
+        }
+
+        try {
+            br.com.jorge.reis.endeavourneo.domain.market.Timeframe.useZone(
+                    java.time.ZoneId.of(market.trim()));
+        } catch (java.time.DateTimeException e) {
+            // A hand-edited settings file. Following the machine is the same
+            // answer as before this setting existed, which is a smaller wrong
+            // than refusing to start.
+            System.err.println("data.zone is not a zone: " + market);
+        }
+    }
+
     private Launcher() {
         throw new AssertionError("Utility class must not be instantiated");
     }
@@ -75,26 +134,7 @@ public final class Launcher {
 
         String installed = Appearance.install(theme);
 
-        // BEFORE anything folds a bar. Every fold that is not handed a zone
-        // lands on Timeframe.defaultZone, and until this line that was always
-        // the machine's -- so a machine outside São Paulo cut the day at the
-        // wrong hour, in silence, because a daily bar looks like a daily bar
-        // either way. The domain cannot ask the settings for this, so the
-        // settings tell it.
-        String market = br.com.jorge.reis.endeavourneo.platform.Settings.settings()
-                .get("data.zone", null);
-
-        if (market != null && !market.isBlank()) {
-            try {
-                br.com.jorge.reis.endeavourneo.domain.market.Timeframe.useZone(
-                        java.time.ZoneId.of(market.trim()));
-            } catch (java.time.DateTimeException e) {
-                // A hand-edited settings file. Following the machine is the same
-                // answer as before this setting existed, which is a smaller
-                // wrong than refusing to start.
-                System.err.println("data.zone is not a zone: " + market);
-            }
-        }
+        useMarketZone(br.com.jorge.reis.endeavourneo.platform.Settings.settings());
 
         JobService jobs = new JobService();
 
