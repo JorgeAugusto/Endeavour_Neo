@@ -101,7 +101,20 @@ fundir depois.
 
 Custo: **~0,1× o corpus** em vez de 4×.
 
-### Fase 3 — verificação adversarial
+### Fase 3 — verificação adversarial — **CORTADA em 06/09/2026**
+
+> **Não rodou, e a decisão de não rodar é o resultado mais útil desta seção.**
+> Com 52 ALTA e 130 MÉDIA seriam **416 agentes**. A promessa de que cada um seria
+> barato — "o insumo é um achado de vinte linhas" — não sobreviveu à medição
+> das lentes: previstas em 40k, custaram **185k** cada, porque `grep` dirigido
+> reduz o que se **lê**, não o que se **julga**. A 30k por verificador, ~12
+> milhões de tokens, quatro vezes a auditoria inteira.
+>
+> No lugar dela: **verificação inline dos ALTA** na conversa, com o trecho de
+> código gravado no `auditoria/00-estado.md`, e os MÉDIA carregando a evidência
+> do próprio agente. Ver `PENDENCIAS.md` seção 2.
+>
+> O texto abaixo fica como registro do que o plano previa.
 
 Cada achado ALTA passa por **três lentes**, cada MÉDIA por **duas**, e a
 predisposição do verificador é **refutar**:

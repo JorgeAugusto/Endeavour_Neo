@@ -41,23 +41,46 @@ média, no RSI e nas bandas, não faz nada. Evidência em
 
 ---
 
-## 2. Decisão pendente sobre a auditoria
+## 2. A fase 3 foi CORTADA — decidido em 06/09/2026
 
-### Cortar a fase 3, ou mantê-la?
+O plano tinha três fases: as nove áreas, as quatro lentes transversais, e uma
+**verificação adversarial** com três lentes por ALTA e duas por MÉDIA.
 
-O plano original tinha três fases: áreas, lentes transversais, e **verificação
-adversarial** com 3 lentes por ALTA e 2 por MÉDIA.
+**As duas primeiras rodaram. A terceira não vai rodar.** Decisão dele.
 
-Descobri fazendo que **a fase 3 seria a mais cara de todas**, não a mais barata
-como eu havia afirmado. Cada verificador é pequeno, mas com as nove áreas
-completas seriam ~21 ALTA e ~87 MÉDIA, ou seja **~237 agentes** e algo entre 3 e
-5 milhões de tokens.
+### Por que
 
-**Proposta feita e não decidida:** cortar a fase 3 e verificar os ALTA **inline**,
-lendo o código na conversa conforme cada área cai. Já funcionou cinco vezes hoje
-ao custo de um `grep` e um `sed` cada — 4 dos 7 ALTA abertos já estão verificados
-assim, com o trecho gravado no `auditoria/00-estado.md`. Os MÉDIA carregariam a
-evidência do agente, que é como as auditorias do `endeavour` sempre fizeram.
+A conta ficou grande demais para o que entrega. Com 52 ALTA e 130 MÉDIA são
+52×3 + 130×2 = **416 agentes**. E a promessa de que seriam baratos — "o insumo
+é um achado de vinte linhas" — não sobreviveu à medição das lentes: previ 40k
+cada e custaram **185k**, porque `grep` dirigido reduz o que se **lê**, não o que
+se **julga**. Um verificador que reproduz de verdade abre arquivo, lê em volta e
+caça guardas. A 30k por agente, **~12 milhões de tokens** — quatro vezes a
+auditoria inteira.
+
+### O que entra no lugar
+
+**Verificação inline dos ALTA**, na conversa, com o trecho de código gravado em
+`auditoria/00-estado.md`. Já foi feita para cerca de vinte deles ao custo de um
+`grep` e um `sed` cada, e provou valer mais que a promessa da fase 3:
+
+- **corrigiu o próprio relatório duas vezes.** O sintoma que este arquivo
+  descrevia sobre a interpolação do estocástico estava errado — os dois
+  indicadores saíam em degraus, não só um — e o teste novo do layout revelou um
+  **segundo** defeito que nenhum agente tinha visto.
+- **doze ALTA passaram de verificados a corrigidos**, e cinco deles com um teste
+  que foi escrito antes e **visto falhar**. Isso é prova mais forte do que
+  qualquer agente adversarial consegue dar: o `RenkoWickBoundsTest` dizia "the
+  tail stops at 105.0" antes da correção e passa depois.
+
+Os **MÉDIA seguem com a evidência do próprio agente**, que é como as auditorias
+do `endeavour` sempre fizeram, e nunca deu problema.
+
+### O que isso custa, dito com honestidade
+
+Um falso positivo entre os MÉDIA não será pego até alguém tentar corrigi-lo. É
+um custo real e aceito de propósito: corrigir um achado falso gasta uma hora,
+enquanto a fase 3 gastaria dias de limite para prevenir isso.
 
 ---
 
