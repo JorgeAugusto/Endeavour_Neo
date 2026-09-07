@@ -304,8 +304,23 @@ public final class SeriesCatalog {
      * tells this series from its neighbours -- {@code full} -- and it is read
      * with the market: <b>WINFUT-FULL</b>.</p>
      *
-     * <p>A series named after its market and nothing else keeps just the
-     * market's name; there is nothing to distinguish it from.</p>
+     * <p><b>No series is ever labelled with the market's bare name.</b> One
+     * named after its market leaves nothing over, and the answer used to be to
+     * show the market and stop -- the reasoning being that there was nothing to
+     * tell it apart from. There is: the other series of that market. A file
+     * called {@code win-1m} came out as <b>WINFUT</b> while its neighbours came
+     * out as WINFUT-FUT, WINFUT-N and WINFUT-FULL, so the one that happened to
+     * share the market's name read as the canonical one and the rest as its
+     * variants -- a difference in rank that nothing in the data supports.</p>
+     *
+     * <p>In this base that mattered more than it sounds. {@code win} is the
+     * series adjusted by ratio, which inflates the older years by up to 67%,
+     * and the three raw ones are the ones a measurement may use. The label put
+     * the poisoned one at the top of the tree wearing the market's own name.</p>
+     *
+     * <p>So when nothing is left over, the file's own name is used instead:
+     * <b>WINFUT-WIN</b>. It is a rule about labels rather than about this
+     * market, and it holds for whatever gets imported next.</p>
      *
      * <p>Here rather than in the tree because the tree is not the only place a
      * series is named: the chart's own title bar showed the file name until
@@ -330,8 +345,24 @@ public final class SeriesCatalog {
 
         String market = br.com.jorge.reis.endeavourneo.platform.Messages.market(instrument);
 
-        return rest.isBlank() ? market
-                : market + "-" + rest.replace("-", "").toUpperCase(java.util.Locale.ROOT);
+        String tail = (rest.isBlank() ? instrument : rest)
+                .replace("-", "").toUpperCase(java.util.Locale.ROOT);
+
+        // Nothing left over means the file is named after its market, and its
+        // own name is then the only thing that tells it from the others -- see
+        // above. Unless the two are the same WORD, which happens when the market
+        // has no name of its own in the bundle and is shown by its key: "ouro"
+        // would become "ouro-OURO", which repeats rather than distinguishes and
+        // is the sort of label a reader reads twice.
+        //
+        // The line that matters is where they DIFFER: win-1m under a market
+        // shown as WINFUT reads WINFUT-WIN, and cannot be mistaken for the
+        // market itself.
+        if (tail.equalsIgnoreCase(market)) {
+            return market;
+        }
+
+        return market + "-" + tail;
     }
 
     public static String groupOf(String name) {

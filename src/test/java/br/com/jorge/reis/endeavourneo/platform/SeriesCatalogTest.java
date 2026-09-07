@@ -18,6 +18,7 @@
 package br.com.jorge.reis.endeavourneo.platform;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -176,6 +177,47 @@ class SeriesCatalogTest {
         // that scanned for the last MATCH would still get it wrong the day
         // somebody writes winfull-1m-2d.
         assertEquals("1m", SeriesCatalog.scaleOf("btcusdt-1m-1y"));
+    }
+
+    @Test
+    @DisplayName("no series is ever labelled with the market's bare name")
+    void noSeriesWearsTheMarketsName() {
+        // The rule, and the reason it is a rule about LABELS rather than about
+        // this market. displayOf drops the scale and the instrument prefix and
+        // reads what is left beside the market's name -- and for a file named
+        // after its own market nothing is left, so it used to come out as the
+        // market and nothing else.
+        //
+        // That gave one series the market's own name while its neighbours read
+        // as variants of it. In this base the one that happens to be named
+        // "win" is the series adjusted by ratio, which inflates the older years
+        // by up to 67%: the label put the poisoned base at the top of the tree
+        // looking canonical, and the three raw ones under it looking derived.
+        String market = SeriesCatalog.displayOf("winfut-1m")
+                .substring(0, SeriesCatalog.displayOf("winfut-1m").indexOf('-'));
+
+        assertNotEquals(market, SeriesCatalog.displayOf("win-1m"),
+                "a series is wearing the market's own name, so it reads as the canonical "
+                        + "one and every other series of that market reads as a variant");
+
+        // What it reads instead: its own file name, which is the only thing that
+        // tells it from its neighbours.
+        assertEquals(market + "-WIN", SeriesCatalog.displayOf("win-1m"));
+
+        // And the neighbours are untouched -- this changes the one case that
+        // had nothing left over, not the naming.
+        assertEquals(market + "-FUT", SeriesCatalog.displayOf("winfut-1m"));
+        assertEquals(market + "-N", SeriesCatalog.displayOf("winn-1m"));
+        assertEquals(market + "-FULL", SeriesCatalog.displayOf("winfull-1m"));
+
+        // The exception, and the first version of this rule got it wrong: a
+        // market with no name of its own in the bundle is shown by its key, so
+        // appending the file name repeats the same word -- "ouro-OURO", which a
+        // reader reads twice and learns nothing from. Where the two are the same
+        // word there is genuinely nothing to distinguish, and the market alone
+        // is the honest answer. The rule bites where they DIFFER, which is
+        // exactly where one series could be mistaken for the market.
+        assertEquals("ouro", SeriesCatalog.displayOf("ouro"));
     }
 
     @Test
