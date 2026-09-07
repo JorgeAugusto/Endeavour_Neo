@@ -26,6 +26,7 @@ import br.com.jorge.reis.endeavourneo.domain.market.SegmentedSeries;
 import br.com.jorge.reis.endeavourneo.domain.market.SyntheticTicks;
 import br.com.jorge.reis.endeavourneo.domain.market.TickLibrary;
 import br.com.jorge.reis.endeavourneo.domain.market.TickSeries;
+import br.com.jorge.reis.endeavourneo.domain.market.TickPath;
 import br.com.jorge.reis.endeavourneo.domain.market.TickSource;
 import br.com.jorge.reis.endeavourneo.ui.chart.RandomWalkSeries;
 
@@ -96,6 +97,17 @@ public final class ReplaySession {
 
     /** The sessions of real ticks, at most three of them in memory. */
     private final transient TickLibrary ticks;
+
+    /**
+     * What breaks a bar into the prices inside it.
+     *
+     * <p>The exchange's own trades under a tick feed, the invented walk under a
+     * bar feed, and nothing else decides it -- not what happens to be on disk
+     * for a given day. Held rather than passed straight through so that
+     * {@link #isRecorded} can answer from the wiring instead of guessing at it
+     * from the same two facts the wiring was built out of.</p>
+     */
+    private final transient TickPath animation;
 
     /**
      * True until the first session's ticks are in memory.
@@ -249,28 +261,49 @@ public final class ReplaySession {
         // turning it off takes effect on a replay already open instead of on
         // the next one.
         SyntheticTicks invented = new SyntheticTicks(TICK, date.toEpochDay());
+        TickPath path = (bars, index) ->
+                br.com.jorge.reis.endeavourneo.ui.chart.ChartPreferences.syntheticTicks()
+                        ? invented.pathFor(bars, index) : null;
 
-        this.live = new ReplaySeries(ConcatSeries.of(parts), before, before,
-                new RecordedTicks(ticks, (bars, index) ->
-                        br.com.jorge.reis.endeavourneo.ui.chart.ChartPreferences.syntheticTicks()
-                                ? invented.pathFor(bars, index) : null));
+        // ONE RULE, and it is the feed. A tick feed animates from the exchange's
+        // own trades; a bar feed animates from the invented walk, on every day,
+        // including the twenty that happen to have been exported.
+        //
+        // It used to reach for the ticks under a bar feed too -- real where the
+        // day was on disk, invented where it was not -- so which one a minute
+        // was drawn from depended on what had been imported, and the reader had
+        // to remember. Worse, the export it reached for was hard-wired to
+        // MetaTrader, so the nine sessions of Profit tape were never used by it
+        // while the renko in the same window preferred exactly those. Two panels
+        // of one window off two different sources, with nothing saying so.
+        // KEPT, so that what is asked about the animation is asked of the
+        // animation itself. isRecorded() used to answer from the feed and the
+        // file -- the same two facts this line reads -- so a test of the rule
+        // could pass with this line reverted. It did, and that is how the
+        // toothless test was found.
+        this.animation = feed.isTicks() ? new RecordedTicks(ticks, path) : path;
+        this.live = new ReplaySeries(ConcatSeries.of(parts), before, before, animation);
 
         // The FIRST session is waited for, and nothing else is. Everywhere else
         // a quarter-second of synthetic path is better than a quarter-second of
         // frozen animation -- but here the reader is already standing still,
         // waiting to press play, and starting on invented ticks without saying
         // so would be a lie told in the one moment it is easy to avoid.
-        this.preparing = ticks.has(date);
+        //
+        // Nothing to wait for under a bar feed: it is not going to use them.
+        this.preparing = feed.isTicks() && ticks.has(date);
 
-        ticks.onLoaded(() -> javax.swing.SwingUtilities.invokeLater(() -> {
-            if (preparing && ticks.at(this.date) != null) {
-                preparing = false;
+        if (feed.isTicks()) {
+            ticks.onLoaded(() -> javax.swing.SwingUtilities.invokeLater(() -> {
+                if (preparing && ticks.at(this.date) != null) {
+                    preparing = false;
 
-                announce();
-            }
-        }));
+                    announce();
+                }
+            }));
 
-        ticks.request(date);
+            ticks.request(date);
+        }
 
         this.timer = new Timer(FRAME, e -> tick());
         this.timer.setCoalesce(true);
@@ -506,8 +539,16 @@ public final class ReplaySession {
         return feed.isTicks() ? feed.source() : null;
     }
 
+    /**
+     * @return whether this replay is animating the exchange's own trades
+     *
+     * <p>A question about the FEED, not about what happens to be on disk. A bar
+     * feed answers no even on the twenty days that were exported: it plays the
+     * candle series, and the path inside each bar is the invented walk. One
+     * rule, so a reader never has to remember which minutes came from where.</p>
+     */
     public boolean isRecorded() {
-        return ticks.has(date);
+        return animation instanceof RecordedTicks && ticks.has(date);
     }
 
     /**

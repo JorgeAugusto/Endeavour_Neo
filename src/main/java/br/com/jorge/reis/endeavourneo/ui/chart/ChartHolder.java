@@ -279,7 +279,10 @@ public final class ChartHolder {
      */
     public void attachReplay(String label, PriceSeries live, Runnable detach,
             br.com.jorge.reis.endeavourneo.domain.market.TickSource ticks, String feed) {
-        canvas.setTickSource(ticks);
+        // TRUE whether or not there is an export: a bar replay is still a
+        // replay, and the canvas may not go looking for a tick source of
+        // its own behind it. See ChartCanvas.replaying.
+        canvas.setTickSource(ticks, true);
         chartHeader.showing(feed);
         attach(label, live, detach);
     }
@@ -325,7 +328,7 @@ public final class ChartHolder {
         detachReplay = () -> { };
         replayLabel = null;
 
-        canvas.setTickSource(null);
+        canvas.setTickSource(null, false);
         chartHeader.showing(null);
         canvas.setSeries(beforeReplay);
         beforeReplay = null;

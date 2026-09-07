@@ -1009,12 +1009,40 @@ public final class ChartCanvas extends JComponent {
     private transient br.com.jorge.reis.endeavourneo.domain.market.TickLibrary growingFrom;
 
     /**
-     * @param source the export a replay is playing, or null for an ordinary chart
+     * Whether a replay is attached at all, which a null {@link #playing} cannot say.
+     *
+     * <p>Null used to mean two different things — no replay, and a replay of a
+     * BAR series — and {@link #sourceForBricks} read it as the first. So a bar
+     * replay of a day the tape covers put a renko built from the exchange's own
+     * trades beside a candle animated by an invented walk: two panels of one
+     * window off two different sources, with nothing on screen saying so.</p>
+     *
+     * <p>One rule now, and it is the feed: what a replay shows comes from what
+     * the reader chose to play. The other half of it is in {@code
+     * ReplaySession}, which no longer reaches for ticks under a bar feed.</p>
      */
-    public void setTickSource(br.com.jorge.reis.endeavourneo.domain.market.TickSource source) {
+    private transient boolean replaying;
+
+    /**
+     * @param source the export a replay is playing, or null for a bar feed
+     * @param onReplay whether a replay is attached at all
+     */
+    public void setTickSource(br.com.jorge.reis.endeavourneo.domain.market.TickSource source,
+            boolean onReplay) {
         this.playing = source;
+        this.replaying = onReplay;
 
         stopGrowing();
+    }
+
+    /**
+     * @param source the export a replay is playing, or null for an ordinary chart
+     *
+     * <p>For callers with no replay in hand: a non-null source is a replay by
+     * definition, and a null one is a chart on its own.</p>
+     */
+    public void setTickSource(br.com.jorge.reis.endeavourneo.domain.market.TickSource source) {
+        setTickSource(source, source != null);
     }
 
     /**
@@ -1051,7 +1079,12 @@ public final class ChartCanvas extends JComponent {
      */
     private br.com.jorge.reis.endeavourneo.domain.market.TickSource sourceForBricks(
             java.util.List<java.time.LocalDate> days) {
-        if (playing != null) {
+        if (replaying) {
+            // The feed decides, and only the feed. A bar replay answers null
+            // here and its bricks are folded from the bars on screen -- the same
+            // bars the reader chose to play, animated by the same walk. Falling
+            // through to the search below is what put a tape renko beside a
+            // synthetic candle.
             return playing;
         }
 

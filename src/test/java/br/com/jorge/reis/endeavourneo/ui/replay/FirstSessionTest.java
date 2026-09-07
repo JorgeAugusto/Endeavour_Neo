@@ -74,7 +74,12 @@ class FirstSessionTest {
     void theFirstSessionIsWaitedFor(@TempDir Path folder) throws Exception {
         session(folder, DAY);
 
-        ReplaySession replay = new ReplaySession("winfut-1m", DAY, DAY, 0, folder);
+        // A TICK FEED, because that is the only feed that uses ticks now. It
+        // used to be "winfut-1m" here -- a bar series -- and the replay reached
+        // for the export behind it, so which minutes were real and which were
+        // invented depended on what had been imported.
+        ReplaySession replay = new ReplaySession(
+                ReplayFeed.of("win", TickSource.METATRADER), DAY, DAY, 0, folder);
 
         try {
             assertTrue(replay.isPreparing(), "the replay offered to play before it had the ticks");
@@ -142,7 +147,10 @@ class FirstSessionTest {
         // the one place this design could leak.
         session(folder, DAY);
 
-        ReplaySession replay = new ReplaySession("winfut-1m", DAY, DAY, 0, folder);
+        // A tick feed: only those hold sessions in memory now, which is what
+        // this is about.
+        ReplaySession replay = new ReplaySession(
+                ReplayFeed.of("win", TickSource.METATRADER), DAY, DAY, 0, folder);
 
         settle(replay);
 
@@ -155,5 +163,36 @@ class FirstSessionTest {
         // MB, so the test looks at the 340 MB.
         assertEquals(0, replay.residentTicks(),
                 "the ticks were still held after the replay was stopped");
+    }
+
+    @Test
+    @DisplayName("uma serie de barras nunca vai atras dos ticks, nem no dia que tem")
+    void aBarFeedNeverReachesForTheTicks(@TempDir Path folder) throws Exception {
+        // THE RULE, in one assertion: what a replay animates is decided by the
+        // feed the reader chose, and by nothing else.
+        //
+        // It used to be decided by what happened to be on disk for that day --
+        // real ticks where the export had them, an invented walk where it did
+        // not -- so two minutes of the same session could come from different
+        // places and the reader had to remember which. And the export it
+        // reached for was hard-wired to MetaTrader, so the Profit tape was
+        // never used here while the renko in the same window preferred exactly
+        // that. Two panels, two sources, nothing saying so.
+        session(folder, DAY);
+
+        ReplaySession replay = new ReplaySession("winfut-1m", DAY, DAY, 0, folder);
+
+        try {
+            assertFalse(replay.isRecorded(),
+                    "a bar feed claimed to be playing the exchange's own trades");
+            assertFalse(replay.isPreparing(),
+                    "a bar feed waited for ticks it is never going to use");
+
+            replay.toggle();
+
+            assertTrue(replay.isPlaying(), "it would not start");
+        } finally {
+            replay.stop();
+        }
     }
 }
