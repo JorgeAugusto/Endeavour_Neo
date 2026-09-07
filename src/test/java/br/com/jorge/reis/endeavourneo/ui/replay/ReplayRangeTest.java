@@ -258,4 +258,29 @@ class ReplayRangeTest {
         assertEquals(5, ReplaySession.sessionsIn(MONDAY, MONDAY.plusDays(6)).size(),
                 "the weekend was counted as sessions");
     }
+
+    @Test
+    @DisplayName("com historico na tela, um recorte sem pregao ainda diz que nao tem nada")
+    void anEmptyRangeSaysSoEvenWithHistory() {
+        // isEmpty asked live.total(), and total() is the WHOLE concatenation --
+        // the history days the chart opens with, and then the sessions to play.
+        // With the default thirty days of history a range holding no session at
+        // all still counted some seventeen thousand bars, so the transport never
+        // said "no session in that range" and left the play button lit on a
+        // range with nothing to play.
+        //
+        // The test above passes zero history, which is the one shape where the
+        // two answers agree -- and that is why it never caught this.
+        LocalDate saturday = MONDAY.plusDays(5);
+        ReplaySession weekend =
+                new ReplaySession(base, saturday, saturday.plusDays(1), 30);
+
+        try {
+            assertTrue(weekend.isEmpty(),
+                    "with history on screen the transport stopped being able to "
+                            + "say the range holds nothing");
+        } finally {
+            weekend.stop();
+        }
+    }
 }

@@ -476,7 +476,16 @@ public final class ReplaySession {
      * that never happened.</p>
      */
     public boolean isEmpty() {
-        return live.total() == 0;
+        // THE PLAYABLE PART, not the total. total() is the whole concatenation
+        // -- the history days the chart opens with, and then the sessions to
+        // play -- so with the default thirty days of history a range holding no
+        // session at all still counted some seventeen thousand bars and this
+        // answered false. The transport never said "no session in that range",
+        // and left the play button lit on a range with nothing to play.
+        //
+        // The test that should have caught it passes a range with no history at
+        // all, which is the one shape where the two answers agree.
+        return live.total() - live.origin() == 0;
     }
 
     /** @return whether the first session's ticks are still being read */
@@ -778,6 +787,8 @@ public final class ReplaySession {
     private void tick() {
         live.advanceMarketTime((long) FRAME * speed);
 
+        askAhead();
+
         if (live.finished()) {
             // The day is over. Stopping here rather than letting the timer run
             // on an unchanging series keeps the play button honest.
@@ -785,6 +796,35 @@ public final class ReplaySession {
         }
 
         announce();
+    }
+
+    /**
+     * Asks for the session the clock is on, and the one after it.
+     *
+     * <p><b>The library only queues three days around what it is asked for</b>,
+     * and it was asked once, in the constructor, for the first day. From the
+     * third session of a range onwards nothing had ever requested the file, and
+     * {@code at} does not read the disk by design -- so the animation quietly
+     * fell back to the invented walk while {@code isRecorded} went on saying the
+     * exchange's own trades were on screen.</p>
+     *
+     * <p>Cheap when the day is already resident: {@code request} drops out at
+     * {@code at(day) != null}. The chart's own renko does the same thing with
+     * its own library, one floor down.</p>
+     */
+    private void askAhead() {
+        if (!feed.isTicks()) {
+            // A bar feed animates from the invented walk by choice, and asking
+            // for files it will not read is work for nothing.
+            return;
+        }
+
+        LocalDate playing = Instant.ofEpochMilli(live.clock())
+                .atZone(br.com.jorge.reis.endeavourneo.domain.market.Timeframe.defaultZone())
+                .toLocalDate();
+
+        ticks.request(playing);
+        ticks.request(playing.plusDays(1));
     }
 
     private void announce() {

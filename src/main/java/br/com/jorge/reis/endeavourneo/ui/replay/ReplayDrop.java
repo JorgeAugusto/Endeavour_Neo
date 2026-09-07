@@ -83,12 +83,21 @@ public final class ReplayDrop {
         // bar would stop growing the moment its period began.
         Runnable follow = () -> holder.canvas().seriesGrew();
 
+        // Held in a variable because BOTH have to come off together. The detach
+        // below released only the watcher; the ending stayed registered, so a
+        // chart that closed -- or had the replay detached -- was still on the
+        // session's list and was told to detach again, into a window that is
+        // gone. forgetEnding existed for exactly this and had no caller.
+        Runnable ending = holder::detachReplay;
+
         holder.attachReplay(session.name() + " " + session.rangeText(),
-                session.series(), () -> session.forget(follow), session.playing(),
-                session.feedLabel());
+                session.series(), () -> {
+                    session.forget(follow);
+                    session.forgetEnding(ending);
+                }, session.playing(), session.feedLabel());
 
         session.watch(follow);
-        session.whenEnded(holder::detachReplay);
+        session.whenEnded(ending);
 
         holder.canvas().seriesGrew();
     }
