@@ -172,6 +172,28 @@ public record ReplayFeed(String instrument, String series, TickSource source) {
     }
 
     /**
+     * Registers the calendar to be dropped whenever the catalog is.
+     *
+     * <p>Here rather than in {@code SeriesCatalog}: that is {@code platform} and
+     * this is {@code ui}, and the dependency has to point that way. Called once
+     * from {@link #warm}, which the launcher runs at startup.</p>
+     */
+    private static void followTheCatalog() {
+        if (following) {
+            // Once. warm() is called from the launcher, and from tests that
+            // call it again; registering per call would run forget() as many
+            // times as warm() was ever called.
+            return;
+        }
+
+        following = true;
+
+        SeriesCatalog.whenForgotten(ReplayFeed::forget);
+    }
+
+    private static volatile boolean following;
+
+    /**
      * Works out every feed's days, for the calendar to be instant later.
      *
      * <p><b>Never on the interface thread.</b> Call it from a background job at
@@ -181,6 +203,8 @@ public record ReplayFeed(String instrument, String series, TickSource source) {
      * @return how many feeds were worked out
      */
     public static int warm() {
+        followTheCatalog();
+
         int done = 0;
 
         for (ReplayFeed each : available()) {
@@ -192,7 +216,16 @@ public record ReplayFeed(String instrument, String series, TickSource source) {
         return done;
     }
 
-    /** Drops what is remembered, for when the series on disk change. */
+    /**
+     * Drops what is remembered, for when the series on disk change.
+     *
+     * <p>Called from {@link
+     * br.com.jorge.reis.endeavourneo.platform.SeriesCatalog#forget}, which is
+     * the moment the series on disk change. It used to be called from nowhere
+     * in {@code src/main} at all -- only from a test -- so importing a session,
+     * exporting a tape or rebuilding a series left the calendar showing
+     * yesterday for the life of the application.</p>
+     */
     public static void forget() {
         KNOWN.clear();
     }

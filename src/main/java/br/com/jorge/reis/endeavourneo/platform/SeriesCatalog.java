@@ -64,6 +64,10 @@ public final class SeriesCatalog {
 
     private static final String KEY = "data.directory";
 
+    /** Caches built from these files, told when what is held is dropped. */
+    private static final java.util.List<Runnable> FORGETFUL =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
+
     /** What the files are called. */
     private static final String SUFFIX = ".bin";
 
@@ -754,8 +758,38 @@ public final class SeriesCatalog {
         return MarketFile.isSeries(file) ? MarketFile.countIn(file) : 0;
     }
 
-    /** Drops what is held in memory. The files are untouched. */
+    /**
+     * Drops what is held in memory. The files are untouched.
+     *
+     * <p>Whoever else caches something derived from these files is told, and
+     * the interface is where those live -- the playable-days calendar above
+     * all. Its own javadoc says it is dropped "for when the series on disk
+     * change", and that moment used to call it from nowhere at all: importing a
+     * session, exporting a tape or rebuilding a series left the calendar
+     * showing yesterday for the life of the run.</p>
+     *
+     * <p><b>Told, not called.</b> This is {@code platform} and the calendar is
+     * {@code ui}; reaching up from here would put the layers the wrong way
+     * round for the sake of one line.</p>
+     */
     public static void forget() {
         LOADED.clear();
+
+        for (Runnable each : FORGETFUL) {
+            each.run();
+        }
+    }
+
+    /**
+     * @param listener told whenever {@link #forget} drops what is held
+     *
+     * <p>For a cache built out of these files that has no way of knowing they
+     * changed. Registered once at startup and never removed, so a list and not
+     * a map: there is nothing to unregister.</p>
+     */
+    public static void whenForgotten(Runnable listener) {
+        if (listener != null) {
+            FORGETFUL.add(listener);
+        }
     }
 }

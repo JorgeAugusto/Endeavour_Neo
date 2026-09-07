@@ -591,7 +591,17 @@ public final class ReplaySession {
 
     /** @return the range as the chart title writes it */
     public String rangeText() {
-        return isRange() ? date + " a " + until : date.toString();
+        // THROUGH THE BUNDLE, and in the same date format as the rest of the
+        // window. This built the string in Java with the Portuguese preposition
+        // hard coded, so the English build titled a chart "WINFUT 2026-08-31 a
+        // 2026-09-04" -- and in a third date format, next to dd/MM/yyyy in the
+        // picker and dd/MM in the end label.
+        String from = date.format(DatePicker.TYPED);
+
+        return isRange()
+                ? br.com.jorge.reis.endeavourneo.platform.Messages.get(
+                        "replay.range", from, until.format(DatePicker.TYPED))
+                : from;
     }
 
     /** @return the series to hand a chart; it grows as the clock runs */
@@ -623,6 +633,18 @@ public final class ReplaySession {
 
     public void forget(Runnable watcher) {
         watchers.remove(watcher);
+    }
+
+    /**
+     * @param ending the one handed to {@link #whenEnded}
+     *
+     * <p>The watchers had a way out and the endings did not. A chart that let
+     * the session go -- closed, or had the replay detached -- stayed on this
+     * list until the session itself stopped, holding a reference to a window
+     * that is gone and a callback that will run into it.</p>
+     */
+    public void forgetEnding(Runnable ending) {
+        endings.remove(ending);
     }
 
     public void toggle() {

@@ -57,7 +57,14 @@ public final class DatePicker extends JPanel {
 
     private static final long serialVersionUID = 1L;
 
-    private static final DateTimeFormatter TYPED = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+    /**
+     * How a date is written and read in this window.
+     *
+     * <p>Package-visible so everything in the transport writes a date the same
+     * way. There were three formats in one window before: this, the dd/MM of the
+     * end label, and a bare LocalDate.toString() in the chart title.</p>
+     */
+    static final DateTimeFormatter TYPED = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     /** Sunday first, then round the week. */
     private static final DayOfWeek[] WEEK = {
@@ -131,9 +138,22 @@ public final class DatePicker extends JPanel {
                 && day.getDayOfWeek() != DayOfWeek.SUNDAY;
     }
 
-    /** @param listener told whenever the date changes, typed or picked */
+    /**
+     * @param listener told whenever the date changes, typed or picked
+     *
+     * <p>The document listener is installed ONCE, at construction, and this only
+     * swaps what it calls. It used to add another one on every call: two
+     * listeners after the second call, three after the third, and the change
+     * reported as many times as this had ever been called.</p>
+     */
     public void onChange(Runnable listener) {
         this.onChange = listener == null ? () -> { } : listener;
+
+        if (listening) {
+            return;
+        }
+
+        listening = true;
 
         field.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
 
@@ -153,6 +173,9 @@ public final class DatePicker extends JPanel {
             }
         });
     }
+
+    /** Whether the one document listener is already installed. */
+    private boolean listening;
 
     public JTextField field() {
         return field;

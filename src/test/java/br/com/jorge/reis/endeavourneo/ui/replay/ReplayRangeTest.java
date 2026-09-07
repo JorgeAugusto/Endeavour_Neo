@@ -183,8 +183,23 @@ class ReplayRangeTest {
     @Test
     @DisplayName("the title says the range, not just the first day")
     void theTitleSaysTheRange() {
-        assertEquals("2026-08-31", over(MONDAY, MONDAY).rangeText());
-        assertEquals("2026-08-31 a 2026-09-04", over(MONDAY, MONDAY.plusDays(4)).rangeText());
+        // THE DATES AS THE WINDOW WRITES THEM, and the preposition out of the
+        // bundle. This used to build the string in Java with the Portuguese
+        // " a " hard coded, so the English build titled a chart
+        // "WINFUT 2026-08-31 a 2026-09-04" -- and in ISO, which was a third
+        // date format beside the dd/MM/yyyy of the picker and the dd/MM of the
+        // end label.
+        assertEquals("31/08/2026", over(MONDAY, MONDAY).rangeText());
+        assertEquals(br.com.jorge.reis.endeavourneo.platform.Messages.get(
+                        "replay.range", "31/08/2026", "04/09/2026"),
+                over(MONDAY, MONDAY.plusDays(4)).rangeText());
+
+        // And the preposition really comes from the bundle, in whatever
+        // language is loaded: the two dates with something between them.
+        String range = over(MONDAY, MONDAY.plusDays(4)).rangeText();
+
+        assertTrue(range.startsWith("31/08/2026") && range.endsWith("04/09/2026")
+                && range.length() > "31/08/202604/09/2026".length(), range);
     }
 
     @Test
