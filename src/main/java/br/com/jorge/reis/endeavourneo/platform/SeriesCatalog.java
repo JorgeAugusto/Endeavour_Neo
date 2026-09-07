@@ -722,13 +722,14 @@ public final class SeriesCatalog {
             return open(name);
         }
 
-        SoftReference<PriceSeries> held = LOADED.get(name);
-        PriceSeries whole = held == null ? null : held.get();
-
-        if (whole != null && whole.size() <= bars) {
-            return Optional.of(whole);
-        }
-
+        // NO CACHE SHORTCUT HERE, and that was a hole in this method from the
+        // hour it was written. open(name, bars) may hand back the whole series
+        // when it is no bigger than the window, because "the last N bars" of a
+        // series shorter than N is the series. That reasoning does not carry:
+        // this method is asked for a window ENDING somewhere, and answering
+        // with everything ignores the upTo entirely -- a chart of the segment
+        // that ends in 2024 would draw the years after it too. The launcher
+        // fills that cache for every series at startup, so the branch was live.
         Path file = fileOf(name);
 
         if (!MarketFile.isSeries(file)) {

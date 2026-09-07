@@ -146,4 +146,59 @@ class SettingsTest {
         assertFalse(at(file).keysStartingWith("chart.open.").size() > 0,
                 "the removal was not written to the file");
     }
+
+    @Test
+    @DisplayName("um escape torto nao impede o programa de abrir")
+    void amalformedEscapeDoesNotStopTheProgram(@TempDir Path folder) throws IOException {
+        // Properties.load throws IllegalArgumentException for a backslash-u with
+        // fewer than four hex digits after it. That is not an IOException, so it
+        // went past the catch, out of the static initialiser, and the
+        // application would not open at all -- against the sentence in that very
+        // catch, which promises the opposite: losing a theme is a smaller harm
+        // than losing the program.
+        Path file = folder.resolve("torto.properties");
+
+        Files.writeString(file, "theme=" + BROKEN + "dark" + System.lineSeparator(),
+                StandardCharsets.UTF_8);
+
+        Settings settings = at(file);
+
+        assertEquals("light", settings.get("theme", "light"),
+                "the broken file was read as if it had been understood");
+    }
+
+    @Test
+    @DisplayName("o que nao se conseguiu ler nao e sobrescrito")
+    void whatCouldNotBeReadIsNotOverwritten(@TempDir Path folder) throws IOException {
+        // The other half, and the one that cost the reader everything. A failed
+        // read cleared the map, and the next put truncated the file and wrote
+        // the empty map over it -- on an application that writes at startup, so
+        // one unreadable byte took every setting and the whole workspace with
+        // it, for good and with nothing said.
+        Path file = folder.resolve("torto.properties");
+        String original = "theme=" + BROKEN + "dark" + System.lineSeparator()
+                + "language=pt_BR" + System.lineSeparator();
+
+        Files.writeString(file, original, StandardCharsets.UTF_8);
+
+        Settings settings = at(file);
+
+        settings.put("theme", "light");
+
+        assertEquals(original, Files.readString(file, StandardCharsets.UTF_8),
+                "a file that would not read was overwritten with what little "
+                        + "could be salvaged");
+        assertEquals("true", settings.get("_unsaved", null),
+                "the session did not stick and nothing recorded that");
+    }
+
+    /** A backslash-u with two hex digits, which is one Properties refuses. */
+    /**
+     * A backslash-u with two hex digits, which is one {@code Properties} refuses.
+     *
+     * <p>Built from the character and not written out, because the COMPILER
+     * reads unicode escapes too -- everywhere, including inside string literals
+     * and comments -- and refuses this file before it ever runs.</p>
+     */
+    private static final String BROKEN = ((char) 92) + "u00zz";
 }

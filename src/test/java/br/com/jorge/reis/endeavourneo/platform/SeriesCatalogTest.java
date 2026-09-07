@@ -371,4 +371,39 @@ class SeriesCatalogTest {
         assertEquals(750.0, window.closeAt(0), 1e-9);
         assertEquals(999.0, window.closeAt(249), 1e-9);
     }
+
+    @Test
+    @DisplayName("a serie ja em memoria nao faz a janela do trecho ignorar o fim dele")
+    void theCacheDoesNotSwallowTheStretch(@TempDir Path folder) throws IOException {
+        // A hole in openUntil from the hour it was written. open(name, bars) may
+        // hand back the whole series when it is no bigger than the window, and
+        // that reasoning is right THERE: the last N bars of a series shorter
+        // than N is the series. It does not carry here. This method is asked for
+        // a window ENDING somewhere, and answering with everything ignores the
+        // end -- a chart of the stretch that finishes in 2024 would draw the
+        // years after it too.
+        //
+        // And the branch was live: the launcher fills that cache for every
+        // series at startup.
+        bars(folder, "winfull-1m", 1_000_000_000_000L, 1_000);
+
+        SeriesCatalog.useFolderForTest(folder);
+
+        // The whole file, into the cache, the way the launcher puts it there.
+        assertEquals(1_000, SeriesCatalog.open("winfull-1m").orElseThrow().size());
+
+        // A stretch ending at bar 300, with a window WIDER than the file -- which
+        // is what makes the cached answer look admissible.
+        long endsAt = 1_000_000_000_000L + 300 * 60_000L;
+        PriceSeries stretch =
+                SeriesCatalog.openUntil("winfull-1m", endsAt, 2_000).orElseThrow();
+
+        // EXCLUSIVE, which is how the caller uses it: MainWindow passes the
+        // instant just past the segment's last day, so bar 300 -- whose time IS
+        // the boundary -- belongs to what comes after.
+        assertEquals(300, stretch.size(),
+                "the window ran past the end of the stretch");
+        assertEquals(299.0, stretch.closeAt(stretch.size() - 1), 1e-9,
+                "the last bar is not the last bar of the stretch");
+    }
 }

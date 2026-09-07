@@ -129,6 +129,17 @@ public final class Settings {
     }
 
     /**
+     * Whether this file was there and would not be read.
+     *
+     * <p>What cannot be read must not be overwritten. A failed read used to
+     * clear the map, and the next {@code put} then truncated the file and wrote
+     * the empty map over it -- on an application that writes at startup, so one
+     * unreadable byte cost the reader every setting and the whole workspace,
+     * for good and with nothing said.</p>
+     */
+    private boolean unreadable;
+
+    /**
      * Reads the file, in the encoding it was written in.
      *
      * <p><b>UTF-8, said out loud.</b> The obvious {@code load(InputStream)}
@@ -155,11 +166,26 @@ public final class Settings {
         try (InputStream in = Files.newInputStream(file);
                 Reader reader = new InputStreamReader(in, decoder)) {
             values.load(reader);
-        } catch (IOException e) {
+        } catch (IOException | IllegalArgumentException e) {
+            // ILLEGALARGUMENT AS WELL, and it is the one that mattered.
+            // Properties.load throws it for a malformed unicode escape -- a
+            // backslash-u with fewer than four hex digits after it, which this
+            // comment may not spell out because the compiler reads escapes even
+            // in comments. That is not an IOException, so it went past this
+            // catch, out of the static initialiser, and the program would not
+            // open at all -- against the sentence right below, which promises
+            // the opposite.
+            //
             // Unreadable settings are the same as none: the application opens
             // with its defaults rather than refusing to open at all. Losing a
             // theme is a smaller harm than losing the program.
-            values.clear();
+            //
+            // NOT CLEARED, and that is the other half. Clearing here and writing
+            // on the next put truncated the file: one failed read and the
+            // reader's settings and workspace were gone for good, on an
+            // application that writes at startup. Refusing to save is the safe
+            // side of this trade -- what cannot be read must not be overwritten.
+            unreadable = true;
 
             return;
         }
@@ -268,6 +294,15 @@ public final class Settings {
      * very first launch. Hence the long way round.</p>
      */
     private void save() {
+        if (unreadable) {
+            // Refusing to save is the safe side of the trade. The reader keeps
+            // whatever is on disk, which is more than they would keep if this
+            // wrote over it, and _unsaved says the session did not stick.
+            values.putIfAbsent("_unsaved", "true");
+
+            return;
+        }
+
         List<String> keys = new ArrayList<>(values.stringPropertyNames());
 
         Collections.sort(keys);

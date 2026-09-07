@@ -118,7 +118,7 @@ public final class StudyStack extends JPanel {
      * @return the pane, so the caller can size it or open its settings
      */
     public StudyPane show(Overlay study) {
-        study.calculate(canvas.source());
+        study.calculate(canvas.series());
 
         StudyPane pane = new StudyPane(canvas, study, this::relayout);
 
@@ -145,7 +145,7 @@ public final class StudyStack extends JPanel {
             return false;
         }
 
-        study.calculate(canvas.source());
+        study.calculate(canvas.series());
         pane.add(study);
         relayout();
 
@@ -224,7 +224,7 @@ public final class StudyStack extends JPanel {
         }
 
         if (changed) {
-            study.calculate(canvas.source());
+            study.calculate(canvas.series());
             relayout();
         }
     }
@@ -279,7 +279,7 @@ public final class StudyStack extends JPanel {
             // should not silently empty somebody's pane; the union range keeps
             // the drawing honest either way.
             for (int i = 1; i < inside.size(); i++) {
-                inside.get(i).calculate(canvas.source());
+                inside.get(i).calculate(canvas.series());
                 pane.add(inside.get(i));
             }
 
@@ -431,7 +431,7 @@ public final class StudyStack extends JPanel {
     public void recalculate() {
         for (StudyPane pane : panes()) {
             for (Overlay study : pane.studies()) {
-                study.calculate(canvas.source());
+                study.calculate(canvas.series());
             }
         }
 

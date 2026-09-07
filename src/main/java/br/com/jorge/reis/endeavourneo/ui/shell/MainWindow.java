@@ -1049,10 +1049,28 @@ public final class MainWindow extends JFrame {
         fresh.setVisible(true);
     }
 
-    /** Opens the window where a series is divided into segments. */
+    /**
+     * Opens the window where a series is divided into segments.
+     *
+     * <p>What it hands back runs when that window changes something, and it
+     * drops what the program is holding BEFORE rebuilding the tree. Everything
+     * derived from the files is stale at that moment: the series in memory, and
+     * the playable-days calendar that hangs off it through {@code
+     * SeriesCatalog.whenForgotten}.</p>
+     *
+     * <p><b>This is the only moment of its kind that exists today.</b> The real
+     * one -- importing a session, converting an export -- has no path through
+     * the interface yet: the converters live in {@code domain} and are run by
+     * hand. Until that path exists, {@code forget} would have had no caller at
+     * all, and a hook nobody calls is the defect it was written to fix, moved
+     * one floor up.</p>
+     */
     private void openSeries() {
-        br.com.jorge.reis.endeavourneo.ui.series.SeriesWindow.open(this,
-                () -> navigator.setModel(Navigator.treeModel()));
+        br.com.jorge.reis.endeavourneo.ui.series.SeriesWindow.open(this, () -> {
+            SeriesCatalog.forget();
+
+            navigator.setModel(Navigator.treeModel());
+        });
     }
 
     private void openPreferences() {
