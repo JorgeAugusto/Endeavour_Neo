@@ -1027,17 +1027,22 @@ public final class MainWindow extends JFrame {
      * nothing to re-read: the window is made again. It costs nothing extra
      * because restoring the open charts is what the application does on every
      * launch anyway — this is that path, run without leaving.</p>
+     *
+     * @return the window that replaced this one, so the caller -- and the test
+     *         -- can reach it. It is on screen either way.
      */
-    private void relaunch() {
-        prepareToLeave();
-        storeLayout();
-
+    MainWindow relaunch() {
         if (replay != null) {
             replay.dispose();
             replay = null;
         }
 
-        closeCharts();
+        // THROUGH leave(), not by retyping its three steps. This had them in a
+        // different order -- storeLayout before closeCharts -- and the javadoc
+        // on leave() says why that is a defect waiting: a second copy of a
+        // sequence goes on passing its own test while the application walks a
+        // different route.
+        leave();
         dispose();
 
         br.com.jorge.reis.endeavourneo.platform.Language.install();
@@ -1046,7 +1051,16 @@ public final class MainWindow extends JFrame {
         // language while everything inside it was the new one.
         MainWindow fresh = new MainWindow(Messages.get("app.title"), jobs);
 
+        // The output follows the window. Without this line the redirection set
+        // up once at start-up went on pointing at the console of the window
+        // just disposed: the application went deaf to its own standard output
+        // for the rest of the session, and held the whole dead window -- charts
+        // and series included -- through a root of the JVM.
+        fresh.getConsole().takeOverStandardOutput();
+
         fresh.setVisible(true);
+
+        return fresh;
     }
 
     /**

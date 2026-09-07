@@ -54,6 +54,25 @@ public final class Console extends JScrollPane {
 
     private static final DateTimeFormatter CLOCK = DateTimeFormatter.ofPattern("HH:mm:ss");
 
+    /**
+     * The console standard output is going to, or null while it goes nowhere.
+     *
+     * <p><b>Static, and it has to be.</b> {@code System.out} is one field for
+     * the whole machine, so whoever is listening to it is one answer for the
+     * whole machine too. Holding it here rather than inside the stream is what
+     * lets a second console take the output over -- and, just as much, what
+     * lets the first one be let go of. The stream used to capture the console
+     * it was built for, and {@code System.out} is a root of the JVM: that one
+     * reference held the console, its text area, every parent up to the window,
+     * and every chart open in it, for as long as the program ran.</p>
+     */
+    private static volatile Console listening;
+
+    /** What standard output was before the first capture, so it can be given back. */
+    private static PrintStream terminalOut;
+
+    private static PrintStream terminalErr;
+
     private final JTextArea text = new JTextArea();
 
     public Console() {
@@ -88,25 +107,87 @@ public final class Console extends JScrollPane {
      * Hence a method, rather than the constructor.</p>
      */
     public void captureStandardOutput() {
-        PrintStream stream = new PrintStream(new OutputStream() {
+        if (listening == null) {
+            terminalOut = System.out;
+            terminalErr = System.err;
 
-            private final StringBuilder pending = new StringBuilder();
+            PrintStream stream = new PrintStream(new OutputStream() {
 
-            @Override
-            public void write(int b) {
-                char c = (char) b;
+                private final StringBuilder pending = new StringBuilder();
 
-                if (c == '\n') {
-                    Console.this.write(pending.toString());
-                    pending.setLength(0);
-                } else if (c != '\r') {
-                    pending.append(c);
+                @Override
+                public void write(int b) {
+                    char c = (char) b;
+
+                    if (c == '\n') {
+                        Console target = listening;
+
+                        if (target != null) {
+                            target.write(pending.toString());
+                        }
+
+                        pending.setLength(0);
+                    } else if (c != '\r') {
+                        pending.append(c);
+                    }
                 }
-            }
-        }, true, StandardCharsets.UTF_8);
+            }, true, StandardCharsets.UTF_8);
 
-        System.setOut(stream);
-        System.setErr(stream);
+            System.setOut(stream);
+            System.setErr(stream);
+        }
+
+        listening = this;
+    }
+
+    /**
+     * Sends standard output here IF it is already going to a console.
+     *
+     * <p>For the window built to replace another one. Changing language throws
+     * the whole window away and makes a new one, and the redirection was set up
+     * once at start-up and never again: from the first change onwards every
+     * {@code printStackTrace} and every {@code System.err.println} in the
+     * program was written into the text area of a window that had been
+     * disposed. Silently, and by definition -- in a windowed application
+     * standard output has nowhere else to go, so nothing was left to notice it
+     * with. The console on screen went on showing what {@code console.write}
+     * put there directly, which made the loss look partial and harder to
+     * believe.</p>
+     *
+     * <p><b>Only if.</b> Capturing here instead would arm the redirection in
+     * places that deliberately left it off -- the tests, and anything run from
+     * a terminal. A window that replaces another one inherits what that one
+     * had; it does not decide.</p>
+     */
+    public void takeOverStandardOutput() {
+        if (listening != null) {
+            listening = this;
+        }
+    }
+
+    /**
+     * Gives standard output back to where it was before the first capture.
+     *
+     * <p>Nothing in the application calls this -- the console lives as long as
+     * the program does. It exists so a test can capture and then put the
+     * machine back the way it found it, which is the only way a test may touch
+     * a field as global as {@code System.out}.</p>
+     */
+    public static void releaseStandardOutput() {
+        if (terminalOut != null) {
+            System.setOut(terminalOut);
+            System.setErr(terminalErr);
+
+            terminalOut = null;
+            terminalErr = null;
+        }
+
+        listening = null;
+    }
+
+    /** @return every line on screen; for the tests that ask where the output landed */
+    String contents() {
+        return text.getText();
     }
 
     /** Drops the beginning once the text grows past the cap. */
