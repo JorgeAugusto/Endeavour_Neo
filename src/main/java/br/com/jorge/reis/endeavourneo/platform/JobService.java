@@ -401,6 +401,30 @@ public final class JobService implements AutoCloseable {
         listeners.add(listener);
     }
 
+    /**
+     * @param listener the one to stop calling; the same object handed to
+     *                 {@link #onChange}, so a caller that wants this has to keep it
+     *
+     * <p><b>There has to be a way out.</b> This only ever added, and the one
+     * window that registers is built again on every change of language: each one
+     * left a dead status bar in here, holding the whole component tree of a
+     * window already disposed, and every job's progress went on refreshing
+     * components nobody can see. The javadoc of the hook in {@code
+     * SeriesCatalog} says when adding alone is fair -- "registered once at
+     * startup and never removed" -- and that was never true here.</p>
+     *
+     * <p>Silent when it was never registered: unsubscribing twice, or after the
+     * service was already shut, is a caller being careful.</p>
+     */
+    public void removeOnChange(Runnable listener) {
+        listeners.remove(listener);
+    }
+
+    /** @return how many are subscribed; for the test that says a discarded window let go */
+    public int listenerCount() {
+        return listeners.size();
+    }
+
     /** @return the names of the jobs running now, in submission order */
     public List<String> runningNames() {
         return running.stream().map(Handle::name).toList();

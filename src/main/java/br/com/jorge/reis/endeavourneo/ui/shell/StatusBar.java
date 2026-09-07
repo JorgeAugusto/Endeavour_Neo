@@ -142,6 +142,15 @@ public final class StatusBar extends JPanel {
     }
 
     /**
+     * What was handed to the service, so it can be handed back.
+     *
+     * <p>{@code this::refresh} is a NEW object every time it is written, so a
+     * second one could not have removed the first. Keeping the one that was
+     * registered is what makes {@link #unbind} possible at all.</p>
+     */
+    private transient Runnable following;
+
+    /**
      * Makes this bar follow a job service.
      *
      * <p>The service calls back on the interface thread, so the refresh below
@@ -149,9 +158,26 @@ public final class StatusBar extends JPanel {
      */
     public void bind(JobService service) {
         this.jobs = service;
+        this.following = this::refresh;
 
-        service.onChange(this::refresh);
+        service.onChange(following);
         refresh();
+    }
+
+    /**
+     * Stops following it.
+     *
+     * <p>For the window that is being thrown away. Without this each change of
+     * language left a dead bar inside the service -- and the window behind it --
+     * for the rest of the run.</p>
+     */
+    public void unbind(JobService service) {
+        if (following != null && service != null) {
+            service.removeOnChange(following);
+        }
+
+        following = null;
+        jobs = null;
     }
 
     private void refresh() {

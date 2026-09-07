@@ -321,8 +321,13 @@ public final class Navigator extends JPanel {
      * empty. There is no tape on disk today, and a "Profit: 0" sitting under
      * every instrument would be a permanent reminder of nothing.</p>
      *
-     * <p>They open nothing: a tick session is what a series is replayed FROM,
-     * not a chart of its own.</p>
+     * <p><b>They DO open</b>, and this said the opposite four lines above the
+     * code that opens them: "a tick session is what a series is replayed FROM,
+     * not a chart of its own". That rule was dropped on purpose -- an export
+     * holds every print of every session it covers, which is MORE than the
+     * candle file holds, and the rule made the most complete data in the program
+     * the only data that could not be looked at. A locked source is the one
+     * exception, and it carries no name for exactly that reason.</p>
      */
     private static DefaultMutableTreeNode tickSessions(String instrument) {
         return tickSessions(SeriesCatalog.ticksOf(instrument), instrument);

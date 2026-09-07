@@ -244,6 +244,21 @@ public final class MainWindow extends JFrame {
     void prepareToLeave() {
         rememberCharts();
 
+        // LET GO OF THE SERVICE. Every job's progress runs the listeners, and
+        // nothing ever removed this window's. leave() and relaunch() both come
+        // through here, and relaunch happens once per change of language: each
+        // one left a dead StatusBar inside the JobService, and with it the whole
+        // component tree of the window just disposed, which dispose() then
+        // cannot collect. Worse than the leak -- every task's progress went on
+        // calling revalidate and setText on components nobody can see, for the
+        // rest of the session.
+        //
+        // The house rule is that whoever opens a resource closes it. A listener
+        // registration is that, and the javadoc of the one in SeriesCatalog says
+        // when it is fair not to: "registered once at startup and never
+        // removed". This one is not registered once.
+        status.unbind(jobs);
+
         leaving = true;
     }
 
@@ -1232,9 +1247,18 @@ public final class MainWindow extends JFrame {
      */
     private void followConsoleFold() {
         if (consolePane.isFolded()) {
+            // WHERE IT IS, and there used to be a second assignment right after
+            // this one that threw the answer away and put the position written
+            // at the END OF THE PREVIOUS SESSION in its place. Two failures came
+            // out of that: dragging the divider, folding and unfolding gave the
+            // reader last session's height instead of the one they had just
+            // chosen -- exactly what the javadoc above promises does not happen
+            // -- and, when the application had been closed WITH the console
+            // folded, storeLayout wrote the folded position, so the next unfold
+            // put the divider back at the folded height. The console opened
+            // twenty pixels tall and only View -> Reset layout got it back.
             consoleWasAt = bottomDivider.getDividerLocation();
 
-            consoleWasAt = PREFS.getInt(BOTTOM_DIVIDER, -1);
             bottomDivider.setDividerLocation(bottomDivider.getHeight()
                     - consolePane.foldedHeight() - bottomDivider.getDividerSize());
 

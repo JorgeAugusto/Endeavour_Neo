@@ -113,22 +113,37 @@ public final class Console extends JScrollPane {
 
             PrintStream stream = new PrintStream(new OutputStream() {
 
-                private final StringBuilder pending = new StringBuilder();
+                /**
+                 * BYTES, not characters, until the line is whole.
+                 *
+                 * <p>The stream above encodes in UTF-8 and then hands this
+                 * method one byte at a time. Collecting them as {@code (char) b}
+                 * is Latin-1 decoding, and every character outside ASCII arrived
+                 * as two wrong ones: {@code ã} is 0xC3 0xA3, and it came out as
+                 * {@code Ã£}. The interface is in Portuguese and full of
+                 * accents, so everything written through standard output was
+                 * mojibake -- the kind of wrong that makes a reader distrust the
+                 * FILE rather than the console.</p>
+                 *
+                 * <p>Decoded once, at the line break, where the bytes are a
+                 * whole string and a multi-byte character cannot be cut in
+                 * half.</p>
+                 */
+                private final java.io.ByteArrayOutputStream pending =
+                        new java.io.ByteArrayOutputStream();
 
                 @Override
                 public void write(int b) {
-                    char c = (char) b;
-
-                    if (c == '\n') {
+                    if (b == '\n') {
                         Console target = listening;
 
                         if (target != null) {
-                            target.write(pending.toString());
+                            target.write(pending.toString(StandardCharsets.UTF_8));
                         }
 
-                        pending.setLength(0);
-                    } else if (c != '\r') {
-                        pending.append(c);
+                        pending.reset();
+                    } else if (b != '\r') {
+                        pending.write(b);
                     }
                 }
             }, true, StandardCharsets.UTF_8);

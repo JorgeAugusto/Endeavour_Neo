@@ -17,6 +17,7 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.shell;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
@@ -57,6 +58,47 @@ class StandardOutputTest {
 
     /** Distinctive enough that finding it in a console cannot be a coincidence. */
     private static final String MARK = "L1-1-marca-da-saida-padrao";
+
+    @Test
+    @DisplayName("a janela descartada solta o servico de tarefas")
+    void thediscardedWindowLetsGoOfTheService() throws Exception {
+        assumeFalse(GraphicsEnvironment.isHeadless(), "no graphics environment");
+
+        // Every change of language builds the window again, and nothing ever
+        // undid the bind: each one left a dead status bar inside the service,
+        // holding the whole component tree of a window already disposed. And
+        // every job's progress went on refreshing components nobody can see, for
+        // the rest of the run.
+        //
+        // Counted, because the count is the leak. A service that ends a relaunch
+        // with more listeners than it started with is the defect, whatever the
+        // absolute number happens to be.
+        try (JobService jobs = new JobService()) {
+            SwingUtilities.invokeAndWait(() -> {
+                MainWindow first = new MainWindow("test", jobs);
+                MainWindow second = null;
+
+                try {
+                    int before = jobs.listenerCount();
+
+                    second = first.relaunch();
+
+                    assertEquals(before, jobs.listenerCount(),
+                            "the window that was thrown away is still inside the job "
+                                    + "service, and the whole component tree behind it with "
+                                    + "it -- once per change of language, for the rest of "
+                                    + "the run");
+                } finally {
+                    if (second != null) {
+                        second.closeCharts();
+                        second.dispose();
+                    }
+
+                    first.dispose();
+                }
+            });
+        }
+    }
 
     @Test
     @DisplayName("refazer a janela leva a saida padrao junto")
