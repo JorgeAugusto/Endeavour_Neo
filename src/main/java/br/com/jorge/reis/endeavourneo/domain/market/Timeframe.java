@@ -73,6 +73,9 @@ public final class Timeframe implements Aggregation {
     /** A month of trading minutes: the longest a minute-count may be asked for. */
     public static final int MOST_MINUTES = 43_200;
 
+    /** Minutes in a day. The line between slot arithmetic and whole-day counting. */
+    private static final int DAY_MINUTES = 1_440;
+
     public static final Timeframe ONE_MINUTE = new Timeframe("1m", 1);
 
     public static final Timeframe FIVE_MINUTES = new Timeframe("5m", 5);
@@ -300,6 +303,21 @@ public final class Timeframe implements Aggregation {
             return local.toLocalDate()
                     .minusDays(local.getDayOfWeek().getValue() - DayOfWeek.MONDAY.getValue())
                     .toEpochDay();
+        }
+
+        if (minutes > DAY_MINUTES) {
+            // Whole days from here up, because the arithmetic below divides the
+            // minute OF THE DAY and that never reaches 1440. Every scale above a
+            // day therefore divided to zero and bucketed one day at a time: a
+            // three-day bar was a daily bar, and the only sign of it was a chart
+            // carrying three times the bars that were asked for. MOST_MINUTES
+            // lets a reader type up to thirty days, so this is reachable by
+            // typing, not only by a layout from elsewhere.
+            //
+            // A scale that is not a whole number of days rounds DOWN to one --
+            // 2000 minutes is a day and a bit, and there is no honest way to
+            // draw the bit.
+            return local.toLocalDate().toEpochDay() / Math.max(1, minutes / DAY_MINUTES);
         }
 
         // Day first, then the slot within the day: a slot number on its own

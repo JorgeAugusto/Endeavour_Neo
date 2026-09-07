@@ -210,6 +210,66 @@ class TimeframeTest {
                 Timeframe.DAILY.bucketOf(noon, ZoneId.of("UTC")));
     }
 
+    /** Ten in the morning on a given day, in the market's zone. */
+    private static long morningOf(java.time.LocalDate day) {
+        return day.atTime(10, 0).atZone(SAO_PAULO).toInstant().toEpochMilli();
+    }
+
+    @Test
+    @DisplayName("a scale of several days folds several days, and does not collapse to one")
+    void aScaleAboveADayDoesNotBecomeDaily() {
+        // The hole this test fills is not a weak assertion -- it is that nothing
+        // in this file ever folded anything above thirty minutes. ofMinutes does
+        // not appear once, and MOST_MINUTES lets a reader type up to thirty days.
+        //
+        // The arithmetic underneath divides the minute OF THE DAY, which never
+        // reaches 1440. Every scale above a day therefore divided to zero and
+        // bucketed by whole days -- a three-day bar was a daily bar, and the only
+        // sign of it was a chart with three times as many bars as asked for.
+        Timeframe threeDays = Timeframe.ofMinutes(3 * 24 * 60);
+
+        java.time.LocalDate base = java.time.LocalDate.of(2026, 9, 7);
+        int sharedWithTheNextDay = 0;
+
+        for (int day = 0; day < 30; day++) {
+            java.time.LocalDate today = base.plusDays(day);
+
+            long mine = threeDays.bucketOf(morningOf(today), SAO_PAULO);
+
+            if (mine == threeDays.bucketOf(morningOf(today.plusDays(1)), SAO_PAULO)) {
+                sharedWithTheNextDay++;
+            }
+
+            // Whatever the alignment, three days apart is always a new bar.
+            assertNotEquals(mine, threeDays.bucketOf(morningOf(today.plusDays(3)), SAO_PAULO),
+                    today + " and three days later fell in the same bar");
+        }
+
+        // Said without depending on where the groups happen to start: over
+        // thirty days, two consecutive days have to share a bar most of the
+        // time. Collapsed to daily, this counter is zero.
+        assertEquals(20, sharedWithTheNextDay,
+                "consecutive days shared a bar " + sharedWithTheNextDay
+                        + " times out of 30; a three-day scale folded like D1");
+    }
+
+    @Test
+    @DisplayName("the hour scale folds hours, not each day whole")
+    void theHourScaleFoldsHours() {
+        // ONE_HOUR is declared and was never folded by this file either. It is
+        // the one scale between the thirty minutes that was tested and the day
+        // that has its own branch.
+        long nine = LocalDateTime.of(2026, 9, 2, 9, 5).atZone(SAO_PAULO).toInstant().toEpochMilli();
+        long alsoNine = LocalDateTime.of(2026, 9, 2, 9, 55)
+                .atZone(SAO_PAULO).toInstant().toEpochMilli();
+        long ten = LocalDateTime.of(2026, 9, 2, 10, 5).atZone(SAO_PAULO).toInstant().toEpochMilli();
+
+        assertEquals(Timeframe.ONE_HOUR.bucketOf(nine, SAO_PAULO),
+                Timeframe.ONE_HOUR.bucketOf(alsoNine, SAO_PAULO));
+        assertNotEquals(Timeframe.ONE_HOUR.bucketOf(alsoNine, SAO_PAULO),
+                Timeframe.ONE_HOUR.bucketOf(ten, SAO_PAULO));
+    }
+
     // ---------------------------------------------------------------- bordas
 
     @Test

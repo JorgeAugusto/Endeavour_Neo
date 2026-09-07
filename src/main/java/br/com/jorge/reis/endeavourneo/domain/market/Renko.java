@@ -415,9 +415,17 @@ public final class Renko implements Aggregation {
             // happened yet. Instrumented: anchor 136.990, bar low 136.835, and
             // the up brick born with a tail 155 below its own open.
             boolean lowFirst = direction >= 0;
-            int made = 0;
 
             for (int step = 0; step < 2; step++) {
+                // INSIDE the loop, per extreme. It used to be declared outside
+                // and carried its count across both steps, so once the first
+                // extreme laid a brick the restart at the bottom fired again at
+                // the end of the second -- throwing away the extreme the second
+                // step had just recorded. The next brick then took its tail from
+                // the anchor instead of from where price had actually been, and
+                // came out SHORT. Every assertion guarding this file is a
+                // ceiling, and a tail that is too short passes all of them.
+                int made = 0;
                 boolean thisIsTheLow = (step == 0) == lowFirst;
                 double price;
 

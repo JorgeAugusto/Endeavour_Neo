@@ -139,6 +139,47 @@ class RenkoWickBoundsTest {
     }
 
     @Test
+    @DisplayName("the extreme a bar reaches AFTER laying a brick still counts for the next one")
+    void theSecondExtremeIsNotThrownAway() {
+        // Every assertion in this class is a CEILING -- no tail longer than a
+        // reversal, no tail past the close. A tail that comes out too SHORT
+        // passes all of them, and one did: the counter that decides whether to
+        // restart the running extremes was declared outside the two-extreme
+        // loop and kept its value across both. When the first extreme laid a
+        // brick, the restart also fired at the end of the second -- erasing the
+        // extreme the second had just recorded.
+        //
+        // Brick 10, reversal 2, and the fixture walks the exact path:
+        //
+        //   bar 1  rises to 125: two up bricks, 100->110->120. Anchor 120.
+        //   bar 2  low 95 turns it down -- one brick, 110->100, anchor 100 --
+        //          and THEN its high of 118 is recorded. 118 lays nothing,
+        //          because turning back up now costs two bricks and 18 is one.
+        //          This is where the 118 was being thrown away.
+        //   bar 3  falls to 85: one down brick, 100->90. Its upper tail has to
+        //          reach 118, the highest price traded since the anchor came to
+        //          rest at 100.
+        //
+        // 118 is a legal tail: 18 against a brick that opens at 100, where the
+        // reversal costs 20. With the counter shared, the tail stopped at 105 --
+        // bar 3's own high, thirteen points short of what the market did.
+        PriceSeries bricks = new Renko(10, 2).apply(ohlc(
+                new double[]{100, 100, 100, 100},
+                new double[]{100, 125, 100, 120},
+                new double[]{115, 118, 95, 100},
+                new double[]{100, 105, 85, 90}));
+
+        int last = bricks.size() - 1;
+
+        assertTrue(bricks.closeAt(last) < bricks.openAt(last),
+                "the fixture is wrong: the last brick was expected to be a down brick");
+        assertEquals(100.0, bricks.openAt(last), 1e-9, "the last brick opens at the anchor");
+        assertEquals(118.0, bricks.highAt(last), 1e-9,
+                "the tail stops at " + bricks.highAt(last)
+                        + "; the market traded up to 118 after the anchor came to rest");
+    }
+
+    @Test
     @DisplayName("a bar's second extreme is not on the tail of what its first extreme laid")
     void theOtherExtremeIsNotYetReached() {
         // Brick 10, reversal 2. Two down bricks first, so the trend is down and
