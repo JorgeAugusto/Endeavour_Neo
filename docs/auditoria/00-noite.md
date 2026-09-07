@@ -44,7 +44,7 @@ de código que não existia mais. Por isso as fases são estritamente sequenciai
 |---|---|---|
 | 0 | Trabalho em voo quando ele foi dormir | **fechada** — `1b34571` |
 | 1 | Resolver os achados de domínio e replay da auditoria I | **fechada** — `f6f6640` |
-| 2 | Refazer a auditoria completa, 2 agentes por vez | **em curso** |
+| 2 | Refazer a auditoria completa, 2 agentes por vez | **áreas fechadas**, lentes em curso |
 | 3 | Juntar e validar cruzado | não começou |
 | 4 | Corrigir os achados novos, e o que sobrou da lista velha | não começou |
 
@@ -216,7 +216,7 @@ E depois as quatro lentes transversais, que **não releem os arquivos**: recebem
 padrões de `grep` e leem ±40 linhas em volta de cada ocorrência, mais a lista do
 que as áreas já acharam.
 
-### O que a auditoria II já entregou
+### O que a auditoria II entregou — as dez áreas
 
 | área | linhas lidas | ALTA | MÉDIA | BAIXA |
 |---|---:|---:|---:|---:|
@@ -225,8 +225,18 @@ que as áreas já acharam.
 | B3 `ChartCanvas` | 2.983 | 2 | 8 | 9 |
 | B4 moldura | 8.198 | 1 | 13 | 17 |
 | B5 indicadores | 4.375 | 1 | 9 | 8 |
+| B6 transporte de replay | 2.693 | 3 | 6 | 6 |
+| B7a plataforma | 2.731 | 3 | 13 | 8 |
+| B7b casca | 5.397 | 3 | 8 | 13 |
 | B8a testes de domínio | 7.620 | 4 | 9 | 6 |
-| | | **12** | **60** | **56** |
+| B8b testes de interface | 9.840 | 5 | 8 | 6 |
+| | **51.138** | **26** | **99** | **90** |
+
+Cinquenta e uma mil linhas lidas — o projeto tem 50.599, então cada linha foi
+lida uma vez e pouco. É o que a partição por áreas existe para conseguir.
+
+**Treze das vinte e seis ALTA já estão corrigidas**, com o teste que faltava e a
+prova de dentes: `e541da7` e `30e30f7`.
 
 **Vale mais que a contagem:** a segunda passada achou defeito em código que eu
 escrevi nesta mesma noite, e achou-o porque não sabia que eu o tinha escrito.
@@ -250,6 +260,40 @@ escrevi nesta mesma noite, e achou-o porque não sabia que eu o tinha escrito.
 
 Isso é o argumento inteiro a favor de reauditar em vez de continuar corrigindo
 a lista velha, e ele apareceu sozinho.
+
+E continuou aparecendo depois que escrevi o parágrafo acima:
+
+- **B7a-4** — o gancho `whenForgotten` que liguei para corrigir "o calendário
+  nunca é esvaziado" pendurava-se num `SeriesCatalog.forget()` que **não tem
+  chamador nenhum** em `src/main`. Eu tinha mudado o defeito de andar, não
+  corrigido. Agora a janela de séries o chama; o momento de verdade — importar
+  um pregão — ainda não tem caminho pela interface, e isso está dito no javadoc
+  para não virar promessa.
+- **B7a-1** — a janela por segmento que escrevi à noite tinha um furo no ramo do
+  cache: com a série inteira em memória ela devolvia tudo e ignorava o fim do
+  trecho. Medido pelo teste: 1.000 barras onde cabem 300.
+- **B6-3** — o `forgetEnding` que acrescentei também não tem chamador, e o teste
+  que escrevi registra e desregistra ele próprio. Licença falsa, e ainda aberto.
+- **B8b-3 e B8b-5** — dois testes meus que leem o CÓDIGO-FONTE em vez do
+  comportamento passam com o defeito reescrito de outro jeito.
+
+Quatro correções minhas desta noite, das quais **três estavam erradas ou
+incompletas** e uma delas apenas mudou o defeito de lugar. Nenhuma teria
+aparecido sem a segunda leitura.
+
+---
+
+### As lentes transversais
+
+Quatro perguntas, cada uma em todo o código: EDT e concorrência, tempo e leitura
+do futuro, persistência e recursos, i18n e consistência.
+
+**Elas não releem os arquivos.** Recebem padrões de `grep`, leem ±40 linhas em
+volta de cada ocorrência, e recebem o índice dos 215 achados com a ordem de
+reportar só o que as áreas não viram. Foi exatamente aqui que a primeira
+tentativa desta auditoria se perdeu, em 05/09: quatro lentes relendo
+integralmente o que nove agentes já tinham lido, um multiplicador de quatro em
+cima do corpus inteiro, 1,5 milhão de tokens e zero relatórios.
 
 ---
 
