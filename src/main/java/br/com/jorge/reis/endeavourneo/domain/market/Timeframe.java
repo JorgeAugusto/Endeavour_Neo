@@ -141,9 +141,37 @@ public final class Timeframe implements Aggregation {
         return label;
     }
 
+    /**
+     * The zone every fold uses when it is not handed one.
+     *
+     * <p><b>Settable, because the parameter on its own reached nothing.</b> The
+     * Aggregation interface declares only {@code apply(source)}, so all six
+     * callers in the application -- the chart twice, and the four indicators
+     * that read a larger scale -- take the one-argument overload and land here.
+     * The two-argument one was called from a test and from nowhere else: the
+     * test proved a zone the application never used, and declaring a market zone
+     * could not have reached a single indicator.</p>
+     *
+     * <p>Pushed in rather than read out. This is the domain, and it does not go
+     * asking the settings for anything; whoever knows the reader's choice calls
+     * {@link #useZone} at startup.</p>
+     */
+    private static volatile ZoneId zone = ZoneId.systemDefault();
+
     /** @return the zone this aggregation uses when nothing else is said */
     public static ZoneId defaultZone() {
-        return ZoneId.systemDefault();
+        return zone;
+    }
+
+    /**
+     * @param chosen the market's zone, or null to follow the machine
+     *
+     * <p>The market is in São Paulo whatever the machine is set to, and a
+     * machine in another zone folds the day across the wrong boundary --
+     * silently, because a daily bar looks like a daily bar either way.</p>
+     */
+    public static void useZone(ZoneId chosen) {
+        zone = chosen == null ? ZoneId.systemDefault() : chosen;
     }
 
     @Override

@@ -75,6 +75,27 @@ public final class Launcher {
 
         String installed = Appearance.install(theme);
 
+        // BEFORE anything folds a bar. Every fold that is not handed a zone
+        // lands on Timeframe.defaultZone, and until this line that was always
+        // the machine's -- so a machine outside São Paulo cut the day at the
+        // wrong hour, in silence, because a daily bar looks like a daily bar
+        // either way. The domain cannot ask the settings for this, so the
+        // settings tell it.
+        String market = br.com.jorge.reis.endeavourneo.platform.Settings.settings()
+                .get("data.zone", null);
+
+        if (market != null && !market.isBlank()) {
+            try {
+                br.com.jorge.reis.endeavourneo.domain.market.Timeframe.useZone(
+                        java.time.ZoneId.of(market.trim()));
+            } catch (java.time.DateTimeException e) {
+                // A hand-edited settings file. Following the machine is the same
+                // answer as before this setting existed, which is a smaller
+                // wrong than refusing to start.
+                System.err.println("data.zone is not a zone: " + market);
+            }
+        }
+
         JobService jobs = new JobService();
 
         // Closes the pool when the JVM goes down. The threads are daemons and

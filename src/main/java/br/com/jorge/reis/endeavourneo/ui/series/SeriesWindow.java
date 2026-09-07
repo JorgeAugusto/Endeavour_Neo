@@ -186,12 +186,44 @@ public final class SeriesWindow extends JDialog {
         open(owner, () -> { });
     }
 
+    /**
+     * The one that is open, if one is.
+     *
+     * <p>This window is modeless, so nothing stopped a second one being opened
+     * over the same series -- and Segmentation.set REPLACES a series' whole list
+     * of segments. Two windows, two lists, and whichever was closed last wrote
+     * its own over the other's: a segment created in one simply stopped existing
+     * when the other went away, with nothing said. Editing the same thing in two
+     * places is not a feature anybody asked for.</p>
+     */
+    private static SeriesWindow open;
+
     /** @param whenChanged run after every write, so a listing elsewhere can follow */
     public static void open(Window owner, Runnable whenChanged) {
+        if (open != null && open.isDisplayable()) {
+            // Fronted rather than opened again. The reader asked to see this
+            // window; they already have it.
+            open.onChanged = whenChanged == null ? () -> { } : whenChanged;
+
+            open.setVisible(true);
+            open.toFront();
+            open.requestFocus();
+
+            return;
+        }
+
         SeriesWindow window = new SeriesWindow(owner);
 
         window.onChanged = whenChanged == null ? () -> { } : whenChanged;
+
+        open = window;
+
         window.setVisible(true);
+    }
+
+    /** @return whether a series window is on screen; for the test that says only one is */
+    static boolean isOpen() {
+        return open != null && open.isDisplayable();
     }
 
     private JComponentPanel header() {

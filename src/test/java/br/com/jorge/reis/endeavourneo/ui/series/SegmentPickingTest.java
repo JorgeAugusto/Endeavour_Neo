@@ -187,6 +187,42 @@ class SegmentPickingTest {
 
     // ------------------------------------------------------------ the segments
 
+    @Test
+    @DisplayName("asking for the series window twice gives the same window, not two")
+    void onlyOneSeriesWindowIsEverOpen() throws Exception {
+        // This window is modeless, and Segmentation.set REPLACES a series' whole
+        // list of segments. Two of them over the same series meant two lists,
+        // and whichever was closed last wrote its own over the other's: a
+        // segment created in one simply stopped existing when the other went
+        // away, with nothing said.
+        org.junit.jupiter.api.Assumptions.assumeFalse(
+                java.awt.GraphicsEnvironment.isHeadless(), "no screen");
+
+        try {
+            javax.swing.SwingUtilities.invokeAndWait(() -> {
+                SeriesWindow.open(null);
+                SeriesWindow.open(null);
+                SeriesWindow.open(null);
+            });
+
+            long open = java.util.Arrays.stream(java.awt.Window.getWindows())
+                    .filter(each -> each instanceof SeriesWindow)
+                    .filter(java.awt.Window::isDisplayable)
+                    .count();
+
+            assertEquals(1, open, "asking three times left " + open + " series windows open, "
+                    + "each with its own copy of the segments");
+        } finally {
+            javax.swing.SwingUtilities.invokeAndWait(() -> {
+                for (java.awt.Window each : java.awt.Window.getWindows()) {
+                    if (each instanceof SeriesWindow) {
+                        each.dispose();
+                    }
+                }
+            });
+        }
+    }
+
     /** @return what the map paints, so the test can look at it rather than at itself */
     private static java.awt.image.BufferedImage painted(List<Segment> existing) {
         SeriesMap map = new SeriesMap();

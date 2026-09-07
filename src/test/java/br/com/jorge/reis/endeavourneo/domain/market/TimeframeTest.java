@@ -165,6 +165,43 @@ class TimeframeTest {
     }
 
     @Test
+    @DisplayName("the chosen zone reaches the fold that takes no zone at all")
+    void theChosenZoneReachesTheOneArgumentFold() {
+        // The gap this closes. Aggregation declares only apply(source), so every
+        // caller in the application takes that overload; apply(source, zone) was
+        // called from THIS FILE and from nowhere else. The tests here pinned
+        // America/Sao_Paulo and passed, while the application folded in the
+        // machine's zone and no setting could have changed it.
+        //
+        // 22:30 in São Paulo is 01:30 the next day in UTC, so the two zones put
+        // this bar on different dates -- which is exactly what a daily fold is
+        // deciding, and exactly what nothing could reach.
+        bar(LocalDateTime.of(2026, 9, 2, 22, 30), 100, 101, 99, 100, 1);
+
+        ZoneId was = Timeframe.defaultZone();
+
+        try {
+            Timeframe.useZone(SAO_PAULO);
+
+            LocalDate here = Instant.ofEpochMilli(Timeframe.DAILY.apply(series()).timeAt(0))
+                    .atZone(SAO_PAULO).toLocalDate();
+
+            Timeframe.useZone(ZoneId.of("UTC"));
+
+            LocalDate utc = Instant.ofEpochMilli(Timeframe.DAILY.apply(series()).timeAt(0))
+                    .atZone(ZoneId.of("UTC")).toLocalDate();
+
+            assertNotEquals(here, utc,
+                    "the one-argument fold ignored the chosen zone, so declaring a market "
+                            + "zone reaches nothing the reader sees");
+            assertEquals(LocalDate.of(2026, 9, 2), here);
+            assertEquals(LocalDate.of(2026, 9, 3), utc);
+        } finally {
+            Timeframe.useZone(was);
+        }
+    }
+
+    @Test
     @DisplayName("a month folds to ONE bar, and every September is not one bucket")
     void monthlyFoldsAMonth() {
         // MONTHLY did not appear anywhere in this file. Its bucket is
