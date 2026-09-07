@@ -44,4 +44,40 @@ public interface TickPath {
      * @return the prices inside it, opening price first and closing price last
      */
     double[] pathFor(PriceSeries series, int index);
+
+    /**
+     * The prices inside a bar, and when each of them printed.
+     *
+     * @param prices the path, as {@link #pathFor} gives it
+     * @param when the instant each price printed at, or <b>null</b> when they
+     *             are not known and should be spread evenly across the bar
+     */
+    record Timed(double[] prices, long[] when) { }
+
+    /**
+     * @return the path with its instants, when the source has them
+     *
+     * <p><b>Why the times have to come with the prices.</b> A replay used to
+     * walk the forming bar BY POSITION -- the k-th price of the path, with the
+     * clock reading the bar's start plus {@code k / length} of a minute -- which
+     * assumes the trades arrived evenly spaced inside it. The tick renko, fed by
+     * that same clock, cuts by the trade's REAL stamp. Both read the same trades
+     * of the same minute, through two different rulers.</p>
+     *
+     * <p>Where the trades are not uniform -- the open, an auction, a burst --
+     * the two disagree. In a minute of 1.000 trades with 900 of them in the
+     * first five seconds, the candle at the halfway mark has shown 450 while the
+     * renko beside it has already laid 900: the minute's high and low are on one
+     * panel and not yet on the other, in the same window, with nothing saying
+     * so. It is not lookahead past the bar -- the renko never passes the clock
+     * -- but the two panels disagree about what has already happened, and the
+     * open is exactly where a replay is worth using.</p>
+     *
+     * <p>Null instants are honest, not a fallback: an invented walk has no
+     * arrival times, and spreading it evenly is the only claim it can make.
+     * Recorded trades have real ones and hand them over.</p>
+     */
+    default Timed timedPathFor(PriceSeries series, int index) {
+        return new Timed(pathFor(series, index), null);
+    }
 }

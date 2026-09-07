@@ -64,6 +64,25 @@ public final class ReplaySeries implements PriceSeries {
     /** The prices inside the bar being formed, or null when none is. */
     private double[] path;
 
+    /**
+     * When each of those prices printed, or null when nobody knows.
+     *
+     * <p><b>Two rulers used to run in one frame.</b> The forming bar walked by
+     * POSITION -- the k-th price, with the clock reading k/length of a minute --
+     * while the tick renko, driven by that same clock, cut by the trade's real
+     * stamp. Both read the same trades of the same minute. Where the trades are
+     * not uniform, the two panels of one window disagreed about what had already
+     * happened, and the open is exactly where that is worst and where a replay
+     * is worth using.</p>
+     *
+     * <p>Null for an invented walk, which has no arrival times and can only
+     * claim an even spread. See {@link TickPath#timedPathFor}.</p>
+     */
+    private long[] when;
+
+    /** The market instant reached inside the forming bar, when it is stamped. */
+    private long now;
+
     private int cursor;
 
     private double high;
@@ -220,6 +239,14 @@ public final class ReplaySeries implements PriceSeries {
                 continue;
             }
 
+            if (when != null) {
+                if (!spendStamped()) {
+                    return;
+                }
+
+                continue;
+            }
+
             long perPrice = Math.max(1L, barMillis / path.length);
 
             if (owed < perPrice) {
@@ -232,14 +259,63 @@ public final class ReplaySeries implements PriceSeries {
         }
     }
 
+    /**
+     * Lets the clock run inside a STAMPED bar, taking the prices it passes.
+     *
+     * @return whether there is market time left to go on spending
+     *
+     * <p>The clock moves first and the prices follow it, which is the whole
+     * correction: the bar shows what had printed BY that instant, and the tick
+     * renko asked the same question of the same instant gets the same answer.
+     * The clock is not allowed past the end of the minute, so a burst of trades
+     * cannot finish the bar early and a quiet stretch cannot hold it open.</p>
+     */
+    private boolean spendStamped() {
+        long start = day.timeAt(completed);
+        long end = start + barMillis;
+        long step = Math.min(owed, Math.max(0L, end - now));
+
+        now += step;
+        owed -= step;
+
+        while (cursor + 1 < path.length && when[cursor + 1] <= now) {
+            take(path[++cursor]);
+        }
+
+        if (now >= end) {
+            // The minute is over. The bar becomes history exactly as it is
+            // stored, so nothing invented survives into the finished chart --
+            // and it ends when the MINUTE ends, not when its last trade printed.
+            completed++;
+            path = null;
+            when = null;
+
+            return true;
+        }
+
+        return owed > 0;
+    }
+
+    private void take(double price) {
+        high = Math.max(high, price);
+        low = Math.min(low, price);
+        close = price;
+    }
+
     private boolean startForming() {
         if (completed >= day.size()) {
             return false;
         }
 
-        path = ticks.pathFor(day, completed);
+        TickPath.Timed timed = ticks.timedPathFor(day, completed);
+
+        path = timed.prices();
+        when = timed.when();
+        now = day.timeAt(completed);
 
         if (path == null || path.length == 0) {
+            when = null;
+
             // No path for this bar, and none invented. Happens where there are
             // no recorded ticks and the reader has turned the synthetic ones
             // off: the bar then appears whole instead of forming, which is the
@@ -263,15 +339,12 @@ public final class ReplaySeries implements PriceSeries {
             // nothing invented survives into the finished chart.
             completed++;
             path = null;
+            when = null;
 
             return;
         }
 
-        double price = path[cursor];
-
-        high = Math.max(high, price);
-        low = Math.min(low, price);
-        close = price;
+        take(path[cursor]);
     }
 
     // -------------------------------------------------------- the transport
@@ -287,6 +360,7 @@ public final class ReplaySeries implements PriceSeries {
         // and leaving a partial one behind would make the count disagree with
         // what is drawn.
         path = null;
+        when = null;
         owed = 0;
         completed = clamp(before + Math.max(0, bars));
 
@@ -295,6 +369,7 @@ public final class ReplaySeries implements PriceSeries {
 
     public void seek(int bar) {
         path = null;
+        when = null;
         owed = 0;
         completed = clamp(bar);
     }
@@ -351,6 +426,13 @@ public final class ReplaySeries implements PriceSeries {
             // session. Anything reading the clock to decide what had happened
             // yet -- the tick renko does exactly that -- saw time undo itself.
             return start + barMillis;
+        }
+
+        if (when != null) {
+            // THE REAL INSTANT, for a bar whose prices carry one. This used to
+            // be the position-based estimate below for every bar, which is what
+            // put the candle and the renko on two different rulers.
+            return now;
         }
 
         if (path.length <= 1) {

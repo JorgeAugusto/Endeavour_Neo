@@ -61,15 +61,28 @@ public final class RecordedTicks implements TickPath {
 
     @Override
     public double[] pathFor(PriceSeries series, int index) {
+        return timedPathFor(series, index).prices();
+    }
+
+    /**
+     * @return the recorded trades of that bar, each with the instant it printed
+     *
+     * <p><b>One pass, so the two can never disagree.</b> Asking for the prices
+     * and then for the times would scan the session twice, and the library loads
+     * on another thread -- a session that arrived between the two calls would
+     * hand back prices from one answer and stamps from the other.</p>
+     */
+    @Override
+    public Timed timedPathFor(PriceSeries series, int index) {
         if (index < 0 || index >= series.size()) {
-            return fallback == null ? null : fallback.pathFor(series, index);
+            return fallen(series, index);
         }
 
         long from = series.timeAt(index);
         TickSeries ticks = library.at(dayOf(from));
 
         if (ticks == null) {
-            return fallback == null ? null : fallback.pathFor(series, index);
+            return fallen(series, index);
         }
 
         long to = endOf(series, index, from);
@@ -87,10 +100,11 @@ public final class RecordedTicks implements TickPath {
             // session and on the days the exchange barely opened. One price is
             // not a path, and pretending otherwise would freeze the animation
             // on that bar.
-            return fallback == null ? null : fallback.pathFor(series, index);
+            return fallen(series, index);
         }
 
         double[] traded = new double[count];
+        long[] stamps = new long[count];
         int at = 0;
 
         for (int i = first; i < ticks.size() && ticks.timeAt(i) < to; i++) {
@@ -98,11 +112,19 @@ public final class RecordedTicks implements TickPath {
             // and animating a bar down to zero and back would be a spike no
             // trade made. See TickBars for what this cost.
             if (ticks.hasLast(i) && ticks.lastAt(i) > 0) {
+                stamps[at] = ticks.timeAt(i);
                 traded[at++] = ticks.lastAt(i);
             }
         }
 
-        return bracketed(traded, series.openAt(index), series.closeAt(index));
+        return bracketed(traded, stamps, from, to,
+                series.openAt(index), series.closeAt(index));
+    }
+
+    /** @return what the fallback makes of that bar, or nothing when it is refused */
+    private Timed fallen(PriceSeries series, int index) {
+        return fallback == null ? new Timed(null, null)
+                : fallback.timedPathFor(series, index);
     }
 
     /**
@@ -124,30 +146,39 @@ public final class RecordedTicks implements TickPath {
      * would throw two real prices away, and either of them can be the bar's
      * high or its low.</p>
      */
-    private static double[] bracketed(double[] traded, double open, double close) {
+    private static Timed bracketed(double[] traded, long[] stamps, long from, long to,
+            double open, double close) {
         boolean ahead = Double.isFinite(open) && traded[0] != open;
         boolean behind = Double.isFinite(close) && traded[traded.length - 1] != close;
 
         if (!ahead && !behind) {
-            return traded;
+            return new Timed(traded, stamps);
         }
 
         double[] path = new double[traded.length + (ahead ? 1 : 0) + (behind ? 1 : 0)];
+        long[] when = new long[path.length];
         int at = 0;
 
         if (ahead) {
-            path[at++] = open;
+            // The bar's own open, at the bar's own start: it is the price the
+            // minute began at, whatever the first recorded trade says.
+            path[at] = open;
+            when[at++] = from;
         }
 
         System.arraycopy(traded, 0, path, at, traded.length);
+        System.arraycopy(stamps, 0, when, at, stamps.length);
 
         at += traded.length;
 
         if (behind) {
+            // And the close on the bar's last instant. Not on the last trade's:
+            // the minute is not over until it is over.
             path[at] = close;
+            when[at] = Math.max(to - 1, stamps[stamps.length - 1]);
         }
 
-        return path;
+        return new Timed(path, when);
     }
 
     /**
