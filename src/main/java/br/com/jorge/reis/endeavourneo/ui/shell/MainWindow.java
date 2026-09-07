@@ -131,14 +131,6 @@ public final class MainWindow extends JFrame {
     private final transient JobService jobs;
 
     /**
-     * The chart windows that are open, by name.
-     *
-     * <p>Kept so reopening a name fronts the existing window rather than
-     * stacking a second one on top of it, and so closing the application takes
-     * them all down. Without the registry the main window can exit while five
-     * charts stay on screen, orphaned.</p>
-     */
-    /**
      * True while the remembered charts are being reopened.
      *
      * <p>Opening a chart remembers what is open. During a restore that would
@@ -147,6 +139,14 @@ public final class MainWindow extends JFrame {
      */
     private transient boolean restoring;
 
+    /**
+     * The chart windows that are open, by name.
+     *
+     * <p>Kept so reopening a name fronts the existing window rather than
+     * stacking a second one on top of it, and so closing the application takes
+     * them all down. Without the registry the main window can exit while five
+     * charts stay on screen, orphaned.</p>
+     */
     private final transient java.util.Map<String, ChartHolder> charts =
             new java.util.LinkedHashMap<>();
 
@@ -232,27 +232,6 @@ public final class MainWindow extends JFrame {
     // ------------------------------------------------------------ public
 
     /**
-     * Opens a chart in a window of its own, or fronts the one already open.
-     *
-     * <p><b>A window rather than a tab, deliberately.</b> Tabs are exclusive by
-     * construction — only one is ever visible — and the whole point here is to
-     * watch several charts at once, spread across monitors. Reopening the same
-     * name brings the existing window forward instead of creating a second one,
-     * which is the behaviour the tabs had and the one people expect.</p>
-     */
-    /**
-     * Writes down which charts are open, so they come back.
-     *
-     * <p>On every open and close rather than at exit: an application that saves
-     * on the way out saves nothing when it does not get to leave, and this one
-     * is meant to be left running overnight.</p>
-     *
-     * <p>The NAME is stored, not the window's own title. "winn-1m (2)" is what
-     * the second chart of a series is called, and reopening has to ask for the
-     * series and let the numbering happen again -- otherwise a restart leaves
-     * "(2)" with no "(1)" beside it.</p>
-     */
-    /**
      * Writes what is open, then freezes the list.
      *
      * <p>In that order and as one step, because the two halves are only correct
@@ -268,6 +247,18 @@ public final class MainWindow extends JFrame {
         leaving = true;
     }
 
+    /**
+     * Writes down which charts are open, so they come back.
+     *
+     * <p>On every open and close rather than at exit: an application that saves
+     * on the way out saves nothing when it does not get to leave, and this one
+     * is meant to be left running overnight.</p>
+     *
+     * <p>The NAME is stored, not the window's own title. "winn-1m (2)" is what
+     * the second chart of a series is called, and reopening has to ask for the
+     * series and let the numbering happen again -- otherwise a restart leaves
+     * "(2)" with no "(1)" beside it.</p>
+     */
     void rememberCharts() {
         if (leaving || restoring) {
             // Two reasons, both of them a list being rewritten while it is
@@ -356,18 +347,6 @@ public final class MainWindow extends JFrame {
         rememberCharts();
     }
 
-    /**
-     * @param name a series's name
-     * @param title what the window will be called, for the message if it fails
-     * @return the bars to draw
-     *
-     * <p>The synthetic walk is the answer only when there is no series at all —
-     * on a machine where the data folder has not been found yet, the
-     * application still opens and still draws. It is never the answer when a
-     * series exists and fails to read: that says so out loud, because prices that
-     * are not the market's, drawn without a word, are the one thing a chart
-     * must never do.</p>
-     */
     /**
      * Lets a chart reach the history its window left behind.
      *
@@ -504,6 +483,18 @@ public final class MainWindow extends JFrame {
         }.execute();
     }
 
+    /**
+     * @param name a series's name
+     * @param title what the window will be called, for the message if it fails
+     * @return the bars to draw
+     *
+     * <p>The synthetic walk is the answer only when there is no series at all —
+     * on a machine where the data folder has not been found yet, the
+     * application still opens and still draws. It is never the answer when a
+     * series exists and fails to read: that says so out loud, because prices that
+     * are not the market's, drawn without a word, are the one thing a chart
+     * must never do.</p>
+     */
     private PriceSeries seriesFor(String name, String title,
             br.com.jorge.reis.endeavourneo.domain.market.Segment segment) {
         try {
@@ -755,7 +746,6 @@ public final class MainWindow extends JFrame {
         }
     }
 
-    /** @return the names of the chart windows open now, in the order opened */
     /**
      * @return the chart with that title, or null
      *
@@ -767,14 +757,15 @@ public final class MainWindow extends JFrame {
         return charts.get(title);
     }
 
+    /** @return the names of the chart windows open now, in the order opened */
     public java.util.List<String> openCharts() {
         return java.util.List.copyOf(charts.keySet());
     }
 
-    /** Closes every chart; also the "close all" action. */
     /** True from the moment the window starts closing, so the list stops moving. */
     private transient boolean leaving;
 
+    /** Closes every chart; also the "close all" action. */
     public void closeCharts() {
         for (ChartHolder holder : new java.util.ArrayList<>(charts.values())) {
             holder.close();
@@ -1004,15 +995,9 @@ public final class MainWindow extends JFrame {
         return menu;
     }
 
-    /**
-     * Opens the preferences dialog.
-     *
-     * <p>Every setting lives in one dialog, the way Eclipse and IntelliJ do it.
-     * That is worth copying for a reason that is not imitation: options
-     * scattered across menus produce the application where nobody can find the
-     * one switch they need. Adding a settings page means writing a {@link
-     * SettingsPage} and adding it to the list below.</p>
-     */
+    /** The transport, built on first use and kept: one clock for every chart. */
+    private transient br.com.jorge.reis.endeavourneo.ui.replay.ReplayWindow replay;
+
     /**
      * Opens the replay transport, or brings it back to the front.
      *
@@ -1020,9 +1005,6 @@ public final class MainWindow extends JFrame {
      * charts as wanted, and they all run off the same clock. Two transports
      * would be two clocks, and the charts would disagree about what time it is.</p>
      */
-    /** The transport, built on first use and kept: one clock for every chart. */
-    private transient br.com.jorge.reis.endeavourneo.ui.replay.ReplayWindow replay;
-
     private void openReplay() {
         if (replay == null) {
             replay = new br.com.jorge.reis.endeavourneo.ui.replay.ReplayWindow(this);
@@ -1099,6 +1081,15 @@ public final class MainWindow extends JFrame {
         });
     }
 
+    /**
+     * Opens the preferences dialog.
+     *
+     * <p>Every setting lives in one dialog, the way Eclipse and IntelliJ do it.
+     * That is worth copying for a reason that is not imitation: options
+     * scattered across menus produce the application where nobody can find the
+     * one switch they need. Adding a settings page means writing a {@link
+     * SettingsPage} and adding it to the list below.</p>
+     */
     private void openPreferences() {
         br.com.jorge.reis.endeavourneo.platform.Language before =
                 br.com.jorge.reis.endeavourneo.platform.Language.remembered();
@@ -1232,7 +1223,6 @@ public final class MainWindow extends JFrame {
         return button;
     }
 
-    /** A titled panel, standing in for an Eclipse view tab. */
     /**
      * Moves the divider so a folded log shows only its caption.
      *
@@ -1255,6 +1245,7 @@ public final class MainWindow extends JFrame {
                 ? consoleWasAt : (int) (getHeight() * 0.68));
     }
 
+    /** A titled panel, standing in for an Eclipse view tab. */
     private static JComponent titled(String title, JComponent content) {
         JPanel panel = new JPanel(new BorderLayout());
 

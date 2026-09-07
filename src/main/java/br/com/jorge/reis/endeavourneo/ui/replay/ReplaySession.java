@@ -28,7 +28,6 @@ import br.com.jorge.reis.endeavourneo.domain.market.TickLibrary;
 import br.com.jorge.reis.endeavourneo.domain.market.TickSeries;
 import br.com.jorge.reis.endeavourneo.domain.market.TickPath;
 import br.com.jorge.reis.endeavourneo.domain.market.TickSource;
-import br.com.jorge.reis.endeavourneo.ui.chart.RandomWalkSeries;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -162,13 +161,13 @@ public final class ReplaySession {
 
     private int speed = 1;
 
+    /** How many sessions may be played in one go, so a typo cannot ask for a decade. */
+    public static final int MOST_SESSIONS = 250;
+
     /**
      * @param instrument what is being replayed
      * @param date the session
      */
-    /** How many sessions may be played in one go, so a typo cannot ask for a decade. */
-    public static final int MOST_SESSIONS = 250;
-
     public ReplaySession(String instrument, LocalDate date) {
         this(instrument, date, ReplayPreferences.historyDays());
     }
@@ -313,14 +312,6 @@ public final class ReplaySession {
         this.timer.setCoalesce(true);
     }
 
-    /**
-     * @return the bars of that session
-     *
-     * <p><b>Synthetic, and seeded by the date</b> so the same day always replays
-     * the same way — a replay that changed under the reader between two runs
-     * would be useless for comparing decisions. Replaced the moment a real
-     * loader exists; the rest of this class does not care which it gets.</p>
-     */
     /**
      * @return the sessions before that date, oldest first
      *
@@ -517,7 +508,6 @@ public final class ReplaySession {
         return ticks.at(day);
     }
 
-    /** @return whether this day is replayed from the exchange's own ticks */
     /**
      * @return the export being played, or null when bars are
      *
@@ -525,6 +515,10 @@ public final class ReplaySession {
      * playing. Working it out again in the chart would let it answer a question
      * this already answered -- and answer it differently.</p>
      */
+    public TickSource playing() {
+        return feed.isTicks() ? feed.source() : null;
+    }
+
     /**
      * @return how the feed being played names itself
      *
@@ -534,10 +528,6 @@ public final class ReplaySession {
      */
     public String feedLabel() {
         return feed.label();
-    }
-
-    public TickSource playing() {
-        return feed.isTicks() ? feed.source() : null;
     }
 
     /**
@@ -747,13 +737,6 @@ public final class ReplaySession {
     }
 
     /**
-     * Ends the session and hands every chart back to itself.
-     *
-     * <p>The charts are told BEFORE the watchers are dropped: a chart that took
-     * itself back would otherwise still be subscribed to a clock that no longer
-     * runs, and would sit there waiting for a tick that never comes.</p>
-     */
-    /**
      * @return whether this session has been stopped for good
      *
      * <p>Apart from paused. A paused session is still a session: the chart is
@@ -767,6 +750,13 @@ public final class ReplaySession {
 
     private boolean stopped;
 
+    /**
+     * Ends the session and hands every chart back to itself.
+     *
+     * <p>The charts are told BEFORE the watchers are dropped: a chart that took
+     * itself back would otherwise still be subscribed to a clock that no longer
+     * runs, and would sit there waiting for a tick that never comes.</p>
+     */
     public void stop() {
         stopped = true;
 

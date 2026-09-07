@@ -98,17 +98,6 @@ public final class Appearance {
     }
 
     /**
-     * Tells FlatLaf to also read the {@code .properties} files in this package.
-     *
-     * <p>This is FlatLaf's own customisation mechanism: instead of overriding
-     * key by key in the {@code UIManager}, you change half a dozen base colours
-     * and FlatLaf derives the remaining dozens while preserving the contrast
-     * relationships. Overriding key by key produces the classic incoherence — a
-     * panel that turned brown next to a menu that stayed blue.</p>
-     *
-     * @return whether it worked; false when FlatLaf or the file is absent
-     */
-    /**
      * Unregisters every palette any theme may have registered.
      *
      * <p>All of them, not just the one being left: the theme being installed
@@ -131,6 +120,17 @@ public final class Appearance {
         }
     }
 
+    /**
+     * Tells FlatLaf to also read the {@code .properties} files in this package.
+     *
+     * <p>This is FlatLaf's own customisation mechanism: instead of overriding
+     * key by key in the {@code UIManager}, you change half a dozen base colours
+     * and FlatLaf derives the remaining dozens while preserving the contrast
+     * relationships. Overriding key by key produces the classic incoherence — a
+     * panel that turned brown next to a menu that stayed blue.</p>
+     *
+     * @return whether it worked; false when FlatLaf or the file is absent
+     */
     private static boolean registerPalette(String resourcePackage, String lookAndFeelClass) {
         // FlatLaf looks for a .properties named after the LOOK AND FEEL CLASS.
         // If the file is not there it does not complain: it just uses the

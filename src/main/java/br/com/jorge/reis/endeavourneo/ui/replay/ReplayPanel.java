@@ -275,7 +275,6 @@ public final class ReplayPanel extends JPanel {
         }
     }
 
-    /** Ends whatever is playing and gives every chart following it back. */
     /**
      * Ends the session and hands every chart its own data back.
      *
@@ -288,6 +287,7 @@ public final class ReplayPanel extends JPanel {
         release();
     }
 
+    /** Ends whatever is playing and gives every chart following it back. */
     public void release() {
         if (session != null) {
             session.forget(refresh);

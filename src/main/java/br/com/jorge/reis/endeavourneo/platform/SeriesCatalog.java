@@ -294,12 +294,6 @@ public final class SeriesCatalog {
     }
 
     /**
-     * @return the market a series belongs to
-     *
-     * <p>What lets the tree put the exports of one market together instead of
-     * listing five files flat.</p>
-     */
-    /**
      * @param name a series as it is stored, which is a file name
      * @return how it is NAMED on screen
      *
@@ -369,6 +363,12 @@ public final class SeriesCatalog {
         return market + "-" + tail;
     }
 
+    /**
+     * @return the market a series belongs to
+     *
+     * <p>What lets the tree put the exports of one market together instead of
+     * listing five files flat.</p>
+     */
     public static String groupOf(String name) {
         if (name == null) {
             return "";

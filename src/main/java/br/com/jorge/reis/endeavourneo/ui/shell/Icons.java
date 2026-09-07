@@ -44,10 +44,6 @@ public final class Icons {
         throw new AssertionError("Utility class must not be instantiated");
     }
 
-    /**
-     * @param size the square side, in pixels
-     * @return the "arrange the windows" glyph: four panes in a frame
-     */
     /** A filled candle: the default drawing style. */
     public static Icon candle(int size) {
         return new Painted(size, (g, w, h, colour) -> {
@@ -145,6 +141,10 @@ public final class Icons {
         });
     }
 
+    /**
+     * @param size the square side, in pixels
+     * @return the "arrange the windows" glyph: four panes in a frame
+     */
     public static Icon tile(int size) {
         return new Painted(size, (g, w, h, colour) -> {
             g.setColor(colour);

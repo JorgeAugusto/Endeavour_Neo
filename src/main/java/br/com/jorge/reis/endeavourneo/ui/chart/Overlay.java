@@ -81,13 +81,6 @@ public interface Overlay {
     void setVisible(boolean visible);
 
     /**
-     * @return how the line is drawn: thickness and dash pattern
-     *
-     * <p>A default, so an indicator that has nothing to say about its own
-     * appearance says nothing. One and a bit pixels, solid, rounded -- what
-     * every line here was before any of them could be configured.</p>
-     */
-    /**
      * Paints anything that is an AREA rather than a line, under the lines.
      *
      * <p>Empty by default, because almost every indicator here IS its lines and
@@ -106,6 +99,13 @@ public interface Overlay {
         // Nothing. An indicator that is only lines has no area to paint.
     }
 
+    /**
+     * @return how the line is drawn: thickness and dash pattern
+     *
+     * <p>A default, so an indicator that has nothing to say about its own
+     * appearance says nothing. One and a bit pixels, solid, rounded -- what
+     * every line here was before any of them could be configured.</p>
+     */
     default java.awt.Stroke stroke() {
         return new java.awt.BasicStroke(1.4f, java.awt.BasicStroke.CAP_ROUND,
                 java.awt.BasicStroke.JOIN_ROUND);

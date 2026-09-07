@@ -304,15 +304,6 @@ public final class ChartHolder {
     }
 
     /**
-     * The title, with how far the price is from the last session's close.
-     *
-     * <p>Beside the instrument's name because that is where a quote screen puts
-     * it and where the eye goes first — and because the title is the one part of
-     * a chart still readable when the window is behind three others. The percent
-     * is dropped, not shown as zero, when the series carries a single day: there
-     * is nothing to compare against, and a "0,00%" would be a claim.</p>
-     */
-    /**
      * Gives the chart back its own data.
      *
      * <p>Called when the replay it was following ends. Doing nothing instead
@@ -336,6 +327,15 @@ public final class ChartHolder {
         retitle();
     }
 
+    /**
+     * The title, with how far the price is from the last session's close.
+     *
+     * <p>Beside the instrument's name because that is where a quote screen puts
+     * it and where the eye goes first — and because the title is the one part of
+     * a chart still readable when the window is behind three others. The percent
+     * is dropped, not shown as zero, when the series carries a single day: there
+     * is nothing to compare against, and a "0,00%" would be a claim.</p>
+     */
     private String title() {
         if (replayLabel != null) {
             // The change against the previous close is dropped while replaying:

@@ -36,20 +36,18 @@ import java.awt.Graphics2D;
 public final class CandleStyle implements ChartStyle {
 
     /**
-     * Whether rising bodies are drawn hollow.
+     * @return whether rising bodies are drawn hollow
      *
      * <p>Hollow is the older convention and the one Profit uses. It reads
      * differently rather than merely looking different: with hollow bodies the
      * <b>ink</b> on the screen marks the falling bars, so a downward stretch is
      * visibly darker. Filled-both-ways relies on colour alone, which is exactly
      * what a colour-blind reader does not have.</p>
-     */
-    /**
-     * Read at paint time rather than fixed at construction.
      *
-     * <p>So the setting reaches charts already open. Building the style with a
-     * flag would leave every window drawn the way it was when it opened, and the
-     * checkbox would only take effect on the next chart.</p>
+     * <p>Read at paint time rather than fixed at construction, so the setting
+     * reaches charts already open. Building the style with a flag would leave
+     * every window drawn the way it was when it opened, and the checkbox would
+     * only take effect on the next chart.</p>
      */
     private boolean hollow() {
         return br.com.jorge.reis.endeavourneo.ui.chart.ChartPreferences.hollowCandles();

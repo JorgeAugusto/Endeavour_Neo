@@ -18,7 +18,6 @@
 package br.com.jorge.reis.endeavourneo;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -45,29 +44,24 @@ import org.junit.jupiter.api.Test;
  * finding. A scan finds the whole class at once and keeps it from coming back,
  * which is worth more than any of the individual fixes.</p>
  *
- * <h2>The ceiling, and why there is one</h2>
+ * <h2>There was a ceiling. There is not one now</h2>
  *
- * <p>Twenty-three remain, in files this sweep has not reached yet. A test that
- * demanded zero today would simply be red, and a red test is one nobody reads.
- * So the count may not GROW, and the files already cleaned must stay clean —
- * which is what stops the next edit from adding a twenty-fourth while the
- * backlog is being worked off.</p>
+ * <p>It started at twenty-three, in files the sweep had not reached: a count
+ * that could not GROW, plus a list of files already cleaned that could not
+ * regress. That was the honest shape while the backlog was being worked off --
+ * a test demanding zero on the day it was written would have been red, and a
+ * red test is one nobody reads.</p>
  *
- * <p><b>Drive it to zero and delete the ceiling.</b> The list below is the
- * backlog; when it empties, the first assertion is the only one that has to
- * stay.</p>
+ * <p>The backlog is empty. Nine of the twenty-three were in {@code MainWindow}
+ * alone, and two of them documented behaviour the application had deliberately
+ * stopped having -- a javadoc that is inert stops being maintained, and then it
+ * stops being true. So the ceiling is gone and the number is zero, which is the
+ * only number this test can hold without a list beside it.</p>
  */
 @DisplayName("Javadoc orfao")
 class OrphanJavadocTest {
 
     private static final Path MAIN = Path.of("src", "main", "java");
-
-    /** How many still stand, in files this sweep has not reached. */
-    private static final int BACKLOG = 23;
-
-    /** Files gone through, which may never regress. */
-    private static final List<String> CLEANED = List.of(
-            "ChartCanvas.java", "Renko.java", "TickRenko.java");
 
     /**
      * @return where each inert block starts, as {@code File.java:line}
@@ -123,27 +117,11 @@ class OrphanJavadocTest {
     }
 
     @Test
-    @DisplayName("os arquivos ja varridos continuam limpos")
-    void theSweptFilesStayClean() throws IOException {
-        List<String> left = new ArrayList<>();
-
-        try (Stream<Path> tree = Files.walk(MAIN)) {
-            for (Path file : tree.filter(p -> p.toString().endsWith(".java")).toList()) {
-                if (CLEANED.contains(file.getFileName().toString())) {
-                    left.addAll(orphansIn(file));
-                }
-            }
-        }
-
-        assertEquals(List.of(), left, "a javadoc block went inert again in a swept file");
-    }
-
-    @Test
-    @DisplayName("o passivo nao cresce")
-    void thebacklogDoesNotGrow() throws IOException {
-        List<String> all = everyOrphan();
-
-        assertTrue(all.size() <= BACKLOG,
-                "the backlog grew from " + BACKLOG + " to " + all.size() + ": " + all);
+    @DisplayName("nenhum javadoc documenta o membro errado, em lugar nenhum")
+    void nojavadocDocumentsTheWrongMember() throws IOException {
+        assertEquals(List.of(), everyOrphan(),
+                "a javadoc block is inert: it sits on a member it does not describe, it "
+                        + "does not reach the generated documentation, and it goes on "
+                        + "reading like an explanation of what is under it");
     }
 }

@@ -113,16 +113,6 @@ public final class Navigator extends JPanel {
     }
 
     /**
-     * A leaf that shows more than it is called.
-     *
-     * <p>The tree writes {@code winn-1m . busca} and opening it must still ask
-     * for {@code winn-1m}. Keeping the two apart is the difference between a
-     * label the reader can act on and a name the rest of the program can
-     * find.</p>
-     *
-     * @param name what to open, or null for a leaf that opens nothing
-     */
-    /**
      * @return what that node opens, or null when it opens nothing
      *
      * <p>The NAME, never the label: the tree shows {@code winn-1m . busca} and
@@ -139,6 +129,16 @@ public final class Navigator extends JPanel {
         return node.isLeaf() ? String.valueOf(held) : null;
     }
 
+    /**
+     * A leaf that shows more than it is called.
+     *
+     * <p>The tree writes {@code winn-1m . busca} and opening it must still ask
+     * for {@code winn-1m}. Keeping the two apart is the difference between a
+     * label the reader can act on and a name the rest of the program can
+     * find.</p>
+     *
+     * @param name what to open, or null for a leaf that opens nothing
+     */
     private record Leaf(String name, String label) {
 
         @Override
