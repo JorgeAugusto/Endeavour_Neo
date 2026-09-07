@@ -82,6 +82,23 @@ class HistoryBeforeReplayTest {
         assertEquals(300.0, all.closeAt(7));
         assertEquals(301.0, all.closeAt(8));
         assertThrows(IndexOutOfBoundsException.class, () -> all.closeAt(9));
+
+        // "IN ORDER" is about TIME, and this test read five closes and not one
+        // timestamp. Forgetting the offset in ConcatSeries.timeAt -- handing
+        // part two the joined index instead of its own -- leaves every close
+        // above exactly where it is, so the promise in the name went unchecked.
+        for (int bar = 1; bar < all.size(); bar++) {
+            assertTrue(all.timeAt(bar) > all.timeAt(bar - 1),
+                    "bar " + bar + " is stamped at or before the one in front of it: "
+                            + all.timeAt(bar - 1) + " then " + all.timeAt(bar));
+        }
+
+        // And each part keeps its OWN clock: the second session begins where it
+        // begins, not at the first session's start plus three minutes.
+        assertEquals(1_000_000L, all.timeAt(3),
+                "the second session was stamped from the first session's clock");
+        assertEquals(2_000_000L, all.timeAt(7),
+                "the third session was stamped from the wrong part");
     }
 
     @Test

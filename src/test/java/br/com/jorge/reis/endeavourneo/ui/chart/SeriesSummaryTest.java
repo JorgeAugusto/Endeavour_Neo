@@ -19,6 +19,7 @@ package br.com.jorge.reis.endeavourneo.ui.chart;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
@@ -143,8 +144,19 @@ class SeriesSummaryTest {
         String candles = valueOf(SeriesSummary.rowsFor(series, "winfull-1m", "55R", false),
                 "summary.source");
 
-        assertTrue(ticks != null && !ticks.equals(candles),
+        // WHICH IS WHICH, and not merely that the two differ. The line under
+        // test is a ternary; inverting it keeps the answers different and makes
+        // the summary say "candles" for a chart built from ticks. The test named
+        // itself after "the line that matters most" and could not tell that
+        // apart from the line being right.
+        assertNotEquals(ticks, candles,
                 "a chart built from ticks and one built from candles read the same");
+        assertEquals(
+                br.com.jorge.reis.endeavourneo.platform.Messages.get("summary.source.ticks"),
+                ticks, "a chart built from TICKS says it was built from something else");
+        assertEquals(
+                br.com.jorge.reis.endeavourneo.platform.Messages.get("summary.source.candles"),
+                candles, "a chart built from CANDLES says it was built from something else");
     }
 
     @Test

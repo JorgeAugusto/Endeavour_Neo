@@ -138,10 +138,27 @@ class TickRenkoTest {
 
             whole.add(day);
 
-            assertTrue(half.size() > 0, "nothing was drawn at all");
+            // THE NUMBER, not merely "fewer than the whole day". A strict
+            // inequality was all this said, and the whole day lays several: one
+            // brick and two both satisfied it, so moving the cut by a single
+            // trade -- a `<` where a `<=` belongs in the counting -- passed. One
+            // trade of lookahead per frame is exactly the sort of thing this
+            // test exists to catch, and it was the only test guarding it on the
+            // tick path.
+            assertEquals(1, half.size(),
+                    "the clock had reached three trades, which lays one brick");
             assertTrue(half.size() < whole.size(),
                     "the half-played session drew " + half.size()
                             + " bricks, the same as the whole day");
+
+            // And the cut is where it says it is: one more trade lays more.
+            TickRenko oneMore = new TickRenko(new Renko(10, 2), library);
+
+            oneMore.addUpTo(day, at(day, 5));
+
+            assertTrue(oneMore.size() > half.size(),
+                    "two more trades laid no more bricks, so this fixture cannot tell "
+                            + "one position of the cut from another");
 
             // And what it drew is the beginning of what the whole day draws.
             for (int i = 0; i < half.size(); i++) {

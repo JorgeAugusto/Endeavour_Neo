@@ -138,6 +138,58 @@ class TimeframeTest {
                 "a 09:00 bar covering 09:00–09:04 must be stamped 09:00");
     }
 
+    @Test
+    @DisplayName("the stamp is the SLOT's start, even when the bars are not aligned to it")
+    void theStampIsTheSlotAndNotTheFirstBar() {
+        // The test above cannot see this, and that is the point of adding one.
+        // Its bars begin exactly at 09:00, already on the five-minute grid, so
+        // "the slot's start" and "the first bar's own time" are the same number
+        // and any implementation that returned either passes.
+        //
+        // The defect this guards is documented in startOf: a session folded from
+        // TICKS came out with every candle stamped up to fifty-nine seconds
+        // late, and nothing lined up with the minute base. Bars that start at
+        // 09:02 tell the two answers apart.
+        LocalDateTime start = LocalDateTime.of(2026, 9, 2, 9, 2);
+
+        for (int i = 0; i < 5; i++) {
+            bar(start.plusMinutes(i), 100, 100, 100, 100, 1);
+        }
+
+        PriceSeries five = Timeframe.FIVE_MINUTES.apply(series(), SAO_PAULO);
+
+        assertEquals(LocalDateTime.of(2026, 9, 2, 9, 0)
+                        .atZone(SAO_PAULO).toInstant().toEpochMilli(),
+                five.timeAt(0),
+                "the bar was stamped when its first minute arrived, not when its slot began");
+    }
+
+    @Test
+    @DisplayName("a month folds to ONE bar, and every September is not one bucket")
+    void monthlyFoldsAMonth() {
+        // MONTHLY did not appear anywhere in this file. Its bucket is
+        // year * 12 + month precisely because a month number alone would put
+        // every September of every year in the same bar, and that reasoning was
+        // written in a comment with nothing checking it.
+        bar(LocalDateTime.of(2025, 9, 2, 10, 0), 100, 106, 98, 105, 1);
+        bar(LocalDateTime.of(2025, 9, 30, 10, 0), 105, 108, 99, 107, 1);
+        bar(LocalDateTime.of(2025, 10, 1, 10, 0), 107, 110, 100, 109, 1);
+        bar(LocalDateTime.of(2026, 9, 1, 10, 0), 200, 210, 190, 205, 1);
+
+        PriceSeries monthly = Timeframe.MONTHLY.apply(series(), SAO_PAULO);
+
+        assertEquals(3, monthly.size(),
+                "September 2025, October 2025 and September 2026 are three months");
+        assertEquals(100.0, monthly.openAt(0), "the month opens where its first bar opened");
+        assertEquals(107.0, monthly.closeAt(0), "the month closes where its last bar closed");
+        assertEquals(108.0, monthly.highAt(0));
+        assertEquals(98.0, monthly.lowAt(0));
+
+        // The one the comment is about: a year apart is not the same bucket.
+        assertNotEquals(dayOf(monthly, 0).getYear(), dayOf(monthly, 2).getYear(),
+                "September 2025 and September 2026 were folded into one bar");
+    }
+
     // ----------------------------------------------------- as duas armadilhas
 
     @Test
