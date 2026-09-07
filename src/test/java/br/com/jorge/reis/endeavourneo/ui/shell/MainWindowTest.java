@@ -21,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
@@ -400,6 +401,41 @@ class MainWindowTest {
                     "the workspace still lists " + saved.size() + " charts to reopen");
 
             window.closeCharts();
+        });
+    }
+
+    @Test
+    @DisplayName("uma fonte de ticks trancada nao abre, como qualquer serie trancada")
+    void alockedTickSourceIsRefused() throws Exception {
+        // The guard was has(asked) AND segmentsOnly(asked), and a tick key --
+        // win/ticks/profit -- is a name, not a file: nothing ever looks for it
+        // on disk, so has() answered false and took the whole conjunction with
+        // it. The lock was offered for a tick source, the box stayed ticked,
+        // and the export opened whole anyway.
+        //
+        // No fixture: the refusal happens on the key, before anything is read.
+        // A tick source that does not exist is refused for the same reason a
+        // real one is, and that is the point -- the guard is about what the
+        // reader asked for, not about what is on disk.
+        String key = br.com.jorge.reis.endeavourneo.ui.series.Segmentable
+                .keyOfTicks("win", br.com.jorge.reis.endeavourneo.domain.market
+                        .TickSource.PROFIT);
+
+        onEdt(window -> {
+            try {
+                br.com.jorge.reis.endeavourneo.platform.Segmentation
+                        .setSegmentsOnly(key, true);
+
+                assertNull(window.open(key),
+                        "the locked export opened whole: years of searching and years of "
+                                + "testing in one window, which is exactly what the box "
+                                + "promises to prevent");
+            } finally {
+                br.com.jorge.reis.endeavourneo.platform.Segmentation
+                        .setSegmentsOnly(key, false);
+
+                window.closeCharts();
+            }
         });
     }
 

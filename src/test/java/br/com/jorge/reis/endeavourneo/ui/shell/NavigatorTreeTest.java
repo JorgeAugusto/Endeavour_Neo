@@ -20,6 +20,7 @@ package br.com.jorge.reis.endeavourneo.ui.shell;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -482,5 +483,45 @@ class NavigatorTreeTest {
         assertEquals(br.com.jorge.reis.endeavourneo.ui.series.Segmentable
                 .keyOfTicks("win", TickSource.METATRADER), opens,
                 "it opens something other than its own export");
+    }
+
+    @Test
+    @DisplayName("e uma fonte de ticks TRANCADA nao abre")
+    void alockedTickSourceDoesNotOpen(@TempDir Path folder) throws IOException {
+        // The lock was offered for a tick source and enforced only for candles.
+        // The reader ticked "only through its segments", the box stayed ticked
+        // when the window was reopened, the empty-lock warning appeared -- and
+        // the tree still handed the whole export to a double click. The hint on
+        // that box calls itself "the defence against looking at test data
+        // without noticing", and the export is the one file that holds the
+        // searching years and the testing years together.
+        SeriesCatalog.useFolderForTest(folder);
+
+        tickSession(folder, "win", java.time.LocalDate.of(2021, 1, 4), TickSource.METATRADER);
+
+        String key = br.com.jorge.reis.endeavourneo.ui.series.Segmentable
+                .keyOfTicks("win", TickSource.METATRADER);
+
+        try {
+            br.com.jorge.reis.endeavourneo.platform.Segmentation.setSegmentsOnly(key, true);
+
+            DefaultMutableTreeNode node =
+                    Navigator.tickSessions(folder.resolve("win").resolve("ticks"), "win");
+
+            assertNotNull(node, "the session stopped being listed at all: a locked source "
+                    + "is still there, it is only out of reach whole");
+
+            DefaultMutableTreeNode leaf = (DefaultMutableTreeNode) node.getChildAt(0);
+
+            assertNull(Navigator.nameOf(leaf),
+                    "the locked export still opens with a double click, which is the one "
+                            + "thing the lock exists to stop");
+            assertTrue(String.valueOf(leaf.getUserObject())
+                            .contains(Messages.get("navigator.locked")),
+                    "nothing on the node says it is locked, so the reader who ticked the "
+                            + "box has no way to see that it took: " + leaf.getUserObject());
+        } finally {
+            br.com.jorge.reis.endeavourneo.platform.Segmentation.setSegmentsOnly(key, false);
+        }
     }
 }

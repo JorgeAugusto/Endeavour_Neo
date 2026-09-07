@@ -584,10 +584,28 @@ public final class MainWindow extends JFrame {
         br.com.jorge.reis.endeavourneo.domain.market.Segment segment =
                 br.com.jorge.reis.endeavourneo.platform.Segmentation.segmentIn(series);
 
+        // A TICK EXPORT IS A SERIES. It holds every print of every session it
+        // covers, which is MORE than the candle file holds and not less, and it
+        // used to be the only data in the program that could not be looked at:
+        // the tree offered it, and opening it fell through to the default series
+        // because SeriesCatalog has never heard of it. See FoldedTicks.
+        boolean ticks = br.com.jorge.reis.endeavourneo.ui.series.Segmentable.isTicks(asked);
+
         // THE LOCK. A series the reader marked as segments-only does not open
         // whole, and saying so out loud is the entire point: the alternative is
         // a window full of test data that looks like every other window.
-        if (segment == null && SeriesCatalog.has(asked)
+        //
+        // AND IT COVERS TICKS, which took asking twice. The guard used to be
+        // has(asked) alone, and a tick key -- win/ticks/profit -- is a name and
+        // not a file: nothing ever looks for it on disk, so has() answered false
+        // and the whole conjunction with it. The lock was OFFERED for a tick
+        // source (the combo is filled from Segmentable.keys), the box stayed
+        // ticked when the window was reopened, the empty-lock warning appeared,
+        // and it caught nothing. The hint on that box promises "the defence
+        // against looking at test data without noticing", and the one source it
+        // did not defend is the whole export -- years of searching and years of
+        // testing in one file.
+        if (segment == null && (ticks || SeriesCatalog.has(asked))
                 && br.com.jorge.reis.endeavourneo.platform.Segmentation.segmentsOnly(asked)) {
             console.write(Messages.get("console.locked", asked));
             status.say(Messages.get("console.locked", asked));
@@ -595,12 +613,6 @@ public final class MainWindow extends JFrame {
             return null;
         }
 
-        // A TICK EXPORT IS A SERIES. It holds every print of every session it
-        // covers, which is MORE than the candle file holds and not less, and it
-        // used to be the only data in the program that could not be looked at:
-        // the tree offered it, and opening it fell through to the default series
-        // because SeriesCatalog has never heard of it. See FoldedTicks.
-        boolean ticks = br.com.jorge.reis.endeavourneo.ui.series.Segmentable.isTicks(asked);
         String name = ticks || SeriesCatalog.has(asked) ? asked : SeriesCatalog.defaultName();
 
         // ALWAYS a new chart, never fronting an existing one. A terminal is

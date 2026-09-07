@@ -372,12 +372,22 @@ public final class Navigator extends JPanel {
             // every session it covers, which is MORE than the candle file holds,
             // and the rule made the most complete data in the program the only
             // data that could not be looked at.
-            DefaultMutableTreeNode found = new DefaultMutableTreeNode(new Leaf(key,
-                    Messages.get("navigator.tickSessions",
-                            Messages.orElse("navigator.tickSource." + source.key(),
-                                    source.key()),
-                            String.valueOf(days.size()),
-                            days.get(0).toString(), days.get(days.size() - 1).toString())));
+            //
+            // UNLESS IT IS LOCKED, exactly as seriesNode does it, and for the
+            // same reason: a locked node carries no name, and that is what makes
+            // it refuse to open. This branch never asked, so the reader could
+            // tick "only through its segments" on a tick source, watch the box
+            // stay ticked, and still open the whole export with a double click.
+            boolean locked = Segmentation.segmentsOnly(key);
+
+            String label = Messages.get("navigator.tickSessions",
+                    Messages.orElse("navigator.tickSource." + source.key(), source.key()),
+                    String.valueOf(days.size()),
+                    days.get(0).toString(), days.get(days.size() - 1).toString());
+
+            DefaultMutableTreeNode found = new DefaultMutableTreeNode(new Leaf(
+                    locked ? null : key,
+                    locked ? label + "  ·  " + Messages.get("navigator.locked") : label));
 
             // A tick source can be segmented like any other series -- see
             // Segmentable -- and its segments open like any other series's, for
