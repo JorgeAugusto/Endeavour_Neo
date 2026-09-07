@@ -96,6 +96,26 @@ public final class OverlayLegend extends JComponent {
     private int hovered = -1;
 
     /**
+     * @return the bar whose values every row reads
+     *
+     * <p><b>The last bar on screen when the pointer is away</b>, which is what
+     * {@code ChartCanvas.lastVisibleBar} was written for and says so in its own
+     * javadoc. Reading {@code hoveredBar()} raw, as this did, meant every row
+     * printed a dash the moment the pointer left the canvas -- and this legend
+     * sits ABOVE the canvas, so the pointer crosses it on the way in and out.
+     * The study panes underneath always did this; only the price legend did
+     * not.</p>
+     *
+     * <p>A method rather than two lines inside the paint, because a decision
+     * inside a paint is a decision nothing can ask about.</p>
+     */
+    int readAt() {
+        int under = canvas.hoveredBar();
+
+        return under >= 0 ? under : canvas.lastVisibleBar();
+    }
+
+    /**
      * How far the pointer has to travel down a row before it counts as
      * carrying it rather than clicking it.
      *
@@ -198,14 +218,7 @@ public final class OverlayLegend extends JComponent {
                 return;
             }
 
-            // hoveredBar is -1 whenever the pointer is not over the canvas, and
-            // this legend sits ABOVE the canvas -- so the pointer crosses it on
-            // the way in and every row printed a dash instead of a value. The
-            // fall-back is the one lastVisibleBar was written for; its own
-            // javadoc says "what a legend reads when the mouse is away", and
-            // the study panes below have always used it. This one did not.
-            int under = canvas.hoveredBar();
-            int bar = under >= 0 ? under : canvas.lastVisibleBar();
+            int bar = readAt();
 
             paintDrop(g, overlays.size());
 

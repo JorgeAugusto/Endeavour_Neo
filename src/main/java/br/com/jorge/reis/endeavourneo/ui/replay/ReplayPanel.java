@@ -603,14 +603,7 @@ public final class ReplayPanel extends JPanel {
                 try {
                     session = get();
 
-                    // The combo is restored from the workspace before its
-                    // listeners exist, so the restore fires nothing, and a
-                    // session is born at 1x however the combo reads. Every
-                    // session after the first started slow while the control
-                    // beside it said 60. The speed belongs to the reader, not
-                    // to the last time they happened to touch the control.
-                    session.setSpeed((Integer) speed.getSelectedItem());
-                    session.watch(refresh);
+                    adopt(session);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 } catch (java.util.concurrent.ExecutionException e) {
@@ -623,6 +616,33 @@ public final class ReplayPanel extends JPanel {
                 refresh();
             }
         }.execute();
+    }
+
+    /**
+     * Hands a freshly built session what the transport is already showing.
+     *
+     * <p><b>The speed has to be pushed, not waited for.</b> The combo is filled
+     * from the workspace before its listeners are attached, so restoring the
+     * reader's choice fires no event; and a session is constructed with no
+     * speed argument, so it starts at 1x. The only code that ever called
+     * setSpeed was the combo's listener, which fires only when the reader
+     * changes the selection by hand. Every session after the first therefore
+     * crawled at 1x while the control beside it read 60, and the reader's answer
+     * to that -- touching the combo -- was the one thing that made it work.</p>
+     *
+     * <p>Package-private so a test can run this exact step; it is the step that
+     * was missing.</p>
+     */
+    void adopt(ReplaySession fresh) {
+        fresh.setSpeed(chosenSpeed());
+        fresh.watch(refresh);
+    }
+
+    /** @return the speed the transport is showing right now */
+    int chosenSpeed() {
+        Object selected = speed.getSelectedItem();
+
+        return selected instanceof Integer chosen ? chosen : 1;
     }
 
     private void withSession(java.util.function.Consumer<ReplaySession> what) {

@@ -203,11 +203,30 @@ public final class MainWindow extends JFrame {
 
             @Override
             public void windowClosing(WindowEvent e) {
-                prepareToLeave();
-                closeCharts();
-                storeLayout();
+                leave();
             }
         });
+    }
+
+    /**
+     * Everything a way out of the application does, before the way out itself.
+     *
+     * <p><b>One method because there is more than one way out</b>, and they had
+     * drifted. The X on the title bar ran these three; the File menu ran
+     * closeCharts and storeLayout without prepareToLeave, and every close inside
+     * closeCharts then called rememberCharts, which rewrote the open list one
+     * chart shorter until it was empty. Leaving by the menu silently discarded
+     * every chart the reader had arranged. The guard in rememberCharts describes
+     * that failure exactly and was simply never armed on that path.</p>
+     *
+     * <p>Package-private so the test can run the real sequence rather than
+     * retype it — a test that retypes the steps passes while the application
+     * takes a different route, which is what happened here.</p>
+     */
+    void leave() {
+        prepareToLeave();
+        closeCharts();
+        storeLayout();
     }
 
     // ------------------------------------------------------------ public
@@ -1039,16 +1058,7 @@ public final class MainWindow extends JFrame {
     }
 
     private void exit() {
-        // FIRST, and the whole reason prepareToLeave exists: closeCharts runs
-        // one close per chart, and every close calls rememberCharts, which
-        // rewrites the open list one chart shorter until it is empty. The X on
-        // the title bar always took this precaution; leaving by the menu did
-        // not, and quietly emptied the workspace of every chart the reader had
-        // arranged. See the guard in rememberCharts, which describes exactly
-        // this and was simply never armed on this path.
-        prepareToLeave();
-        closeCharts();
-        storeLayout();
+        leave();
         dispose();
         System.exit(0);
     }

@@ -110,6 +110,40 @@ class JobServiceTest {
     }
 
     @Test
+    @DisplayName("running out of memory is a FAILURE, not a success carrying null")
+    void anErrorIsAFailureAndNotAResult() throws Exception {
+        // The likeliest failure this service will ever see, and for a while the
+        // only one it could not report. The catch read
+        // `Exception | StackOverflowError`, and OutOfMemoryError is neither: it
+        // went past the catch, the finally ran with failure still null, and the
+        // job settled as a SUCCESS whose value happened to be null. A caller
+        // reading that saw a series that loaded fine and came back empty.
+        //
+        // The work here reads a million bars at a time; this is not a theoretical
+        // Error. The test throws one by hand rather than exhausting the heap,
+        // which would take the test runner with it.
+        AtomicReference<Throwable> caught = new AtomicReference<>();
+        AtomicBoolean succeeded = new AtomicBoolean(false);
+        CountDownLatch done = new CountDownLatch(1);
+
+        try (JobService jobs = new JobService()) {
+            jobs.submit("test", progress -> {
+                throw new OutOfMemoryError("pretend heap");
+            }).whenDone(result -> succeeded.set(true)).whenFailed(error -> {
+                caught.set(error);
+                done.countDown();
+            });
+
+            assertTrue(done.await(TIMEOUT_SECONDS, TimeUnit.SECONDS),
+                    "an Error never reached the failure handler");
+            assertNotNull(caught.get(), "no error was delivered");
+            assertEquals("pretend heap", caught.get().getMessage());
+            assertFalse(succeeded.get(),
+                    "the job that ran out of memory was reported as a success");
+        }
+    }
+
+    @Test
     @DisplayName("cancelling is seen by the job, which stops on its own")
     void cancellationIsCooperative() throws Exception {
         // Cancellation has to be cooperative: Java has no safe way to stop a

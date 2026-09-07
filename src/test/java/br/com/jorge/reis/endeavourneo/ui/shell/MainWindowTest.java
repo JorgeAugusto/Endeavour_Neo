@@ -202,6 +202,36 @@ class MainWindowTest {
     }
 
     @Test
+    @DisplayName("a chart opened for a series that is gone carries the name it really opened")
+    void aMissingSeriesDoesNotKeepItsName() throws Exception {
+        // The window falls back to the default series when the one asked for is
+        // not on disk -- a layout from another machine, a file moved. The title
+        // then has to be the name of what actually opened, because the title is
+        // what rememberCharts writes down: keep the dead name and the workspace
+        // asks for it again on every launch, forever.
+        //
+        // The line that decides this read
+        // uniqueTitle(SeriesCatalog.has(name) ? series : series) -- a ternary
+        // whose two branches were the same expression, so it always kept the
+        // asked-for name. Nothing could catch that but opening a name that is
+        // not there.
+        onEdt(window -> {
+            try {
+                String dead = "no-such-series-1m";
+                String title = window.open(dead);
+
+                assertNotNull(title, "nothing opened at all");
+                assertFalse(title.startsWith(dead),
+                        "the chart kept the name of a series that does not exist: " + title);
+                assertTrue(title.startsWith(SeriesCatalog.defaultName()),
+                        "expected a chart of " + SeriesCatalog.defaultName() + ", got " + title);
+            } finally {
+                window.closeCharts();
+            }
+        });
+    }
+
+    @Test
     @DisplayName("every chart open at closing time comes back, not just the first")
     void everyChartComesBack() throws Exception {
         // Reported from use: two charts open, close the application, and it
@@ -217,11 +247,15 @@ class MainWindowTest {
                 assertEquals(2, window.openCharts().size(), "two charts did not open");
                 assertNotEquals(first, second, "the second chart took the first one's name");
 
-                // The application's own exit, not an approximation of it:
-                // writing the list and freezing it are one step, and a test
-                // that did only the first was testing a sequence nothing runs.
-                window.prepareToLeave();
-                window.closeCharts();
+                // The application's own exit, and now literally so: leave() is
+                // the method both the X and the File menu call. Retyping the
+                // steps here -- prepareToLeave then closeCharts -- was still an
+                // approximation, and it hid a real defect for as long as it
+                // stood: the File menu was NOT running prepareToLeave, so
+                // leaving that way emptied the remembered list chart by chart.
+                // A test that retypes a sequence passes while the application
+                // takes a different route.
+                window.leave();
 
                 assertEquals(0, window.openCharts().size());
 

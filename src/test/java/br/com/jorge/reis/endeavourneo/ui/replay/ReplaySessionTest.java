@@ -64,6 +64,48 @@ class ReplaySessionTest {
     }
 
     @Test
+    @DisplayName("a new session starts at the speed the transport is showing, not at 1x")
+    void aNewSessionAdoptsTheChosenSpeed() throws Exception {
+        // Every session after the first used to crawl at 1x while the control
+        // beside it read 60. Two things line up to cause it and neither is wrong
+        // on its own: the combo is filled from the workspace BEFORE its listeners
+        // are attached, so restoring the reader's choice fires no event; and a
+        // session is constructed with no speed argument, so it is born at 1x. The
+        // only code that ever called setSpeed was that listener, which fires only
+        // when the reader changes the selection by hand -- so the reader's fix
+        // for the symptom was the one action that made it work.
+        br.com.jorge.reis.endeavourneo.platform.Settings workspace =
+                br.com.jorge.reis.endeavourneo.platform.Settings.workspace();
+        String before = workspace.get("replay.speed", null);
+
+        try {
+            workspace.put("replay.speed", "60");
+
+            ReplaySession fresh = session();
+
+            assertEquals(1, fresh.speed(), "the premise of this test: a session is born at 1x");
+
+            ReplayPanel[] panel = new ReplayPanel[1];
+
+            javax.swing.SwingUtilities.invokeAndWait(() -> panel[0] = new ReplayPanel());
+
+            assertEquals(60, panel[0].chosenSpeed(),
+                    "the transport did not restore the remembered speed");
+
+            javax.swing.SwingUtilities.invokeAndWait(() -> panel[0].adopt(fresh));
+
+            assertEquals(60, fresh.speed(),
+                    "the session was left at 1x while the transport said 60");
+        } finally {
+            if (before == null) {
+                workspace.remove("replay.speed");
+            } else {
+                workspace.put("replay.speed", before);
+            }
+        }
+    }
+
+    @Test
     @DisplayName("a session starts closed and opens as it is stepped")
     void startsAtTheOpen() {
         ReplaySession replay = session();
