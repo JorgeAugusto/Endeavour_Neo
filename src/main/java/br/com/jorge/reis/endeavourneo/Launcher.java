@@ -85,8 +85,33 @@ public final class Launcher {
         // Off the interface thread, before anyone opens a calendar. Walking the
         // six-year source for its 1.494 sessions costs a tenth of a second, and
         // a tenth of a second is a stutter if it happens when a combo changes.
-        jobs.submit("sessions", progress ->
-                Integer.valueOf(br.com.jorge.reis.endeavourneo.ui.replay.ReplayFeed.warm()));
+        jobs.submit("sessions", progress -> {
+            int feeds = br.com.jorge.reis.endeavourneo.ui.replay.ReplayFeed.warm();
+
+            // SAID PLAINLY, even though ReplayFeed.warm has just done it: it
+            // opens every series and asks Sessions about each, so this loop is
+            // all cache hits today -- and that is exactly why it is here. Four
+            // other places want this same answer on the interface thread: the
+            // renko before rebuilding, the summary tooltip on every mouse move,
+            // the transport on a combo change, and the segments window. None of
+            // them mentions ReplayFeed, and none would notice the day somebody
+            // rewrites warm() and the 136 ms walk comes back under the pointer.
+            // A performance property that holds by way of another class's
+            // internals is a property nobody is guarding.
+            for (String name : br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.names()) {
+                try {
+                    br.com.jorge.reis.endeavourneo.domain.market.Sessions.of(
+                            br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.open(name)
+                                    .orElse(null));
+                } catch (java.io.IOException e) {
+                    // A series that will not read has no sessions to warm, and
+                    // whoever opens it is the one who gets to say so.
+                    continue;
+                }
+            }
+
+            return Integer.valueOf(feeds);
+        });
 
         SwingUtilities.invokeLater(() -> {
             // Before the first label is read: every window builds its text once.

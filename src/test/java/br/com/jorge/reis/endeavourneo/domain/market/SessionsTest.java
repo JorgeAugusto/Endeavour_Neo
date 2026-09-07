@@ -94,9 +94,99 @@ class SessionsTest {
         };
     }
 
+    /** The same bars, counting every timestamp anyone asks for. */
+    private static PriceSeries counting(PriceSeries real, int[] reads) {
+        return new PriceSeries() {
+
+            @Override
+            public int size() {
+                return real.size();
+            }
+
+            @Override
+            public long timeAt(int index) {
+                reads[0]++;
+
+                return real.timeAt(index);
+            }
+
+            @Override
+            public double openAt(int index) {
+                return real.openAt(index);
+            }
+
+            @Override
+            public double highAt(int index) {
+                return real.highAt(index);
+            }
+
+            @Override
+            public double lowAt(int index) {
+                return real.lowAt(index);
+            }
+
+            @Override
+            public double closeAt(int index) {
+                return real.closeAt(index);
+            }
+        };
+    }
+
     @BeforeEach
     void startClean() {
         Sessions.forget();
+    }
+
+    @Test
+    @DisplayName("asking again does not walk the series again")
+    void askingTwiceWalksOnce() {
+        // The whole point, and asserted by COUNTING rather than by timing. A
+        // test that watches a clock fails on a loaded machine and passes on a
+        // fast one, which is worse than no test; counting the timestamps the
+        // walk asks for says the same thing and says it the same way every run.
+        //
+        // This is also what the startup warming rests on. The Launcher walks
+        // every series off the interface thread so the first tooltip, the first
+        // renko rebuild and the first combo change are free -- and "free" means
+        // exactly this: zero reads.
+        int[] size = {40};
+        int[] reads = {0};
+        PriceSeries counted = counting(days(size, 4), reads);
+
+        Sessions.of(counted, SAO_PAULO);
+
+        int afterFirst = reads[0];
+
+        assertTrue(afterFirst >= 40, "the first ask did not walk the series at all");
+
+        Sessions.of(counted, SAO_PAULO);
+        Sessions.of(counted, SAO_PAULO);
+
+        assertEquals(afterFirst, reads[0],
+                "asking again walked the series again: " + (reads[0] - afterFirst)
+                        + " more bars read");
+    }
+
+    @Test
+    @DisplayName("a series that grew is walked only where it grew")
+    void growingWalksOnlyTheTail() {
+        // The replay appends a bar a frame. Walking the whole series on each
+        // would be worse than not remembering at all, because it would also
+        // rebuild the set.
+        int[] size = {40};
+        int[] reads = {0};
+        PriceSeries counted = counting(days(size, 4), reads);
+
+        Sessions.of(counted, SAO_PAULO);
+
+        size[0] = 44;
+        reads[0] = 0;
+
+        Sessions.of(counted, SAO_PAULO);
+
+        assertTrue(reads[0] > 0, "the four new bars were not walked at all");
+        assertTrue(reads[0] <= 4,
+                "growing by four bars read " + reads[0] + " of them: the head was walked again");
     }
 
     @Test
