@@ -469,3 +469,24 @@ Três coisas que a fase 4 achou e que não estavam em auditoria nenhuma:
 - **Dois javadoc inertes descreviam comportamento que a aplicação já não tem.**
   Um javadoc que não está preso a nada para de ser mantido, e depois para de ser
   verdade.
+
+### 07/09, tarde — fase 4, as MÉDIA
+
+| itens | o que era | commit |
+|---|---|---|
+| **B7b-6, B7b-7, B7b-8, B7b-9** | O acento pela saída padrão, a dobra do console, a barra de estado abandonada | `b82048e` |
+| **B7a-6, B7a-7, B7a-16, B7a-17, B7a-18** | A configuração que substituía em vez de completar; o rótulo com a escala duas vezes | `6a3c4a8` |
+| **B4-6, B4-13** | A aba apagada à esquerda, e o nome de cópia que não terminava | `d023232` |
+| **B5-5, B5-6** | Esconder um estudo esconde o estudo, e ele volta escondido | `55e16dd` |
+
+**13 MÉDIA fechadas.** Suíte em **592**.
+
+Duas coisas que a tarde ensinou:
+
+- **O `OrphanJavadocTest` pegou o autor dele duas vezes na mesma noite.** A
+  segunda foi um javadoc inerte criado ao tornar um método visível ao pacote,
+  e bloqueou o commit. Uma varredura vale mais do que as correções uma a uma.
+- **`@Timeout` sozinho não interrompe um laço infinito** — ele só confere o tempo
+  depois de o teste voltar, e um laço infinito nunca volta. Precisa de
+  `SEPARATE_THREAD`. A primeira versão do teste ficou pendurada em vez de falhar,
+  e isso só apareceu ao quebrar o produto de propósito.
