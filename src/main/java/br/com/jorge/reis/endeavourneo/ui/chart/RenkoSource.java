@@ -86,7 +86,7 @@ final class RenkoSource {
             return false;
         }
 
-        ZoneId zone = ZoneId.systemDefault();
+        ZoneId zone = br.com.jorge.reis.endeavourneo.domain.market.Timeframe.defaultZone();
 
         // Walked once, and the calendar is only asked where the day changes. A
         // conversion per bar would be 693 thousand of them on the full series, on

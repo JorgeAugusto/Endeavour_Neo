@@ -73,7 +73,7 @@ public final class SeriesWindow extends JDialog {
     /** Shared with the segment dialog, so a date never reads two ways in one window. */
     static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
-    private static final ZoneId ZONE = ZoneId.systemDefault();
+    private static final ZoneId ZONE = br.com.jorge.reis.endeavourneo.domain.market.Timeframe.defaultZone();
 
     private final JComboBox<String> series = new JComboBox<>();
 

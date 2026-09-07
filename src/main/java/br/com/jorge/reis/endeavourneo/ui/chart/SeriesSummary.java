@@ -66,7 +66,7 @@ final class SeriesSummary {
             return rows;
         }
 
-        ZoneId zone = ZoneId.systemDefault();
+        ZoneId zone = br.com.jorge.reis.endeavourneo.domain.market.Timeframe.defaultZone();
         LocalDate first = Instant.ofEpochMilli(series.timeAt(0)).atZone(zone).toLocalDate();
         LocalDate last = Instant.ofEpochMilli(series.timeAt(series.size() - 1))
                 .atZone(zone).toLocalDate();

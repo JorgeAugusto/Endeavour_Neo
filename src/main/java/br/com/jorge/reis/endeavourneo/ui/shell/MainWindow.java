@@ -445,7 +445,7 @@ public final class MainWindow extends JFrame {
     private static long endOf(br.com.jorge.reis.endeavourneo.domain.market.Segment segment) {
         return segment.to() == null
                 ? Long.MAX_VALUE
-                : segment.to().plusDays(1).atStartOfDay(java.time.ZoneId.systemDefault())
+                : segment.to().plusDays(1).atStartOfDay(br.com.jorge.reis.endeavourneo.domain.market.Timeframe.defaultZone())
                         .toInstant().toEpochMilli();
     }
 
@@ -477,7 +477,7 @@ public final class MainWindow extends JFrame {
             protected PriceSeries doInBackground() {
                 return br.com.jorge.reis.endeavourneo.domain.market.FoldedTicks.all(
                         SeriesCatalog.ticksOf(instrument), instrument, source,
-                        java.time.ZoneId.systemDefault());
+                        br.com.jorge.reis.endeavourneo.domain.market.Timeframe.defaultZone());
             }
 
             @Override
@@ -487,7 +487,7 @@ public final class MainWindow extends JFrame {
 
                     holder.canvas().setSeries(
                             br.com.jorge.reis.endeavourneo.domain.market.SegmentedSeries.of(
-                                    bars, segment, java.time.ZoneId.systemDefault()));
+                                    bars, segment, br.com.jorge.reis.endeavourneo.domain.market.Timeframe.defaultZone()));
 
                     console.write(Messages.get("console.seriesLoaded", name,
                             String.valueOf(bars.size())));
@@ -649,7 +649,7 @@ public final class MainWindow extends JFrame {
 
             holder.canvas().setSeries(
                     br.com.jorge.reis.endeavourneo.domain.market.SegmentedSeries.of(
-                            loaded, segment, java.time.ZoneId.systemDefault()));
+                            loaded, segment, br.com.jorge.reis.endeavourneo.domain.market.Timeframe.defaultZone()));
 
             // Only when the whole series is on show. A segment is a stretch the
             // reader chose by date, and quietly widening it because they

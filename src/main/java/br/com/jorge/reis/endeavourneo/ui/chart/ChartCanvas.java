@@ -647,7 +647,7 @@ public final class ChartCanvas extends JComponent {
         // coded, and it had already drifted from the axis and from the cursor
         // tag, which both read formatFor(gridStep(...)).
         return java.time.Instant.ofEpochMilli(series.timeAt(bar))
-                .atZone(java.time.ZoneId.systemDefault())
+                .atZone(br.com.jorge.reis.endeavourneo.domain.market.Timeframe.defaultZone())
                 .format(FOOTER_TIME)
                 + "   " + formatFor(gridStep(viewport())).format(series.closeAt(bar));
     }
@@ -1382,7 +1382,7 @@ public final class ChartCanvas extends JComponent {
 
     private java.time.LocalDate dayOfClock() {
         return java.time.Instant.ofEpochMilli(clockNow())
-                .atZone(java.time.ZoneId.systemDefault()).toLocalDate();
+                .atZone(br.com.jorge.reis.endeavourneo.domain.market.Timeframe.defaultZone()).toLocalDate();
     }
 
     /**
@@ -2180,7 +2180,7 @@ public final class ChartCanvas extends JComponent {
         g.setFont(getFont().deriveFont(11f));
 
         FontMetrics metrics = g.getFontMetrics();
-        ZoneId zone = ZoneId.systemDefault();
+        ZoneId zone = br.com.jorge.reis.endeavourneo.domain.market.Timeframe.defaultZone();
 
         int last = Integer.MIN_VALUE;
         long previousStep = Long.MIN_VALUE;
@@ -2264,7 +2264,7 @@ public final class ChartCanvas extends JComponent {
      * name.</p>
      */
     private void paintDayBand(Graphics2D g, Viewport viewport, int top) {
-        ZoneId zone = ZoneId.systemDefault();
+        ZoneId zone = br.com.jorge.reis.endeavourneo.domain.market.Timeframe.defaultZone();
 
         g.setFont(getFont().deriveFont(11f));
 
@@ -2725,7 +2725,7 @@ public final class ChartCanvas extends JComponent {
         }
 
         String moment = java.time.Instant.ofEpochMilli(series.timeAt(bar))
-                .atZone(java.time.ZoneId.systemDefault())
+                .atZone(br.com.jorge.reis.endeavourneo.domain.market.Timeframe.defaultZone())
                 .format(CURSOR_TIME);
 
         int width = metrics.stringWidth(moment) + 10;

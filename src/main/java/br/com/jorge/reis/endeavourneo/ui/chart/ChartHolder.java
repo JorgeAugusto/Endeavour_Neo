@@ -350,7 +350,7 @@ public final class ChartHolder {
         // is readable when the window is behind two others.
         String scale = "  " + canvas.periodLabel();
         String change = Sessions.formatChange(
-                Sessions.changeOnDay(canvas.series(), java.time.ZoneId.systemDefault()));
+                Sessions.changeOnDay(canvas.series(), br.com.jorge.reis.endeavourneo.domain.market.Timeframe.defaultZone()));
 
         return change.isEmpty() ? label + scale : label + scale + "   " + change;
     }

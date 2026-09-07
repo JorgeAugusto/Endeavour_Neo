@@ -401,7 +401,7 @@ public final class ReplaySession {
         }
 
         return SegmentedSeries.of(whole, new Segment(instrument, day, day),
-                ZoneId.systemDefault());
+                br.com.jorge.reis.endeavourneo.domain.market.Timeframe.defaultZone());
     }
 
     /**
@@ -441,7 +441,7 @@ public final class ReplaySession {
         // written here first and copying it into FoldedTicks would leave two
         // answers to "what is a session, as bars".
         return br.com.jorge.reis.endeavourneo.domain.market.FoldedTicks.day(
-                tickFolder, feed.instrument(), ticks.source(), day, ZoneId.systemDefault());
+                tickFolder, feed.instrument(), ticks.source(), day, br.com.jorge.reis.endeavourneo.domain.market.Timeframe.defaultZone());
     }
 
     /**
@@ -703,7 +703,7 @@ public final class ReplaySession {
      */
     public String clockText() {
         java.time.ZonedDateTime at =
-                Instant.ofEpochMilli(live.clock()).atZone(ZoneId.systemDefault());
+                Instant.ofEpochMilli(live.clock()).atZone(br.com.jorge.reis.endeavourneo.domain.market.Timeframe.defaultZone());
 
         return isRange() ? at.format(DAY_AND_CLOCK) : at.toLocalTime().format(CLOCK);
     }
@@ -720,7 +720,7 @@ public final class ReplaySession {
      */
     public String endText() {
         java.time.LocalTime close = Instant.ofEpochMilli(live.end())
-                .atZone(ZoneId.systemDefault()).toLocalTime();
+                .atZone(br.com.jorge.reis.endeavourneo.domain.market.Timeframe.defaultZone()).toLocalTime();
 
         if (!isRange()) {
             return close.format(DateTimeFormatter.ofPattern("HH:mm"));

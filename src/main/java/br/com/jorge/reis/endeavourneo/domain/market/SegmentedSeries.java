@@ -72,7 +72,7 @@ public final class SegmentedSeries implements PriceSeries {
             return base;
         }
 
-        ZoneId at = zone == null ? ZoneId.systemDefault() : zone;
+        ZoneId at = zone == null ? Timeframe.defaultZone() : zone;
 
         // The first bar at or after the segment's first midnight, and the first
         // bar at or after the midnight FOLLOWING its last day -- so the last day

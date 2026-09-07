@@ -90,7 +90,7 @@ final class BarReadout {
         List<String[]> rows = rowsFor(series, index);
         String title = Messages.get("readout.title",
                 Instant.ofEpochMilli(series.timeAt(index))
-                        .atZone(ZoneId.systemDefault()).format(STAMP));
+                        .atZone(br.com.jorge.reis.endeavourneo.domain.market.Timeframe.defaultZone()).format(STAMP));
 
         FontMetrics labels = g.getFontMetrics(labelFont);
         FontMetrics values = g.getFontMetrics(valueFont);
