@@ -92,6 +92,53 @@ public final class MarketFile {
 
     /**
      * @param file a file written by the first Endeavour
+     * @param when an instant in epoch milliseconds
+     * @return how many bars in it start strictly before that instant
+     * @throws IOException if the file is missing, truncated or not one of ours
+     *
+     * <p><b>A binary search over the file itself</b>, eight bytes a probe. The
+     * bars are in time order and the records are fixed, so finding a date costs
+     * about twenty seeks instead of the whole file.</p>
+     *
+     * <p>It exists because a window has to be anchored somewhere other than the
+     * end. Reading the last hundred thousand bars is right when the chart opens
+     * on the whole series, and wrong when it opens on a SEGMENT: the reader's
+     * stretch may have finished years before the file did, and the window then
+     * lands entirely past it. That is exactly what happened -- a segment of
+     * 2020 to 2024 against a window starting in December 2025 -- and the chart
+     * came up blank with the console reporting a clean load.</p>
+     */
+    public static int countUntil(Path file, long when) throws IOException {
+        try (FileChannel channel = FileChannel.open(file, StandardOpenOption.READ)) {
+            Header head = header(channel, file);
+            ByteBuffer stamp = ByteBuffer.allocate(Long.BYTES).order(ByteOrder.BIG_ENDIAN);
+            int low = 0;
+            int high = head.count - 1;
+            int found = 0;
+
+            while (low <= high) {
+                int middle = (low + high) >>> 1;
+
+                stamp.clear();
+
+                channel.position((long) HEADER_BYTES + (long) middle * RECORD_BYTES);
+                fill(channel, stamp, file);
+                stamp.flip();
+
+                if (stamp.getLong() < when) {
+                    found = middle + 1;
+                    low = middle + 1;
+                } else {
+                    high = middle - 1;
+                }
+            }
+
+            return found;
+        }
+    }
+
+    /**
+     * @param file a file written by the first Endeavour
      * @return every bar in it
      * @throws IOException if the file is missing, truncated or not one of ours
      */

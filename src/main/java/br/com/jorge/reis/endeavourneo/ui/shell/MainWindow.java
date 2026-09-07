@@ -436,13 +436,38 @@ public final class MainWindow extends JFrame {
         });
     }
 
-    private PriceSeries seriesFor(String name, String title) {
+    /**
+     * @return the instant just past the segment's last day, in the machine's zone
+     *
+     * <p>Exclusive, which is what a count-until wants: a segment ending on
+     * 11/11/2024 includes every bar of that day.</p>
+     */
+    private static long endOf(br.com.jorge.reis.endeavourneo.domain.market.Segment segment) {
+        return segment.to() == null
+                ? Long.MAX_VALUE
+                : segment.to().plusDays(1).atStartOfDay(java.time.ZoneId.systemDefault())
+                        .toInstant().toEpochMilli();
+    }
+
+    private PriceSeries seriesFor(String name, String title,
+            br.com.jorge.reis.endeavourneo.domain.market.Segment segment) {
         try {
             // A WINDOW of the most recent bars, not the file. See
             // ChartPreferences.window: six years of minutes is 39 MB read to
             // draw a screen showing a month, and no terminal does that.
-            java.util.Optional<PriceSeries> series = SeriesCatalog.open(name,
-                    br.com.jorge.reis.endeavourneo.ui.chart.ChartPreferences.window());
+            //
+            // ANCHORED AT THE SEGMENT'S END when there is one, and at the file's
+            // end when there is not -- opening the whole series is the common
+            // case and it is unchanged. The window used to be the file's end
+            // either way, so a segment that finished before that window started
+            // had nothing inside it: the console said "100000 barras lidas do
+            // disco", the chart came up empty, and neither said why. A segment
+            // that overlapped in part was worse, because it drew.
+            java.util.Optional<PriceSeries> series = segment == null
+                    ? SeriesCatalog.open(name,
+                            br.com.jorge.reis.endeavourneo.ui.chart.ChartPreferences.window())
+                    : SeriesCatalog.openUntil(name, endOf(segment),
+                            br.com.jorge.reis.endeavourneo.ui.chart.ChartPreferences.window());
 
             if (series.isPresent()) {
                 console.write(Messages.get("console.seriesLoaded", name,
@@ -545,7 +570,7 @@ public final class MainWindow extends JFrame {
 
         // Sliced, or not: SegmentedSeries hands back the base itself when there
         // is no segment, so nothing below has to know which of the two it got.
-        PriceSeries loaded = seriesFor(name, title);
+        PriceSeries loaded = seriesFor(name, title, segment);
 
         holder.canvas().setSeries(
                 br.com.jorge.reis.endeavourneo.domain.market.SegmentedSeries.of(

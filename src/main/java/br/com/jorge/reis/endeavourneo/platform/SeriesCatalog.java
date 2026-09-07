@@ -696,6 +696,51 @@ public final class SeriesCatalog {
 
     /**
      * @param name a series's name
+     * @param upTo the instant the window should END at, in epoch milliseconds
+     * @param bars how many bars to read back from there
+     * @return that window, or empty when there is no such series
+     * @throws IOException if there is one and it will not read
+     *
+     * <p><b>Anchored where the reader is looking, not at the end of the file.</b>
+     * {@link #open(String, int)} takes the most recent bars, which is what a
+     * chart of the WHOLE series wants and stays exactly as it is. This one is
+     * for a chart of a SEGMENT: a stretch that finished years before the file
+     * did falls entirely outside that window, and the chart comes up blank while
+     * the console reports a clean load. It happened on a segment of 01/09/2020
+     * to 11/11/2024 against a window starting 11/12/2025 -- no overlap at all,
+     * nothing on screen, nothing said. The neighbouring segment was worse: it
+     * overlapped in part, so it drew and looked right while quietly missing its
+     * first thirteen months.</p>
+     */
+    public static Optional<PriceSeries> openUntil(String name, long upTo, int bars)
+            throws IOException {
+        if (bars <= 0) {
+            return open(name);
+        }
+
+        SoftReference<PriceSeries> held = LOADED.get(name);
+        PriceSeries whole = held == null ? null : held.get();
+
+        if (whole != null && whole.size() <= bars) {
+            return Optional.of(whole);
+        }
+
+        Path file = fileOf(name);
+
+        if (!MarketFile.isSeries(file)) {
+            return Optional.empty();
+        }
+
+        // One past the last bar of the stretch, by binary search over the file:
+        // twenty seeks, not thirty-nine megabytes.
+        int end = MarketFile.countUntil(file, upTo);
+
+        return Optional.of(MarketFile.read(file, Math.max(0, end - bars),
+                Math.min(bars, end)));
+    }
+
+    /**
+     * @param name a series's name
      * @return how many bars its file holds, or 0 when there is no such series
      * @throws IOException if there is one and its header cannot be read
      *

@@ -274,4 +274,101 @@ class SeriesCatalogTest {
         // A market nobody stated is still its own prefix.
         assertEquals("ouro", SeriesCatalog.groupOf("ouro-1m"));
     }
+
+    /** A base of that many one-minute bars from that instant, close = index. */
+    private static void bars(Path folder, String name, long from, int count) throws IOException {
+        ByteBuffer buffer = ByteBuffer.allocate(24 + 48 * count).order(ByteOrder.BIG_ENDIAN);
+
+        buffer.put("ENDVCNDL".getBytes(StandardCharsets.US_ASCII));
+        buffer.putInt(1);
+        buffer.putInt(1);
+        buffer.putLong(count);
+
+        for (int i = 0; i < count; i++) {
+            buffer.putLong(from + i * 60_000L);
+            buffer.putDouble(i);
+            buffer.putDouble(i);
+            buffer.putDouble(i);
+            buffer.putDouble(i);
+            buffer.putDouble(1);
+        }
+
+        SeriesCatalog.useFolderForTest(folder);
+
+        Path file = SeriesCatalog.fileOf(name);
+
+        Files.createDirectories(file.getParent());
+        Files.write(file, buffer.array());
+    }
+
+    @Test
+    @DisplayName("a janela de um trecho antigo e lida NELE, nao no fim do arquivo")
+    void aWindowCanBeAnchoredAtASegmentsEnd(@TempDir Path folder) throws IOException {
+        // The defect, from a real workspace. The window is the most recent
+        // bars, which is right when the chart shows the whole series -- and it
+        // is what open(name, bars) still does. It is wrong for a chart of a
+        // SEGMENT: the reader had one running 01/09/2020 to 11/11/2024 in a file
+        // that ends in September 2026, so the hundred thousand most recent bars
+        // began in December 2025 and the segment held NONE of them. The console
+        // reported "100000 barras lidas do disco", the chart came up empty, and
+        // nothing joined the two facts.
+        //
+        // The neighbouring segment was worse: it overlapped in part, so it drew
+        // and looked right while quietly missing its first thirteen months.
+        bars(folder, "winfull-1m", 1_000_000_000_000L, 1_000);
+
+        SeriesCatalog.useFolderForTest(folder);
+
+        // A stretch that ends at bar 300 of a thousand, with a window of 100.
+        long endsAt = 1_000_000_000_000L + 300 * 60_000L;
+
+        PriceSeries fromTheFile = SeriesCatalog.open("winfull-1m", 100).orElseThrow();
+        PriceSeries fromTheStretch =
+                SeriesCatalog.openUntil("winfull-1m", endsAt, 100).orElseThrow();
+
+        assertEquals(100, fromTheFile.size());
+        assertEquals(900.0, fromTheFile.closeAt(0), 1e-9,
+                "the file window did not start at the last hundred bars");
+
+        assertEquals(100, fromTheStretch.size(), "the stretch window came back short");
+        assertEquals(200.0, fromTheStretch.closeAt(0), 1e-9,
+                "the stretch window was not anchored at the stretch");
+        assertEquals(299.0, fromTheStretch.closeAt(99), 1e-9,
+                "the stretch window ran past the end of the stretch");
+
+        // And the two do not overlap at all, which is the shape of the defect:
+        // the reader saw a clean load and an empty chart.
+        assertTrue(fromTheStretch.timeAt(99) < fromTheFile.timeAt(0),
+                "the fixture does not reproduce the gap it is about");
+    }
+
+    @Test
+    @DisplayName("um trecho que termina antes do arquivo comecar devolve nada, nao a cabeca dele")
+    void aStretchBeforeTheFileIsEmpty(@TempDir Path folder) throws IOException {
+        // Reading the head of the file instead would draw bars from outside the
+        // stretch -- which is the mistake this exists to stop, wearing the
+        // other face.
+        bars(folder, "winfull-1m", 1_000_000_000_000L, 1_000);
+
+        SeriesCatalog.useFolderForTest(folder);
+
+        assertEquals(0, SeriesCatalog.openUntil("winfull-1m",
+                1_000_000_000_000L - 1, 100).orElseThrow().size());
+    }
+
+    @Test
+    @DisplayName("abrir a serie TODA nao mudou: continua a janela do fim do arquivo")
+    void openingTheWholeSeriesIsUnchanged(@TempDir Path folder) throws IOException {
+        // A series can be opened with no segment at all, and that is the common
+        // case. Anchoring at the file's end is what a reader wants there.
+        bars(folder, "winfull-1m", 1_000_000_000_000L, 1_000);
+
+        SeriesCatalog.useFolderForTest(folder);
+
+        PriceSeries window = SeriesCatalog.open("winfull-1m", 250).orElseThrow();
+
+        assertEquals(250, window.size());
+        assertEquals(750.0, window.closeAt(0), 1e-9);
+        assertEquals(999.0, window.closeAt(249), 1e-9);
+    }
 }
