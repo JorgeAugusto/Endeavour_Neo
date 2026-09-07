@@ -44,9 +44,9 @@ de código que não existia mais. Por isso as fases são estritamente sequenciai
 |---|---|---|
 | 0 | Trabalho em voo quando ele foi dormir | **fechada** — `1b34571` |
 | 1 | Resolver os achados de domínio e replay da auditoria I | **fechada** — `f6f6640` |
-| 2 | Refazer a auditoria completa, 2 agentes por vez | **áreas fechadas**, lentes em curso |
-| 3 | Juntar e validar cruzado | não começou |
-| 4 | Corrigir os achados novos, e o que sobrou da lista velha | não começou |
+| 2 | Refazer a auditoria completa, 2 agentes por vez | **fechada** — 10 áreas + 4 lentes |
+| 3 | Juntar e validar cruzado | **fechada** — `ii/00-cruzamento.md` |
+| 4 | Corrigir os achados novos, e o que sobrou da lista velha | **em curso** — 21 das 32 ALTA |
 
 ---
 
@@ -294,6 +294,63 @@ reportar só o que as áreas não viram. Foi exatamente aqui que a primeira
 tentativa desta auditoria se perdeu, em 05/09: quatro lentes relendo
 integralmente o que nove agentes já tinham lido, um multiplicador de quatro em
 cima do corpus inteiro, 1,5 milhão de tokens e zero relatórios.
+
+---
+
+## O placar da noite
+
+| | |
+|---|---|
+| suíte | **537 → 572 verdes** |
+| commits | 19 |
+| auditoria II | 10 áreas + 4 lentes, **51.138 linhas** |
+| achados novos | **32 ALTA · 121 MÉDIA · 107 BAIXA** |
+| ALTA fechadas | **21**, cada uma com o teste que faltava |
+
+### A fila da fase 4, em ordem
+
+O que fica, e por que nesta ordem. As primeiras mudam número ou perdem dado; as
+últimas mudam texto.
+
+1. **L3-1 (ALTA, perda de dado)** — `TickFile.Writer` e `TapeFile.Writer`
+   truncam o arquivo do pregão **no construtor**, antes de ler a primeira linha
+   do export; e o `finally` dos conversores fecha o writer, que grava a contagem
+   do que deu tempo de escrever. Uma conversão recusada **apaga o pregão bom** e
+   deixa no lugar um pregão curto internamente coerente, que `read`, `sessionOf`
+   e a biblioteca aceitam como inteiro. Os três testes de recusa param no
+   `assertThrows` e nunca olham o disco. A correção é escrever num temporário e
+   mover no fim.
+2. **B7b-2 (ALTA)** — a janela de séries lê a série **inteira** na thread da
+   interface, no construtor e a cada troca da combo. Congela a aplicação ao
+   abrir Ferramentas → Séries.
+3. **L1-1 (ALTA)** — `relaunch()` não refaz `captureStandardOutput()`: depois da
+   primeira troca de idioma toda a saída padrão vai para a janela morta, que
+   fica presa em memória para sempre.
+4. **B7b-1 (ALTA)** — a tranca "só pelos segmentos" não vale para fonte de
+   ticks: o leitor marca a caixa, ela fica marcada, e o export abre inteiro.
+5. **B8b-1 (ALTA)** — o único teste da escala própria do IFR passa com o
+   indicador desenhando NaN em todas as barras. `assertEquals(double, double,
+   delta)` trata NaN como igual a NaN.
+6. **B8b-2 a B8b-5, B8a-3 (ALTA)** — cinco testes meus que leem o **código-fonte**
+   em vez do comportamento. Passam com o mesmo defeito reescrito de outro jeito.
+7. **B7b-3 (ALTA)** — javadoc no membro errado em dez lugares, sete no
+   `MainWindow`. O `OrphanJavadocTest` já os conta; levar o teto a zero apaga o
+   teto.
+8. **As 121 MÉDIA e 107 BAIXA da auditoria II**, e as **93 MÉDIA e 115 BAIXA da
+   auditoria I** que a decisão D5 mandou para cá.
+
+### Onde faltou teste, dito de propósito
+
+Duas correções desta noite foram commitadas **sem o teste que a casa exige**, e
+está escrito no commit e aqui:
+
+- **B6-1** — os ticks pedidos enquanto o relógio anda. Precisa de um fixture de
+  três pregões de tape e de conduzir o relógio por dois deles.
+- **B6-3** — `forgetEnding` chamado pelo `ReplayDrop`. Precisa de um
+  `ChartHolder` de verdade.
+
+Nenhuma das duas cabia no tempo que restava, e deixá-las sem teste e sem dizer
+seria pior do que deixá-las sem teste.
 
 ---
 
