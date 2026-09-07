@@ -71,6 +71,55 @@ class ReplaySeriesTest {
         };
     }
 
+    /** One minute in a hundred has no recorded ticks, and none are invented. */
+    private static TickPath missingAt(int without) {
+        return (bars, index) -> index == without ? null : new double[]{index, index, index};
+    }
+
+    @Test
+    @DisplayName("a minute with no ticks appears WHOLE, and the replay keeps going")
+    void aMinuteWithoutTicksDoesNotFreeze() {
+        // The freeze, written as the test that was missing. A minute with no
+        // recorded ticks and synthetic ones turned off gave startForming nothing
+        // to hand out, and the clock loop answered by zeroing what it owed and
+        // returning -- so nothing ever moved again. The transport went on calling
+        // this twenty-five times a second with the play icon lit, and only Stop
+        // got out.
+        //
+        // startForming's own comment says what should happen instead: the bar
+        // appears whole. That is what is asserted here.
+        ReplaySeries replay = new ReplaySeries(day(), 0, 2, missingAt(4));
+
+        int before = replay.size();
+
+        // Ten bars' worth of market time: enough to walk past the gap and reach
+        // the end of the session whatever the path length is.
+        for (int frame = 0; frame < 200; frame++) {
+            replay.advanceMarketTime(60_000L);
+        }
+
+        assertTrue(replay.size() > before,
+                "the replay did not advance a single bar past the minute without ticks");
+        assertTrue(replay.finished(),
+                "the replay never reached the end of the session: it is still stuck");
+    }
+
+    @Test
+    @DisplayName("the minute without ticks is still the minute the session recorded")
+    void theWholeBarIsTheRealBar() {
+        // Appearing whole must not mean appearing invented. The bar that arrives
+        // is the one the session holds, which is the honest picture of what is
+        // known about a minute nobody recorded.
+        ReplaySeries replay = new ReplaySeries(day(), 0, 4, missingAt(4));
+
+        for (int frame = 0; frame < 200; frame++) {
+            replay.advanceMarketTime(60_000L);
+        }
+
+        assertEquals(day().closeAt(4), replay.closeAt(4), 1e-9,
+                "the bar with no ticks came out with a price the session never had");
+    }
+
     @Test
     @DisplayName("a bar that has not arrived cannot be read")
     void theFutureIsOutOfBounds() {

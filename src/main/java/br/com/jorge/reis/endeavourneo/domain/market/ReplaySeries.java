@@ -172,9 +172,34 @@ public final class ReplaySeries implements PriceSeries {
 
         while (owed > 0) {
             if (path == null && !startForming()) {
-                owed = 0;
+                if (completed >= day.size()) {
+                    // The session is over. Nothing left to hand out, and
+                    // finished() says so from here on, which is what lets the
+                    // transport stop its timer.
+                    owed = 0;
 
-                return;
+                    return;
+                }
+
+                // No path for THIS bar, and none invented: the minute has no
+                // recorded ticks and the reader has turned the synthetic ones
+                // off. What happens next is written in startForming's own
+                // comment -- "the bar then appears whole instead of forming" --
+                // and this loop did not do it. It returned, owed zeroed, and
+                // NOTHING moved again: the transport went on calling this
+                // twenty-five times a second with the play icon lit, for as long
+                // as the window stayed open, and only Stop got out. One minute
+                // without ticks froze the replay for good, without a word.
+                long whole = Math.max(1L, barMillis);
+
+                if (owed < whole) {
+                    return;
+                }
+
+                owed -= whole;
+                completed = clamp(completed + 1);
+
+                continue;
             }
 
             long perPrice = Math.max(1L, barMillis / path.length);
