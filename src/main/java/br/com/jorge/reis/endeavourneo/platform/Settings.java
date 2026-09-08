@@ -77,9 +77,35 @@ public final class Settings {
      * layout, their instruments -- and every run of the suite replaced it. The
      * guard was built and never armed.</p>
      */
-    private static final Path HOME = Path.of(
-            System.getProperty("endeavourneo.home", System.getProperty("user.home")),
-            ".endeavourneo");
+    private static final Path HOME = homeIn(System.getProperty("endeavourneo.home"),
+            System.getProperty("user.home"));
+
+    /**
+     * @param override what {@code endeavourneo.home} says, or null
+     * @param home what {@code user.home} says, or null
+     * @return the folder the two files live in
+     *
+     * <p><b>A default for {@code user.home}, and a method so that it can be
+     * checked.</b> This read the property with no default, and {@code System}
+     * documents it as USUALLY defined -- an embedded JVM, a Windows service with
+     * no profile loaded, a container, or plainly {@code -Duser.home=} all leave
+     * it null. {@code Path.of(null, ...)} then throws inside a static
+     * initialiser, the JVM turns that into an {@code ExceptionInInitializerError}
+     * and every later touch of this class into a {@code NoClassDefFoundError} --
+     * and {@code Launcher} reaches {@code Theme.remembered()} on the third line
+     * of main, so the process died before there was a window, with a stack trace
+     * that never mentions {@code user.home}.</p>
+     *
+     * <p>The working directory instead, which is what {@code SeriesCatalog}
+     * already writes for the same read: {@code System.getProperty("user.home",
+     * ".")}. Settings kept beside the program are worth more than a program that
+     * will not start.</p>
+     */
+    static Path homeIn(String override, String home) {
+        String where = override != null ? override : home;
+
+        return Path.of(where == null ? "." : where, ".endeavourneo");
+    }
 
     private static final Settings SETTINGS = new Settings("settings.properties",
             "Endeavour Neo -- what you chose. Safe to copy to another machine.");

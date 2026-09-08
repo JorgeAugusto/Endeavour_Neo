@@ -170,4 +170,38 @@ class LoadingTrackTest {
         // one on a picture of nothing.
         assertFalse(loading().isIndeterminate());
     }
+/**
+     * The clock stops pushing the handle while the reader is holding it.
+     *
+     * <p>Every frame wrote the handle's position twenty-five times a second, and
+     * a reader dragging it was writing the same handle from the other side: it
+     * shook, escaped the pointer, and a drag to two in the afternoon snapped
+     * back to nine in the morning. The flag that was there guarded the other
+     * direction -- a programmatic move being read back as a seek -- and the
+     * handle moved all the same.</p>
+     */
+    @Test
+    @DisplayName("a alca nao e empurrada enquanto o leitor a segura")
+    void theHandleIsLeftAloneWhileDragged() throws Exception {
+        onEdt(() -> panel.showProgress(0.10));
+
+        assertEquals(100, panel.handleAt(), "the handle did not follow the clock at all");
+
+        onEdt(() -> {
+            scrubber().setValueIsAdjusting(true);
+            panel.showProgress(0.90);
+        });
+
+        assertEquals(100, panel.handleAt(),
+                "the clock moved the handle out from under the pointer");
+
+        // And the moment it is let go, the clock has it again -- or the fix
+        // above is a handle that stops following the replay.
+        onEdt(() -> {
+            scrubber().setValueIsAdjusting(false);
+            panel.showProgress(0.90);
+        });
+
+        assertEquals(900, panel.handleAt(), "released, the handle stopped following the clock");
+    }
 }

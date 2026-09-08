@@ -110,6 +110,31 @@ class SeriesCatalogTest {
         Files.write(file, buffer.array());
     }
 
+    /**
+     * @param close the one bar's price
+     * @return the bytes of a base of one bar
+     *
+     * <p>Apart from {@code base}, which also points the catalog at the folder.
+     * A test about a file being replaced underneath a cache needs the bytes
+     * without that.</p>
+     */
+    private static byte[] oneBar(double close) {
+        ByteBuffer buffer = ByteBuffer.allocate(24 + 48).order(ByteOrder.BIG_ENDIAN);
+
+        buffer.put("ENDVCNDL".getBytes(StandardCharsets.US_ASCII));
+        buffer.putInt(1);
+        buffer.putInt(1);
+        buffer.putLong(1);
+        buffer.putLong(1_756_000_000_000L);
+        buffer.putDouble(close);
+        buffer.putDouble(close);
+        buffer.putDouble(close);
+        buffer.putDouble(close);
+        buffer.putDouble(10);
+
+        return buffer.array();
+    }
+
     @Test
     @DisplayName("the bases in the folder are listed by name, sorted")
     void basesAreListed(@TempDir Path folder) throws IOException {
@@ -511,5 +536,61 @@ class SeriesCatalogTest {
         // method that refuses everything.
         assertEquals(60, SeriesCatalog.secondsOf("1m"));
         assertEquals(0, SeriesCatalog.secondsOf("ticks"));
+    }
+/**
+     * A base rebuilt from the raw exports has to reach the screen.
+     *
+     * <p>The cache was name to series and nothing else, dropped only when the
+     * folder changed. Rebuilding a base -- which this project states as a normal
+     * thing to do, and does with the application open -- left every chart
+     * drawing the previous version, in silence. It is the worst way for a cache
+     * to fail: what the reader sees is an import that did not work.</p>
+     */
+    @Test
+    @DisplayName("a base reescrita e lida de novo, e nao a que estava em memoria")
+    void arewrittenBaseIsReadAgain(@TempDir Path folder) throws IOException {
+        base(folder, "winfut-1m", 104_000);
+
+        PriceSeries first = SeriesCatalog.open("winfut-1m").orElseThrow();
+
+        assertEquals(104_000, first.closeAt(0), "the fixture is not what it says");
+
+        // NOT through base(): that points the catalog at the folder again, and
+        // pointing it empties what is held -- which is the very thing being
+        // asked about here. The first version of this test did exactly that and
+        // passed with the staleness check taken out of the product. Only the
+        // bytes change now.
+        Files.write(SeriesCatalog.fileOf("winfut-1m"), oneBar(136_000));
+
+        // SET BY HAND, and not left to the clock. Two writes inside the same
+        // millisecond carry the same stamp on a filesystem that keeps them to
+        // the millisecond, and then the test would be asking about the speed of
+        // the machine rather than about the cache.
+        Files.setLastModifiedTime(SeriesCatalog.fileOf("winfut-1m"),
+                java.nio.file.attribute.FileTime.fromMillis(
+                        Files.getLastModifiedTime(SeriesCatalog.fileOf("winfut-1m"))
+                                .toMillis() + 5_000L));
+
+        PriceSeries again = SeriesCatalog.open("winfut-1m").orElseThrow();
+
+        assertEquals(136_000, again.closeAt(0),
+                "the chart is still drawing the base that was replaced");
+    }
+
+    /**
+     * And a base nobody touched is still handed out rather than read again.
+     *
+     * <p>The other half of the same change: a cache that notices every write is
+     * easy to make into one that trusts nothing and reads 30 MB per chart.</p>
+     */
+    @Test
+    @DisplayName("a base intocada continua sendo a mesma, sem ler de novo")
+    void anuntouchedBaseIsStillHandedBack(@TempDir Path folder) throws IOException {
+        base(folder, "winfut-1m", 104_000);
+
+        PriceSeries first = SeriesCatalog.open("winfut-1m").orElseThrow();
+        PriceSeries again = SeriesCatalog.open("winfut-1m").orElseThrow();
+
+        assertSame(first, again, "the base was read a second time for nothing");
     }
 }

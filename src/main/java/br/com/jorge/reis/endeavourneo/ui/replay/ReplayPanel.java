@@ -797,6 +797,47 @@ public final class ReplayPanel extends JPanel {
         fresh.watch(refresh);
     }
 
+    /**
+     * Moves the handle to where the replay is, unless the reader is holding it.
+     *
+     * @param fraction how far through the session the replay has got, 0 to 1
+     *
+     * <p><b>Not while it is being dragged.</b> Every frame of the clock wrote
+     * the handle's position -- twenty-five times a second -- and the reader
+     * dragging it was writing the same handle from the other side: each drag
+     * event sought, the announcement that followed refreshed, and the refresh
+     * pushed the handle back to where the clock thought it was. It shook, it
+     * escaped the pointer, and a drag to two in the afternoon snapped back to
+     * nine in the morning.</p>
+     *
+     * <p>{@code adjusting} did not cover this and was never meant to: it stops
+     * the programmatic {@code setValue} being read back as a seek. The handle
+     * still moved.</p>
+     *
+     * <p>The two neighbouring buttons answer the same problem by pausing before
+     * they step, and pausing here would work too. It is not done, because
+     * whether a drag stops the replay is a decision about the transport, and
+     * nobody asked for it; this is the same behaviour with the fight removed.
+     * Released, the handle takes the clock's position on the next frame.</p>
+     *
+     * <p>Package-private so the rule can be checked without a session: what is
+     * being asked is whether the handle moves under the pointer.</p>
+     */
+    void showProgress(double fraction) {
+        if (scrubber.getValueIsAdjusting()) {
+            return;
+        }
+
+        adjusting = true;
+        scrubber.setValue((int) Math.round(fraction * 1000));
+        adjusting = false;
+    }
+
+    /** @return where the handle is, out of a thousand */
+    int handleAt() {
+        return scrubber.getValue();
+    }
+
     /** @return what the transport is showing where the time goes */
     String clockShows() {
         return clock.getText();
@@ -918,9 +959,7 @@ public final class ReplayPanel extends JPanel {
         ends.setText(ready ? session.endText() : "");
 
         if (ready) {
-            adjusting = true;
-            scrubber.setValue((int) Math.round(session.progress() * 1000));
-            adjusting = false;
+            showProgress(session.progress());
         }
     }
 

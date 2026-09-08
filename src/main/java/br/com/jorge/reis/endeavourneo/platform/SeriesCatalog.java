@@ -100,8 +100,43 @@ public final class SeriesCatalog {
      */
     private static final String RETIRED_BY_DEFAULT = "win-1m";
 
-    private static final Map<String, SoftReference<PriceSeries>> LOADED =
-            new ConcurrentHashMap<>();
+    private static final Map<String, Held> LOADED = new ConcurrentHashMap<>();
+
+    /**
+     * One lock per name, so the same series is not read twice at once.
+     *
+     * <p>Not {@code computeIfAbsent} on {@code LOADED} itself: that would hold
+     * the map's bin for the whole of a read -- a second of disk for a six-year
+     * base -- and every other name would queue behind it.</p>
+     *
+     * <p>These are never removed. One empty object per series name that was ever
+     * opened, in a program whose folder holds a few dozen, against a bookkeeping
+     * scheme that would have to be correct under the same concurrency it is
+     * there to guard.</p>
+     */
+    private static final Map<String, Object> READING = new ConcurrentHashMap<>();
+
+    /**
+     * A series that was read, and what it was read from.
+     *
+     * @param series the bars, softly, so memory pressure can take them back
+     * @param file where they came from
+     * @param written what the file's timestamp said BEFORE it was read
+     *
+     * <p><b>The file is part of what is held.</b> The cache used to be name to
+     * series and nothing else, cleared only when the folder changed -- so
+     * rebuilding a base from the raw exports, which this project states as a
+     * normal thing to do, left every chart drawing the previous version with
+     * nothing to say so. That is the worst way for a cache to fail: it looks
+     * like the import did not work.</p>
+     *
+     * <p>The stamp is read BEFORE the file is, on purpose. A file rewritten
+     * while it is being read then carries a stamp LATER than the one stored, so
+     * the next call finds what is held stale and reads again -- which is the
+     * safe side. Reading the stamp afterwards would store the new file's time
+     * against the old file's bars.</p>
+     */
+    private record Held(SoftReference<PriceSeries> series, Path file, long written) { }
 
     /**
      * The answer, once it is known.
@@ -195,11 +230,22 @@ public final class SeriesCatalog {
     }
 
     /**
-     * Points at a folder without remembering it.
+     * Points at a folder without remembering it. THE SUITE, and nothing else.
      *
-     * <p>Apart from {@link #setFolder}, which decides and persists. This one is
-     * for looking: a settings page previewing another folder, and the tests,
-     * which must not write into the settings of whoever runs the suite.</p>
+     * <p>Apart from {@link #setFolder}, which decides and persists. This exists
+     * so a test does not write into the settings of whoever runs it.</p>
+     *
+     * <p><b>The javadoc used to offer this to "a settings page previewing
+     * another folder", and that offer is withdrawn.</b> Moving the field is
+     * exactly the mechanism {@link #namesIn(Path)} records as having destroyed
+     * ninety megabytes of exported ticks: pointing the catalog somewhere for the
+     * length of a look and putting it back afterwards is a race, and
+     * {@link #fileOf} reads the field, so while the page is "only looking" every
+     * chart and every write in the program points at the previewed folder --
+     * without persisting, and without telling anyone.</p>
+     *
+     * <p>What a page that wants to look actually needs is {@link #namesIn(Path)},
+     * which is public and answers about a folder without moving anything.</p>
      */
     public static void useFolderForTest(Path folder) {
         SeriesCatalog.folder = folder;
@@ -737,24 +783,74 @@ public final class SeriesCatalog {
      * swallowing it would put an empty chart on screen with no reason given.</p>
      */
     public static Optional<PriceSeries> open(String name) throws IOException {
-        SoftReference<PriceSeries> held = LOADED.get(name);
-        PriceSeries cached = held == null ? null : held.get();
+        Path file = fileOf(name);
+        PriceSeries cached = cached(name, file);
 
         if (cached != null) {
             return Optional.of(cached);
         }
 
-        Path file = fileOf(name);
+        // CHECKED AGAIN INSIDE. Two threads that both missed above would both
+        // read the file -- 30 MB and about a second each -- and both put their
+        // own copy in, leaving two series where the rest of this class hands out
+        // one. The interface thread and the tick loader do exactly this on
+        // start-up.
+        synchronized (READING.computeIfAbsent(name, key -> new Object())) {
+            PriceSeries again = cached(name, file);
 
-        if (!MarketFile.isSeries(file)) {
-            return Optional.empty();
+            if (again != null) {
+                return Optional.of(again);
+            }
+
+            if (!MarketFile.isSeries(file)) {
+                return Optional.empty();
+            }
+
+            long written = writtenAt(file);
+            PriceSeries series = MarketFile.read(file);
+
+            LOADED.put(name, new Held(new SoftReference<>(series), file, written));
+
+            return Optional.of(series);
+        }
+    }
+
+    /**
+     * @param name the series asked for
+     * @param file where it would be read from now
+     * @return the bars already in memory, or null when there are none to trust
+     *
+     * <p>Three questions, and all three have to be yes: something is held for
+     * that name, it was read from the file being asked about, and that file has
+     * not been written since. The second is what makes a preview of another
+     * folder unable to hand back the current folder's bars.</p>
+     */
+    private static PriceSeries cached(String name, Path file) {
+        Held held = LOADED.get(name);
+
+        if (held == null || !held.file().equals(file)) {
+            return null;
         }
 
-        PriceSeries series = MarketFile.read(file);
+        PriceSeries series = held.series().get();
 
-        LOADED.put(name, new SoftReference<>(series));
+        return series != null && held.written() == writtenAt(file) ? series : null;
+    }
 
-        return Optional.of(series);
+    /**
+     * @param file the file to ask about
+     * @return when it was last written, or a value no stamp can equal
+     *
+     * <p>A file whose stamp will not read is one nothing should be trusted
+     * about, so the answer makes whatever is held stale. Reading again is
+     * slower; handing back bars that may be another file's is wrong.</p>
+     */
+    private static long writtenAt(Path file) {
+        try {
+            return Files.getLastModifiedTime(file).toMillis();
+        } catch (IOException e) {
+            return Long.MIN_VALUE;
+        }
     }
 
     /**
@@ -780,8 +876,8 @@ public final class SeriesCatalog {
             return open(name);
         }
 
-        SoftReference<PriceSeries> held = LOADED.get(name);
-        PriceSeries whole = held == null ? null : held.get();
+        Path file = fileOf(name);
+        PriceSeries whole = cached(name, file);
 
         if (whole != null && whole.size() <= bars) {
             // The file is already in memory and is no bigger than the window.
@@ -789,8 +885,6 @@ public final class SeriesCatalog {
             // nothing.
             return Optional.of(whole);
         }
-
-        Path file = fileOf(name);
 
         if (!MarketFile.isSeries(file)) {
             return Optional.empty();

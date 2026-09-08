@@ -394,4 +394,33 @@ class SettingsTest {
 
         assertEquals(java.util.List.of("data.zone", "language", "theme"), words);
     }
+/**
+     * Where the two files go when the system will not say where home is.
+     *
+     * <p>{@code System.getProperty("user.home")} was read with no default, and
+     * {@code System} documents that property as USUALLY defined: an embedded
+     * JVM, a Windows service with no profile loaded, a container, or plainly
+     * {@code -Duser.home=} all leave it null. {@code Path.of(null, ...)} then
+     * throws inside a static initialiser, which the JVM turns into an error no
+     * catch can recover from -- and the third line of {@code main} touches this
+     * class, so the process died with a stack trace that never mentions
+     * {@code user.home}.</p>
+     *
+     * <p>Not reachable through the property itself: the field is read once, when
+     * the class is initialised, and by the time any test runs it has been. The
+     * rule is checked where it lives.</p>
+     */
+    @Test
+    @DisplayName("sem user.home o programa ainda tem onde guardar")
+    void withoutAHomeItStillHasSomewhereToWrite() {
+        assertEquals(Path.of(".", ".endeavourneo"), Settings.homeIn(null, null),
+                "no home meant no application at all");
+
+        // And the two ordinary answers, or the one above is satisfied by a
+        // method that ignores what it is given.
+        assertEquals(Path.of("/casa", ".endeavourneo"), Settings.homeIn(null, "/casa"));
+        assertEquals(Path.of("/outra", ".endeavourneo"),
+                Settings.homeIn("/outra", "/casa"),
+                "endeavourneo.home has to win, or the suite writes into the reader's own");
+    }
 }
