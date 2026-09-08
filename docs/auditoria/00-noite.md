@@ -497,8 +497,12 @@ Duas coisas que a tarde ensinou:
 | **B1-3, B1-4** | A barra de vários dias carrega a abertura, e corta numa segunda | `40a950d` |
 | **B2-6, B2-7** | O resto do quadro deixa de ser jogado fora, e o vetor vazio some | `bdaf416` |
 | **B2-12** | O espaçamento da série sai da mediana, não do primeiro par | `ccda1a5` |
+| **B2-8, B2-9** | O tijolo de ontem sai da tela, e a ordem é conferida nas três portas | `60fac95` |
+| **B3-4, B3-5** | O dígito age no gráfico da frente, e o Control alterna uma vez só | `5201974` |
+| **B4-2** | A vista volta ao ABRIR, e o gráfico flutuante para de perdê-la | `ce15513` |
+| **B4-3, B4-5** | A lista de escalas passa a falar o idioma escolhido | `269db07` |
 
-**22 MÉDIA fechadas.** Suíte em **597**.
+**29 MÉDIA fechadas.** Suíte em **603**.
 
 Uma terceira lição, e é a mesma três vezes: **o `OrphanJavadocTest` pegou o autor
 dele em três commits diferentes desta fase**, sempre por um membro novo inserido
@@ -511,5 +515,18 @@ qualquer correção individual — e vale mais ainda contra quem a escreveu.
 - **B6-9 sem teste, dito de propósito.** Exercitar aquele caminho exige soltar o
   painel DURANTE os quatro segundos da construção da sessão, o que é dirigir um
   `SwingWorker` pelo meio — um teste sobre o escalonador, não sobre isto.
-- **As 99 MÉDIA e 107 BAIXA restantes** da auditoria II, e as **93 MÉDIA e 115
+- **As 92 MÉDIA e 107 BAIXA restantes** da auditoria II, e as **93 MÉDIA e 115
   BAIXA** da auditoria I que a decisão D5 mandou para cá.
+
+### Mais duas lições da fase 4
+
+- **Uma prova de dentes pode passar VERDE por um motivo que vale descobrir.** Ao
+  quebrar só a contagem de despachantes do Control, o teste continuou verde: o
+  sinal "Control sozinho" tinha virado estático na correção, e o segundo
+  despachante já o encontrava apagado. O defeito original precisava das DUAS
+  coisas. Uma quebra que não reproduz o defeito não prova nada, e a única forma
+  de saber é insistir até ela ficar vermelha.
+- **Três fixtures errados seguidos, todos meus.** No teste da lista de escalas o
+  código da hora é `1h` e não `H1`, a hora usa o singular, e o tijolo do 11R é de
+  50 pontos e não de 10. Números escritos de cabeça; o produto estava certo nas
+  três. Um teste que falha é sempre uma pergunta sobre qual dos dois lados errou.
