@@ -23,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
+import br.com.jorge.reis.endeavourneo.domain.market.Timeframe;
 
 import java.awt.Rectangle;
 import java.time.LocalDateTime;
@@ -178,6 +179,43 @@ class TimeAxisTest {
                 ChartCanvas.axisBucket(at(2026, 9, 2, 14, 55), 60));
         assertNotEquals(ChartCanvas.axisBucket(at(2026, 9, 2, 14, 55), 60),
                 ChartCanvas.axisBucket(at(2026, 9, 2, 15, 5), 60));
+    }
+
+    @Test
+    @DisplayName("o eixo e a dobra respondem a MESMA pergunta, e o passo torto nao colide")
+    void theaxisAndTheFoldGiveOneAnswer() {
+        // The axis used to work the bucket out itself, in three branches with a
+        // DAY_MINUTES of its own beside them -- while the javadoc right above
+        // said that Timeframe.bucketOf forbids the epoch-anchored form "in a
+        // comment, in the same words, for the same reason". Two truths about
+        // where a day ends, and the next correction to one of them does not
+        // reach the other. This file has been corrected twice on that subject.
+        //
+        // THE ARITHMETIC DIFFERENCE, stated where it shows. The copy multiplied
+        // by DAY_MINUTES / step, an integer division: for a step that does not
+        // divide 1.440 -- seven minutes -- 1440/7 is 205 and minuteOfDay/7
+        // reaches 205, so the LAST slot of one day and the FIRST of the next
+        // came out with the same key, and no label was drawn at the turn of the
+        // day. Unreachable on this market, where the session closes at 18:25,
+        // and it is the kind of thing a second copy is for.
+        assertNotEquals(ChartCanvas.axisBucket(at(2026, 9, 2, 23, 59), 7),
+                ChartCanvas.axisBucket(at(2026, 9, 3, 0, 0), 7),
+                "the last minutes of one day and the first of the next share a bucket at "
+                        + "a step that does not divide the day");
+
+        // And the two agree, step by step, which is what having one answer means.
+        for (int step : new int[]{1, 5, 15, 60, 240, 720, 1_440, 2_880, 10_080}) {
+            for (int day = 0; day < 20; day++) {
+                for (int hour : new int[]{0, 9, 18, 23}) {
+                    ZonedDateTime when = at(2026, 9, 1, hour, 0).plusDays(day);
+
+                    assertEquals(Timeframe.ofMinutes(step)
+                                    .bucketOf(when.toInstant().toEpochMilli(), ZONE),
+                            ChartCanvas.axisBucket(when, step),
+                            "the axis and the fold disagree at step " + step + " on " + when);
+                }
+            }
+        }
     }
 
     @Test

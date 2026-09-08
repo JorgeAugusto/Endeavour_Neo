@@ -2556,29 +2556,27 @@ public final class ChartCanvas extends JComponent {
      * painted directly beneath this axis already used the zone, so the two
      * disagreed inside one repaint.</p>
      *
-     * <p>Steps below a day divide the day itself, so they need the local time of
-     * day rather than the epoch; a step of a day or more counts whole local
-     * days, and the week starts on Monday because that is where a week starts.</p>
+     * <p><b>ASKED OF THE DOMAIN, not worked out again here.</b> Three branches
+     * of arithmetic stood here, with a {@code DAY_MINUTES} of their own beside
+     * them, and the paragraph above already said that {@code Timeframe.bucketOf}
+     * forbids the epoch-anchored form "in a comment, in the same words, for the
+     * same reason" -- and then wrote the third copy instead of calling the
+     * first. Two truths about where a day ends means the next correction to one
+     * of them does not reach the other, and this file has now been corrected
+     * twice on exactly that subject.</p>
+     *
+     * <p>The copy also had an arithmetic difference of its own. Its multiplier
+     * was {@code DAY_MINUTES / step}, an integer division: for a step that does
+     * not divide 1.440 -- seven minutes, say -- the last slot of one day and the
+     * first of the next came out with the SAME key, so no label was drawn at the
+     * turn of the day. Unreachable on this market, where the session closes at
+     * 18:25, and gone now either way: {@code bucketOf} multiplies by a fixed
+     * 1.440 and cannot collide.</p>
      */
     static long axisBucket(ZonedDateTime time, int step) {
-        if (step >= WEEK_MINUTES) {
-            return time.toLocalDate()
-                    .minusDays(time.getDayOfWeek().getValue() - java.time.DayOfWeek.MONDAY.getValue())
-                    .toEpochDay();
-        }
-
-        if (step >= DAY_MINUTES) {
-            return time.toLocalDate().toEpochDay() / (step / DAY_MINUTES);
-        }
-
-        long minuteOfDay = time.getHour() * 60L + time.getMinute();
-
-        return time.toLocalDate().toEpochDay() * (DAY_MINUTES / step) + minuteOfDay / step;
+        return br.com.jorge.reis.endeavourneo.domain.market.Timeframe.ofMinutes(step)
+                .bucketOf(time.toInstant().toEpochMilli(), time.getZone());
     }
-
-    private static final int DAY_MINUTES = 1_440;
-
-    private static final int WEEK_MINUTES = 10_080;
 
     /**
      * @return the smallest round interval that does not crowd the labels

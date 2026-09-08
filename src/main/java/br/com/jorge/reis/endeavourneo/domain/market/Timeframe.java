@@ -338,8 +338,16 @@ public final class Timeframe implements Aggregation {
      * method's own javadoc. Java keeps the last one, so it documented nothing and
      * this method had none at all — and it is the method that decides where a day
      * ends.</p>
+     *
+     * <p><b>Public, because the time axis asks the same question.</b> It used to
+     * answer it itself, with a second formula in another file and a second
+     * {@code DAY_MINUTES} beside it -- and the javadoc there said that this
+     * method forbids the epoch-anchored form "in a comment, in the same words,
+     * for the same reason", and then wrote the copy anyway. Two truths about
+     * where a day ends means the next correction to one of them does not reach
+     * the other.</p>
      */
-    long bucketOf(long millis, ZoneId zone) {
+    public long bucketOf(long millis, ZoneId zone) {
         ZonedDateTime local = Instant.ofEpochMilli(millis).atZone(zone);
 
         if (minutes == DAY) {
