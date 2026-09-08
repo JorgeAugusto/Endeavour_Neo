@@ -506,8 +506,15 @@ Duas coisas que a tarde ensinou:
 | **B1-14** | Uma resposta só para "em que balde essa barra cai" | `5d81bfc` |
 | **B1-15** | Um número com lixo no meio passa a ser recusado | `96a059e` |
 | **B1-5, B1-6** | O código do agressor deixa de ser a ordem de declaração | `21f8b45` |
+| **B7a-9, B7a-10, B7a-11** | Gravação atômica, em lote, e sem o carimbo que anulava a ordem | `fe1ef93` |
+| **B7a-12, B7a-14** | O estágio é do trabalho, e a falha é dita quando acontece | `e3e13a3` |
+| **B7a-5, B7a-8** | O ouvinte que estoura, e o arquivo que diz seu formato | `4f46396` |
+| **B7b-4, B7b-5** | Um segmento de export lê só os pregões dele | `4c20e12` |
+| **B7b-10, B7b-11** | Uma folha sem nome abre nada; um segmento em diante fica em diante | `02277dc` |
+| **B1-7, B1-8, B1-12** | O degrau sem sobreposição, a alocação por linha, o "custa nada" | `3c1de03` |
+| **B1-13** | A coluna Ativo deixa de ser ignorada | `22daa0f` |
 
-**36 MÉDIA fechadas.** Suíte em **607**.
+**51 MÉDIA fechadas.** Suíte em **618**. As áreas **B1** e **B7a** estão fechadas.
 
 Uma terceira lição, e é a mesma três vezes: **o `OrphanJavadocTest` pegou o autor
 dele em três commits diferentes desta fase**, sempre por um membro novo inserido
@@ -520,7 +527,7 @@ qualquer correção individual — e vale mais ainda contra quem a escreveu.
 - **B6-9 sem teste, dito de propósito.** Exercitar aquele caminho exige soltar o
   painel DURANTE os quatro segundos da construção da sessão, o que é dirigir um
   `SwingWorker` pelo meio — um teste sobre o escalonador, não sobre isto.
-- **As 85 MÉDIA e 107 BAIXA restantes** da auditoria II, e as **93 MÉDIA e 115
+- **As 70 MÉDIA e 107 BAIXA restantes** da auditoria II, e as **93 MÉDIA e 115
   BAIXA** da auditoria I que a decisão D5 mandou para cá.
 
 ### Mais duas lições da fase 4
