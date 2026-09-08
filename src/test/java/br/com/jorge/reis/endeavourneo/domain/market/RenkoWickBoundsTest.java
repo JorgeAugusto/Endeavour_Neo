@@ -20,7 +20,6 @@ package br.com.jorge.reis.endeavourneo.domain.market;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import br.com.jorge.reis.endeavourneo.ui.chart.RandomWalkSeries;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

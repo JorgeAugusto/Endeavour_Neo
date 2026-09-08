@@ -240,8 +240,11 @@ class SeriesCatalogTest {
         // "win" is the series adjusted by ratio, which inflates the older years
         // by up to 67%: the label put the poisoned base at the top of the tree
         // looking canonical, and the three raw ones under it looking derived.
-        String market = SeriesCatalog.displayOf("winfut-1m")
-                .substring(0, SeriesCatalog.displayOf("winfut-1m").indexOf('-'));
+        // FROM THE BUNDLE, not carved out of the product's own answer. This
+        // used to take displayOf("winfut-1m") and cut it at the first dash --
+        // so every assertion below compared displayOf with displayOf, and a
+        // displayOf that renamed every market at once satisfied all of them.
+        String market = br.com.jorge.reis.endeavourneo.platform.Messages.market("win");
 
         assertNotEquals(market, SeriesCatalog.displayOf("win-1m"),
                 "a series is wearing the market's own name, so it reads as the canonical "

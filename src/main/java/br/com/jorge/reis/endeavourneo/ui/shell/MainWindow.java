@@ -29,7 +29,7 @@ import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
 import br.com.jorge.reis.endeavourneo.platform.SeriesCatalog;
 import br.com.jorge.reis.endeavourneo.platform.JobService;
 import br.com.jorge.reis.endeavourneo.ui.chart.ChartHolder;
-import br.com.jorge.reis.endeavourneo.ui.chart.RandomWalkSeries;
+import br.com.jorge.reis.endeavourneo.domain.market.RandomWalkSeries;
 import br.com.jorge.reis.endeavourneo.platform.Messages;
 import br.com.jorge.reis.endeavourneo.platform.Settings;
 import br.com.jorge.reis.endeavourneo.ui.chart.PeriodCatalog;

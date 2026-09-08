@@ -146,6 +146,13 @@ class PeriodCatalogTest {
     void listedRenkoAnimates() {
         // Off in the domain, on for the chart. If the catalogue forgot to ask,
         // renko would go back to standing still between bricks.
+        // Or the filter empties the stream and the loop asserts nothing. Typing
+        // a six has to OFFER a renko in the first place; that is half of what
+        // this test is called.
+        assertTrue(PeriodCatalog.forText("6").stream()
+                        .anyMatch(choice -> choice.aggregation() instanceof Renko),
+                "typing a six offered no renko at all");
+
         PeriodCatalog.forText("6").stream()
                 .filter(choice -> choice.aggregation() instanceof Renko)
                 .forEach(choice -> assertTrue(((Renko) choice.aggregation()).hasForming(),

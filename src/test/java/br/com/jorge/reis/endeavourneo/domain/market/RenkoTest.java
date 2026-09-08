@@ -18,6 +18,7 @@
 package br.com.jorge.reis.endeavourneo.domain.market;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -474,11 +475,11 @@ class RenkoTest {
     void tailsAreOnByDefault() {
         assertTrue(Renko.of(10).hasWicks());
         assertTrue(new Renko(10, 2).hasWicks());
-        assertTrue(Renko.of(10).withWicks(false).hasWicks() == false);
+        assertFalse(Renko.of(10).withWicks(false).hasWicks());
 
         // The two switches are independent: changing one must not clear the other.
         assertTrue(Renko.of(10).withForming(true).withWicks(false).hasForming());
-        assertTrue(Renko.of(10).withWicks(false).withForming(true).hasWicks() == false);
+        assertFalse(Renko.of(10).withWicks(false).withForming(true).hasWicks());
         assertEquals("10 renko", Renko.of(10).label());
         // NEUTRAL, and the same either way: the label used to carry an
         // interface string in one language -- the only one in the whole of
@@ -565,7 +566,6 @@ class RenkoTest {
         // the price band they were showing. Each one asserts the whole rule at
         // once: the size is (n-1) x tick, and the boundary is a whole multiple
         // of that size.
-        int tick = 5;
         double[][] read = {
             //  n     abertura   fechamento
             {  6,     187_875,   187_850},
@@ -576,12 +576,20 @@ class RenkoTest {
 
         for (double[] each : read) {
             int name = (int) each[0];
-            double brick = (name - 1) * tick;
             double open = each[1];
             double close = each[2];
 
+            // THE PRODUCT'S OWN CONVERSION from the name to the size:
+            // PeriodCatalog.brickOf, which is what the period window calls. This
+            // used to be `(name - 1) * tick` written out here -- the same rule
+            // the reading below was measured against, so half of this test
+            // compared a constant with a constant and held whatever the product
+            // did. Changing brickOf now breaks it, which is the point.
+            double brick = br.com.jorge.reis.endeavourneo.ui.chart.PeriodCatalog
+                    .brickOf(name);
+
             assertEquals(brick, Math.abs(close - open), 1e-9,
-                    name + "R: o tijolo lido nao mede (n-1) x tick");
+                    name + "R: o tijolo lido nao mede o que o produto diz");
             assertEquals(0.0, open % brick, 1e-9,
                     name + "R: a abertura " + open + " nao cai na grade de " + brick);
             assertEquals(0.0, close % brick, 1e-9,
@@ -593,7 +601,8 @@ class RenkoTest {
         // 189.480: every one of 7.063 bricks at 25 points, 1.643 at 50, 365 at
         // 100 and 91 at 200.
         for (int name : new int[]{6, 11, 21, 41}) {
-            double brick = (name - 1) * tick;
+            double brick = br.com.jorge.reis.endeavourneo.ui.chart.PeriodCatalog
+                    .brickOf(name);
             PriceSeries laid = Renko.of(brick).apply(closes(189_480, 189_480 + 20 * brick));
 
             for (int i = 0; i < laid.size(); i++) {

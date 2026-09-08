@@ -15,9 +15,8 @@
  * You should have received a copy of the GNU General Public License along
  * with this program; if not, see <https://www.gnu.org/licenses/>.
  */
-package br.com.jorge.reis.endeavourneo.ui.chart;
+package br.com.jorge.reis.endeavourneo.domain.market;
 
-import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
 
 import java.util.Random;
 
@@ -38,6 +37,11 @@ import java.util.Random;
  * different instants at every launch. That is right for the placeholder chart
  * it exists for -- it should look like today -- and it is why a test that
  * cares when a bar happened has to use the long constructor and say so.</p>
+ *
+ * <p><b>It lives in the domain, and it used to live in {@code ui.chart}.</b>
+ * It makes DATA, like {@code SyntheticTicks} beside it -- everything else in
+ * {@code ui.chart} draws. Two tests of the domain had to import from the
+ * interface to use it, which is the layer boundary pointing the wrong way.</p>
  *
  * <p>It used to say "delete this class the moment a real series is wired in".
  * Real series have been wired in for a long time -- SeriesCatalog, MarketService

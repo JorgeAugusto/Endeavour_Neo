@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import br.com.jorge.reis.endeavourneo.ui.chart.ChartCanvas;
 import br.com.jorge.reis.endeavourneo.ui.chart.ChartLayout;
-import br.com.jorge.reis.endeavourneo.ui.chart.RandomWalkSeries;
+import br.com.jorge.reis.endeavourneo.domain.market.RandomWalkSeries;
 import br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic.SlowStochastic;
 
 import java.util.ArrayList;

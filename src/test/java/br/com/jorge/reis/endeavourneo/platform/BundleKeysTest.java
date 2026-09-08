@@ -58,15 +58,37 @@ class BundleKeysTest {
     /** @return every key in the file, in order, repeats included */
     private static List<String> keysOf(Path bundle) throws IOException {
         List<String> keys = new ArrayList<>();
+        boolean carried = false;
 
         for (String line : Files.readAllLines(bundle, StandardCharsets.UTF_8)) {
             String trimmed = line.strip();
 
-            if (trimmed.isEmpty() || trimmed.startsWith("#") || !trimmed.contains("=")) {
+            // A .properties comment starts with # OR with !, a key may be
+            // separated by = or by :, and a line ending in a backslash
+            // continues into the next. This read only the first of each pair --
+            // so a key written with a colon was invisible to every check in
+            // this file, and the value of a continued line was read as a key.
+            if (trimmed.isEmpty() || trimmed.startsWith("#") || trimmed.startsWith("!")) {
                 continue;
             }
 
-            keys.add(trimmed.substring(0, trimmed.indexOf('=')).strip());
+            if (carried) {
+                carried = trimmed.endsWith("\\");
+
+                continue;
+            }
+
+            carried = trimmed.endsWith("\\");
+
+            int equals = trimmed.indexOf('=');
+            int colon = trimmed.indexOf(':');
+            int at = equals < 0 ? colon : colon < 0 ? equals : Math.min(equals, colon);
+
+            if (at < 0) {
+                continue;
+            }
+
+            keys.add(trimmed.substring(0, at).strip());
         }
 
         return keys;

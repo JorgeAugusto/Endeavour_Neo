@@ -17,6 +17,7 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.chart;
 
+import br.com.jorge.reis.endeavourneo.domain.market.RandomWalkSeries;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -101,8 +102,10 @@ class SegmentChipTest {
     @Test
     @DisplayName("com replay tocando, o chip some")
     void whileAReplayIsPlaying() {
-        ChartHeader header = headerOn(Segmentation.MARK.isEmpty()
-                ? SERIES : SERIES + Segmentation.MARK + "Estudos");
+        // No hedge on MARK being empty: it is a constant, and it is not.
+        // A branch neither side of the test can reach reads as though the
+        // separator were configurable.
+        ChartHeader header = headerOn(SERIES + Segmentation.MARK + "Estudos");
 
         assertFalse(header.offered().isEmpty());
 

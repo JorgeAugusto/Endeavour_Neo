@@ -98,7 +98,6 @@ class NavigatorTreeTest {
         return file;
     }
 
-    /** Every leaf under the tree, with its label and what it would open. */
     /**
      * The tree reads segments, so a test of the tree has to say which ones.
      *

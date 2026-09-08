@@ -139,8 +139,14 @@ class ChartLayoutTest {
         String second = ChartLayouts.copyName(taken, "Clean");
 
         assertFalse(first.equals(second), "the second copy reused the first one's name");
-        assertTrue(second.contains(first) || !taken.contains(second),
-                "the second copy has to be distinguishable from the first");
+
+        // WHAT IT IS, not "anything not already used". The second half of this
+        // used to be `second.contains(first) || !taken.contains(second)` -- and
+        // the right-hand side is true of every unused name there is, so a
+        // copyName that answered a random string satisfied it.
+        assertTrue(second.startsWith(first),
+                "the second copy does not say which layout it came from: " + second);
+        assertFalse(taken.contains(second), "the second copy took a name already in use");
     }
 
     @Test

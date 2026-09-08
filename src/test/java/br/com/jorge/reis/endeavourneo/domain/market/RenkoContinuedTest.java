@@ -22,7 +22,6 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import br.com.jorge.reis.endeavourneo.ui.chart.RandomWalkSeries;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

@@ -17,6 +17,7 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.chart;
 
+import br.com.jorge.reis.endeavourneo.domain.market.RandomWalkSeries;
 import br.com.jorge.reis.endeavourneo.ui.chart.overlay.MovingAverage;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
