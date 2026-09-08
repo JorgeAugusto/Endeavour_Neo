@@ -395,9 +395,6 @@ public final class ChartCanvas extends JComponent {
 
     private double rulerPrice;
 
-    /** Whether Control has been held with no other key since it went down. */
-    private transient boolean controlAlone;
-
     public ChartCanvas() {
         setOpaque(true);
         setPreferredSize(new Dimension(640, 360));
@@ -487,12 +484,65 @@ public final class ChartCanvas extends JComponent {
     }
 
     /**
+     * @return the chart a window shortcut should act on, or null when there is none
+     *
+     * <p><b>"The chart is the window" was never true here.</b> The charts are
+     * internal frames inside one desktop, and every canvas registers the same
+     * digit in {@code WHEN_IN_FOCUSED_WINDOW}. Swing walks the registered
+     * bindings from the last to the first and stops at the one that consumes,
+     * so with two charts open the digit was answered by whichever canvas
+     * happened to register last -- not the one in front, not the one with
+     * focus. Typing 5 changed the period of a chart the reader was not looking
+     * at, and left the one they were alone, with no sign anywhere.</p>
+     *
+     * <p>So the binding stays on the window -- there is no text field here to
+     * steal digits from, and making the reader click first is how shortcuts go
+     * unused -- and the ACTION asks which chart is in front. Whichever canvas
+     * the binding lands on, the answer is the same one.</p>
+     */
+    ChartCanvas frontChart() {
+        javax.swing.JDesktopPane desktop = (javax.swing.JDesktopPane)
+                javax.swing.SwingUtilities.getAncestorOfClass(
+                        javax.swing.JDesktopPane.class, this);
+
+        if (desktop == null) {
+            // A floating chart is alone in its window, and the binding only
+            // fires for the window that has focus.
+            return this;
+        }
+
+        javax.swing.JInternalFrame selected = desktop.getSelectedFrame();
+
+        return selected == null ? null : canvasIn(selected);
+    }
+
+    /** @return the first canvas inside that container, or null */
+    private static ChartCanvas canvasIn(java.awt.Container where) {
+        for (java.awt.Component each : where.getComponents()) {
+            if (each instanceof ChartCanvas canvas) {
+                return canvas;
+            }
+
+            if (each instanceof java.awt.Container inside) {
+                ChartCanvas found = canvasIn(inside);
+
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Typing a digit anywhere on the chart opens the period window.
      *
-     * <p>Bound for the whole window rather than the focused component: the chart
-     * is the window, and asking the reader to click it first before a shortcut
-     * works is the kind of thing that makes shortcuts go unused. There is no
-     * text field here for the digits to be stolen from.</p>
+     * <p>Bound for the whole window rather than the focused component: there is
+     * no text field here for the digits to be stolen from, and asking the reader
+     * to click a chart before a shortcut works is the kind of thing that makes
+     * shortcuts go unused. Which chart it acts on is decided by {@link
+     * #frontChart}.</p>
      */
     private void installDigits() {
         for (char digit = '0'; digit <= '9'; digit++) {
@@ -506,8 +556,14 @@ public final class ChartCanvas extends JComponent {
 
                 @Override
                 public void actionPerformed(java.awt.event.ActionEvent e) {
-                    askForPeriod(javax.swing.SwingUtilities.getWindowAncestor(ChartCanvas.this),
-                            typed);
+                    ChartCanvas front = frontChart();
+
+                    if (front == null) {
+                        return;
+                    }
+
+                    front.askForPeriod(
+                            javax.swing.SwingUtilities.getWindowAncestor(front), typed);
                 }
             });
         }
@@ -528,42 +584,109 @@ public final class ChartCanvas extends JComponent {
      * reacting to keys for a window that is gone.</p>
      */
     private void installControlToggle() {
-        java.awt.KeyEventDispatcher dispatcher = event -> {
+        addHierarchyListener(event -> {
+            if (isDisplayable() == watching) {
+                return;
+            }
+
+            watching = isDisplayable();
+
+            if (watching) {
+                armControlToggle();
+            } else {
+                disarmControlToggle();
+            }
+        });
+    }
+
+    /** Whether THIS canvas is currently counted among the ones on screen. */
+    private transient boolean watching;
+
+    /**
+     * How many canvases are on screen, so the gesture is installed exactly once.
+     *
+     * <p><b>The count was the defect.</b> Every canvas installed a dispatcher of
+     * its own, and none of them consumed the event -- so one release of Control
+     * passed through all of them and each called {@code RulerMode.toggle}, which
+     * is ONE global boolean. Two charts docked in the window, which is the
+     * arrangement the shell offers in a grid, and the shortcut did NOTHING; with
+     * three it worked. The behaviour depended on the parity of the number of
+     * open charts, and nothing on screen said so.</p>
+     *
+     * <p>The comment that justified the old guard was wrong twice over: the
+     * reason it gave -- "otherwise every chart on screen would flip together" --
+     * stopped existing the day the mode became one switch in {@code RulerMode}
+     * rather than one per canvas, and the guard it justified did not prevent
+     * what it described.</p>
+     */
+    private static int watchers;
+
+    private static java.awt.KeyEventDispatcher controlGesture;
+
+    /** Whether Control has been held with nothing else pressed since. */
+    private static boolean controlAloneNow;
+
+    private static synchronized void armControlToggle() {
+        if (watchers++ > 0) {
+            return;
+        }
+
+        controlGesture = event -> {
             if (event.getKeyCode() != java.awt.event.KeyEvent.VK_CONTROL) {
                 if (event.getID() == java.awt.event.KeyEvent.KEY_PRESSED) {
-                    controlAlone = false;
+                    controlAloneNow = false;
                 }
 
                 return false;
             }
 
             if (event.getID() == java.awt.event.KeyEvent.KEY_PRESSED) {
-                controlAlone = true;
-            } else if (event.getID() == java.awt.event.KeyEvent.KEY_RELEASED && controlAlone) {
-                controlAlone = false;
+                controlAloneNow = true;
+            } else if (event.getID() == java.awt.event.KeyEvent.KEY_RELEASED
+                    && controlAloneNow) {
+                controlAloneNow = false;
 
-                // Only the window this canvas is in. Otherwise every chart on
-                // screen would flip together.
-                if (isShowing() && javax.swing.SwingUtilities.getWindowAncestor(this) != null
-                        && javax.swing.SwingUtilities.getWindowAncestor(this).isActive()) {
-                    toggleMode();
+                // Only while one of this application's windows has focus: the
+                // mode is global, and flipping it because Control was released
+                // in another program would be a switch nobody touched.
+                if (java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager()
+                        .getActiveWindow() != null) {
+                    RulerMode.toggle();
                 }
             }
 
             return false;
         };
 
-        addHierarchyListener(event -> {
-            java.awt.KeyboardFocusManager keyboard =
-                    java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager();
+        java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager()
+                .addKeyEventDispatcher(controlGesture);
+    }
 
-            if (isDisplayable()) {
-                keyboard.removeKeyEventDispatcher(dispatcher);
-                keyboard.addKeyEventDispatcher(dispatcher);
-            } else {
-                keyboard.removeKeyEventDispatcher(dispatcher);
-            }
-        });
+    private static synchronized void disarmControlToggle() {
+        if (watchers > 0 && --watchers > 0) {
+            return;
+        }
+
+        watchers = 0;
+
+        if (controlGesture != null) {
+            // A dispatcher left installed after the last chart closes goes on
+            // reacting to keys for windows that are gone.
+            java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager()
+                    .removeKeyEventDispatcher(controlGesture);
+
+            controlGesture = null;
+        }
+    }
+
+    /** @return how many Control gestures are installed; for the test that says it is one */
+    static synchronized int controlGestures() {
+        return controlGesture == null ? 0 : 1;
+    }
+
+    /** @return how many canvases are counted as on screen; for the same test */
+    static synchronized int watchingCanvases() {
+        return watchers;
     }
 
     /**
