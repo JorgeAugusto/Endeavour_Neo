@@ -153,22 +153,39 @@ public record ReplayFeed(String instrument, String series, TickSource source) {
                         new TickLibrary(SeriesCatalog.ticksOf(instrument), instrument, source);
 
                 try {
-                    return new TreeSet<>(library.exported());
+                    return held(new TreeSet<>(library.exported()));
                 } finally {
                     library.close();
                 }
             }
 
             try {
-                return br.com.jorge.reis.endeavourneo.domain.market.Sessions.of(
-                        SeriesCatalog.open(series).orElse(null));
+                return held(br.com.jorge.reis.endeavourneo.domain.market.Sessions.of(
+                        SeriesCatalog.open(series).orElse(null)));
             } catch (java.io.IOException e) {
                 // A series that will not read has no playable days, which the
                 // calendar shows as everything greyed. Better than a calendar
                 // that offers days nothing can play.
-                return new TreeSet<>();
+                return held(new TreeSet<>());
             }
         });
+    }
+
+    /**
+     * @param days what was just worked out
+     * @return the same days, in a set nobody can change
+     *
+     * <p>Wrapped BEFORE it goes into the cache rather than on the way out, so
+     * the same object comes back on every call and "was this worked out again"
+     * stays a question a test can ask.</p>
+     *
+     * <p>Handed out bare, one caller removing a day from what it got would
+     * remove it from what every later caller gets: the calendar would lose a
+     * day for the life of the application, with nothing to say where it
+     * went.</p>
+     */
+    private static NavigableSet<LocalDate> held(NavigableSet<LocalDate> days) {
+        return java.util.Collections.unmodifiableNavigableSet(days);
     }
 
     /**

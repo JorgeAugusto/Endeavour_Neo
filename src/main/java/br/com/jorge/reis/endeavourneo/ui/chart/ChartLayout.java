@@ -40,6 +40,20 @@ import java.util.List;
  */
 public record ChartLayout(String name, List<Entry> entries, List<Pane> panes) {
 
+    /**
+     * Takes its own copy of the list.
+     *
+     * <p>A record promises that what it holds does not change under it, and
+     * without this it held the CALLER's list: whoever built it could go on
+     * adding to what it was made of. Nobody does today, and that is
+     * discipline rather than type -- which is the same thing this project
+     * already learned about {@code Renko.Carry} and its mutable tally.</p>
+     */
+    public ChartLayout {
+        entries = List.copyOf(entries);
+        panes = List.copyOf(panes);
+    }
+
     /** A layout written before panes existed carries none. */
     public ChartLayout(String name, List<Entry> entries) {
         this(name, entries, List.of());
@@ -63,6 +77,19 @@ public record ChartLayout(String name, List<Entry> entries, List<Pane> panes) {
      * that way.</p>
      */
     public record Pane(List<Entry> entries, int height, boolean minimised) {
+
+        /**
+         * Takes its own copy of the list.
+         *
+         * <p>A record promises that what it holds does not change under it, and
+         * without this it held the CALLER's list: whoever built it could go on
+         * adding to what it was made of. Nobody does today, and that is
+         * discipline rather than type -- which is the same thing this project
+         * already learned about {@code Renko.Carry} and its mutable tally.</p>
+         */
+        public Pane {
+            entries = List.copyOf(entries);
+        }
 
         /** A pane that holds one indicator, which is how they all started. */
         public Pane(String kindKey, List<Integer> parameters, String appearance,
@@ -113,6 +140,19 @@ public record ChartLayout(String name, List<Entry> entries, List<Pane> panes) {
      */
     public record Entry(String kindKey, List<Integer> parameters, boolean visible,
                        String appearance) {
+
+        /**
+         * Takes its own copy of the list.
+         *
+         * <p>A record promises that what it holds does not change under it, and
+         * without this it held the CALLER's list: whoever built it could go on
+         * adding to what it was made of. Nobody does today, and that is
+         * discipline rather than type -- which is the same thing this project
+         * already learned about {@code Renko.Carry} and its mutable tally.</p>
+         */
+        public Entry {
+            parameters = List.copyOf(parameters);
+        }
 
         public Entry(String kindKey, List<Integer> parameters, boolean visible) {
             this(kindKey, parameters, visible, "");

@@ -52,6 +52,19 @@ public final class OverlayCatalog {
                        Function<int[], Overlay> factory) {
 
         /**
+         * Takes its own copy of the list.
+         *
+         * <p>A record promises that what it holds does not change under it, and
+         * without this it held the CALLER's list: whoever built it could go on
+         * adding to what it was made of. Nobody does today, and that is
+         * discipline rather than type -- which is the same thing this project
+         * already learned about {@code Renko.Carry} and its mutable tally.</p>
+         */
+        public Kind {
+            defaults = List.copyOf(defaults);
+        }
+
+        /**
          * @param parameters what a stored line or a dialog asked for
          * @return the same numbers, held to the range this kind declares
          *

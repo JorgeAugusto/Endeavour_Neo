@@ -305,4 +305,43 @@ class ChartLayoutTest {
         assertFalse(panes.get(0).minimised(),
                 "the minimised flag came from the last line of the pane, not the first");
     }
+    @Test
+    @DisplayName("os records de layout tiram a propria copia da lista que recebem")
+    void thelayoutRecordsCopyWhatTheyAreGiven() {
+        // A record promises that what it holds does not change under it, and
+        // these held the CALLER's list: whoever built one could go on adding to
+        // what it was made of. Nobody did, and that is discipline rather than
+        // type -- the same lesson Renko.Carry already learned about its mutable
+        // tally.
+        java.util.List<Integer> numbers = new java.util.ArrayList<>(java.util.List.of(9));
+        ChartLayout.Entry entry = new ChartLayout.Entry("overlay.ema", numbers, true);
+
+        numbers.add(21);
+
+        assertEquals(java.util.List.of(9), entry.parameters(),
+                "the entry is holding the caller's list and changed with it");
+
+        java.util.List<ChartLayout.Entry> entries =
+                new java.util.ArrayList<>(java.util.List.of(entry));
+        ChartLayout.Pane pane = new ChartLayout.Pane(entries, 140, false);
+        ChartLayout layout = new ChartLayout("Um", entries, java.util.List.of(pane));
+
+        entries.clear();
+
+        assertEquals(1, pane.entries().size(), "the pane emptied with the caller's list");
+        assertEquals(1, layout.entries().size(), "the layout emptied with the caller's list");
+    }
+
+    @Test
+    @DisplayName("a especie do catalogo tambem")
+    void thecatalogueKindCopiesToo() {
+        java.util.List<Integer> defaults = new java.util.ArrayList<>(java.util.List.of(9));
+        OverlayCatalog.Kind kind = new OverlayCatalog.Kind("overlay.ema", defaults, 1, 2_000,
+                numbers -> null);
+
+        defaults.add(21);
+
+        assertEquals(java.util.List.of(9), kind.defaults(),
+                "the kind is holding the caller's list and changed with it");
+    }
 }
