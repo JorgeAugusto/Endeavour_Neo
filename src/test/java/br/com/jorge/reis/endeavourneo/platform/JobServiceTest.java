@@ -471,4 +471,48 @@ class JobServiceTest {
                             + "would hold the pool thread and the shutdown behind it");
         }
     }
+/**
+     * Progress that moves by a thousandth does not wake the interface each time.
+     *
+     * <p>Every {@code report} posted an {@code invokeLater}, and every one of
+     * those revalidates the footer's container — so a job reporting once a bar
+     * over a million bars would put a million tasks on the interface thread to
+     * redraw a bar a hundred pixels wide. The progress would cost more than the
+     * work.</p>
+     */
+    @Test
+    @DisplayName("mil relatos de um milesimo nao viram mil avisos para a interface")
+    void progressIsCoalesced() throws Exception {
+        AtomicInteger told = new AtomicInteger();
+        CountDownLatch done = new CountDownLatch(1);
+
+        try (JobService jobs = new JobService()) {
+            jobs.onChange(told::incrementAndGet);
+
+            jobs.submit("mil passos", progress -> {
+                for (int i = 1; i <= 1_000; i++) {
+                    progress.report(i / 1_000.0);
+                }
+
+                done.countDown();
+
+                return null;
+            });
+
+            assertTrue(done.await(TIMEOUT_SECONDS, TimeUnit.SECONDS), "the job never ran");
+
+            // Drained, so everything posted has run.
+            SwingUtilities.invokeAndWait(() -> { });
+
+            assertTrue(told.get() < 200,
+                    "the interface was told " + told.get() + " times for a thousand steps "
+                            + "of a thousandth each, so nothing is being coalesced");
+
+            // And it IS being told: a bar that never moves is worse than one
+            // that moves too often.
+            assertTrue(told.get() > 10,
+                    "the interface was told only " + told.get() + " times, so the bar "
+                            + "barely moves");
+        }
+    }
 }

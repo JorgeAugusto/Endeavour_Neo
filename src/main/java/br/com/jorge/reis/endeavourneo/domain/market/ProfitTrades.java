@@ -254,9 +254,25 @@ public final class ProfitTrades {
                     byte at = chunk[i];
 
                     if (at != '\n') {
-                        if (at != '\r' && inRow < row.length) {
-                            row[inRow++] = at;
+                        if (at == '\r') {
+                            continue;
                         }
+
+                        if (inRow == row.length) {
+                            // REFUSED, not trimmed. The bytes past the buffer
+                            // used to be dropped without a word and the short
+                            // row went on to parse -- which accepts it whenever
+                            // the cut falls AFTER the seventh semicolon, with
+                            // the last field mutilated. This file is written
+                            // under the rule that "a value nobody can trust is
+                            // worse than a conversion that has to run again",
+                            // and this was the one place that broke it.
+                            throw new IOException(csv + ": line " + (lines + 1)
+                                    + " is longer than " + row.length
+                                    + " bytes, which is not a row of trades");
+                        }
+
+                        row[inRow++] = at;
 
                         continue;
                     }

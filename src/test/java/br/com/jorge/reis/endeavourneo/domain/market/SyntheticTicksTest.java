@@ -404,4 +404,27 @@ class SyntheticTicksTest {
                     "bar " + i + " was drawn twice and came out different");
         }
     }
+/**
+     * The demonstration series repeats between runs, stamps and all.
+     *
+     * <p>The seed of the prices was fixed and the first INSTANT was not: the
+     * bars were minutes counted back from now, so how many "days" the walk
+     * contained depended on the hour the application happened to open, and
+     * everything measured over it — the day boundaries, {@code Sessions.of},
+     * the range of the time axis — moved with the clock. And this series
+     * reaches the screen in production: it is what the shell draws when the real
+     * loader fails.</p>
+     */
+    @Test
+    @DisplayName("a serie de demonstracao repete entre execucoes, carimbos e tudo")
+    void thedemonstrationSeriesRepeats() {
+        br.com.jorge.reis.endeavourneo.domain.market.RandomWalkSeries first =
+                new br.com.jorge.reis.endeavourneo.domain.market.RandomWalkSeries(50, 100.0);
+        br.com.jorge.reis.endeavourneo.domain.market.RandomWalkSeries again =
+                new br.com.jorge.reis.endeavourneo.domain.market.RandomWalkSeries(50, 100.0);
+
+        assertEquals(first.timeAt(0), again.timeAt(0),
+                "the first bar is stamped from the wall clock, so no two runs agree");
+        assertEquals(first.closeAt(49), again.closeAt(49));
+    }
 }

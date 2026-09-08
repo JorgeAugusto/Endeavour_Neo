@@ -142,6 +142,19 @@ public final class TickLibrary implements AutoCloseable {
      *
      * <p>Never blocks and never reads the disk. Null means "not yet", not "does
      * not exist" — ask {@link #has} for that.</p>
+     *
+     * <p><b>Synchronised, on the painting path, on purpose.</b> The house rule
+     * is that nothing on the way to a repaint takes a lock, and this one does:
+     * the replay's frame asks here through {@code RecordedTicks.pathFor}.</p>
+     *
+     * <p>The exception is written down rather than taken quietly, because the
+     * size of the section is the whole argument. Everything expensive happens
+     * OUTSIDE it: {@code source.read} is done before {@code keep} is called, so
+     * what the lock covers is a map {@code put} and a scan of at most
+     * {@link #RESIDENT} entries -- three. There is no measurable wait, and
+     * replacing the map with a concurrent one would move the eviction policy
+     * into a second field that would then need its own agreement with the
+     * first.</p>
      */
     public TickSeries at(LocalDate day) {
         synchronized (resident) {

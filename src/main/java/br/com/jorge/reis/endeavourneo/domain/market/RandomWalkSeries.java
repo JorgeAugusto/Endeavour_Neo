@@ -69,7 +69,14 @@ public final class RandomWalkSeries implements PriceSeries {
      * @param start the starting price
      */
     public RandomWalkSeries(int bars, double start) {
-        this(bars, start, System.currentTimeMillis() - bars * 60_000L, 20_260_902L);
+        // A FIXED INSTANT, like the seed beside it. The prices repeated
+        // between runs and the STAMPS did not: the bars were minutes counted
+        // back from now, so how many "days" the walk contained depended on the
+        // hour the application happened to open, and everything measured over
+        // it -- the day boundaries, Sessions.of, the range of the time axis --
+        // moved with the clock. And this series reaches the screen in
+        // production: it is what the shell draws when the real loader fails.
+        this(bars, start, 1_756_000_000_000L, 20_260_902L);
     }
 
     /**

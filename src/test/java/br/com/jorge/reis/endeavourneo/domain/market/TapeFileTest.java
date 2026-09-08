@@ -566,4 +566,35 @@ class TapeFileTest {
         assertThrows(IOException.class, () -> TapeFile.read(cut),
                 "a truncated header was read as a whole one");
     }
+/**
+     * A line longer than the buffer stops the conversion instead of being trimmed.
+     *
+     * <p>The bytes past the buffer were dropped without a word and the short row
+     * went on to {@code parse} — which accepts it whenever the cut falls AFTER
+     * the seventh semicolon, with the last field mutilated. The whole file is
+     * written under the rule that "a value nobody can trust is worse than a
+     * conversion that has to run again", and this was the one place that broke
+     * it.</p>
+     */
+    @Test
+    @DisplayName("uma linha maior que o buffer para a conversao, em vez de ser cortada")
+    void alineLongerThanTheBufferStopsTheConversion(@TempDir Path folder) throws IOException {
+        // A broker name of six hundred characters: the row is well past the
+        // 512-byte buffer, and the cut falls after the last semicolon -- which
+        // is the case that used to be accepted, with the name mutilated.
+        String huge = "3 - " + "X".repeat(600);
+
+        List<String> rows = new java.util.ArrayList<>();
+
+        rows.add("WINFUT;01/09/2026;09:00:00;" + huge + ";182.000;1;85 - BTG;Comprador");
+
+        Path csv = exportOf(folder, "trades.csv", rows);
+
+        IOException thrown = assertThrows(IOException.class,
+                () -> ProfitTrades.convert(csv, folder.resolve("ticks"), "win", null),
+                "the row was trimmed to fit and converted with a mutilated field");
+
+        assertTrue(thrown.getMessage().contains("longer than"),
+                "the message does not say what was wrong: " + thrown.getMessage());
+    }
 }

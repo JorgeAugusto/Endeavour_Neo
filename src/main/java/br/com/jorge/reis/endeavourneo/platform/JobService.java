@@ -93,6 +93,9 @@ public final class JobService implements AutoCloseable {
 
         private volatile double fraction = -1.0;
 
+        /** The last fraction the listeners were told about; see report(). */
+        private volatile double told = -1.0;
+
         private Future<?> future;
 
         private Consumer<T> onDone;
@@ -455,10 +458,37 @@ public final class JobService implements AutoCloseable {
     private Progress progressFor(Handle<?> handle) {
         return new Progress() {
 
+            /**
+             * Reports how far along the work is.
+             *
+             * <p><b>Told only when the number MOVES enough to see.</b> Every
+             * call posted an invokeLater, and every one of those revalidates
+             * the footer's container -- so a job reporting once a bar over a
+             * million bars would put a million tasks on the interface thread to
+             * redraw a bar a hundred pixels wide. The progress would cost more
+             * than the work.</p>
+             *
+             * <p>One per cent is the step, because that is the finest a bar of
+             * that width can show. The value itself is stored every time: the
+             * next refresh, for whatever reason, reads the current one.</p>
+             */
             @Override
             public void report(double value) {
                 handle.fraction = value;
-                notifyListeners();
+
+                // AGAINST THE LAST ONE TOLD, not the last one reported.
+                // Comparing with the previous call is a step of a
+                // thousandth every time, which never reaches the hundredth
+                // -- so a smooth ramp told the interface NOTHING between
+                // nought and one, and the bar sat still through the whole
+                // job. The test asks about both halves for that reason.
+                if (Math.abs(value - handle.told) >= 0.01 || value >= 1.0
+                        || value <= 0.0) {
+
+                    handle.told = value;
+
+                    notifyListeners();
+                }
             }
 
             @Override

@@ -476,6 +476,18 @@ public final class TapeFile {
                 ByteBuffer entry = ByteBuffer.allocate(2 * Short.BYTES + name.length)
                         .order(ByteOrder.BIG_ENDIAN);
 
+                if (name.length > 0xFFFF) {
+                    // The length is written as two bytes, and a name past that
+                    // writes a truncated one -- after which every entry read
+                    // back is offset by however much was lost, and the
+                    // dictionary reads as somebody else's names. check() guards
+                    // the broker's CODE against its own ceiling; this is the
+                    // same guard for the name.
+                    throw new IOException(file + ": broker " + each.getKey()
+                            + " has a name of " + name.length
+                            + " bytes, and the format holds " + 0xFFFF);
+                }
+
                 entry.putShort((short) (int) each.getKey());
                 entry.putShort((short) name.length);
                 entry.put(name);
