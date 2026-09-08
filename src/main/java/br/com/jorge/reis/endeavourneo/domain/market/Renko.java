@@ -454,7 +454,13 @@ public final class Renko implements Aggregation {
         // Seeded from the carry and then answered by the tally, which is the
         // one that counts. See the note where the old accumulation was.
         double pending = from == null ? 0.0 : from.pending();
-        boolean anyVolume = false;
+        // CARRIED, and it used to start at false. A stretch whose own bars
+        // bring no volume, continuing a carry that does have some, answered NaN
+        // for every brick in the batch -- including the first one, which was
+        // finished by yesterday's real trades. The house rule is "missing volume
+        // is NaN, never zero"; this was the opposite, NaN where a number
+        // existed.
+        boolean anyVolume = from != null && from.pending() > 0;
 
         // How far price ran the other way since the last brick. It becomes the
         // tail of whichever brick finally goes through.

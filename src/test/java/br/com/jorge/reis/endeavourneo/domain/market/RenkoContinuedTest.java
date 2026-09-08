@@ -227,4 +227,67 @@ class RenkoContinuedTest {
         assertEquals(new TradeTally(),
                 new Renko.Carry(0, 0, 0, 0, 0, null).tally());
     }
+    @Test
+    @DisplayName("o volume que veio no carry nao vira NaN por um trecho sem volume")
+    void volumeCarriedInIsNotLost() {
+        // anyVolume was switched on only by a finite volume in THIS stretch. A
+        // stretch whose bars bring none, continuing a carry that does have some,
+        // answered NaN for every brick -- including the first of the batch,
+        // which was finished by trades that really happened, yesterday.
+        //
+        // The house rule is "missing volume is NaN, never zero". This was the
+        // other way round: NaN where a number existed.
+        Renko renko = Renko.of(10);
+
+        // A carry holding 500 contracts of pending volume, the way one comes
+        // back from a session that ended mid-brick.
+        Renko.Carry carried = new Renko.Carry(100_000, 0, 100_000, 100_000, 500,
+                new TradeTally());
+
+        PriceSeries silent = withoutVolume(100_000, 100_100);
+        PriceSeries bricks = renko.applyFrom(silent, carried).bricks();
+
+        assertTrue(bricks.size() > 0, "no brick was laid, so this proves nothing");
+        assertTrue(Double.isFinite(bricks.volumeAt(0)),
+                "the first brick of the batch was finished by volume the carry brought, "
+                        + "and it came out NaN");
+    }
+
+    /** Bars that rise from one price to another and state no volume at all. */
+    private static PriceSeries withoutVolume(double from, double to) {
+        int bars = 40;
+
+        return new PriceSeries() {
+
+            @Override
+            public int size() {
+                return bars;
+            }
+
+            @Override
+            public long timeAt(int index) {
+                return index * 60_000L;
+            }
+
+            @Override
+            public double openAt(int index) {
+                return from + (to - from) * index / bars;
+            }
+
+            @Override
+            public double highAt(int index) {
+                return openAt(index) + 5;
+            }
+
+            @Override
+            public double lowAt(int index) {
+                return openAt(index) - 5;
+            }
+
+            @Override
+            public double closeAt(int index) {
+                return openAt(index) + 2;
+            }
+        };
+    }
 }

@@ -560,7 +560,15 @@ public final class ReplaySeries implements PriceSeries {
         // half its trading.
         double whole = day.volumeAt(completed);
 
-        return Double.isFinite(whole) ? whole * cursor / (double) path.length : Double.NaN;
+        // Over path.length - 1, because that is as far as the cursor goes: the
+        // stamped branch loops while `cursor + 1 < path.length` and the other
+        // closes the bar as soon as `cursor >= path.length`. Dividing by the
+        // whole length made the last frame before a bar closed show a little
+        // less volume than the bar has, and then jump to the total -- 12% short
+        // at the floor of eight steps.
+        int steps = Math.max(1, path.length - 1);
+
+        return Double.isFinite(whole) ? whole * cursor / (double) steps : Double.NaN;
     }
 
     private boolean forming(int index) {
