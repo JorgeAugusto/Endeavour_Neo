@@ -77,6 +77,25 @@ public final class TickRenko {
     /** Which sessions are already in, so folding one twice is impossible. */
     private final Set<LocalDate> folded = new LinkedHashSet<>();
 
+    /**
+     * The newest session ever folded, whichever door it came in by.
+     *
+     * <p><b>Kept, because the set could not answer this.</b> {@code folded} is a
+     * {@code LinkedHashSet}, so walking it gives the last one INSERTED, not the
+     * newest -- and the order guard walked it. {@code advance} inserts through a
+     * door of its own, and checked only against the day it happened to be
+     * advancing through; {@code addUpTo} inserted and checked nothing at all.</p>
+     *
+     * <p>Three ways in, one of them blind and two of them looking at different
+     * things, is a sequence that passes every guard and produces what they were
+     * written to prevent: {@code add(D3)}, then {@code advance(D1)} -- which
+     * passes, having nothing to compare against -- then {@code add(D2)}, which
+     * compares against the last INSERTED, D1, and is waved through with D3
+     * already inside. Bricks out of sequence and the ruler carried backwards,
+     * neither of which shows in the result: the chart is simply wrong.</p>
+     */
+    private LocalDate newest;
+
     private Renko.Carry carry;
 
     /** The settled bricks as a series, kept until one more is laid. */
@@ -118,25 +137,11 @@ public final class TickRenko {
             return false;
         }
 
-        if (!folded.isEmpty()) {
-            LocalDate last = null;
-
-            for (LocalDate each : folded) {
-                last = each;
-            }
-
-            if (last != null && !day.isAfter(last)) {
-                // Out of order would put bricks in the wrong sequence AND carry
-                // the ruler backwards, and neither is visible in the result --
-                // the chart would simply be wrong.
-                throw new IllegalArgumentException(day + " comes before " + last
-                        + ", which is already in this renko");
-            }
-        }
+        refuseIfEarlier(day);
 
         TickSeries session = library.load(day);
 
-        folded.add(day);
+        remember(day);
 
         if (session == null || session.size() == 0) {
             return false;
@@ -168,12 +173,10 @@ public final class TickRenko {
         boolean tail = false;
 
         if (!day.equals(advancing)) {
-            if (advancing != null && day.isBefore(advancing)) {
-                // Backwards would carry the ruler back with it, and nothing in
-                // the result would show that it happened.
-                throw new IllegalArgumentException(day + " comes before " + advancing
-                        + ", which this renko is already advancing through");
-            }
+            // Against EVERYTHING folded, not only against the day being advanced
+            // through. Backwards would carry the ruler back with it, and nothing
+            // in the result would show that it happened.
+            refuseIfEarlier(day);
 
             // THE TAIL OF THE SESSION BEING LEFT, which used to be dropped on
             // the way out. The clock stops wherever the replay stopped looking
@@ -197,14 +200,23 @@ public final class TickRenko {
 
             // Marked as folded so a later add() of the same day cannot lay it
             // a second time on top of what advance() already laid.
-            folded.add(day);
+            remember(day);
+
+            // THE DAY CHANGED, SO NOTHING IS FORMING. This used to be done only
+            // when the new session had no bars at all -- and the comment beside
+            // it named the defect exactly: "leaving the old edge would draw
+            // yesterday's half-brick over a day that has not opened". The other
+            // way out is just as reachable: a new session WITH bars whose clock
+            // has not yet reached the first of them makes countUntil answer
+            // zero, the guard below returns early, and the forming brick on
+            // screen is still yesterday's -- at a level that may be on the far
+            // side of the overnight gap, served to the chart by live(), frame
+            // after frame.
+            //
+            // The edge is rebuilt by the first frame that folds anything.
+            forming = null;
 
             if (advancingBars == null) {
-                // The session that closed is finished, so nothing is being
-                // built any more. Leaving the old edge would draw yesterday's
-                // half-brick over a day that has not opened.
-                forming = null;
-
                 return tail;
             }
         }
@@ -335,18 +347,42 @@ public final class TickRenko {
      * instant and being done with it.</p>
      */
     public boolean addUpTo(LocalDate day, long when) throws IOException {
+        // ASKED HERE TOO. This checked nothing: it was the one door of the three
+        // through which a session older than what is already laid could walk in.
+        refuseIfEarlier(day);
+
         TickSeries session = library.load(day);
 
         // Marked whatever happens, including for a day with no ticks: what this
         // promises is that the day will not be folded again, and a day that
         // added nothing is still a day this was asked about.
-        folded.add(day);
+        remember(day);
 
         if (session == null || session.size() == 0) {
             return false;
         }
 
         return fold(TickBars.of(session).until(when));
+    }
+
+    /**
+     * @param day the session about to go in
+     * @throws IllegalArgumentException if anything newer is already folded
+     */
+    private void refuseIfEarlier(LocalDate day) {
+        if (newest != null && !day.isAfter(newest)) {
+            throw new IllegalArgumentException(day + " comes before " + newest
+                    + ", which is already in this renko");
+        }
+    }
+
+    /** Writes the day down as folded, and as the newest if it is. */
+    private void remember(LocalDate day) {
+        folded.add(day);
+
+        if (newest == null || day.isAfter(newest)) {
+            newest = day;
+        }
     }
 
     private boolean fold(PriceSeries bars) {

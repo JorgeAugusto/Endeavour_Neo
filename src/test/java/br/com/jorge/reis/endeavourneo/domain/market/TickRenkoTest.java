@@ -358,6 +358,100 @@ class TickRenkoTest {
     }
 
     @Test
+    @DisplayName("a ordem e conferida contra TUDO que ja entrou, nao contra a ultima porta")
+    void theorderIsCheckedAgainstEverythingFolded(@TempDir Path folder) throws IOException {
+        // Three doors -- add, advance, addUpTo -- and each looked somewhere
+        // different. add walked `folded`, which is a LinkedHashSet, so it read
+        // the last one INSERTED and not the newest; advance compared only
+        // against the day it happened to be advancing through; addUpTo checked
+        // nothing at all.
+        //
+        // This sequence passed every guard and produced what all three were
+        // written to prevent: bricks out of sequence and the ruler carried
+        // backwards, neither of which shows in the result.
+        session(folder, DAY, WALK);
+        session(folder, DAY.plusDays(1), WALK);
+        session(folder, DAY.plusDays(2), WALK);
+
+        TickLibrary library = new TickLibrary(folder, "winfut", TickSource.METATRADER);
+
+        try {
+            TickRenko renko = new TickRenko(new Renko(10, 2), library);
+
+            // The SEQUENCE has to be refused, and the assertion is written over
+            // the whole of it rather than over one call, because which call
+            // catches it is an implementation choice and the property is not.
+            //
+            // Every step of this used to pass: add(D3) puts D3 in; advance(D1)
+            // has nothing to compare against, so it goes in behind it; add(D2)
+            // then reads the last day INSERTED -- D1 -- finds D2 after it, and
+            // is waved through with D3 already inside.
+            assertThrows(IllegalArgumentException.class, () -> {
+                renko.add(DAY.plusDays(2));
+                renko.advance(DAY, Long.MAX_VALUE);
+                renko.add(DAY.plusDays(1));
+            }, "a session older than one already folded went in: bricks out of "
+                    + "sequence and the ruler carried backwards, and nothing in the "
+                    + "result shows either");
+        } finally {
+            library.close();
+        }
+
+        // And the door that checked nothing.
+        TickLibrary second = new TickLibrary(folder, "winfut", TickSource.METATRADER);
+
+        try {
+            TickRenko renko = new TickRenko(new Renko(10, 2), second);
+
+            renko.add(DAY.plusDays(2));
+
+            assertThrows(IllegalArgumentException.class,
+                    () -> renko.addUpTo(DAY, Long.MAX_VALUE),
+                    "addUpTo folded a session older than one already in, without a word");
+        } finally {
+            second.close();
+        }
+    }
+
+    @Test
+    @DisplayName("ao trocar de pregao o tijolo em formacao de ontem sai da tela")
+    void thedayChangeDropsYesterdaysFormingBrick(@TempDir Path folder) throws IOException {
+        // The comment beside the old code named this exactly -- "leaving the old
+        // edge would draw yesterday's half-brick over a day that has not opened"
+        // -- and fixed it in one of the two ways out. The other is just as
+        // reachable: a new session WITH bars whose clock has not reached the
+        // first of them makes countUntil answer zero, the guard returns early,
+        // and the forming brick on screen is still yesterday's, at a level that
+        // may be on the far side of the overnight gap.
+        session(folder, DAY, WALK);
+        session(folder, DAY.plusDays(1), WALK);
+
+        TickLibrary library = new TickLibrary(folder, "winfut", TickSource.METATRADER);
+
+        try {
+            TickRenko renko = new TickRenko(new Renko(10, 2), library);
+
+            // All of the first session, so there IS a live edge to leave behind.
+            renko.advance(DAY, Long.MAX_VALUE);
+
+            int settled = renko.bricks().size();
+
+            assertTrue(renko.live().size() > settled,
+                    "the fixture left no forming brick at the end of the first session, "
+                            + "so nothing below is being tested");
+
+            // Into the next session, at an instant BEFORE its first trade.
+            renko.advance(DAY.plusDays(1), at(DAY.plusDays(1), 0) - 1);
+
+            assertEquals(renko.bricks().size(), renko.live().size(),
+                    "the live view still carries yesterday's half-brick into a day that "
+                            + "has not opened");
+        } finally {
+            library.close();
+        }
+    }
+
+    @Test
     @DisplayName("avancar para tras e recusado, nao aceito em silencio")
     void advancingBackwardsIsRefused(@TempDir Path folder) throws IOException {
         // Backwards carries the ruler back with it, and nothing in the bricks
