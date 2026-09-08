@@ -730,3 +730,43 @@ qual dos dois.
 ### O que resta
 
 As **93 MÉDIA e 115 BAIXA da auditoria I** que a decisão D5 mandou para cá.
+
+## Fase 6 — a auditoria I
+
+A decisão D5 mandou para cá as **93 MÉDIA e 115 BAIXA da auditoria I**. A
+`00-verificacao.md` prova que só as **52 ALTA** foram corrigidas na época.
+
+**O método.** Triagem por script (`triar.py` procura o trecho citado no código de
+hoje), depois conferência à mão de cada candidato, depois correção só do que está
+de fato aberto. O que a auditoria II já fechou entra no commit como *fechado por
+conferência*, com o nome de quem fechou.
+
+**Por que a triagem não decide.** Ela erra dos dois lados: aponta ABERTO em achado
+já corrigido (o trecho citado sobreviveu dentro de um comentário que explica a
+correção) e SEM ARQUIVO em achado que existe. Serve para ordenar, não para
+concluir.
+
+| lote | o quê | commit |
+|---|---|---|
+| L1-1, L2-1..6, L3-1, L3-2 | as lentes de EDT e de tempo | `7c3e89b` |
+| A6-11, L3-9, A5-20 | o calendário e os records | `7c3e89b` |
+| A4-10, A8a-13, A6-14, A5-5 | renomear aba, e o `ArraySeries` sem teste | `e444cb1` |
+| A5-6, A5-7, A7a-19 | dois ajustes que não desenhavam nada | `54abeed` |
+| **L3-10** | gravar uma base deixa de destruir a que estava lá | `cad643e` |
+| **A6-13, A5-13** | a sessão que falha diz por quê; a volta do estocástico | `e4b433d` |
+| **A6-15, A7a-13, A7a-9, A7a-14, A6-17** | a alça, o cache, e o `user.home` | `2378434` |
+
+**Fechados por conferência até aqui:** A1-2..9, A2-3..14, A3-5..13, A4-4..12,
+A5-8..12, A5-14, A6-8, A6-9, A6-10, A6-12, A6-16, A6-18, A6-19, A7a-6, A7a-7,
+A7a-8, A7a-10..12, A7b-15, L1-6.
+
+**O que falta.** MÉDIA: A7a-15..18, A7b-9..23, A8a-8..12, A8b-7..15, L1-3, L1-4,
+L1-5, L1-7, L3-3..8, L3-11, L4-1..10. E as **67 BAIXA**.
+
+### A sexta prova de dentes verde
+
+Em A7a-13 o teste reescrevia a base pela própria fixture — e a fixture aponta o
+catálogo para a pasta, o que **esvazia o cache que o teste pergunta sobre**. Ele
+passava com a checagem de carimbo arrancada do produto. Reescrito para trocar só
+os bytes, ele cai. É a mesma lição de sempre, num lugar novo: a prova de dentes
+não pergunta sobre o teste, pergunta sobre a quebra.
