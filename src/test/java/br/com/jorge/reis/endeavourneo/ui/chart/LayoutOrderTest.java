@@ -142,4 +142,21 @@ class LayoutOrderTest {
 
         assertEquals(List.of("a", "b", "c", "d"), list);
     }
+    @Test
+    @DisplayName("renomear para um nome ja usado nao cria duas abas iguais")
+    void renamingIntoAnExistingNameDoesNotCollide() {
+        // The selection is remembered by NAME -- ChartLayouts.remember writes the
+        // name, not the slot -- so two tabs called the same thing leave the chart
+        // pointing at whichever the lookup finds first, and renaming one of them
+        // could silently move the reader to the other. Duplicating already took
+        // this care and renaming did not.
+        java.util.List<String> others = java.util.List.of("Limpo", "Estudos");
+
+        assertEquals("Limpo (2)", LayoutBar.uniqueName(others, "Limpo"),
+                "renaming onto an existing name produced two tabs with one name");
+
+        // A free name is left exactly as typed, or this would be a rule that
+        // renames everything.
+        assertEquals("Volume", LayoutBar.uniqueName(others, "Volume"));
+    }
 }

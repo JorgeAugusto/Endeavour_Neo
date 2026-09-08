@@ -465,7 +465,7 @@ public final class LayoutBar extends JComponent {
             }
         }
 
-        String unique = ChartLayouts.copyName(others, name.trim(), of -> of);
+        String unique = uniqueName(others, name.trim());
 
         layouts.set(index, layouts.get(index).renamedTo(unique));
 
@@ -476,6 +476,25 @@ public final class LayoutBar extends JComponent {
         }
 
         rebuild();
+    }
+
+    /**
+     * @param others what the OTHER tabs are called
+     * @param typed what the reader asked for
+     * @return that name, or the next free variant of it
+     *
+     * <p>Package-visible so the rule can be checked without driving a modal
+     * dialog -- the same reason {@code Reordering.selectionAfterRemoval} sits
+     * where it does.</p>
+     *
+     * <p>The selection is remembered by NAME: {@code ChartLayouts.remember}
+     * writes the name, not the slot. So two tabs called the same thing leave
+     * the chart pointing at whichever the lookup finds first, and renaming one
+     * of them could silently move the reader to the other. Duplicating already
+     * took this care and renaming did not.</p>
+     */
+    static String uniqueName(List<String> others, String typed) {
+        return ChartLayouts.copyName(others, typed, of -> of);
     }
 
     /**
