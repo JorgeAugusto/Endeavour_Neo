@@ -136,7 +136,20 @@ public final class Messages {
             return 0;
         }
 
-        return Character.toUpperCase(letter.charAt(0));
+        char first = Character.toUpperCase(letter.charAt(0));
+
+        // A KEY CODE, not a code point. The two happen to agree for A-Z, where
+        // KeyEvent.VK_A is 65 and so is 'A' -- and they part company for
+        // anything else, which this bundle does invite: a mnemonic of 'Ç' or
+        // 'Ã' would be handed to setMnemonic as a number that names no key on
+        // any keyboard, and the menu would answer to nothing.
+        //
+        // getExtendedKeyCodeForChar answers the code the keyboard actually
+        // sends, and VK_UNDEFINED for a character that has none -- which is
+        // zero, the same "no mnemonic" this method already returns.
+        int code = java.awt.event.KeyEvent.getExtendedKeyCodeForChar(first);
+
+        return code == java.awt.event.KeyEvent.VK_UNDEFINED ? 0 : code;
     }
 
     /**

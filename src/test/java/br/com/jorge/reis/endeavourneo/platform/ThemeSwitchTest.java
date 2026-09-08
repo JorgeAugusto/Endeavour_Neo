@@ -138,4 +138,23 @@ class ThemeSwitchTest {
 
         assertEquals(lightFirst, background());
     }
+/**
+     * The fixed-width font is one that exists.
+     *
+     * <p>{@code new Font} does not fail on a family it does not know: it quietly
+     * answers {@code Dialog}, which is PROPORTIONAL — the exact opposite of the
+     * one thing this method exists for, and the javadoc says so: "numbers in a
+     * column only line up in a fixed-width font". A Windows without Consolas is
+     * rare and not impossible, and the failure is silent — the console and the
+     * numbers on the chart stop lining up and nothing says why.</p>
+     */
+    @Test
+    @DisplayName("a fonte de largura fixa e uma que existe nesta maquina")
+    void themonospacedFontIsOneThatExists() {
+        java.awt.Font font = Appearance.monospaced(12);
+
+        assertNotEquals("Dialog", font.getFamily(),
+                "the family asked for is not installed, and Font answered the proportional "
+                        + "default instead of falling back to a fixed-width one");
+    }
 }

@@ -61,7 +61,7 @@ public enum Theme {
      * lives where it applies: see the note on "Why files and not
      * java.util.prefs" in {@link Settings}.</p>
      */
-    private static final Settings PREFS = Settings.settings();
+    private static final Settings STORE = Settings.settings();
 
     private static final String KEY = "theme";
 
@@ -92,11 +92,11 @@ public enum Theme {
 
     /** @return the remembered theme, or {@link #LIGHT} on first run */
     public static Theme remembered() {
-        return of(PREFS.get(KEY, LIGHT.label));
+        return of(STORE.get(KEY, LIGHT.label));
     }
 
     public void remember() {
-        PREFS.put(KEY, label);
+        STORE.put(KEY, label);
     }
 
     /**

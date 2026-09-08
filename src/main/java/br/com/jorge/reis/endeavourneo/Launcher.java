@@ -126,6 +126,18 @@ public final class Launcher {
                 // Only accept the value when it really matched.
                 if (requested.getLabel().equalsIgnoreCase(name)) {
                     theme = requested;
+                } else {
+                    // SAID OUT LOUD. The guard above was right and had no
+                    // else: --darkk, --noite and --help were all swallowed,
+                    // the application opened on the previous theme, and
+                    // nothing anywhere said the flag had not been
+                    // understood. The class javadoc announces
+                    // "[--light|--dark|--night]", so there is a
+                    // command line declared, and a command line that never
+                    // reports a usage error is one people mistype twice.
+                    System.err.println(arg + ": not a theme; try "
+                            + Theme.LIGHT.getLabel() + ", " + Theme.DARK.getLabel()
+                            + " or " + Theme.NIGHT.getLabel());
                 }
             }
         }

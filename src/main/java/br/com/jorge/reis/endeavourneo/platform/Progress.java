@@ -31,7 +31,9 @@ package br.com.jorge.reis.endeavourneo.platform;
 public interface Progress {
 
     /**
-     * @param fraction from 0 to 1; values outside that range hide the bar
+     * @param fraction from 0 to 1; anything outside that range leaves the bar
+     *        INDETERMINATE, which is the honest picture for work that cannot
+     *        say how far along it is
      *
      * <p>Safe to call from the job's own thread — the implementation marshals
      * to the interface thread itself. Reporting more often than the screen can

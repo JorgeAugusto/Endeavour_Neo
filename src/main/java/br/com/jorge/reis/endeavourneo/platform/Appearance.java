@@ -84,6 +84,13 @@ public final class Appearance {
             return Messages.get("appearance.flat", theme.getLabel());
         }
 
+        // THE SPACING TOO. It was applied on both FlatLaf paths and on
+        // neither of these, and the seven keys it sets are UIManager keys that
+        // any look and feel honouring them will use. Nothing said the dense
+        // spacing was FlatLaf's -- the javadoc of tightenSpacing argues for it
+        // as the product's own.
+        tightenSpacing();
+
         return installWithoutFlatLaf();
     }
 
@@ -195,6 +202,25 @@ public final class Appearance {
                 ? "Consolas"
                 : Font.MONOSPACED;
 
-        return new Font(name, Font.PLAIN, size);
+        // CHECKED, because new Font does not fail on a family it does not know:
+        // it quietly answers Dialog, which is PROPORTIONAL -- the exact opposite
+        // of the one thing this method exists for. A Windows without Consolas is
+        // rare and not impossible (Wine, a stripped image), and the failure is
+        // silent: the console and the numbers on the chart stop lining up and
+        // nothing says why.
+        return new Font(available(name) ? name : Font.MONOSPACED, Font.PLAIN, size);
+    }
+
+    /** @return whether a font family of that name is installed */
+    private static boolean available(String name) {
+        for (String each : java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment()
+                .getAvailableFontFamilyNames()) {
+
+            if (each.equalsIgnoreCase(name)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
