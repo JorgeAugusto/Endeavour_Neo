@@ -110,7 +110,7 @@ public final class Forms {
         // it has any content reports a height of almost nothing, and freezing
         // that is how a control ends up as a sliver -- which is exactly what
         // happened to the period button.
-        int floor = new JTextField("X").getPreferredSize().height;
+        int floor = textFieldHeight();
 
         editor.setPreferredSize(new Dimension(150,
                 Math.max(editor.getPreferredSize().height, floor)));
@@ -267,5 +267,30 @@ public final class Forms {
             }
         }
     }
+    /**
+     * @return how tall a one-line text field is under the look and feel
+     *
+     * <p>Worked out ONCE. A whole Swing component was built and thrown away
+     * for every row of every form, to read a number that does not depend on
+     * the row.</p>
+     *
+     * <p>Not a constant, because the look and feel changes with the theme and
+     * the height with it. Kept against the look and feel it was measured
+     * under, so it drops itself: nothing has to remember to tell it, and
+     * nothing in the platform layer has to know this class exists.</p>
+     */
+    private static int textFieldHeight() {
+        Object now = javax.swing.UIManager.getLookAndFeel();
 
+        if (fieldHeight <= 0 || now != measuredUnder) {
+            measuredUnder = now;
+            fieldHeight = new JTextField("X").getPreferredSize().height;
+        }
+
+        return fieldHeight;
+    }
+
+    private static int fieldHeight;
+
+    private static Object measuredUnder;
 }

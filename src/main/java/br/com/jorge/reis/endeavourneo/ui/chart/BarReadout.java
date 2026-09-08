@@ -168,10 +168,15 @@ final class BarReadout {
         rows.add(new String[]{Messages.get("readout.change"), movement,
                 change > 0 ? "up" : change < 0 ? "down" : "flat"});
 
-        // Against the PREVIOUS close, which is a different question from
-        // close-minus-open and the one a quote screen answers. A bar can close
-        // above its own open and still be down on the session, and only this
-        // row says so.
+        // Against the PREVIOUS BAR's close, which is a different question from
+        // close-minus-open: a bar can close above its own open and be below
+        // where the one before it closed.
+        //
+        // NOT the previous SESSION's close, which is what a quote screen
+        // answers and what this comment used to claim. On a one-minute chart
+        // the two are the same thing only at the first bar of the day. The
+        // session comparison lives in Sessions, which walks back to the
+        // previous day's last bar to find it.
         if (index > 0) {
             double previous = series.closeAt(index - 1);
             double session = close - previous;

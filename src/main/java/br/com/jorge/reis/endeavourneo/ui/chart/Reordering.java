@@ -68,7 +68,19 @@ public final class Reordering {
             return false;
         }
 
-        list.add(Math.max(0, Math.min(to, list.size() - 1)), list.remove(from));
+        // THE SIZE IS READ BEFORE THE REMOVE, and only because Java evaluates
+        // arguments left to right. `to` may legitimately be n-1 -- dropping
+        // after the last one -- and with the remove happening first,
+        // list.size() - 1 would be n-2 and the item would land one place short
+        // of the end.
+        //
+        // Written out rather than left to the evaluation order: a rule that
+        // holds by a language guarantee nobody mentions is a rule the next
+        // person breaks while tidying.
+        int last = list.size() - 1;
+        int landing = Math.max(0, Math.min(to, last));
+
+        list.add(landing, list.remove(from));
 
         return true;
     }

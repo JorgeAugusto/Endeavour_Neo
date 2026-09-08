@@ -29,11 +29,22 @@ import java.util.Random;
  * not one. Nothing measured on it means anything, and it exists only to
  * exercise the drawing code: candles, zoom, panning, the crosshair.</p>
  *
- * <p>The seed is fixed so the same picture comes back every run. A chart that
+ * <p>The seed is fixed so the same PRICES come back every run: a chart that
  * redraws differently on each launch makes it impossible to tell a rendering
  * change from new data.</p>
  *
- * <p>Delete this class the moment a real series is wired in.</p>
+ * <p><b>The prices, and not the times.</b> The short constructor anchors the
+ * first bar on {@code System.currentTimeMillis()}, so the same walk lands on
+ * different instants at every launch. That is right for the placeholder chart
+ * it exists for -- it should look like today -- and it is why a test that
+ * cares when a bar happened has to use the long constructor and say so.</p>
+ *
+ * <p>It used to say "delete this class the moment a real series is wired in".
+ * Real series have been wired in for a long time -- SeriesCatalog, MarketService
+ * -- and this is still used, by MainWindow for the chart that opens before
+ * anything is chosen and by the replay for a feed with no export. The
+ * instruction was simply false, which is worse than no instruction: it tells
+ * whoever reads it that they are looking at something nobody meant to keep.</p>
  */
 public final class RandomWalkSeries implements PriceSeries {
 

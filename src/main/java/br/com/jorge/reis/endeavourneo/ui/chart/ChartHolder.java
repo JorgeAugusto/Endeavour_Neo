@@ -45,8 +45,6 @@ import javax.swing.JToggleButton;
 import javax.swing.JToolBar;
 import javax.swing.JFrame;
 import javax.swing.JInternalFrame;
-import javax.swing.JMenu;
-import javax.swing.JMenuItem;
 import javax.swing.event.InternalFrameAdapter;
 import javax.swing.event.InternalFrameEvent;
 
@@ -788,15 +786,6 @@ public final class ChartHolder {
         if (mine != null) {
             mine.setSelected(true);
         }
-    }
-
-    private JMenuItem item(String messageKey, Runnable action) {
-        JMenuItem entry = new JMenuItem(Messages.get(messageKey));
-
-        entry.setMnemonic(Messages.mnemonic(messageKey));
-        entry.addActionListener(e -> action.run());
-
-        return entry;
     }
 
     // -------------------------------------------------------------- geometry

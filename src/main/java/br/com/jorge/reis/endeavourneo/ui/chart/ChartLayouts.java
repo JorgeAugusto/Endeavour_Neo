@@ -26,7 +26,7 @@ import java.util.List;
 /**
  * Where the named layouts live, and how they survive a restart.
  *
- * <p>Stored as text in {@link Preferences}: one line per indicator, fields
+ * <p>Stored as text in the settings file: one line per indicator, fields
  * separated by pipes. Java serialisation would be shorter to write and would
  * break the moment a class is renamed — a saved layout has to outlive
  * refactoring, because it is the user's work and not ours.</p>
@@ -47,7 +47,20 @@ public final class ChartLayouts {
 
     private static final String COUNT = "count";
 
-    /** Preferences refuses a value longer than this, so a layout has a ceiling. */
+    /**
+     * How many indicators one layout may hold.
+     *
+     * <p>Forty, and the number used to be justified by a limit that does not
+     * apply: "Preferences refuses a value longer than this". These are kept in
+     * the settings FILE, which refuses nothing -- {@code java.util.prefs}, whose
+     * 8.192-character ceiling that sentence was about, is not used here and the
+     * class does not even import it.</p>
+     *
+     * <p>What the ceiling is really for: a layout is a line of text a person may
+     * have to read or repair by hand, and forty indicators on one chart is
+     * already past what anybody arranges on purpose. A cap that exists so a
+     * broken file cannot ask for a million entries.</p>
+     */
     private static final int MAX_ENTRIES = 40;
 
     private ChartLayouts() {

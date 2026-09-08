@@ -398,9 +398,4 @@ public final class MovingAverageDialog extends JDialog {
         }
     }
 
-    /** Kept out of the way of the layout: it is a spacer, not a control. */
-    @SuppressWarnings("unused")
-    private static Component glue() {
-        return Box.createVerticalGlue();
-    }
 }
