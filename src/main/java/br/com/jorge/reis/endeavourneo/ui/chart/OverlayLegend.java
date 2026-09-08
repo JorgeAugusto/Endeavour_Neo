@@ -73,6 +73,16 @@ public final class OverlayLegend extends JComponent {
 
     private static final int ROW_HEIGHT = 19;
 
+    /**
+     * The fixed-width face the values are written in.
+     *
+     * <p>Built once. {@code Appearance.monospaced} asks the graphics environment
+     * for the installed families, and this was inside {@code paintRow} -- so it
+     * ran once per indicator per repaint, and the legend repaints on every
+     * movement of the cursor.</p>
+     */
+    private static final java.awt.Font VALUES = Appearance.monospaced(11);
+
     /** Side of each of the three little buttons. */
     private static final int BUTTON = 14;
 
@@ -261,7 +271,11 @@ public final class OverlayLegend extends JComponent {
         int rows = canvas.overlays().size();
 
         for (int i = 0; i < rows; i++) {
-            if (y < i * ROW_HEIGHT + ROW_HEIGHT / 2) {
+            // THE MIDDLE OF THE ROW AS IT IS DRAWN. paintRow puts row i at
+            // i * ROW_HEIGHT + 2, so its middle is two pixels lower than this
+            // was looking -- and the gap the reader is pointing at flipped a
+            // row early along a two-pixel band at every boundary.
+            if (y < i * ROW_HEIGHT + 2 + ROW_HEIGHT / 2) {
                 return i;
             }
         }
@@ -320,7 +334,7 @@ public final class OverlayLegend extends JComponent {
         double[] values = overlay.valueAt(bar);
         List<Color> colours = overlay.colours();
 
-        g.setFont(Appearance.monospaced(11));
+        g.setFont(VALUES);
 
         FontMetrics mono = g.getFontMetrics();
         DecimalFormat format = format();

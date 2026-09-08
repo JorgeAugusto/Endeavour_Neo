@@ -94,18 +94,32 @@ final class SeriesSummary {
         List<String> parts = new ArrayList<>(3);
 
         if (span.getYears() > 0) {
-            parts.add(Messages.get("summary.years", span.getYears()));
+            parts.add(counted("summary.year", span.getYears()));
         }
 
         if (span.getMonths() > 0) {
-            parts.add(Messages.get("summary.months", span.getMonths()));
+            parts.add(counted("summary.month", span.getMonths()));
         }
 
         if (span.getDays() > 0 || parts.isEmpty()) {
-            parts.add(Messages.get("summary.days", span.getDays()));
+            parts.add(counted("summary.day", span.getDays()));
         }
 
         return String.join(", ", parts);
+    }
+
+    /**
+     * @param key the singular key; the plural is the same with an "s"
+     * @param howMany the number to write
+     * @return it, in the form the number asks for
+     *
+     * <p>Only the plural existed, so a series of one year, one month and one day
+     * read "1 anos, 1 meses e 1 dias". The ruler beside it has had both forms
+     * since it was written -- {@code ruler.day} and {@code ruler.days} -- and
+     * this followed the same shape.</p>
+     */
+    private static String counted(String key, int howMany) {
+        return Messages.get(howMany == 1 ? key : key + "s", howMany);
     }
 
     /**

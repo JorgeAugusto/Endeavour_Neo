@@ -78,7 +78,8 @@ final class BarReadout {
      * @param cursor where the mouse is
      * @param area the whole component, used to keep the box on screen
      */
-    static void paint(Graphics2D g, PriceSeries series, int index, Point cursor, Rectangle area) {
+    static void paint(Graphics2D g, PriceSeries series, int index, Point cursor,
+            Rectangle area, DecimalFormat price) {
         if (index < 0 || index >= series.size()) {
             return;
         }
@@ -86,7 +87,7 @@ final class BarReadout {
         Font labelFont = g.getFont().deriveFont(11f);
         Font valueFont = Appearance.monospaced(11);
 
-        List<String[]> rows = rowsFor(series, index);
+        List<String[]> rows = rowsFor(series, index, price);
         String title = Messages.get("readout.title",
                 Instant.ofEpochMilli(series.timeAt(index))
                         .atZone(br.com.jorge.reis.endeavourneo.domain.market.Timeframe.defaultZone()).format(STAMP));
@@ -143,14 +144,14 @@ final class BarReadout {
         }
     }
 
-    private static List<String[]> rowsFor(PriceSeries series, int index) {
+    private static List<String[]> rowsFor(PriceSeries series, int index,
+            DecimalFormat price) {
         double open = series.openAt(index);
         double high = series.highAt(index);
         double low = series.lowAt(index);
         double close = series.closeAt(index);
         double change = close - open;
 
-        DecimalFormat price = Readouts.format(decimalsFor(high - low));
         DecimalFormat percent = Readouts.format(2);
 
         List<String[]> rows = new ArrayList<>();
@@ -241,11 +242,11 @@ final class BarReadout {
         return new Rectangle(Math.max(4, x), Math.max(4, y), width, height);
     }
 
-    private static int decimalsFor(double range) {
-        if (range >= 10.0) {
-            return 0;
-        }
-
-        return range >= 0.1 ? 2 : 4;
-    }
+    // decimalsFor is gone. It chose the decimals from the range of the BAR --
+    // so a minute of the WIN spanning five points printed 121.500,00 and the
+    // next one spanning fifteen printed 121.500, and the same column changed
+    // shape from bar to bar. The chart already has one answer to "how many
+    // decimals does this instrument need": the grid step, which the axis, the
+    // last-price tag and the cursor's own label all read. The caller passes it
+    // in, and the four now agree.
 }

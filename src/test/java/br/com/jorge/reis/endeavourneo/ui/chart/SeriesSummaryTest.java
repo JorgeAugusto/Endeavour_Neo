@@ -218,4 +218,31 @@ class SeriesSummaryTest {
         assertTrue(DayChange.formatChange(-3.04).startsWith("-"),
                 "a fall lost its minus: " + DayChange.formatChange(-3.04));
     }
+/**
+     * One of something is written in the singular.
+     *
+     * <p>Only the plural keys existed, so a series of one year, one month and
+     * one day read "1 anos, 1 meses e 1 dias". The ruler beside it has had both
+     * forms since it was written.</p>
+     */
+    @Test
+    @DisplayName("um de alguma coisa vai no singular")
+    void oneOfSomethingIsSingular() {
+        String span = SeriesSummary.spanBetween(java.time.LocalDate.of(2020, 1, 1),
+                java.time.LocalDate.of(2021, 2, 2));
+
+        assertFalse(span.contains("1 anos") || span.contains("1 years"),
+                "one year came out plural: " + span);
+        assertFalse(span.contains("1 meses") || span.contains("1 months"),
+                "one month came out plural: " + span);
+        assertFalse(span.contains("1 dias") || span.contains("1 days"),
+                "one day came out plural: " + span);
+
+        // And more than one still is, or the correction is a method that always
+        // answers the singular.
+        String longer = SeriesSummary.spanBetween(java.time.LocalDate.of(2020, 1, 1),
+                java.time.LocalDate.of(2023, 4, 5));
+
+        assertTrue(longer.contains("3 anos") || longer.contains("3 years"), longer);
+    }
 }

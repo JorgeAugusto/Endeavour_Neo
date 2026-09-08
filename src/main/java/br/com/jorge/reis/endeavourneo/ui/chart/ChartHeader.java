@@ -369,6 +369,19 @@ public final class ChartHeader extends JComponent {
 
         @Override
         public void mousePressed(MouseEvent e) {
+            if (e.getButton() != MouseEvent.BUTTON1) {
+                // THE LEFT BUTTON. Any press opened the chooser, including the
+                // right one -- which everywhere else in this program is the
+                // context menu, so pressing it here opened the wrong menu and
+                // the reader had no way to ask for the right one.
+                //
+                // getButton and not isLeftMouseButton: this is a PRESS, so the
+                // down-mask holds, but the pair reads better with the release
+                // elsewhere in this file that had to be corrected for exactly
+                // that difference.
+                return;
+            }
+
             // One press, not two. The chip is a chooser, and choosers open on
             // the first press everywhere else in this program; the name beside
             // it needs two because one click there has to keep meaning nothing.

@@ -2971,7 +2971,8 @@ public final class ChartCanvas extends JComponent {
         }
 
         BarReadout.paint(g, series, bar, cursor,
-                new Rectangle(0, 0, getWidth(), getHeight()));
+                new Rectangle(0, 0, getWidth(), getHeight()),
+                formatFor(gridStep(viewport)));
     }
 
     /**
