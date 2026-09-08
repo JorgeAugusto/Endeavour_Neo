@@ -530,7 +530,14 @@ public final class SeriesWindow extends JDialog {
 
             @Override
             protected void done() {
-                if (!key.equals(editing)) {
+                // Objects.equals, because the key is null when there is no
+                // series at all -- which is the state a machine with an empty
+                // catalogue OPENS in. The guard that exists to drop a stale
+                // answer threw a NullPointerException on the interface thread
+                // instead of guarding: swallowed by the event loop, printed to
+                // the console, and the window left saying "reading..." for
+                // ever. It fired on every run of the suite.
+                if (!java.util.Objects.equals(key, editing)) {
                     return;
                 }
 

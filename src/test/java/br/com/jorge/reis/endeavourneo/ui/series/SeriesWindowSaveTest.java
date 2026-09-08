@@ -246,4 +246,63 @@ class SeriesWindowSaveTest {
                 "the window was only hidden: it stays in Window.getWindows() for good, "
                         + "and every change of theme walks it again");
     }
+
+    /**
+     * And nothing blows up on the interface thread while it reads.
+     *
+     * <p>It did, on every run of this suite. {@code readDays} posts its answer
+     * back with {@code key.equals(editing)} — the guard that drops an answer
+     * the combo has already moved past — and with no series at all the key is
+     * null. The guard threw instead of guarding: a {@code
+     * NullPointerException} inside {@code SwingWorker.done}, which the event
+     * loop prints and swallows, leaving the window saying "reading..." for
+     * ever. No test failed, and the stack trace was in the build log the whole
+     * time.</p>
+     *
+     * <p>The handler and not an assertion on the label, because the label is
+     * what the defect leaves untouched: waiting for ever looks exactly like
+     * waiting.</p>
+     */
+    @Test
+    @DisplayName("sem serie nenhuma, nada estoura na thread da interface")
+    void withNoSeriesNothingBlowsUpOnTheInterfaceThread() throws Exception {
+        assumeFalse(GraphicsEnvironment.isHeadless(), "no graphics environment");
+
+        SeriesCatalog.useSettingsForTest(settings.resolve("settings.properties"));
+        SeriesCatalog.useFolderForTest(data.resolve("vazia"));
+
+        Path file = data.resolve("workspace.properties");
+
+        Files.write(file, List.of("# nada aqui"));
+        Segmentation.useForTest(file);
+
+        java.util.List<Throwable> loose =
+                java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+
+        Thread.UncaughtExceptionHandler before = Thread.getDefaultUncaughtExceptionHandler();
+
+        Thread.setDefaultUncaughtExceptionHandler((thread, thrown) -> loose.add(thrown));
+
+        AtomicReference<SeriesWindow> made = new AtomicReference<>();
+
+        try {
+            SwingUtilities.invokeAndWait(() -> made.set(new SeriesWindow(null)));
+
+            // Twice round the event queue: the worker finishes on a thread of
+            // its own and posts done() here, so one turn is not enough to be
+            // sure it has run.
+            for (int turn = 0; turn < 20 && loose.isEmpty(); turn++) {
+                SwingUtilities.invokeAndWait(() -> { });
+                Thread.sleep(25L);
+            }
+
+            assertTrue(loose.isEmpty(),
+                    "something was thrown on the interface thread and swallowed there: "
+                            + (loose.isEmpty() ? "" : loose.get(0).toString()));
+        } finally {
+            Thread.setDefaultUncaughtExceptionHandler(before);
+
+            SwingUtilities.invokeAndWait(() -> made.get().dispose());
+        }
+    }
 }
