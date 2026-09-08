@@ -20,6 +20,7 @@ package br.com.jorge.reis.endeavourneo.ui.chart;
 import br.com.jorge.reis.endeavourneo.domain.market.Aggregation;
 import br.com.jorge.reis.endeavourneo.domain.market.Renko;
 import br.com.jorge.reis.endeavourneo.domain.market.Timeframe;
+import br.com.jorge.reis.endeavourneo.platform.Messages;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -145,7 +146,7 @@ public final class PeriodCatalog {
         // direct and would stop matching what the reader types.
         if (number >= SMALLEST_BRICK && number <= LARGEST_BRICK) {
             choices.add(new Choice(number + "R",
-                    number + "R (renko " + trim(brickOf(number)) + " pts)",
+                    Messages.get("period.renko", number, trim(brickOf(number))),
                     Renko.of(brickOf(number)).withForming(true)));
         }
 
@@ -192,7 +193,7 @@ public final class PeriodCatalog {
 
         for (int name : new int[]{3, 4, 5, 6, 11, 21}) {
             choices.add(new Choice(name + "R",
-                    name + "R (renko " + trim(brickOf(name)) + " pts)",
+                    Messages.get("period.renko", name, trim(brickOf(name))),
                     Renko.of(brickOf(name)).withForming(true)));
         }
 
@@ -222,32 +223,36 @@ public final class PeriodCatalog {
      * the one that could have explained it.</p>
      */
     private static String describe(Timeframe frame) {
+        // FROM THE BUNDLE, all of it. These strings are drawn on screen -- the
+        // scales list writes this text on every row -- and screen text does not
+        // live in the code here. They were in Portuguese, so choosing English
+        // did nothing to the one list a reader opens most often.
         int minutes = frame.minutes();
 
         if (minutes == 0) {
-            return "1 dia";
+            return Messages.get("period.day");
         }
 
         if (minutes == -1) {
-            return "1 semana";
+            return Messages.get("period.week");
         }
 
         if (minutes == -2) {
-            return "1 mês";
+            return Messages.get("period.month");
         }
 
         if (minutes == 1) {
-            return "1 minuto";
+            return Messages.get("period.oneMinute");
         }
 
         if (minutes % 60 == 0) {
             int hours = minutes / 60;
 
-            return hours + (hours == 1 ? " hora" : " horas")
-                    + " (" + minutes + " minutos)";
+            return Messages.get(hours == 1 ? "period.hour" : "period.hours",
+                    hours, minutes);
         }
 
-        return minutes + " minutos";
+        return Messages.get("period.minutes", minutes);
     }
 
     private static String trim(double value) {

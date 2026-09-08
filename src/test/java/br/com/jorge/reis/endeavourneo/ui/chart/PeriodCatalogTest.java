@@ -19,6 +19,7 @@ package br.com.jorge.reis.endeavourneo.ui.chart;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -189,5 +190,36 @@ class PeriodCatalogTest {
         assertEquals(5.0, PeriodCatalog.brickOf(2), 1e-9);
         assertNull(PeriodCatalog.byCode("2R"), "2R foi oferecido");
         assertNotNull(PeriodCatalog.byCode("3R"), "3R deveria ser o menor oferecido");
+    }
+
+    @Test
+    @DisplayName("a lista de escalas fala o idioma escolhido, nao portugues fixo")
+    void thescalesListFollowsTheChosenLanguage() {
+        // Convention nine: screen text never lives in the code here. Every
+        // description in this list was a Portuguese literal -- "1 dia",
+        // "3 horas (180 minutos)", "11R (renko 10 pts)" -- and the scales list
+        // is the one a reader opens most often, so choosing English did nothing
+        // to it.
+        java.util.Locale was = br.com.jorge.reis.endeavourneo.platform.Messages.getLocale();
+
+        try {
+            br.com.jorge.reis.endeavourneo.platform.Messages.setLocale(java.util.Locale.ROOT);
+
+            // The day, the hour and the renko: one of each shape the list draws.
+            assertEquals("1 day", PeriodCatalog.byCode("D1").description());
+            assertEquals("1 hour (60 minutes)", PeriodCatalog.byCode("1h").description(),
+                    "the hour row is not coming from the bundle");
+            assertEquals("11R (renko 50 pts)", PeriodCatalog.byCode("11R").description(),
+                    "the renko row is not coming from the bundle");
+
+            br.com.jorge.reis.endeavourneo.platform.Messages.setLocale(
+                    java.util.Locale.forLanguageTag("pt-BR"));
+
+            assertEquals("1 dia", PeriodCatalog.byCode("D1").description(),
+                    "the description did not follow the language: it is a literal in the "
+                            + "code and reads the same whatever is chosen");
+        } finally {
+            br.com.jorge.reis.endeavourneo.platform.Messages.setLocale(was);
+        }
     }
 }

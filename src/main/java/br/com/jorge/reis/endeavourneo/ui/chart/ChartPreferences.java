@@ -134,12 +134,11 @@ public final class ChartPreferences {
     }
 
     /**
-     * @return whether a rising candle is drawn as an outline
+     * @return whether a minute with no recorded ticks may be walked through
      *
-     * <p>A setting and not a drawing style of its own. Hollow-or-filled is how
-     * the SAME chart is drawn; putting it beside "candles" and "line" in a list
-     * made it look like a third kind of chart, and the reader had to know that
-     * two of the three were the same thing.</p>
+     * <p>The rule and the numbers behind it are on the field this reads; what
+     * matters here is that the answer changes what a renko of ticks LAYS, not
+     * how it is drawn.</p>
      */
     public static boolean syntheticTicks() {
         return syntheticTicks;
@@ -212,6 +211,14 @@ public final class ChartPreferences {
         announce();
     }
 
+    /**
+     * @return whether a rising candle is drawn as an outline
+     *
+     * <p>A setting and not a drawing style of its own. Hollow-or-filled is how
+     * the SAME chart is drawn; putting it beside "candles" and "line" in a list
+     * made it look like a third kind of chart, and the reader had to know that
+     * two of the three were the same thing.</p>
+     */
     public static boolean hollowCandles() {
         return hollowCandles;
     }
