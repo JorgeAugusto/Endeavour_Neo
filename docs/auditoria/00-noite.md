@@ -660,8 +660,12 @@ Swing ou do JobService — e não sobre o produto.
 | **B5-11..17** | O rótulo ganha a forma que o contrato declara | `c02d0dc` |
 | **B6-10,11,12,15** | A cor de erro passa a seguir o tema | `5b971b6` |
 
-**49 BAIXA fechadas.** Suíte em **658**. As áreas **B1**, **B2**, **B3**, **B4**, **B5** e **B6**
-estão fechadas por inteiro — ALTA, MÉDIA e BAIXA.
+| **B7a-19..26** | Um nome de arquivo derrubava a árvore inteira | `df6a46e` |
+| **B7b-12..25** | Os gráficos voltam na ordem certa a partir do décimo | `c71ae18` |
+| **B8a/B8b (12)** | As últimas, e o `RandomWalkSeries` vai para o domínio | `3b3f3fc` |
+
+**As 90 BAIXA da auditoria II estão FECHADAS.** Suíte em **662**. **A auditoria II está fechada por inteiro:** as três
+severidades, as dez áreas e as quatro lentes.
 
 ### O que a fase 5 já ensinou
 
@@ -693,3 +697,36 @@ suíte inteira e passava sozinho. Corrigido dos dois lados.
 no código antes de comitar: o determinismo do `RandomWalkSeries` (a semente é
 fixa; o que varia é o instante) e a diferença entre os dois readouts (não é só
 a âncora — um tem título).
+
+## A auditoria II, fechada
+
+**26 ALTA, 99 MÉDIA e 90 BAIXA.** Suíte de 537 para 662.
+
+Cada correção de comportamento levou o teste que faltava, e cada teste foi
+provado quebrando o produto. As que não levaram teste — remoções, javadoc,
+código morto — dizem isso no commit, com o motivo.
+
+### O que fica registrado como decisão, não como pendência
+
+- **B6-4:** o cache de `available()` foi implementado e descartado; repousa numa
+  garantia que ninguém dá.
+- **B6-5:** o reaquecimento mora no `Launcher`, não numa thread global dentro de
+  uma classe utilitária.
+- **B3-3 e B5-3:** os laços de linha não andam de `barsPerColumn`, porque uma
+  linha não tem com o que agregar.
+- **B4-25:** só o que é de fato idêntico foi para o `Readouts`; a caixa do
+  readout de barra tem título e não é a mesma caixa.
+- **B8b-17:** construir componente Swing fora da EDT é convenção que a suíte
+  inteira segue igual; mudar uma dezena de arquivos sem defeito observado atrás
+  é outra mudança.
+
+### Sem teste, de propósito
+
+B6-1, B6-3, B6-5, B6-9, B2-7, B7b-4, B8a-9, B1-22, B3-12, B2-20. Em todos,
+exercitar o caminho seria um teste sobre o escalonador — do JUnit, do Swing ou
+do JobService — ou exigiria uma costura que não existe. O commit de cada um diz
+qual dos dois.
+
+### O que resta
+
+As **93 MÉDIA e 115 BAIXA da auditoria I** que a decisão D5 mandou para cá.
