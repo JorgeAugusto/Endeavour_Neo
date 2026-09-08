@@ -18,6 +18,7 @@
 package br.com.jorge.reis.endeavourneo.domain.market;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -176,5 +177,66 @@ class SeriesMergeTest {
         }
 
         assertEquals(1, MarketFile.minutesOf(file));
+    }
+
+    @Test
+    @DisplayName("sem sobreposicao o degrau nao e ZERO, que e o valor que autoriza")
+    void nooverlapIsNotAHealthyJoin() {
+        // stepAt is, in the class javadoc's own words, "the one number that says
+        // whether a join is sound". When nothing of the older export survives --
+        // it begins after the newer one, so the two came in the wrong order or
+        // they do not overlap the way this assumes -- it used to answer ZERO,
+        // which is the value that means "seamless, go ahead". The number written
+        // to let a caller refuse was answering yes to the one case with nothing
+        // to join.
+        //
+        // NaN compares false against every threshold, so refusing is what
+        // happens by default rather than what has to be remembered.
+        PriceSeries newer = bars(1_000, 100);
+        PriceSeries older = bars(2_000, 100);
+
+        assertTrue(Double.isNaN(SeriesMerge.stepAt(older, newer)),
+                "no overlap at all was reported as a seamless join: "
+                        + SeriesMerge.stepAt(older, newer));
+
+        // And a real overlap still measures the step it always did.
+        assertFalse(Double.isNaN(SeriesMerge.stepAt(bars(0, 100), bars(500, 100))),
+                "an ordinary join stopped being measurable");
+    }
+
+    /** Bars a minute apart from that offset, at a flat price. */
+    private static PriceSeries bars(int fromMinute, double price) {
+        return new PriceSeries() {
+
+            @Override
+            public int size() {
+                return 1_000;
+            }
+
+            @Override
+            public long timeAt(int index) {
+                return (fromMinute + index) * 60_000L;
+            }
+
+            @Override
+            public double openAt(int index) {
+                return price;
+            }
+
+            @Override
+            public double highAt(int index) {
+                return price;
+            }
+
+            @Override
+            public double lowAt(int index) {
+                return price;
+            }
+
+            @Override
+            public double closeAt(int index) {
+                return price;
+            }
+        };
     }
 }

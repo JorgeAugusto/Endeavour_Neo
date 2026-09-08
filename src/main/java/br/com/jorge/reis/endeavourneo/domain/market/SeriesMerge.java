@@ -89,7 +89,17 @@ public final class SeriesMerge {
         int keep = countBefore(older, newer.timeAt(0));
 
         if (keep == 0) {
-            return 0;
+            // NOT ZERO. Nothing of the older export survives -- it begins after
+            // the newer one, so the two were handed over the wrong way round or
+            // they do not overlap the way this method assumes. Zero is the value
+            // that says "the join is seamless, go ahead": the one number written
+            // to let a caller REFUSE was answering yes to the one case where
+            // there is nothing to join.
+            //
+            // NaN because there is no step to measure, and because it compares
+            // false against every threshold a caller might set -- so the refusal
+            // is what happens by default rather than what has to be remembered.
+            return Double.NaN;
         }
 
         return Math.abs(newer.openAt(0) - older.closeAt(keep - 1));

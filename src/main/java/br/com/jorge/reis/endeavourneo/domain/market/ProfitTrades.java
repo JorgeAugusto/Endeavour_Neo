@@ -230,6 +230,10 @@ public final class ProfitTrades {
         try (InputStream in = new BufferedInputStream(Files.newInputStream(csv), BUFFER)) {
             byte[] chunk = new byte[BUFFER];
             byte[] row = new byte[512];
+
+            // Where each field ends. One array for the whole file, filled again
+            // for every row -- see the note at the call below.
+            int[] ends = new int[8];
             int inRow = 0;
             long lines = 0;
             int read;
@@ -247,7 +251,13 @@ public final class ProfitTrades {
                     }
 
                     if (lines++ > 0 && inRow > 0) {
-                        parse(csv, rows, row, inRow, lines);
+        // REUSED, not allocated per line. "Found once for the row" was true
+        // about the searching and misleading about the cost: this was one int[8]
+        // for every one of the 87 million rows, in a class whose javadoc says it
+        // is written by hand from bytes precisely so that those rows do not
+        // allocate 600 million objects. The row buffer beside it is reused for
+        // the same reason; this one was not.
+                        parse(csv, rows, row, inRow, lines, ends);
                     }
 
                     inRow = 0;
@@ -256,15 +266,15 @@ public final class ProfitTrades {
 
             // Some exports end without a newline, so the last row is still here.
             if (lines > 0 && inRow > 0) {
-                parse(csv, rows, row, inRow, ++lines);
+                parse(csv, rows, row, inRow, ++lines, ends);
             }
         }
 
         return rows;
     }
 
-    private static void parse(Path csv, Rows rows, byte[] row, int length, long line) {
-        int[] ends = new int[8];
+    private static void parse(Path csv, Rows rows, byte[] row, int length, long line,
+            int[] ends) {
         int fields = 0;
 
         for (int i = 0; i < length && fields < 8; i++) {

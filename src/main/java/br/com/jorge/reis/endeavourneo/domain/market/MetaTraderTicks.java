@@ -84,6 +84,10 @@ public final class MetaTraderTicks {
         LocalDate open = null;
         TickFile.Writer writer = null;
 
+        // Where each field begins. One array for the whole file, filled again
+        // for every row -- see the note at the call below.
+        int[] starts = new int[8];
+
         try (InputStream in = new BufferedInputStream(Files.newInputStream(csv), BUFFER)) {
             int read;
 
@@ -111,7 +115,13 @@ public final class MetaTraderTicks {
                             writer = new TickFile.Writer(TickSource.METATRADER.fileFor(folder, instrument, date), date);
                         }
 
-                        write(writer, row, inRow);
+        // REUSED, not allocated per line. "Found once for the row" was true
+        // about the searching and misleading about the cost: this was one int[8]
+        // for every one of the 87 million rows, in a class whose javadoc says it
+        // is written by hand from bytes precisely so that those rows do not
+        // allocate 600 million objects. The row buffer beside it is reused for
+        // the same reason; this one was not.
+                        write(writer, row, inRow, starts);
                     }
 
                     inRow = 0;
@@ -129,7 +139,7 @@ public final class MetaTraderTicks {
                     writer = new TickFile.Writer(TickSource.METATRADER.fileFor(folder, instrument, date), date);
                 }
 
-                write(writer, row, inRow);
+                write(writer, row, inRow, starts);
             }
 
             finish(written, progress, open, writer, folder, instrument);
@@ -189,14 +199,13 @@ public final class MetaTraderTicks {
         return LocalDate.of(number(row, 0, 4), number(row, 5, 7), number(row, 8, 10));
     }
 
-    private static void write(TickFile.Writer writer, byte[] row, int length) throws IOException {
+    private static void write(TickFile.Writer writer, byte[] row, int length,
+            int[] starts) throws IOException {
         int millis = number(row, 11, 13) * 3_600_000
                 + number(row, 14, 16) * 60_000
                 + number(row, 17, 19) * 1_000
                 + number(row, 20, 23);
 
-        // Where each field begins, found once for the row.
-        int[] starts = new int[8];
         int fields = 0;
 
         starts[0] = 0;

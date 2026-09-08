@@ -148,14 +148,25 @@ public final class Segmentable {
         }
     }
 
+    /**
+     * @return the days that export holds
+     *
+     * <p><b>A walk plus one header per file.</b> This used to say "a directory
+     * listing, not a read: this costs nothing", and it is not a listing: a
+     * session is recognised by opening it and reading its header, which is what
+     * makes the answer trustworthy -- a file filed under the wrong month is not
+     * offered as a day the replay can open. Cheap next to folding the bars, and
+     * not free.</p>
+     *
+     * <p>The sentence mattered because it was the reason given for reading this
+     * on the interface thread. That reason is gone: the series window asks for
+     * its days behind the window now, whichever kind of source it is.</p>
+     */
     private static List<LocalDate> daysOfTicks(String instrument, TickSource source) {
         TickLibrary library =
                 new TickLibrary(SeriesCatalog.ticksOf(instrument), instrument, source);
 
         try {
-            // A directory listing, not a read: this costs nothing and is the
-            // reason a tick source can be offered in the same list as a series
-            // without the window becoming slow to open.
             return library.exported();
         } finally {
             library.close();
