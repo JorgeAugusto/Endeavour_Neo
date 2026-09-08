@@ -100,8 +100,6 @@ public final class TapeFile {
      * <p>{@code values()} clones its array on every call, and this is asked per
      * trade over sessions of five million.</p>
      */
-    private static final Aggressor[] KINDS = Aggressor.values();
-
     private static final int HEADER_BYTES = 8 + Integer.BYTES + Integer.BYTES + Long.BYTES;
 
     static final int RECORD_BYTES = 2 * Integer.BYTES + 3 * Short.BYTES + 1;
@@ -198,9 +196,9 @@ public final class TapeFile {
                     // later on the painting or replay thread, far from the file
                     // that caused it. Refusing the file on read, with its name
                     // in the message, is what MarketFile and TickFile do.
-                    if (aggressor[at] < 1 || aggressor[at] > KINDS.length) {
+                    if (Aggressor.ofCode(aggressor[at]) == null) {
                         throw new IOException(file + ": trade " + at + " says aggressor "
-                                + aggressor[at] + ", and there are " + KINDS.length);
+                                + aggressor[at] + ", and no aggressor has that code");
                     }
                 }
             }
@@ -370,7 +368,7 @@ public final class TapeFile {
             buffer.putShort((short) quantity);
             buffer.putShort((short) buyer);
             buffer.putShort((short) seller);
-            buffer.put((byte) (aggressor.ordinal() + 1));
+            buffer.put((byte) aggressor.code());
 
             count++;
         }
@@ -643,16 +641,18 @@ public final class TapeFile {
         /**
          * @return who crossed the spread on that trade
          *
-         * <p>Off {@link TapeFile#KINDS} and not {@code Aggressor.values()}, which clones
-         * the array on every call: {@code TapeFileTest} alone walks a whole
-         * session asking this, and a real session is five million trades.</p>
+         * <p>Through {@code Aggressor.ofCode} and not {@code Aggressor.values()},
+         * which clones the array on every call: {@code TapeFileTest} alone walks
+         * a whole session asking this, and a real session is five million
+         * trades. The table it reads is built once, inside the enum, and never
+         * handed out.</p>
          *
-         * <p>The subtraction is safe because {@link TapeFile#read} refuses any file
-         * whose aggressor byte is outside the enum -- see there.</p>
+         * <p>Null is unreachable here because {@link TapeFile#read} refuses any
+         * file whose aggressor byte names nothing -- see there.</p>
          */
         @Override
         public Aggressor aggressorAt(int index) {
-            return KINDS[aggressor[index] - 1];
+            return Aggressor.ofCode(aggressor[index]);
         }
 
         @Override

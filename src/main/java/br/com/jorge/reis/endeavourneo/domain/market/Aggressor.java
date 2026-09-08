@@ -41,10 +41,10 @@ package br.com.jorge.reis.endeavourneo.domain.market;
 public enum Aggressor {
 
     /** The buyer crossed: someone paid the offer. */
-    BUYER("Comprador"),
+    BUYER("Comprador", 1),
 
     /** The seller crossed: someone hit the bid. */
-    SELLER("Vendedor"),
+    SELLER("Vendedor", 2),
 
     /**
      * Retail Liquidity Provider: the broker took the other side itself.
@@ -53,18 +53,70 @@ public enum Aggressor {
      * never reached the order book — reading them as "the market lifted the
      * offer" is reading a quarter of the tape as something it is not.</p>
      */
-    RLP("RLP"),
+    RLP("RLP", 3),
 
     /** Opening, closing or a halt: matched by the auction, nobody crossed. */
-    AUCTION("Leilão"),
+    AUCTION("Leilão", 4),
 
     /** Agreed off the book and printed: two parties, no aggressor. */
-    DIRECT("Direto");
+    DIRECT("Direto", 5);
 
     private final String said;
 
-    Aggressor(String said) {
+    private final int code;
+
+    Aggressor(String said, int code) {
         this.said = said;
+        this.code = code;
+    }
+
+    /** Every code, at its own index; built once, and never handed out. */
+    private static final Aggressor[] BY_CODE = byCode();
+
+    private static Aggressor[] byCode() {
+        int highest = 0;
+
+        for (Aggressor each : values()) {
+            highest = Math.max(highest, each.code);
+        }
+
+        Aggressor[] found = new Aggressor[highest + 1];
+
+        for (Aggressor each : values()) {
+            found[each.code] = each;
+        }
+
+        return found;
+    }
+
+    /**
+     * @return the byte this is written as on the tape
+     *
+     * <p><b>Stated, and it used to be {@code ordinal() + 1}.</b> The order these
+     * five are DECLARED in was the file format, and nothing here said so -- while
+     * the table above lists them by frequency, in a different order. Anybody who
+     * tidied the declarations to match the table, which is the most natural thing
+     * in the world to do, would have swapped buyer for seller in every tape ever
+     * written.</p>
+     *
+     * <p>And it would have been silent and total: the read goes on accepting the
+     * file, because the byte is still inside the range, and the one column of the
+     * tape that says DIRECTION starts saying the opposite. Forty-three million
+     * trades were already converted when this was found.</p>
+     *
+     * <p>A new value takes the next free code. The declarations can now be moved
+     * around freely, which is what makes the question stop mattering.</p>
+     */
+    public int code() {
+        return code;
+    }
+
+    /**
+     * @param code a byte read from a tape
+     * @return what it names, or null when nothing does
+     */
+    public static Aggressor ofCode(int code) {
+        return code < 1 || code >= BY_CODE.length ? null : BY_CODE[code];
     }
 
     /** @return the word the export uses */

@@ -18,6 +18,7 @@
 package br.com.jorge.reis.endeavourneo.domain.market;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -431,5 +432,42 @@ class TapeFileTest {
         assertFalse(java.nio.file.Files.exists(
                         session.resolveSibling(session.getFileName() + ".parcial")),
                 "the half-written session was left on disk");
+    }
+
+    @Test
+    @DisplayName("os codigos do agressor sao o FORMATO, e estao escritos aqui")
+    void theaggressorCodesAreTheFileFormat() {
+        // The byte written on the tape used to be ordinal() + 1: the order the
+        // five values are DECLARED in was the file format, and nothing said so.
+        // The class javadoc lists them by frequency -- seller first, then buyer
+        // -- in a different order from the declarations, so tidying the
+        // declarations to match the table, which is the most natural thing in
+        // the world to do, would have swapped buyer for seller in every tape
+        // ever written.
+        //
+        // Silent and total: the read goes on accepting the file, because the
+        // byte is still inside the range, and the one column of the tape that
+        // says DIRECTION starts saying the opposite. Forty-three million trades
+        // were already converted when this was found.
+        //
+        // The numbers are written out here rather than derived, on purpose.
+        // Deriving them would agree with whatever the code does, which is what
+        // the round trip below already does and why it could never catch this.
+        assertEquals(1, Aggressor.BUYER.code());
+        assertEquals(2, Aggressor.SELLER.code());
+        assertEquals(3, Aggressor.RLP.code());
+        assertEquals(4, Aggressor.AUCTION.code());
+        assertEquals(5, Aggressor.DIRECT.code());
+
+        for (Aggressor each : Aggressor.values()) {
+            assertEquals(each, Aggressor.ofCode(each.code()),
+                    each + " does not read back as itself");
+        }
+
+        // And a byte that names nothing says so, instead of landing on whichever
+        // value happens to sit at that index.
+        assertNull(Aggressor.ofCode(0));
+        assertNull(Aggressor.ofCode(6));
+        assertNull(Aggressor.ofCode(-1));
     }
 }

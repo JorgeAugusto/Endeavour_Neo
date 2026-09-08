@@ -125,7 +125,7 @@ public final class ProfitTrades {
                 writer.broker(buyer, rows.names.get(buyer));
                 writer.broker(seller, rows.names.get(seller));
                 writer.add(rows.millis[i], rows.price[i], rows.quantity[i] & 0xFFFF,
-                        buyer, seller, Aggressor.values()[rows.aggressor[i] - 1]);
+                        buyer, seller, Aggressor.ofCode(rows.aggressor[i]));
 
                 trades++;
                 contracts += rows.quantity[i] & 0xFFFF;
@@ -314,7 +314,7 @@ public final class ProfitTrades {
                     + "column that says direction the one nobody could trust");
         }
 
-        rows.aggressor[rows.count] = (byte) (aggressor.ordinal() + 1);
+        rows.aggressor[rows.count] = (byte) aggressor.code();
         rows.count++;
     }
 
