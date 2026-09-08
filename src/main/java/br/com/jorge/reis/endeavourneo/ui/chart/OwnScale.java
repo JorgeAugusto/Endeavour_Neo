@@ -120,15 +120,18 @@ public final class OwnScale {
      * chronological, so the answer only ever moves forward. A search asked once
      * per bar walks the coarse series 825.000 times over -- 183 ms per
      * indicator, measured.</p>
+     *
+     * <p>The loop had a second half -- {@code if (closed < 0 && coarse.size() >
+     * 1 && coarse.timeAt(1) <= fine.timeAt(i)) closed = 0;} -- that could never
+     * run. With {@code closed} at -1 the while asks {@code 0 < size - 1}, which
+     * is exactly "size is at least two", and {@code timeAt(closed + 2)} is
+     * {@code timeAt(1)}: the same two conditions, already answered. It was
+     * written twice, in map and in smooth, which is how nobody noticed.</p>
      */
     private static int advance(PriceSeries fine, PriceSeries coarse, int closed, int i) {
         while (closed + 1 < coarse.size() - 1
                 && coarse.timeAt(closed + 2) <= fine.timeAt(i)) {
             closed++;
-        }
-
-        if (closed < 0 && coarse.size() > 1 && coarse.timeAt(1) <= fine.timeAt(i)) {
-            closed = 0;
         }
 
         return closed;

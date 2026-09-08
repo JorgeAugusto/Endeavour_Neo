@@ -111,7 +111,7 @@ public final class RelativeStrength implements Overlay {
 
     private boolean visible = true;
 
-    private transient volatile double[] values = new double[0];
+    private volatile double[] values = new double[0];
 
     public RelativeStrength() {
         this(PERIOD);

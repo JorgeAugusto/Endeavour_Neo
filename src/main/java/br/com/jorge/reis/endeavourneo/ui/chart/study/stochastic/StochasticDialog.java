@@ -202,8 +202,20 @@ public final class StochasticDialog extends JDialog {
         }
     }
 
+    /**
+     * Turns off what the boxes above have switched off.
+     *
+     * <p>The period of the average is NOT among them, and used to be set
+     * enabled here unconditionally -- a line that does nothing, since a field
+     * is enabled to begin with, and that read as though it did. It looked like
+     * a leftover from when the field followed the "show the average" box.</p>
+     *
+     * <p>It cannot follow that box: the setting decides BOTH lines. The
+     * javadoc of SlowStochastic says so -- "that average is the indicator:
+     * this is what slow means" -- so hiding the second line does not stop the
+     * number mattering.</p>
+     */
     private void refreshEnabled() {
-        average.setEnabled(true);
         buy.setEnabled(showLevels.isSelected());
         sell.setEnabled(showLevels.isSelected());
         periodButton.setEnabled(ownPeriod.isSelected());

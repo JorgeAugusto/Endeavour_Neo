@@ -240,4 +240,25 @@ class OverlayTest {
             }
         };
     }
+    @Test
+    @DisplayName("o rotulo separa os parametros por espaco, como o contrato diz")
+    void thelabelIsSpacedTheWayTheContractSays() {
+        // Three places built this by hand as `Messages.get(nameKey()) + " " +
+        // parameters()`, leaning on List.toString() for the brackets and the
+        // comma between numbers -- so the shape of a label on screen was a
+        // detail of a collection's debug output, in three copies.
+        //
+        // And the contract had said otherwise all along: the javadoc of
+        // parameters() spells the form out as [17 21 0 8 21], with spaces. The
+        // screen said [17, 21, 0, 8, 21].
+        MovingAverage average = new MovingAverage(9);
+
+        average.setShift(3);
+
+        assertTrue(average.label().endsWith("[9 3]"),
+                "the parameters are not spaced the way the contract states: "
+                        + average.label());
+        assertFalse(average.label().contains(","),
+                "the label still carries List.toString()'s comma: " + average.label());
+    }
 }

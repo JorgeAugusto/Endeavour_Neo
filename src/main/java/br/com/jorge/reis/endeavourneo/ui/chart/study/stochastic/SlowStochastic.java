@@ -110,9 +110,9 @@ public final class SlowStochastic implements Overlay {
 
     private boolean visible = true;
 
-    private transient volatile double[] slow = new double[0];
+    private volatile double[] slow = new double[0];
 
-    private transient volatile double[] signal = new double[0];
+    private volatile double[] signal = new double[0];
 
     public SlowStochastic() {
         this(PERIOD, AVERAGE);

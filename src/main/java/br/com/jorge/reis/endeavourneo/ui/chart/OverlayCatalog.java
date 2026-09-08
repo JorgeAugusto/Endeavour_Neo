@@ -107,7 +107,7 @@ public final class OverlayCatalog {
                     List.of(br.com.jorge.reis.endeavourneo.ui.chart.study.rsi
                             .RelativeStrength.PERIOD), 1, 2_000,
                     numbers -> new br.com.jorge.reis.endeavourneo.ui.chart.study.rsi
-                            .RelativeStrength(first(numbers, 9))),
+                            .RelativeStrength(first(numbers, br.com.jorge.reis.endeavourneo.ui.chart.study.rsi.RelativeStrength.PERIOD))),
 
             new Kind("study.stochastic",
                     List.of(br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic
@@ -115,7 +115,8 @@ public final class OverlayCatalog {
                             br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic
                                     .SlowStochastic.AVERAGE), 1, 2_000,
                     numbers -> new br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic
-                            .SlowStochastic(first(numbers, 8), second(numbers, 3))));
+                            .SlowStochastic(first(numbers, br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic.SlowStochastic.PERIOD),
+                                    second(numbers, br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic.SlowStochastic.AVERAGE))));
 
     private static int first(int[] numbers, int fallback) {
         return numbers.length > 0 ? numbers[0] : fallback;

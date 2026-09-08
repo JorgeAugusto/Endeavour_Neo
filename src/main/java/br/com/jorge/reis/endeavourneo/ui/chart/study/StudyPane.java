@@ -629,7 +629,7 @@ public final class StudyPane extends JComponent {
 
     /** @return the indicator's name as the header says it */
     private static String labelOf(Overlay study) {
-        String name = Messages.get(study.nameKey()) + " " + study.parameters();
+        String name = study.label();
         String scale = study.ownPeriod();
 
         // The scale only when there IS one. Two stochastics of the same shape,

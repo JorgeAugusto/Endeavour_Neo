@@ -55,6 +55,34 @@ public interface Overlay {
      */
     List<Integer> parameters();
 
+    /**
+     * @return this indicator as a legend writes it: name, then parameters
+     *
+     * <p><b>Written once, and it used to be three copies of
+     * {@code Messages.get(nameKey()) + " " + parameters()}</b> -- in the chart
+     * canvas, in the legend and in the study pane. Each of them leaned on
+     * {@code List.toString()} for the brackets and the comma-space between
+     * numbers: the shape of the label was a detail of a collection's debug
+     * output, in three places, and a dialog title beside them spelled the same
+     * thing out by hand as {@code " [" + period() + "]"}.</p>
+     */
+    default String label() {
+        StringBuilder text = new StringBuilder(
+                br.com.jorge.reis.endeavourneo.platform.Messages.get(nameKey()));
+
+        text.append(" [");
+
+        for (int i = 0; i < parameters().size(); i++) {
+            if (i > 0) {
+                text.append(' ');
+            }
+
+            text.append(parameters().get(i));
+        }
+
+        return text.append(']').toString();
+    }
+
     /** @return one colour per line this overlay draws, in the same order as the values */
     List<Color> colours();
 

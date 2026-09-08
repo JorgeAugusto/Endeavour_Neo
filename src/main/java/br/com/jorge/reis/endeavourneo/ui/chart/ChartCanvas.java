@@ -472,7 +472,7 @@ public final class ChartCanvas extends JComponent {
 
         for (Overlay overlay : overlays) {
             javax.swing.JMenuItem entry = new javax.swing.JMenuItem(
-                    Messages.get(overlay.nameKey()) + " " + overlay.parameters());
+                    overlay.label());
 
             entry.addActionListener(e -> removeOverlay(overlay));
             remove.add(entry);

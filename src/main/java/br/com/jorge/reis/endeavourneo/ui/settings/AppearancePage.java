@@ -21,7 +21,6 @@ import br.com.jorge.reis.endeavourneo.platform.Appearance;
 import br.com.jorge.reis.endeavourneo.platform.Messages;
 import br.com.jorge.reis.endeavourneo.platform.Theme;
 
-import java.awt.BorderLayout;
 import java.awt.Component;
 import java.awt.Window;
 import java.util.EnumMap;
