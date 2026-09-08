@@ -495,8 +495,10 @@ Duas coisas que a tarde ensinou:
 |---|---|---|
 | **B6-6, B6-9** | A data lembrada de outro feed, e a sessão que sobrevivia à janela | `141120f` |
 | **B1-3, B1-4** | A barra de vários dias carrega a abertura, e corta numa segunda | `40a950d` |
+| **B2-6, B2-7** | O resto do quadro deixa de ser jogado fora, e o vetor vazio some | `bdaf416` |
+| **B2-12** | O espaçamento da série sai da mediana, não do primeiro par | `ccda1a5` |
 
-**19 MÉDIA fechadas.** Suíte em **595**.
+**22 MÉDIA fechadas.** Suíte em **597**.
 
 Uma terceira lição, e é a mesma três vezes: **o `OrphanJavadocTest` pegou o autor
 dele em três commits diferentes desta fase**, sempre por um membro novo inserido
@@ -509,5 +511,5 @@ qualquer correção individual — e vale mais ainda contra quem a escreveu.
 - **B6-9 sem teste, dito de propósito.** Exercitar aquele caminho exige soltar o
   painel DURANTE os quatro segundos da construção da sessão, o que é dirigir um
   `SwingWorker` pelo meio — um teste sobre o escalonador, não sobre isto.
-- **As 102 MÉDIA e 107 BAIXA restantes** da auditoria II, e as **93 MÉDIA e 115
+- **As 99 MÉDIA e 107 BAIXA restantes** da auditoria II, e as **93 MÉDIA e 115
   BAIXA** da auditoria I que a decisão D5 mandou para cá.
