@@ -68,19 +68,53 @@ public final class ChartColors {
         return c != null ? c : (dark() ? new Color(0xD0D0D0) : Color.DARK_GRAY);
     }
 
+    /**
+     * The colours that do not come from the look and feel, held per theme.
+     *
+     * <p><b>Built once each, and they used to be built per element drawn.</b>
+     * Every candle asked for {@code up()} or {@code down()} and got a new {@code
+     * Color}; every grid line asked for {@code grid()} and got a new one plus a
+     * lookup in the {@code UIManager}. At a hundred thousand bars that is a
+     * hundred thousand objects per repaint, for six values that only change when
+     * the reader changes theme.</p>
+     *
+     * <p>Keyed on the answer to {@link #dark}, so switching theme swaps the set
+     * rather than staling it. Nothing here caches what the look and feel owns --
+     * {@code background} and {@code foreground} still ask it every time, because
+     * it is the one that knows when they change.</p>
+     */
+    private static final Color[] UP = {new Color(0x1B7F3B), new Color(0x4CAF50)};
+
+    private static final Color[] UNTRADED = {new Color(0x9E9E9E), new Color(0x8C8C8C)};
+
+    private static final Color[] DOWN = {new Color(0xC62828), new Color(0xE05252)};
+
     /** @return the grid colour: present, but never competing with the data */
     public static Color grid() {
         Color base = foreground();
+        boolean night = dark();
 
-        return new Color(base.getRed(), base.getGreen(), base.getBlue(), dark() ? 38 : 30);
+        if (!base.equals(gridFrom) || night != gridDark) {
+            gridFrom = base;
+            gridDark = night;
+            grid = new Color(base.getRed(), base.getGreen(), base.getBlue(), night ? 38 : 30);
+        }
+
+        return grid;
     }
 
+    private static Color grid;
+
+    private static Color gridFrom;
+
+    private static boolean gridDark;
+
     public static Color up() {
-        return dark() ? new Color(0x4CAF50) : new Color(0x1B7F3B);
+        return UP[dark() ? 1 : 0];
     }
 
     public static Color down() {
-        return dark() ? new Color(0xE05252) : new Color(0xC62828);
+        return DOWN[dark() ? 1 : 0];
     }
 
     /**
@@ -97,6 +131,6 @@ public final class ChartColors {
      * br.com.jorge.reis.endeavourneo.domain.market.Untraded}.</p>
      */
     public static Color untraded() {
-        return dark() ? new Color(0x8C8C8C) : new Color(0x9E9E9E);
+        return UNTRADED[dark() ? 1 : 0];
     }
 }

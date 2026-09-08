@@ -85,28 +85,42 @@ public final class ChartLayouts {
      * stored count disagreeing with the stored names if anything failed halfway.</p>
      */
     public static void save(List<ChartLayout> layouts) {
-        int previous = PREFS.getInt(COUNT, 0);
+        // ONE WRITE, and the javadoc above already promised it: "writing entry
+        // by entry would leave the stored count disagreeing with the stored
+        // names if anything failed halfway". Every put wrote the whole settings
+        // file -- the class says so, "written on every change rather than at
+        // exit" -- so five layouts were sixteen rewrites, on the interface
+        // thread, and the storage really did pass through every intermediate
+        // state the promise says it avoids.
+        //
+        // This is called from capture(), which hangs off the two commonest
+        // events a chart has: an indicator changing and a pane being dragged.
+        PREFS.hold(() -> {
+            int previous = PREFS.getInt(COUNT, 0);
 
-        for (int i = 0; i < layouts.size(); i++) {
-            ChartLayout layout = layouts.get(i);
+            for (int i = 0; i < layouts.size(); i++) {
+                ChartLayout layout = layouts.get(i);
 
-            PREFS.put("layout." + i + ".name", layout.name());
-            PREFS.put("layout." + i + ".entries", format(layout.entries()));
+                PREFS.put("layout." + i + ".name", layout.name());
+                PREFS.put("layout." + i + ".entries", format(layout.entries()));
 
-            // A key of its own rather than more fields on the entry lines,
-            // so a reader of the file can tell the two kinds apart at a glance.
-            PREFS.put("layout." + i + ".panes", formatPanes(layout.panes()));
-        }
+                // A key of its own rather than more fields on the entry lines,
+                // so a reader of the file can tell the two kinds apart at a
+                // glance.
+                PREFS.put("layout." + i + ".panes", formatPanes(layout.panes()));
+            }
 
-        // Anything past the new end is removed, or a shrinking list would leave
-        // the old tail readable and it would come back on the next launch.
-        for (int i = layouts.size(); i < previous; i++) {
-            PREFS.remove("layout." + i + ".name");
-            PREFS.remove("layout." + i + ".entries");
-            PREFS.remove("layout." + i + ".panes");
-        }
+            // Anything past the new end is removed, or a shrinking list would
+            // leave the old tail readable and it would come back on the next
+            // launch.
+            for (int i = layouts.size(); i < previous; i++) {
+                PREFS.remove("layout." + i + ".name");
+                PREFS.remove("layout." + i + ".entries");
+                PREFS.remove("layout." + i + ".panes");
+            }
 
-        PREFS.putInt(COUNT, layouts.size());
+            PREFS.putInt(COUNT, layouts.size());
+        });
     }
 
     /** @return which layout each chart was last showing */

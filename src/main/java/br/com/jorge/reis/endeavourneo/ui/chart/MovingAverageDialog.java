@@ -97,7 +97,19 @@ public final class MovingAverageDialog extends JDialog {
 
     private transient String periodCode;
 
-    private final Sample sample = new Sample();
+    /**
+     * The line as it will be drawn, from the three controls above it.
+     *
+     * <p>Forms.Sample and not a private copy. This file used to carry its own,
+     * word for word, along with the form, the group heading, the field row, the
+     * combo renderer, the swatch and the line-style renderer -- seven members
+     * that Forms exists to keep from being written twice, and this dialog was
+     * the one caller that did not import it. LinePen already records what that
+     * costs: two dialogs of the same product showing ARITHMETIC where the other
+     * showed "Aritmética".</p>
+     */
+    private final Forms.Sample sample = new Forms.Sample(
+            this::inkNow, this::lineNow, this::widthNow);
 
     private transient Color chosen;
 
@@ -124,9 +136,9 @@ public final class MovingAverageDialog extends JDialog {
         source.setSelectedItem(average.source());
         line.setSelectedItem(average.line());
 
-        kind.setRenderer(named("overlay.ma.kind."));
-        source.setRenderer(named("overlay.ma.source."));
-        line.setRenderer(new LineRenderer());
+        kind.setRenderer(Forms.named("overlay.ma.kind."));
+        source.setRenderer(Forms.named("overlay.ma.source."));
+        line.setRenderer(Forms.lineStyles());
 
         colour.addActionListener(e -> pickColour());
         paintColourButton();
@@ -167,27 +179,27 @@ public final class MovingAverageDialog extends JDialog {
     // ------------------------------------------------------------- the tabs
 
     private JComponent parameters() {
-        JPanel panel = form();
+        JPanel panel = Forms.form();
 
-        group(panel, 0, Messages.get("overlay.ma.average"));
-        field(panel, 1, Messages.get("overlay.ma.period"), period);
-        field(panel, 2, Messages.get("overlay.ma.kind"), kind);
+        Forms.group(panel, 0, Messages.get("overlay.ma.average"));
+        Forms.field(panel, 1, Messages.get("overlay.ma.period"), period);
+        Forms.field(panel, 2, Messages.get("overlay.ma.kind"), kind);
 
-        group(panel, 3, Messages.get("overlay.ma.shift"));
-        field(panel, 4, Messages.get("overlay.ma.period"), shift);
+        Forms.group(panel, 3, Messages.get("overlay.ma.shift"));
+        Forms.field(panel, 4, Messages.get("overlay.ma.period"), shift);
 
         return panel;
     }
 
     private JComponent appearance() {
-        JPanel panel = form();
+        JPanel panel = Forms.form();
 
-        group(panel, 0, Messages.get("overlay.ma.line"));
-        field(panel, 1, Messages.get("overlay.ma.style"), line);
-        field(panel, 2, Messages.get("overlay.ma.colour"), colour);
-        field(panel, 3, Messages.get("overlay.ma.thickness"), thickness);
+        Forms.group(panel, 0, Messages.get("overlay.ma.line"));
+        Forms.field(panel, 1, Messages.get("overlay.ma.style"), line);
+        Forms.field(panel, 2, Messages.get("overlay.ma.colour"), colour);
+        Forms.field(panel, 3, Messages.get("overlay.ma.thickness"), thickness);
 
-        group(panel, 4, Messages.get("overlay.ma.sample"));
+        Forms.group(panel, 4, Messages.get("overlay.ma.sample"));
 
         GridBagConstraints at = new GridBagConstraints();
 
@@ -216,9 +228,9 @@ public final class MovingAverageDialog extends JDialog {
      * would mean two vocabularies for one idea in one application.</p>
      */
     private JComponent period() {
-        JPanel panel = form();
+        JPanel panel = Forms.form();
 
-        group(panel, 0, Messages.get("overlay.tab.period"));
+        Forms.group(panel, 0, Messages.get("overlay.tab.period"));
 
         GridBagConstraints across = new GridBagConstraints();
 
@@ -238,9 +250,9 @@ public final class MovingAverageDialog extends JDialog {
         interpolate.setSelected(average.isInterpolated());
         refreshPeriod();
 
-        field(panel, 2, Messages.get("overlay.ma.scale"), periodButton);
+        Forms.field(panel, 2, Messages.get("overlay.ma.scale"), periodButton);
 
-        group(panel, 3, Messages.get("overlay.ma.painting"));
+        Forms.group(panel, 3, Messages.get("overlay.ma.painting"));
 
         GridBagConstraints last = new GridBagConstraints();
 
@@ -277,72 +289,27 @@ public final class MovingAverageDialog extends JDialog {
     }
 
     private JComponent values() {
-        JPanel panel = form();
+        JPanel panel = Forms.form();
 
-        group(panel, 0, Messages.get("overlay.ma.values"));
-        field(panel, 1, Messages.get("overlay.ma.source"), source);
-
-        return panel;
-    }
-
-    // ------------------------------------------------------------ the pieces
-
-    private static JPanel form() {
-        JPanel panel = new JPanel(new GridBagLayout());
-
-        panel.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+        Forms.group(panel, 0, Messages.get("overlay.ma.values"));
+        Forms.field(panel, 1, Messages.get("overlay.ma.source"), source);
 
         return panel;
     }
 
-    /** A heading with a rule after it, as the reference product draws a group. */
-    private static void group(JPanel panel, int row, String text) {
-        GridBagConstraints at = new GridBagConstraints();
-
-        at.gridx = 0;
-        at.gridy = row;
-        at.gridwidth = 2;
-        at.weightx = 1;
-        at.anchor = GridBagConstraints.WEST;
-        at.fill = GridBagConstraints.HORIZONTAL;
-        at.insets = new Insets(row == 0 ? 0 : 14, 0, 4, 0);
-
-        JLabel label = new JLabel(text);
-
-        label.setFont(label.getFont().deriveFont(Font.BOLD));
-        label.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0,
-                javax.swing.UIManager.getColor("Separator.foreground")));
-
-        panel.add(label, at);
+    /** @return the colour the sample should draw with right now */
+    private Color inkNow() {
+        return chosen == null ? average.colours().get(0) : chosen;
     }
 
-    private static void field(JPanel panel, int row, String text, JComponent editor) {
-        GridBagConstraints label = new GridBagConstraints();
+    /** @return the dash pattern chosen right now */
+    private MovingAverage.Line lineNow() {
+        return (MovingAverage.Line) line.getSelectedItem();
+    }
 
-        label.gridx = 0;
-        label.gridy = row;
-        label.anchor = GridBagConstraints.EAST;
-        label.insets = new Insets(3, 12, 3, 8);
-
-        panel.add(new JLabel(text), label);
-
-        GridBagConstraints at = new GridBagConstraints();
-
-        at.gridx = 1;
-        at.gridy = row;
-        at.weightx = 1;
-        at.anchor = GridBagConstraints.WEST;
-        at.insets = new Insets(3, 0, 3, 0);
-
-        // Never shorter than a text field would be. A component measured before
-        // it has any content reports a height of almost nothing, and freezing
-        // that is how a control ends up as a sliver -- which is exactly what
-        // happened to the period button.
-        int floor = new javax.swing.JTextField("X").getPreferredSize().height;
-
-        editor.setPreferredSize(new Dimension(150,
-                Math.max(editor.getPreferredSize().height, floor)));
-        panel.add(editor, at);
+    /** @return the thickness chosen right now */
+    private int widthNow() {
+        return (Integer) thickness.getValue();
     }
 
     private JComponent buttons() {
@@ -395,7 +362,7 @@ public final class MovingAverageDialog extends JDialog {
         colour.setText(chosen == null
                 ? Messages.get("overlay.ma.automatic")
                 : Messages.get("overlay.ma.chosen"));
-        colour.setIcon(new Swatch(chosen == null ? average.colours().get(0) : chosen));
+        colour.setIcon(new Forms.Swatch(chosen == null ? average.colours().get(0) : chosen));
         colour.setHorizontalAlignment(javax.swing.SwingConstants.LEFT);
     }
 
@@ -404,123 +371,6 @@ public final class MovingAverageDialog extends JDialog {
             combo.addActionListener(e -> sample.repaint());
         } else if (editor instanceof JSpinner spinner) {
             spinner.addChangeListener(e -> sample.repaint());
-        }
-    }
-
-    private javax.swing.ListCellRenderer<Object> named(String prefix) {
-        return new javax.swing.DefaultListCellRenderer() {
-
-            private static final long serialVersionUID = 1L;
-
-            @Override
-            public Component getListCellRendererComponent(javax.swing.JList<?> list, Object value,
-                    int index, boolean selected, boolean focused) {
-                super.getListCellRendererComponent(list, value, index, selected, focused);
-
-                if (value instanceof Enum<?> item) {
-                    setText(Messages.get(prefix + item.name()));
-                }
-
-                return this;
-            }
-        };
-    }
-
-    /** The style list shows the styles themselves; a word for a dash is a riddle. */
-    private final class LineRenderer extends javax.swing.DefaultListCellRenderer {
-
-        private static final long serialVersionUID = 1L;
-
-        private transient MovingAverage.Line drawing = MovingAverage.Line.SOLID;
-
-        @Override
-        public Component getListCellRendererComponent(javax.swing.JList<?> list, Object value,
-                int index, boolean selected, boolean focused) {
-            super.getListCellRendererComponent(list, value, index, selected, focused);
-
-            if (value instanceof MovingAverage.Line item) {
-                drawing = item;
-            }
-
-            setText(" ");
-            setPreferredSize(new Dimension(120, 18));
-
-            return this;
-        }
-
-        @Override
-        protected void paintComponent(Graphics graphics) {
-            super.paintComponent(graphics);
-
-            Graphics2D g = (Graphics2D) graphics.create();
-
-            try {
-                g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                        RenderingHints.VALUE_ANTIALIAS_ON);
-                g.setColor(getForeground());
-                g.setStroke(drawing.stroke(1.4f));
-                g.drawLine(8, getHeight() / 2, getWidth() - 8, getHeight() / 2);
-            } finally {
-                g.dispose();
-            }
-        }
-    }
-
-    /** A square of the colour, beside its name. */
-    private static final class Swatch implements javax.swing.Icon {
-
-        private final Color colour;
-
-        Swatch(Color colour) {
-            this.colour = colour;
-        }
-
-        @Override
-        public void paintIcon(Component on, Graphics g, int x, int y) {
-            g.setColor(colour);
-            g.fillRect(x, y + 1, 12, 12);
-            g.setColor(javax.swing.UIManager.getColor("Component.borderColor"));
-            g.drawRect(x, y + 1, 12, 12);
-        }
-
-        @Override
-        public int getIconWidth() {
-            return 14;
-        }
-
-        @Override
-        public int getIconHeight() {
-            return 14;
-        }
-    }
-
-    /** The line as the chart will draw it, using the chart's own stroke. */
-    private final class Sample extends JComponent {
-
-        private static final long serialVersionUID = 1L;
-
-        @Override
-        public Dimension getPreferredSize() {
-            return new Dimension(200, 26);
-        }
-
-        @Override
-        protected void paintComponent(Graphics graphics) {
-            Graphics2D g = (Graphics2D) graphics.create();
-
-            try {
-                g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                        RenderingHints.VALUE_ANTIALIAS_ON);
-                g.setColor(chosen == null ? average.colours().get(0) : chosen);
-
-                MovingAverage.Line drawn = (MovingAverage.Line) line.getSelectedItem();
-
-                g.setStroke((drawn == null ? MovingAverage.Line.SOLID : drawn)
-                        .stroke((Integer) thickness.getValue()));
-                g.drawLine(4, getHeight() / 2, getWidth() - 4, getHeight() / 2);
-            } finally {
-                g.dispose();
-            }
         }
     }
 
