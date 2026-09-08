@@ -496,6 +496,54 @@ class TickLibraryTest {
     }
 
     @Test
+    @DisplayName("uma biblioteca fechada nao volta a segurar uma sessao nem a avisar")
+    void aclosedLibraryNeitherHoldsNorAnnounces(@org.junit.jupiter.api.io.TempDir
+            java.nio.file.Path folder) throws IOException {
+        // `shutdownNow` interrupts and does not wait. A task that had already
+        // come out of source.read and was entering keep() put a whole session
+        // into the map AFTER forget() had cleared it: the library reported
+        // itself closed and was holding 113 MB, and the reader who had stopped
+        // the replay had no way to know.
+        //
+        // The same task then told the watcher, and the watcher on the other end
+        // of that -- a ReplaySession, through invokeLater -- touches its
+        // `preparing` flag, announces, and moves the transport on screen. A
+        // session already over could be woken up and redraw itself.
+        //
+        // THE RACE IS ARRANGED, not waited for. The two calls below are exactly
+        // what the loader's thread does after it comes out of the read, and the
+        // defect is that it can do them after close() has run. Making that
+        // happen on purpose is the only way to ask the question without a
+        // stopwatch, and it does not reproduce reliably otherwise -- which is
+        // the worst kind.
+        java.time.LocalDate day = java.time.LocalDate.of(2021, 1, 4);
+
+        session(folder, day, 100_000);
+
+        TickLibrary library = new TickLibrary(folder, "winfut", TickSource.METATRADER);
+        java.util.concurrent.atomic.AtomicInteger told =
+                new java.util.concurrent.atomic.AtomicInteger();
+
+        library.onLoaded(told::incrementAndGet);
+
+        TickSeries read = TickSource.METATRADER.read(library.fileFor(day));
+
+        library.close();
+
+        assertFalse(library.keep(day, read),
+                "a closed library took a session in: it says it let go and is holding "
+                        + "a whole day of ticks, and nothing can tell");
+        assertEquals(0, library.residentCount(),
+                "the session went into the map of a library that had been closed");
+
+        library.announce();
+
+        assertEquals(0, told.get(),
+                "a closed library woke its watcher: on the other end of that is a replay "
+                        + "session that is already over, touching the screen");
+    }
+
+    @Test
     @DisplayName("uma varredura que falha PELO MEIO guarda o que ja tinha achado")
     void aFailedScanKeepsWhatItFound(@org.junit.jupiter.api.io.TempDir
             java.nio.file.Path folder) throws IOException {

@@ -195,7 +195,16 @@ public final class TickLibrary implements AutoCloseable {
         }
     }
 
-    /** @return the dates in memory, oldest use first */
+    /**
+     * @return the dates in memory, in no order worth relying on
+     *
+     * <p>This used to promise "oldest use first", and nothing here records use:
+     * {@code keep} drops what is furthest in DAYS from the focus, and says why
+     * -- a replay walking forwards touches yesterday, today and tomorrow in an
+     * order that would make least-recently-used throw away tomorrow just before
+     * reaching it. A caller that trusted the old sentence would have been
+     * reasoning about a policy this class deliberately does not have.</p>
+     */
     public List<LocalDate> residentDays() {
         synchronized (resident) {
             return new ArrayList<>(resident.keySet());
@@ -222,10 +231,33 @@ public final class TickLibrary implements AutoCloseable {
      */
     @Override
     public void close() {
+        // MARKED FIRST, and this is the whole of the fix. shutdownNow interrupts
+        // but does not wait: a task that had already come out of source.read and
+        // was entering keep() would put a whole session into the map AFTER
+        // forget() had cleared it. The library then reported itself closed and
+        // was holding 113 MB, and the reader who had stopped the replay had no
+        // way to know.
+        //
+        // The same task then ran whenLoaded, and the watcher on the other end of
+        // that -- a ReplaySession, through invokeLater -- touches `preparing`,
+        // announces, and moves the transport on screen. A session already over
+        // could be woken up and redraw itself.
+        //
+        // It does not reproduce reliably, which is the worst kind.
+        closed = true;
+
         loader.shutdownNow();
 
         forget();
     }
+
+    /**
+     * Whether {@link #close} has been called.
+     *
+     * <p>Volatile because the loader's thread reads it and the closer writes it,
+     * and the whole point is that the two are racing.</p>
+     */
+    private volatile boolean closed;
 
     /**
      * @return whether this one has been closed
@@ -236,7 +268,11 @@ public final class TickLibrary implements AutoCloseable {
      * ticks.</p>
      */
     public boolean isClosed() {
-        return loader.isShutdown();
+        // The FIELD, not the executor. Asking the executor answered "closed"
+        // from the instant shutdownNow returned, while a task still in flight
+        // could go on to fill the map -- so "closed" and "holding a session"
+        // were true at the same time and nothing could tell.
+        return closed || loader.isShutdown();
     }
 
     private void queue(LocalDate day) {
@@ -246,15 +282,14 @@ public final class TickLibrary implements AutoCloseable {
 
         loader.execute(() -> {
             try {
-                if (has(day)) {
-                    keep(day, source.read(fileFor(day)));
-                    whenLoaded.run();
+                if (has(day) && keep(day, source.read(fileFor(day)))) {
+                    announce();
                 }
             } catch (IOException e) {
                 // A session that will not read is not a reason to stop the
                 // replay: the path falls back to synthetic ticks for that day,
                 // which is exactly what happens for every day with no export.
-                whenLoaded.run();
+                announce();
             } finally {
                 loading.remove(day);
             }
@@ -269,8 +304,15 @@ public final class TickLibrary implements AutoCloseable {
      * touches yesterday, today and tomorrow in an order that would make it
      * throw away tomorrow just before reaching it.</p>
      */
-    private void keep(LocalDate day, TickSeries session) {
+    boolean keep(LocalDate day, TickSeries session) {
         synchronized (resident) {
+            if (closed) {
+                // Read while this was being closed. Putting it in now would
+                // leave a closed library holding a whole session, which is the
+                // one thing close() exists to prevent.
+                return false;
+            }
+
             resident.put(day, session);
 
             while (resident.size() > RESIDENT) {
@@ -289,6 +331,24 @@ public final class TickLibrary implements AutoCloseable {
 
                 resident.remove(furthest);
             }
+        }
+
+        return true;
+    }
+
+    /**
+     * Tells the watcher, unless this was closed while the session was being read.
+     *
+     * <p>Package-visible, with {@code keep}, so the race can be ARRANGED. The
+     * two of them are what the loader's thread does after it comes out of the
+     * read, and the whole defect is that it can come out of the read after
+     * {@code close} has already run -- which no test can make happen on
+     * purpose. Calling them in that order is the same question, answered
+     * without a stopwatch.</p>
+     */
+    void announce() {
+        if (!closed) {
+            whenLoaded.run();
         }
     }
 
