@@ -188,8 +188,18 @@ class SettingsTest {
         assertEquals(original, Files.readString(file, StandardCharsets.UTF_8),
                 "a file that would not read was overwritten with what little "
                         + "could be salvaged");
-        assertEquals("true", settings.get("_unsaved", null),
-                "the session did not stick and nothing recorded that");
+
+        // AND IT STAYS REFUSED. The refusal used to leave a "_unsaved=true" key
+        // in the map, and nothing in the program ever read it -- while nothing
+        // ever removed it either, so one transient failure kept it in the
+        // reader's file for ever, saying something that had stopped being true.
+        // The key is gone; what has to hold is that the file on disk is still
+        // the reader's, however many times the program tries to write.
+        settings.put("language", "en");
+        settings.remove("theme");
+
+        assertEquals(original, Files.readString(file, StandardCharsets.UTF_8),
+                "a later write got through to a file that would not read");
     }
 
     /** A backslash-u with two hex digits, which is one Properties refuses. */
@@ -201,4 +211,83 @@ class SettingsTest {
      * and comments -- and refuses this file before it ever runs.</p>
      */
     private static final String BROKEN = ((char) 92) + "u00zz";
+
+    @Test
+    @DisplayName("um lote grava o arquivo UMA vez, e nao uma por chave")
+    void abatchWritesTheFileOnce(@TempDir Path folder) throws Exception {
+        // Every put rewrites the whole file, and the callers that write many
+        // keys at a time are not unusual: storing the segments of one series is
+        // three writes per segment plus one, remembering the open charts is two
+        // per chart plus one, and moving a floating window is four in a row. All
+        // of it on the interface thread, which is the thread that may not do
+        // file work.
+        //
+        // COUNTED, because the modification time cannot answer this: ten writes
+        // in a row move it exactly as far as one does. The first draft of this
+        // test asked the clock, and it passed with the batching taken back out --
+        // which is what the teeth proof is for.
+        Path file = folder.resolve("lote.properties");
+        Settings settings = at(file);
+
+        settings.put("a", "1");
+
+        int before = settings.writes();
+
+        settings.hold(() -> {
+            for (int i = 0; i < 10; i++) {
+                settings.put("k" + i, String.valueOf(i));
+            }
+        });
+
+        assertEquals("9", settings.get("k9", null), "the batch did not reach the file");
+        assertEquals(before + 1, settings.writes(),
+                "ten keys cost " + (settings.writes() - before) + " whole rewrites of "
+                        + "the file, on the interface thread");
+
+        // A batch that changes nothing writes nothing.
+        int settled = settings.writes();
+
+        settings.hold(() -> { });
+
+        assertEquals(settled, settings.writes(), "an empty batch rewrote the file");
+
+        // And a batch inside a batch does not end the outer one early.
+        settings.hold(() -> {
+            settings.put("outer", "1");
+            settings.hold(() -> settings.put("inner", "2"));
+            settings.put("after", "3");
+        });
+
+        assertEquals(settled + 1, settings.writes(),
+                "a nested batch wrote in the middle of the one around it");
+        assertEquals("3", settings.get("after", null), "the nested batch lost a key");
+    }
+
+    @Test
+    @DisplayName("gravar duas vezes sem mudar nada da o MESMO arquivo, byte a byte")
+    void writingTwiceGivesTheSameBytes(@TempDir Path folder) throws Exception {
+        // The keys are sorted so that a change is one line in a diff -- the
+        // javadoc of save says exactly that -- and line two was the clock at the
+        // moment of writing, so EVERY write produced a diff. The launcher writes
+        // on every start even when nothing changed, so the file moved every day
+        // with no preference having moved at all.
+        //
+        // It was also a local time with no zone: ambiguous in the hour that
+        // repeats at the end of summer time, in a program that treats zones as a
+        // serious subject.
+        Path file = folder.resolve("carimbo.properties");
+        Settings settings = at(file);
+
+        settings.put("theme", "dark");
+
+        String first = Files.readString(file, StandardCharsets.UTF_8);
+
+        Thread.sleep(1_100L);
+
+        settings.put("theme", "dark");
+
+        assertEquals(first, Files.readString(file, StandardCharsets.UTF_8),
+                "writing the same settings a second later gave a different file: every "
+                        + "save is a diff, which is what the sorting exists to prevent");
+    }
 }

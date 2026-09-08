@@ -29,7 +29,6 @@ import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -312,8 +311,14 @@ public final class Settings {
         if (unreadable) {
             // Refusing to save is the safe side of the trade. The reader keeps
             // whatever is on disk, which is more than they would keep if this
-            // wrote over it, and _unsaved says the session did not stick.
-            values.putIfAbsent("_unsaved", "true");
+            // wrote over it.
+            return;
+        }
+
+        if (holding > 0) {
+            // Inside a batch. One write at the end of it instead of one per key
+            // -- see hold().
+            wanted = true;
 
             return;
         }
@@ -322,15 +327,29 @@ public final class Settings {
 
         Collections.sort(keys);
 
+        // WRITTEN BESIDE IT AND MOVED OVER, never truncated in place. This
+        // opened the real file with TRUNCATE and wrote it line by line, and it
+        // is called on EVERY change on purpose -- so the window in which the
+        // file on disk is half a file was as wide as the number of writes, and a
+        // machine that stops in the middle of one leaves a cut file. A cut file
+        // is what the two failures above this method are about.
+        Path working = file.resolveSibling(file.getFileName() + ".parcial");
+
         try {
             Files.createDirectories(file.getParent());
 
-            try (BufferedWriter out = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
+            try (BufferedWriter out = Files.newBufferedWriter(working, StandardCharsets.UTF_8)) {
                 out.write("# " + banner);
                 out.newLine();
-                out.write("# " + LocalDateTime.now());
-                out.newLine();
 
+                // NO TIMESTAMP. The sorting exists so that a change is one line
+                // in a diff -- the javadoc above says so -- and a clock on line
+                // two made EVERY write a diff. The launcher writes on every
+                // start even when nothing changed, so the file moved every day
+                // with no preference having moved at all. And it was a local
+                // time with no zone, ambiguous in the hour that repeats at the
+                // end of summer time, in a program that treats zones as a
+                // serious subject.
                 for (String key : keys) {
                     out.write(escape(key, true));
                     out.write('=');
@@ -338,11 +357,94 @@ public final class Settings {
                     out.newLine();
                 }
             }
+
+            move(working, file);
+
+            writes++;
         } catch (IOException e) {
-            // Nothing useful to do and nowhere useful to say it: the reader is
-            // mid-click, and a dialog about a settings file would interrupt the
-            // thing they were actually doing.
-            values.putIfAbsent("_unsaved", "true");
+            // SAID, once. This wrote "_unsaved=true" into the map and nothing
+            // ever read that key -- grep found the one line that writes it --
+            // and nothing ever removed it either, so one transient failure left
+            // it in the reader's file for ever, saying something that had
+            // stopped being true.
+            //
+            // A dialog would be wrong, and the old comment was right about that:
+            // the reader is mid-click and a box about a settings file would
+            // interrupt what they were actually doing. Silence is not the only
+            // other option -- there is a console in the main window, and
+            // standard output is captured into it.
+            //
+            // Once per session, because the failure that matters is the folder
+            // being gone or full, and that repeats on every keystroke.
+            if (!complained) {
+                complained = true;
+
+                System.err.println(file + ": the settings could not be written (" + e + ")");
+            }
+        }
+    }
+
+    /** Whether the failure to write has already been reported this session. */
+    private transient boolean complained;
+
+    /** How many times the file has actually been written. */
+    private transient int writes;
+
+    /**
+     * @return how many times this has written the file
+     *
+     * <p>For the test that says a batch writes ONCE. The modification time
+     * cannot answer it -- ten writes in a row move it exactly as far as one
+     * does -- and "how many times the file was written" is the whole property.</p>
+     */
+    int writes() {
+        return writes;
+    }
+
+    /** How many batches are open; see {@link #hold}. */
+    private transient int holding;
+
+    /** Whether anything asked to be saved while a batch was open. */
+    private transient boolean wanted;
+
+    /**
+     * Runs that, writing the file ONCE at the end instead of once per key.
+     *
+     * <p>There was no batch, and the callers that write many keys at a time are
+     * not unusual: storing the segments of one series is three writes per
+     * segment plus one, remembering the open charts is two per chart plus one,
+     * and moving a floating window is four in a row. All of that on the
+     * interface thread, which is the thread that may not do file work.</p>
+     *
+     * <p>Nested holds are counted, so a caller inside another caller's batch
+     * does not end it early. Nothing is written if nothing asked to be.</p>
+     */
+    public void hold(Runnable work) {
+        holding++;
+
+        try {
+            work.run();
+        } finally {
+            holding--;
+
+            if (holding == 0 && wanted) {
+                wanted = false;
+
+                save();
+            }
+        }
+    }
+
+    /** @param from the file just written; @param to where it belongs */
+    private static void move(Path from, Path to) throws IOException {
+        try {
+            Files.move(from, to, java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+        } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+            // Some network volumes refuse the atomic form. The replace is still
+            // one operation as far as this program is concerned, and it is
+            // better than writing over the file in place.
+            Files.move(from, to, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
         }
     }
 

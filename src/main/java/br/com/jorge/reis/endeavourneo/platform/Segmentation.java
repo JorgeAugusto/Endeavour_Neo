@@ -129,22 +129,30 @@ public final class Segmentation {
         }
     }
 
-    /** Replaces the segments of that series. */
+    /**
+     * Replaces the segments of that series.
+     *
+     * <p>In ONE write. Every {@code put} rewrites the whole settings file, so
+     * this was three writes per segment plus one for the removal -- on the
+     * interface thread, because the caller is a dialog.</p>
+     */
     public static void set(String series, List<Segment> segments) {
         Settings workspace = store();
 
-        workspace.removeStartingWith(PREFIX + series + ".");
+        workspace.hold(() -> {
+            workspace.removeStartingWith(PREFIX + series + ".");
 
-        for (int at = 0; at < segments.size(); at++) {
-            Segment each = segments.get(at);
+            for (int at = 0; at < segments.size(); at++) {
+                Segment each = segments.get(at);
 
-            workspace.put(keyOf(series, at, "name"), each.name());
-            workspace.put(keyOf(series, at, "from"), each.from().toString());
+                workspace.put(keyOf(series, at, "name"), each.name());
+                workspace.put(keyOf(series, at, "from"), each.from().toString());
 
-            if (each.to() != null) {
-                workspace.put(keyOf(series, at, "to"), each.to().toString());
+                if (each.to() != null) {
+                    workspace.put(keyOf(series, at, "to"), each.to().toString());
+                }
             }
-        }
+        });
     }
 
     /**

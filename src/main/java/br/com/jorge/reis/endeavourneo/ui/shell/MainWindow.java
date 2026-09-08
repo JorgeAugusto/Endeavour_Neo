@@ -287,16 +287,22 @@ public final class MainWindow extends JFrame {
 
         Settings workspace = Settings.workspace();
 
-        workspace.removeStartingWith("chart.open.");
+        // ONE WRITE. Every put rewrites the whole settings file, so this was two
+        // writes per open chart plus one -- on the interface thread, from a
+        // window listener, on every open and every close.
+        workspace.hold(() -> {
+            workspace.removeStartingWith("chart.open.");
 
-        int at = 0;
+            int at = 0;
 
-        for (java.util.Map.Entry<String, ChartHolder> each : charts.entrySet()) {
-            workspace.put("chart.open." + at + ".series", seriesOf(each.getKey()));
-            workspace.put("chart.open." + at + ".period", each.getValue().canvas().periodCode());
+            for (java.util.Map.Entry<String, ChartHolder> each : charts.entrySet()) {
+                workspace.put("chart.open." + at + ".series", seriesOf(each.getKey()));
+                workspace.put("chart.open." + at + ".period",
+                        each.getValue().canvas().periodCode());
 
-            at++;
-        }
+                at++;
+            }
+        });
     }
 
     /** @return the series a chart title came from, with any "(2)" taken off */
