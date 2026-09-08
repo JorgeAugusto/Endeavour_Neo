@@ -523,8 +523,13 @@ Duas coisas que a tarde ensinou:
 | **B3-9** | A busca pela fonte dos tijolos entrega a biblioteca que abriu | `2dda6b0` |
 | **B3-3** | O indicador é perguntado uma vez por barra, não uma vez por linha | `1a33950` |
 | **B5-2, B5-3** | O método morto do OwnScale sai, e o valor para de ser embrulhado por linha | `132eac5` |
+| **B5-8, B5-10** | A regra do preço da barra passa a existir uma vez só | `a3fb3eb` |
+| **B5-9** | Fechar um painel espera o gesto acabar, como reordenar já esperava | `088711a` |
+| **B5-4** | O recálculo de todos os estudos sai da thread da interface | `a417c42` |
+| **B6-8** | A janela do replay passa a ser medida em pregões | `67fc626` |
+| **B6-4, B6-5** | A segunda varredura de disco sai, e o calendário volta a ser aquecido | `f5083f8` |
 
-**72 MÉDIA fechadas.** Suíte em **629**. As áreas **B1**, **B2**, **B3**, **B7a**
+**80 MÉDIA fechadas.** Suíte em **636**. As áreas **B1**, **B2**, **B3**, **B4**, **B5**, **B6**, **B7a**
 estão fechadas. **B4-11** já estava fechada pela correção de B5-5 — o
 `study.setVisible(entry.visible())` do `ChartLayout.Pane.build()`.
 
@@ -539,7 +544,7 @@ qualquer correção individual — e vale mais ainda contra quem a escreveu.
 - **B6-9 sem teste, dito de propósito.** Exercitar aquele caminho exige soltar o
   painel DURANTE os quatro segundos da construção da sessão, o que é dirigir um
   `SwingWorker` pelo meio — um teste sobre o escalonador, não sobre isto.
-- **As 49 MÉDIA e 107 BAIXA restantes** da auditoria II, e as **93 MÉDIA e 115
+- **As 19 MÉDIA e 90 BAIXA restantes** da auditoria II, e as **93 MÉDIA e 115
   BAIXA** da auditoria I que a decisão D5 mandou para cá.
 
 ### Mais duas lições da fase 4
@@ -595,3 +600,24 @@ E mais uma prova de dentes verde, a quinta: em `MovingAverage.at()`, quebrar o
 `valueAt` delega a `at`, e as duas se moveram juntas. A quebra que vale é
 reimplementar `valueAt` por fora e errar só o `at()`. **Uma prova verde é uma
 pergunta sobre a quebra, não sobre o teste.**
+
+### Duas decisões de escopo desta fase
+
+**B6-4: o cache de `available()` foi implementado e descartado.** Ele repousa
+em "o disco só muda pelo catálogo", e a suíte mostrou que ninguém garante isso
+— os próprios testes escrevem fixtures direto. Uma memória ali estaria certa
+até silenciosamente não estar. Ficou a metade que não faz a aposta: a segunda
+varredura saiu.
+
+**B6-5: o reaquecimento não mora no `ReplayFeed`.** Uma thread própria dentro
+de uma classe utilitária é global ao processo, e vazou entre classes de teste
+— uma promessa feita num teste continuava valendo nos seguintes. Foi para o
+`Launcher`, onde o `warm()` já era submetido e onde um job aparece no rodapé.
+**Fica sem teste, dito de propósito**, pela mesma razão do B6-9.
+
+### E a sexta prova de dentes verde
+
+No B5-8, comparar o CENTRO da banda com a média passou verde na quebra: o
+centro vem de uma `MovingAverage` própria e nunca passou pelo `switch`
+duplicado. Quem passava era a LARGURA. **Uma prova verde é uma pergunta sobre
+a quebra, não sobre o teste** — é a segunda vez esta noite.
