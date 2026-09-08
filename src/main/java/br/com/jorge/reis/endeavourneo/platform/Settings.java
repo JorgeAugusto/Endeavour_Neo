@@ -87,7 +87,17 @@ public final class Settings {
     private static final Settings WORKSPACE = new Settings("workspace.properties",
             "Endeavour Neo -- what the application was doing. Delete this to reset the layout.");
 
-    private final Path file;
+    /**
+     * Where this one is written.
+     *
+     * <p>Not final, so {@link #useForTest} can move BOTH instances somewhere
+     * temporary. Swapping the instances instead would not have worked: seven
+     * classes hold {@code static final Settings PREFS = Settings.settings()},
+     * so a new instance would reach none of them -- a guard that looks armed
+     * and is not, which is the exact trap the note on {@link #HOME} already
+     * records this file falling into once.</p>
+     */
+    private Path file;
 
     private final String banner;
 
@@ -125,6 +135,40 @@ public final class Settings {
      */
     public static Settings at(Path file, String banner) {
         return new Settings(file, banner);
+    }
+
+    /**
+     * Points both files at a folder of the test's own.
+     *
+     * <p>The two instances are MOVED rather than replaced, because seven classes
+     * hold on to them in {@code static final} fields; a replacement would leave
+     * every one of those still writing the reader's real files.</p>
+     *
+     * <p>What this is for: {@code Language.remember()} writes through {@link
+     * #settings}, and the property that redirects the home directory is set in
+     * one place only -- the surefire plugin. Run the suite the way the house
+     * documents it, with javac and a runner, and that property is absent and
+     * the test writes the reader's actual settings. The seam existed on the
+     * constructor and could not reach the two instances everything uses.</p>
+     *
+     * @param folder somewhere temporary
+     */
+    static void useForTest(Path folder) {
+        SETTINGS.moveTo(folder.resolve("settings.properties"));
+        WORKSPACE.moveTo(folder.resolve("workspace.properties"));
+    }
+
+    /** Puts both files back under the home directory. */
+    static void stopUsingTestStore() {
+        SETTINGS.moveTo(HOME.resolve("settings.properties"));
+        WORKSPACE.moveTo(HOME.resolve("workspace.properties"));
+    }
+
+    private void moveTo(Path other) {
+        this.file = other;
+
+        values.clear();
+        load();
     }
 
     /** @return the reader's choices: theme, chart and replay options */

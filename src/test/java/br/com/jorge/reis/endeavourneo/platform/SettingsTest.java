@@ -328,4 +328,35 @@ class SettingsTest {
                 + "theme=dark" + System.lineSeparator()
                 + "# format 9" + System.lineSeparator()));
     }
+    @Test
+    @DisplayName("a costura alcanca a instancia que os outros ja guardaram")
+    void theSeamReachesTheInstanceEverybodyKept(@org.junit.jupiter.api.io.TempDir
+            java.nio.file.Path store) throws java.io.IOException {
+        // The seam existed on the CONSTRUCTOR and could not reach the two
+        // instances everything uses -- the note on Settings.HOME records that
+        // and calls it "the guard was built and never armed". Seven classes hold
+        // `static final Settings PREFS = Settings.settings()`, so handing out a
+        // new instance would have armed nothing: every one of them would still
+        // be writing the reader's real file.
+        //
+        // So the instance is MOVED, and what this asserts is exactly that: the
+        // reference taken BEFORE the redirection writes to the new place.
+        Settings kept = Settings.settings();
+
+        Settings.useForTest(store);
+
+        try {
+            kept.put("teste.da.costura", "vai para a pasta temporaria");
+
+            assertTrue(java.nio.file.Files.exists(store.resolve("settings.properties")),
+                    "the reference taken before the redirection is still writing "
+                            + "somewhere else, which is the reader's own file");
+            assertTrue(java.nio.file.Files.readString(store.resolve("settings.properties"))
+                            .contains("teste.da.costura"),
+                    "the file was created and the value did not go into it");
+        } finally {
+            kept.remove("teste.da.costura");
+            Settings.stopUsingTestStore();
+        }
+    }
 }

@@ -20,6 +20,7 @@ package br.com.jorge.reis.endeavourneo.platform;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
+import java.nio.file.Path;
 import java.util.Locale;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -47,7 +48,29 @@ class LanguageTest {
      * moved changes the language of the application on the machine that ran the
      * suite, which is not a thing a test is allowed to do.</p>
      */
-    private final Language chosen = Language.remembered();
+    private Language chosen;
+
+    /**
+     * A settings file of this test's own, and it used to be the reader's.
+     *
+     * <p>{@code Language.remember()} writes through {@code Settings.settings()},
+     * whose home is redirected by a property set in ONE place: the surefire
+     * plugin. The house documents running the suite with javac and a runner
+     * instead, and on that path the property is absent and this test rewrote the
+     * actual settings file of whoever ran it. Putting it back afterwards only
+     * works while every test passes -- and the javadoc of the field below
+     * already said, before this was fixed, that it "is not a thing a test is
+     * allowed to do".</p>
+     */
+    @org.junit.jupiter.api.io.TempDir
+    Path store;
+
+    @org.junit.jupiter.api.BeforeEach
+    void useAStoreOfOurOwn() {
+        Settings.useForTest(store);
+
+        chosen = Language.remembered();
+    }
 
     @AfterEach
     void restore() {
@@ -55,6 +78,8 @@ class LanguageTest {
 
         Locale.setDefault(machine);
         Messages.setLocale(machine);
+
+        Settings.stopUsingTestStore();
     }
 
     @Test
