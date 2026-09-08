@@ -760,8 +760,43 @@ concluir.
 A5-8..12, A5-14, A6-8, A6-9, A6-10, A6-12, A6-16, A6-18, A6-19, A7a-6, A7a-7,
 A7a-8, A7a-10..12, A7b-15, L1-6.
 
-**O que falta.** MÉDIA: A7a-15..18, A7b-9..23, A8a-8..12, A8b-7..15, L1-3, L1-4,
-L1-5, L1-7, L3-3..8, L3-11, L4-1..10. E as **67 BAIXA**.
+| **A6-13, A5-13** | a sessão que falha diz por quê; a volta do estocástico | `e4b433d` |
+| **A6-15, A7a-13, A7a-9, A7a-14, A6-17** | a alça, o cache e o `user.home` | `2378434` |
+| **A7a-17, A7a-15** | uma linha apagada custa um segmento; a costura de configurações | `aeb7203` |
+| **A7b-13, A7b-12, A7b-11** | olhar deixa de gravar; o Cancelar fica na barra | `47d6c5f` |
+| **A7b-17, A7b-16, A7b-14, A7b-18** | data invertida; os diálogos são descartados | `0b14b2a` |
+| **A7b-20, A8a-8, A7b-22, A7b-23** | a árvore sai da EDT; o recorte nos cinco acessores | `c83bfc4` |
+| **A8a-9, A8a-10, A8a-11** | três testes que não afirmavam o que prometiam | `019f609` |
+| **A8b-7, A8b-8, A8b-9, A8b-10** | quatro que ficavam verdes com o produto mutado | `f32a3f9` |
+| **A8b-11, A8b-14** | a legenda dobrada e o tempo da régua | `3b198e5` |
+| **L1-7, L1-3, L1-4** | o retorno do job sai do cadeado; o calendário sai do bin | `f7a7b8e` |
+| **L3-3, L3-4, L3-11, L3-7** | a chave do gráfico; o layout padrão sobrevive ao idioma | `c03a142` |
+| **L4-9, L4-4, L4-8, L4-6, L4-7, L4-10** | a disposição vai para o arquivo; 32 linhas mortas | `51f1bed` |
+
+**As 130 MÉDIA da auditoria I estão FECHADAS.** Suíte em **698**.
+
+### O que a fase 6 ensinou
+
+**A prova de dentes verde apareceu duas vezes mais**, e as duas por fixture: em
+A7a-13 o teste reescrevia a base pela própria fixture, que aponta o catálogo
+para a pasta e **esvazia o cache que o teste pergunta sobre**; em A7b-14 a
+guarda de A7b-13 fazia o teste passar sem exercitar nada, e a pergunta teve de
+mudar de lugar — da chave gravada para a chave em memória.
+
+**Uma correção minha criou uma regressão, e a prova de dentes a achou.** A7b-13
+passou a gravar só o que foi editado, e o `add` do ramo em que a série não lê
+dependia da gravação incondicional do fechamento.
+
+**Duas correções minhas foram pegas pelas guardas da casa.** O
+`OrphanJavadocTest` acusou duas vezes um bloco novo inserido entre um javadoc e
+a assinatura que ele documenta — porque o script ancorou na assinatura.
+
+**Metade de um achado foi refutada e a correção ficou.** Em L1-4 os exemplos do
+relatório são todos conferidos dentro de `TickFile.read` e saem como
+`IOException`: não existe arquivo que alcance o ramo. A rede fica porque a
+classe de falha já custou caro uma vez, e o `TapeFile` registra isso.
+
+**O que falta:** as **67 BAIXA** da auditoria I.
 
 ### A sexta prova de dentes verde
 
