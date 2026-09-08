@@ -443,10 +443,15 @@ public final class Renko implements Aggregation {
                             : from);
         }
 
-        List<double[]> bricks = new ArrayList<>();
-        List<Long> stamps = new ArrayList<>();
-        List<Boolean> untraded = new ArrayList<>();
-        List<Long> counts = new ArrayList<>();
+        // PRIMITIVE ARRAYS, and these used to be four parallel Lists. Every
+        // brick cost a double[5], a boxed Long for its stamp, another for its
+        // count and a Boolean -- in the loop that the note on steps() already
+        // records as the one that froze the interface once. With the ceiling in
+        // place it can still lay a hundred thousand of them for a single bar.
+        //
+        // And the copy at the end went too: assemble used to walk the four
+        // lists into eight arrays, so every brick was written twice.
+        Laid bricks = new Laid(Math.max(16, source.size()));
 
         // The level the last brick closed at. It starts at the first bar's OPEN,
         // which is the one price in a bar that never moves.
@@ -572,34 +577,34 @@ public final class Renko implements Aggregation {
                     int count = upSteps - skip;
                     int at = bricks.size();
 
-                    anchor = laydown(bricks, stamps, untraded, counts,
+                    anchor = laydown(bricks,
                             anchor + skip * brick, count, +1, source.timeAt(i));
                     direction = +1;
                     made += count;
 
-                    settle(bricks, stamps, untraded, counts, at, tally);
+                    settle(bricks, at, tally);
 
                     if (wicks) {
                         // Only the FIRST of a batch wears a tail: how far price
                         // went the other way before breaking. The overshoot past
                         // the last brick is not drawn -- the brick ends at its
                         // own extreme.
-                        bricks.get(at)[2] = Math.min(bricks.get(at)[2], sinceLow);
+                        bricks.lows[at] = Math.min(bricks.lows[at], sinceLow);
                     }
                 } else if (downSteps >= downNeeded) {
                     int skip = downNeeded - 1;
                     int count = downSteps - skip;
                     int at = bricks.size();
 
-                    anchor = laydown(bricks, stamps, untraded, counts,
+                    anchor = laydown(bricks,
                             anchor - skip * brick, count, -1, source.timeAt(i));
                     direction = -1;
                     made += count;
 
-                    settle(bricks, stamps, untraded, counts, at, tally);
+                    settle(bricks, at, tally);
 
                     if (wicks) {
-                        bricks.get(at)[1] = Math.max(bricks.get(at)[1], sinceHigh);
+                        bricks.highs[at] = Math.max(bricks.highs[at], sinceHigh);
                     }
                 }
 
@@ -633,22 +638,19 @@ public final class Renko implements Aggregation {
             // "price is exactly on the level" looks like. Nothing is lost by
             // drawing it, and a bar that never comes and goes is worth more than
             // one that is always meaningful.
-            bricks.add(new double[]{anchor, top, bottom, now, pending});
-            stamps.add(source.timeAt(source.size() - 1));
+            bricks.add(anchor, top, bottom, now, pending,
+                    source.timeAt(source.size() - 1));
 
-            // Never a gap: the forming brick is where the price IS.
-            untraded.add(Boolean.FALSE);
-
-            // And never a count: it is not one band yet -- it runs from the
-            // anchor to wherever price has got to, which can be most of a
-            // brick's worth of levels.
-            counts.add(Counted.UNKNOWN);
+            // Never a gap, and never a count: the forming brick is where the
+            // price IS, and it is not one band yet -- it runs from the anchor
+            // to wherever price has got to, which can be most of a brick's
+            // worth of levels. Both are what add() writes by default.
         }
 
         // The carry is taken from the state, not from the bricks: the forming
         // brick appended just above is provisional and must not become the
         // starting point of the next stretch.
-        return new Continued(assemble(bricks, stamps, untraded, counts, anyVolume),
+        return new Continued(bricks.series(anyVolume),
                 new Carry(anchor, direction, sinceLow, sinceHigh, pending, tally));
     }
 
@@ -659,8 +661,7 @@ public final class Renko implements Aggregation {
      * three bricks, which is exactly what makes the chart show the size of a
      * move as a length rather than as a number to read off an axis.</p>
      */
-    private double laydown(List<double[]> bricks, List<Long> stamps,
-                           List<Boolean> untraded, List<Long> counts,
+    private double laydown(Laid bricks,
                            double anchor, int count, int step, long time) {
         double level = anchor;
 
@@ -668,10 +669,7 @@ public final class Renko implements Aggregation {
             double open = level;
             double close = level + step * brick;
 
-            bricks.add(new double[]{open, Math.max(open, close), Math.min(open, close), close, 0.0});
-            stamps.add(time);
-            untraded.add(Boolean.FALSE);
-            counts.add(Counted.UNKNOWN);
+            bricks.add(open, Math.max(open, close), Math.min(open, close), close, 0.0, time);
 
             level = close;
         }
@@ -705,9 +703,7 @@ public final class Renko implements Aggregation {
      * <p>The reference product answers the same question and shows it as a
      * count: the brick it draws grey reads <i>Contratos Neg: 0,00</i>.</p>
      */
-    private void settle(List<double[]> bricks, List<Long> stamps,
-                        List<Boolean> untraded, List<Long> counts, int at,
-                        TradeTally tally) {
+    private void settle(Laid bricks, int at, TradeTally tally) {
         // THE FIRST BRICK OF A BATCH TAKES EVERYTHING; the rest take nothing.
         // A batch is one price move: the first brick is the one that was being
         // built, and the others were passed through in the same instant and
@@ -715,11 +711,11 @@ public final class Renko implements Aggregation {
         long trades = tally.trades();
 
         if (!tally.summarised() && trades > 0) {
-            counts.set(at, trades);
-            stamps.set(at, tally.first());
+            bricks.trades[at] = trades;
+            bricks.times[at] = tally.first();
         }
 
-        bricks.get(at)[4] = tally.volume();
+        bricks.volumes[at] = tally.volume();
 
         for (int b = at; b < bricks.size(); b++) {
             if (tally.summarised()) {
@@ -731,40 +727,113 @@ public final class Renko implements Aggregation {
 
             long mine = b == at ? trades : 0L;
 
-            counts.set(b, mine);
-            untraded.set(b, mine == 0);
+            bricks.trades[b] = mine;
+            bricks.gaps[b] = mine == 0;
         }
 
         tally.clear();
     }
 
-    private static PriceSeries assemble(List<double[]> bricks, List<Long> stamps,
-                                        List<Boolean> untraded, List<Long> counts,
-                                        boolean anyVolume) {
-        int size = bricks.size();
+    /**
+     * The bricks being laid, in the arrays a series is made of.
+     *
+     * <p><b>Written once each.</b> This used to be four parallel {@code List}s
+     * -- of {@code double[5]}, of boxed {@code Long}, of {@code Boolean} -- and
+     * then a pass that copied all four into the eight arrays a series wants. So
+     * every brick was allocated, boxed and then copied, inside the loop the note
+     * on {@code steps()} already records as the one that froze the interface;
+     * with the ceiling in place it can still lay a hundred thousand of them for
+     * one bar.</p>
+     *
+     * <p>The fields are read and written directly by the two methods above,
+     * which is why they are not behind accessors: this is one accumulator with
+     * two writers in the same class, not a type with an interface.</p>
+     */
+    private static final class Laid {
 
-        long[] times = new long[size];
-        double[] opens = new double[size];
-        double[] highs = new double[size];
-        double[] lows = new double[size];
-        double[] closes = new double[size];
-        double[] volumes = new double[size];
-        boolean[] gaps = new boolean[size];
-        long[] trades = new long[size];
+        private long[] times;
 
-        for (int i = 0; i < size; i++) {
-            double[] one = bricks.get(i);
+        private double[] opens;
 
-            times[i] = stamps.get(i);
-            gaps[i] = untraded.get(i);
-            trades[i] = counts.get(i);
-            opens[i] = one[0];
-            highs[i] = one[1];
-            lows[i] = one[2];
-            closes[i] = one[3];
-            volumes[i] = anyVolume ? one[4] : Double.NaN;
+        private double[] highs;
+
+        private double[] lows;
+
+        private double[] closes;
+
+        private double[] volumes;
+
+        private boolean[] gaps;
+
+        private long[] trades;
+
+        private int size;
+
+        Laid(int room) {
+            times = new long[room];
+            opens = new double[room];
+            highs = new double[room];
+            lows = new double[room];
+            closes = new double[room];
+            volumes = new double[room];
+            gaps = new boolean[room];
+            trades = new long[room];
         }
 
-        return new ArraySeries(times, opens, highs, lows, closes, volumes, gaps, trades);
+        int size() {
+            return size;
+        }
+
+        void add(double open, double high, double low, double close,
+                 double volume, long time) {
+            if (size == times.length) {
+                grow();
+            }
+
+            times[size] = time;
+            opens[size] = open;
+            highs[size] = high;
+            lows[size] = low;
+            closes[size] = close;
+            volumes[size] = volume;
+            gaps[size] = false;
+            trades[size] = Counted.UNKNOWN;
+
+            size++;
+        }
+
+        private void grow() {
+            int room = times.length * 2;
+
+            times = java.util.Arrays.copyOf(times, room);
+            opens = java.util.Arrays.copyOf(opens, room);
+            highs = java.util.Arrays.copyOf(highs, room);
+            lows = java.util.Arrays.copyOf(lows, room);
+            closes = java.util.Arrays.copyOf(closes, room);
+            volumes = java.util.Arrays.copyOf(volumes, room);
+            gaps = java.util.Arrays.copyOf(gaps, room);
+            trades = java.util.Arrays.copyOf(trades, room);
+        }
+
+        /**
+         * @param anyVolume whether any volume was seen at all
+         * @return the bricks as a series, trimmed to what was laid
+         */
+        PriceSeries series(boolean anyVolume) {
+            double[] volume = new double[size];
+
+            for (int i = 0; i < size; i++) {
+                volume[i] = anyVolume ? volumes[i] : Double.NaN;
+            }
+
+            return new ArraySeries(java.util.Arrays.copyOf(times, size),
+                    java.util.Arrays.copyOf(opens, size),
+                    java.util.Arrays.copyOf(highs, size),
+                    java.util.Arrays.copyOf(lows, size),
+                    java.util.Arrays.copyOf(closes, size),
+                    volume,
+                    java.util.Arrays.copyOf(gaps, size),
+                    java.util.Arrays.copyOf(trades, size));
+        }
     }
 }
