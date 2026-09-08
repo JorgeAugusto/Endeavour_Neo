@@ -277,4 +277,31 @@ class MarketFileTest {
             }
         };
     }
+/**
+     * The scale in the header is the scale that was asked for.
+     *
+     * <p>The two halves existed and never met: one test read {@code minutesOf}
+     * off a file this test wrote BY HAND, and the round trip that writes through
+     * the product passed 1 — the same number a header that ignored its argument
+     * would carry. Writing 1 and reading 1 says nothing.</p>
+     *
+     * <p>It is the number that says which scale a saved base belongs to, and
+     * both programs read this file: a five-minute base declaring one minute is
+     * re-aggregated wrongly on the next load, and nothing about the bars would
+     * look wrong while it happened.</p>
+     */
+    @Test
+    @DisplayName("a escala gravada no cabecalho e a que foi pedida, e nao sempre um minuto")
+    void thescaleInTheHeaderIsTheOneAskedFor(@TempDir Path folder) throws IOException {
+        Path file = folder.resolve("win-5m.bin");
+
+        MarketFile.write(file, breaksAt(3, 3), 5);
+
+        assertEquals(5, MarketFile.minutesOf(file),
+                "the header carries a scale nobody asked for");
+
+        // And the bars are still there, or the assertion above is satisfied by a
+        // header written over an empty file.
+        assertEquals(3, MarketFile.read(file).size());
+    }
 }

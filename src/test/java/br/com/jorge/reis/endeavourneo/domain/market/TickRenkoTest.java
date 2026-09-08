@@ -219,6 +219,23 @@ class TickRenkoTest {
                     List.of(LocalDate.of(2021, 1, 4), LocalDate.of(2021, 1, 5),
                             LocalDate.of(2021, 1, 6)));
 
+            // THE COUNT FIRST. Without it this method had no assertion at
+            // all in the case it exists for: restarting the ruler each
+            // session reduces this fixture to ONE brick, the loop below
+            // then runs zero times, and the test passes green on the very
+            // defect its name is about.
+            assertEquals(3, withGap.size(),
+                    "the one-trade session started the ruler over: " + withGap.size()
+                            + " bricks instead of three");
+
+            // And the price where the sessions meet, which is what "the
+            // ruler carried across" means: the brick after the near-empty
+            // day opens where the one before it closed, at 110, and not at
+            // that day's own price.
+            assertEquals(110.0, withGap.openAt(1), 1e-9,
+                    "the brick after the empty session does not continue from where "
+                            + "the one before it stopped");
+
             for (int i = 1; i < withGap.size(); i++) {
                 assertEquals(withGap.closeAt(i - 1), withGap.openAt(i), 1e-9,
                         "brick " + i + " does not start where the one before it closed");

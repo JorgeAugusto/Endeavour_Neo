@@ -19,6 +19,7 @@ package br.com.jorge.reis.endeavourneo.domain.market;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -563,5 +564,45 @@ class TimeframeTest {
         bar(LocalDateTime.of(2026, 9, 7, 9, 0),   200, 200, 200, 200, 1);
 
         assertEquals(2, Timeframe.THIRTY_MINUTES.apply(series(), SAO_PAULO).size());
+    }
+/**
+     * One minute, folded for real: the path the replay's ticks take.
+     *
+     * <p>{@code apply} short-circuits at one minute and hands the series
+     * straight back, and one test says so — which is why nothing in the suite
+     * ever called {@code fold}. But {@code fold} is public precisely for the
+     * case {@code apply} refuses to touch, and its javadoc says why: a series of
+     * TICKS is not a series of minute bars. It is how a recorded session becomes
+     * candles in the replay, and any mistake inside it that only shows at one
+     * minute — returning the source there too, for instance — went unnoticed.</p>
+     */
+    @Test
+    @DisplayName("um minuto dobrado de verdade agrupa negocios do mesmo minuto")
+    void foldAtOneMinuteReallyFolds() {
+        bar(LocalDateTime.of(2026, 9, 2, 9, 0, 3), 100, 104, 99, 103, 10);
+        bar(LocalDateTime.of(2026, 9, 2, 9, 0, 47), 103, 108, 102, 105, 20);
+        bar(LocalDateTime.of(2026, 9, 2, 9, 1, 2), 105, 106, 95, 101, 30);
+
+        PriceSeries source = series();
+        PriceSeries minutes = Timeframe.ONE_MINUTE.fold(source, SAO_PAULO);
+
+        assertNotSame(source, minutes, "fold handed the ticks back untouched");
+
+        assertEquals(2, minutes.size(), "three trades over two minutes became three bars");
+
+        // The first minute, built out of the two trades inside it: the open of
+        // the first, the close of the last, and the extremes of both.
+        assertEquals(100.0, minutes.openAt(0), 1e-9);
+        assertEquals(108.0, minutes.highAt(0), 1e-9);
+        assertEquals(99.0, minutes.lowAt(0), 1e-9);
+        assertEquals(105.0, minutes.closeAt(0), 1e-9);
+        assertEquals(30.0, minutes.volumeAt(0), 1e-9, "the volumes of the minute were not added");
+
+        // Stamped at the minute it covers, not at the first trade inside it.
+        assertEquals(LocalDateTime.of(2026, 9, 2, 9, 0).atZone(SAO_PAULO)
+                .toInstant().toEpochMilli(), minutes.timeAt(0),
+                "the bar carries the instant of the trade that opened it");
+
+        assertEquals(101.0, minutes.closeAt(1), 1e-9);
     }
 }
