@@ -31,7 +31,32 @@ import java.util.List;
  * checking would mean reading every bar of every part on construction — the one
  * thing this class exists to avoid.</p>
  */
-public final class ConcatSeries implements PriceSeries {
+public final class ConcatSeries implements PriceSeries, Untraded, Counted {
+
+    /**
+     * <p><b>Carried, not dropped.</b> {@code Untraded} and {@code Counted}
+     * decide by {@code instanceof}, and a wrapper that declares only {@code
+     * PriceSeries} answers "no bar was untraded" and "the number of trades is
+     * unknown" for a renko it is holding -- in silence, with no exception
+     * anywhere.</p>
+     *
+     * <p>Not reachable today, because the pipeline is source, then slice, then
+     * scale, and the renko is always the last step. That is a trap held shut by
+     * the ORDER of three calls rather than by the types.</p>
+     */
+    @Override
+    public boolean untradedAt(int index) {
+        int part = partOf(index);
+
+        return Untraded.at(parts[part], index - starts[part]);
+    }
+
+    @Override
+    public long tradesAt(int index) {
+        int part = partOf(index);
+
+        return Counted.at(parts[part], index - starts[part]);
+    }
 
     private final PriceSeries[] parts;
 

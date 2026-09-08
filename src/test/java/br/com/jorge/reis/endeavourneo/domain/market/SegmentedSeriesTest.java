@@ -181,4 +181,45 @@ class SegmentedSeriesTest {
                 LocalDate.of(2021, 8, 30), LocalDate.of(2024, 12, 31)).label());
         assertEquals("Prova 2025–", Segment.from("Prova", LocalDate.of(2025, 1, 1)).label());
     }
+    @Test
+    @DisplayName("o recorte e a juncao carregam o tijolo cinza e a contagem")
+    void thewrappersCarryUntradedAndCounted() {
+        // Untraded and Counted decide by instanceof, and a wrapper that declares
+        // only PriceSeries answers "no bar was untraded" and "the number of
+        // trades is unknown" for a renko it is holding -- in silence, with no
+        // exception anywhere.
+        //
+        // Not reachable through today's pipeline, which is source, then slice,
+        // then scale, with the renko always last. That is a trap held shut by
+        // the ORDER of three calls rather than by the types, and the order is
+        // not written down anywhere.
+        PriceSeries marked = new ArraySeries(
+                new long[]{0, 60_000, 120_000, 180_000},
+                new double[]{1, 2, 3, 4}, new double[]{1, 2, 3, 4},
+                new double[]{1, 2, 3, 4}, new double[]{1, 2, 3, 4},
+                null,
+                new boolean[]{false, true, false, true},
+                new long[]{7, 0, 9, 0});
+
+        // Midnight of 01/01/1970 in the zone this test uses, which is where
+        // epoch-zero timestamps land.
+        java.time.LocalDate DAY_OF_THE_FIXTURE =
+                java.time.Instant.ofEpochMilli(0).atZone(ZONE).toLocalDate();
+
+        PriceSeries joined = ConcatSeries.of(java.util.List.of(marked, marked));
+
+        assertTrue(Untraded.at(joined, 1), "the join lost which bricks were grey");
+        assertEquals(0L, Counted.at(joined, 1), "the join lost the trade count");
+        assertTrue(Untraded.at(joined, 5), "the second part lost it too");
+        assertEquals(9L, Counted.at(joined, 6), "the second part lost its count");
+
+        // And the slice, which is the other wrapper. The bars are one a minute
+        // from midnight, so a segment of that single day holds all four.
+        PriceSeries sliced = SegmentedSeries.of(marked,
+                new Segment("Estudo", DAY_OF_THE_FIXTURE, DAY_OF_THE_FIXTURE), ZONE);
+
+        assertEquals(4, sliced.size(), "the fixture did not slice, so this proves nothing");
+        assertTrue(Untraded.at(sliced, 1), "the slice lost which bricks were grey");
+        assertEquals(9L, Counted.at(sliced, 2), "the slice lost the trade count");
+    }
 }

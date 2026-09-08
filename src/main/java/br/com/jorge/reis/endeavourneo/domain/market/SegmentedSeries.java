@@ -36,7 +36,28 @@ import java.time.ZoneId;
  * that import added.</b> Make it again after loading, which is what the window
  * does anyway.</p>
  */
-public final class SegmentedSeries implements PriceSeries {
+public final class SegmentedSeries implements PriceSeries, Untraded, Counted {
+
+    /**
+     * <p><b>Carried, not dropped.</b> {@code Untraded} and {@code Counted}
+     * decide by {@code instanceof}, and a wrapper that declares only {@code
+     * PriceSeries} answers "no bar was untraded" and "the number of trades is
+     * unknown" for a renko it is holding -- in silence, with no exception
+     * anywhere.</p>
+     *
+     * <p>Not reachable today, because the pipeline is source, then slice, then
+     * scale, and the renko is always the last step. That is a trap held shut by
+     * the ORDER of three calls rather than by the types.</p>
+     */
+    @Override
+    public boolean untradedAt(int index) {
+        return Untraded.at(base, first + index);
+    }
+
+    @Override
+    public long tradesAt(int index) {
+        return Counted.at(base, first + index);
+    }
 
     private final PriceSeries base;
 
