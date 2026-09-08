@@ -64,35 +64,18 @@ public final class OwnScale {
         return choice == null ? null : choice.aggregation();
     }
 
-    /**
-     * @param fine the chart's own bars
-     * @param coarse the same bars folded to the larger scale
-     * @param bar an index into {@code fine}
-     * @return the index in {@code coarse} of the last bar that had CLOSED by
-     *         then, or -1 when none had
-     */
-    public static int indexOfClosed(PriceSeries fine, PriceSeries coarse, int bar) {
-        long when = fine.timeAt(bar);
-        int low = 0;
-        int high = coarse.size() - 1;
-        int found = -1;
-
-        // A coarse bar is closed once the NEXT one has begun. Binary search on
-        // that condition rather than a scan, because this is called per bar per
-        // indicator and the chart repaints while the mouse moves.
-        while (low <= high) {
-            int middle = (low + high) >>> 1;
-
-            if (middle + 1 < coarse.size() && coarse.timeAt(middle + 1) <= when) {
-                found = middle;
-                low = middle + 1;
-            } else {
-                high = middle - 1;
-            }
-        }
-
-        return found;
-    }
+    // indexOfClosed WAS HERE, and it is gone. A public binary search for "which
+    // coarse bar had closed at this instant", with no caller in the product and
+    // none in the tests -- and its own comment claimed a use it did not have:
+    // "this is called per bar per indicator and the chart repaints while the
+    // mouse moves". Thirty lines below, smooth said the opposite about the same
+    // method, in the same file.
+    //
+    // It mattered more here than dead code usually does. The javadoc of this
+    // class says it is "the one place this rule is written", the rule being
+    // that an indicator on a larger scale must not read a bar that has not
+    // closed. A second place where the rule is written is a second chance to
+    // write it wrong, and this one had no test to catch that.
 
     /**
      * Spreads a value computed per coarse bar across the chart's bars.
@@ -135,9 +118,9 @@ public final class OwnScale {
      */
     public static void smooth(PriceSeries fine, PriceSeries coarse, double[] slow, double[] into) {
         // A RUNNING POINTER, the way map does it, and not a binary search per
-        // bar. indexOfClosed is the right answer to "which bar was closed at
-        // this instant" asked once; asked once per bar it walks the coarse
-        // series 825.000 times over. Measured: recalculating an average on its
+        // bar. A search is the right answer to "which bar was closed at this
+        // instant" asked once; asked once per bar it walks the coarse series
+        // 825.000 times over. Measured: recalculating an average on its
         // own scale took 183 ms, on the interface thread, once per indicator in
         // the panel. Both series are chronological, so the answer only ever
         // moves forward.

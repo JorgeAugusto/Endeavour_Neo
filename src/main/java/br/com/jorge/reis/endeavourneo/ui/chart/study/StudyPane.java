@@ -822,32 +822,42 @@ public final class StudyPane extends JComponent {
         for (Overlay study : showing()) {
             List<Color> colours = study.colours();
             List<java.awt.Stroke> strokes = study.strokes();
+            int lines = colours.size();
 
-            for (int line = 0; line < colours.size(); line++) {
-                g.setColor(colours.get(line));
-                g.setStroke(line < strokes.size() ? strokes.get(line) : study.stroke());
+            // ONE valueAt PER BAR, and it used to be one per bar PER LINE: the
+            // bar loop sat inside the line loop, and every implementation of
+            // valueAt builds its answer. A stochastic draws two lines, so this
+            // was two arrays per visible bar on every repaint -- and a repaint
+            // happens on every movement of the mouse.
+            //
+            // The line's own continuity is what forced the old order, so the
+            // last point of each is now remembered side by side.
+            int[] lastX = new int[lines];
+            int[] lastY = new int[lines];
 
-                int lastX = Integer.MIN_VALUE;
-                int lastY = 0;
+            java.util.Arrays.fill(lastX, Integer.MIN_VALUE);
 
-                for (int bar = viewport.firstBar(); bar < viewport.lastBar(); bar++) {
-                    double[] values = study.valueAt(bar);
+            for (int bar = viewport.firstBar(); bar < viewport.lastBar(); bar++) {
+                double[] values = study.valueAt(bar);
+                int x = (int) Math.round(viewport.x(bar));
 
+                for (int line = 0; line < lines; line++) {
                     if (line >= values.length || Double.isNaN(values[line])) {
-                        lastX = Integer.MIN_VALUE;
+                        lastX[line] = Integer.MIN_VALUE;
 
                         continue;
                     }
 
-                    int x = (int) Math.round(viewport.x(bar));
                     int at = (int) Math.round(y(values[line], top, bottom, low, high));
 
-                    if (lastX != Integer.MIN_VALUE) {
-                        g.drawLine(lastX, lastY, x, at);
+                    if (lastX[line] != Integer.MIN_VALUE) {
+                        g.setColor(colours.get(line));
+                        g.setStroke(line < strokes.size() ? strokes.get(line) : study.stroke());
+                        g.drawLine(lastX[line], lastY[line], x, at);
                     }
 
-                    lastX = x;
-                    lastY = at;
+                    lastX[line] = x;
+                    lastY[line] = at;
                 }
             }
         }

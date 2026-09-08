@@ -247,4 +247,31 @@ class MovingAverageTest {
         assertNotEquals(null, ((java.awt.BasicStroke) thick.stroke()).getDashArray(),
                 "a dashed line with no dash array is a solid line");
     }
+    @Test
+    @DisplayName("at() gives what valueAt gives, shift and warm-up included")
+    void theUnwrappedAnswerIsTheSameAnswer() {
+        // BollingerBands reads the centre of every bar of the series on every
+        // recalculation, and through valueAt that was one double[1] per bar,
+        // dropped on the next line. at() exists to hand the number over
+        // directly -- so the only thing that can go wrong is the two answering
+        // differently, and the shift is where that would happen.
+        MovingAverage average = new MovingAverage(5);
+
+        average.setShift(3);
+        average.calculate(bars(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12));
+
+        for (int bar = -2; bar < 15; bar++) {
+            double wrapped = average.valueAt(bar)[0];
+            double bare = average.at(bar);
+
+            if (Double.isNaN(wrapped)) {
+                assertTrue(Double.isNaN(bare),
+                        "bar " + bar + ": valueAt says nothing and at() says something");
+
+                continue;
+            }
+
+            assertEquals(wrapped, bare, 0.0, "bar " + bar + ": the two disagree");
+        }
+    }
 }

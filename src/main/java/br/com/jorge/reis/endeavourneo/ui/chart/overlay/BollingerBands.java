@@ -429,7 +429,11 @@ public final class BollingerBands implements Overlay {
         int period = period();
 
         for (int i = 0; i < mid.length; i++) {
-            double centre = line.valueAt(i)[0];
+            // at() and not valueAt(): the second wraps the number in a new
+            // double[1] to hand it over, and this loop runs the whole series on
+            // every recalculation. The array was built and dropped on the next
+            // line, once per bar.
+            double centre = line.at(i);
 
             mid[i] = centre;
 

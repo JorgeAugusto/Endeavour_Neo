@@ -289,9 +289,23 @@ public final class MovingAverage implements Overlay {
 
     @Override
     public double[] valueAt(int bar) {
-        int at = bar - shift;
+        return new double[]{at(bar)};
+    }
 
-        return new double[]{at >= 0 && at < values.length ? values[at] : Double.NaN};
+    /**
+     * @param bar an index into the series this was calculated over
+     * @return the one value this line has there, unwrapped
+     *
+     * <p>The same answer {@link #valueAt} gives, without the array it has to
+     * build to give it. For the caller inside the package that reads a whole
+     * series of them: BollingerBands asks for the centre of every bar it has,
+     * and through valueAt that was one {@code double[1]} per bar per
+     * recalculation, thrown away on the next line.</p>
+     */
+    double at(int bar) {
+        int index = bar - shift;
+
+        return index >= 0 && index < values.length ? values[index] : Double.NaN;
     }
 
     @Override

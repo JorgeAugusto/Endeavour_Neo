@@ -23,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
 import br.com.jorge.reis.endeavourneo.domain.market.Timeframe;
 import br.com.jorge.reis.endeavourneo.ui.chart.ChartCanvas;
+import br.com.jorge.reis.endeavourneo.ui.chart.Overlay;
 import br.com.jorge.reis.endeavourneo.ui.chart.study.rsi.RelativeStrength;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -131,5 +132,125 @@ class StudyScaleTest {
 
         assertTrue(compared > 50,
                 "only " + compared + " bars were comparable: the fixture is too short");
+    }
+    @Test
+    @DisplayName("a bar is asked for the same number of times whatever the line count")
+    void theLineCountDoesNotMultiplyTheAsking() {
+        // Every implementation of valueAt builds its answer, and the drawing
+        // loop used to walk the bars INSIDE the lines -- so a stochastic, which
+        // draws two, built two arrays per visible bar on every repaint, and a
+        // repaint happens on every movement of the mouse.
+        //
+        // Asserted as a comparison rather than against a number: the pane also
+        // asks legitimately in two other places -- the scale it fits to, and
+        // the reading under the cursor -- and how many bars it shows depends on
+        // its size. What must not happen is the count growing with the LINES.
+        int one = mostPerBar(1);
+        int four = mostPerBar(4);
+
+        assertTrue(one > 0, "the study was never drawn, so this proves nothing");
+        assertEquals(one, four,
+                "a four-line study is asked " + four + " times for the same bar where a "
+                        + "one-line study is asked " + one + ": the line count is doing "
+                        + "the multiplying");
+    }
+
+    /** How often the busiest bar was asked for, painting a study of that many lines. */
+    private static int mostPerBar(int lines) {
+        java.util.List<Integer> asked = new java.util.ArrayList<>();
+
+        ChartCanvas canvas = new ChartCanvas();
+
+        canvas.setSeries(minutes(200));
+
+        StudyPane pane = new StudyPane(canvas, ofLines(lines, asked), () -> { });
+
+        pane.setSize(400, 120);
+        pane.setFont(new java.awt.Font(java.awt.Font.SANS_SERIF, java.awt.Font.PLAIN, 11));
+
+        java.awt.image.BufferedImage image = new java.awt.image.BufferedImage(
+                400, 120, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+
+        java.awt.Graphics2D g = image.createGraphics();
+
+        try {
+            pane.paint(g);
+        } finally {
+            g.dispose();
+        }
+
+        java.util.Map<Integer, Integer> times = new java.util.HashMap<>();
+
+        for (int bar : asked) {
+            times.merge(bar, 1, Integer::sum);
+        }
+
+        int most = 0;
+
+        for (int count : times.values()) {
+            most = Math.max(most, count);
+        }
+
+        return most;
+    }
+
+    /** A study of however many lines, recording which bars it is asked about. */
+    private static Overlay ofLines(int lines, java.util.List<Integer> asked) {
+        return new Overlay() {
+
+            @Override
+            public String nameKey() {
+                return "overlay.stoch";
+            }
+
+            @Override
+            public java.util.List<Integer> parameters() {
+                return java.util.List.of(14);
+            }
+
+            @Override
+            public java.util.List<java.awt.Color> colours() {
+                java.util.List<java.awt.Color> found = new java.util.ArrayList<>();
+
+                for (int line = 0; line < lines; line++) {
+                    found.add(new java.awt.Color(40 * line + 20, 90, 160));
+                }
+
+                return found;
+            }
+
+            @Override
+            public double[] valueAt(int bar) {
+                asked.add(bar);
+
+                double[] row = new double[lines];
+
+                for (int line = 0; line < lines; line++) {
+                    row[line] = 20 + (bar + 10 * line) % 60;
+                }
+
+                return row;
+            }
+
+            @Override
+            public void calculate(PriceSeries series) {
+                // Nothing: the values are fixed, and what is counted is the asking.
+            }
+
+            @Override
+            public boolean isVisible() {
+                return true;
+            }
+
+            @Override
+            public void setVisible(boolean visible) {
+                // Nothing: it is always drawn.
+            }
+
+            @Override
+            public boolean fitsOnPrice() {
+                return false;
+            }
+        };
     }
 }
