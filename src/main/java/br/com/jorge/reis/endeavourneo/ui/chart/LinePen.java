@@ -78,7 +78,17 @@ public final class LinePen {
 
         style.setRenderer(Forms.lineStyles());
         style.setSelectedItem(line);
-        thickness = new JSpinner(new SpinnerNumberModel(Math.round(width), 1, 8, 1));
+        // HELD TO THE RANGE FIRST. SpinnerNumberModel throws when the value
+        // it is given sits outside its own bounds -- so a stored width of nine,
+        // or of zero from a hand-edited file, took the whole dialog down instead
+        // of opening on the nearest legal thickness.
+        //
+        // And rounded, because the spinner steps in whole pixels: a stored 1,4
+        // opened on 1 and the reader could not get back to it. That is a real
+        // loss of a setting, and it is the reason the spinner should have been
+        // the one place the range is stated.
+        thickness = new JSpinner(new SpinnerNumberModel(
+                Math.max(1, Math.min(8, Math.round(width))), 1, 8, 1));
 
         paintSwatch();
 

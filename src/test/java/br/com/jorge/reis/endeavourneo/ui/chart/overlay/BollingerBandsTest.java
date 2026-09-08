@@ -18,6 +18,7 @@
 package br.com.jorge.reis.endeavourneo.ui.chart.overlay;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -409,5 +410,28 @@ class BollingerBandsTest {
                 return 101 + index * 3;
             }
         };
+    }
+    @Test
+    @DisplayName("a linha do meio e desenhada com o estilo e a espessura dela")
+    void themiddleIsDrawnWithItsOwnStyle() {
+        // The class carries middleLine and middleThickness, the dialog offers
+        // both, and neither reached the screen: only stroke() was ever asked,
+        // and that one answers for the BANDS. Two settings a reader could change
+        // with nothing changing.
+        BollingerBands bands = new BollingerBands(20);
+
+        bands.setLine(MovingAverage.Line.SOLID);
+        bands.setThickness(1);
+        bands.setMiddleLine(MovingAverage.Line.DASHED);
+        bands.setMiddleThickness(3);
+
+        java.util.List<java.awt.Stroke> strokes = bands.strokes();
+
+        assertEquals(3, strokes.size(),
+                "one stroke per line, or the list pairs the middle's with the lower band");
+        assertNotEquals(strokes.get(0), strokes.get(1),
+                "the middle is drawn with the bands' stroke, so its own settings do nothing");
+        assertEquals(strokes.get(0), strokes.get(2),
+                "the two bands stopped sharing a stroke");
     }
 }

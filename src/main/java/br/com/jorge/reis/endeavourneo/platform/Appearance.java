@@ -75,13 +75,13 @@ public final class Appearance {
             apply(theme.getLookAndFeelClass());
             tightenSpacing();
 
-            return "FlatLaf dark (" + theme.getLabel() + " palette missing)";
+            return Messages.get("appearance.flatDarkFallback", theme.getLabel());
         }
 
         if (apply(theme.getLookAndFeelClass())) {
             tightenSpacing();
 
-            return "FlatLaf " + theme.getLabel();
+            return Messages.get("appearance.flat", theme.getLabel());
         }
 
         return installWithoutFlatLaf();
@@ -91,10 +91,10 @@ public final class Appearance {
         // The system look and feel still beats Metal, which is Swing's default
         // and the reason for its reputation.
         if (apply(UIManager.getSystemLookAndFeelClassName())) {
-            return "system (FlatLaf absent)";
+            return Messages.get("appearance.system");
         }
 
-        return "Swing default";
+        return Messages.get("appearance.swing");
     }
 
     /**

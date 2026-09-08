@@ -335,6 +335,26 @@ public final class BollingerBands implements Overlay {
         return line.stroke(thickness);
     }
 
+    /**
+     * @return one stroke per line, in the order the values come in
+     *
+     * <p><b>The middle is drawn with its OWN style and thickness.</b> This class
+     * has {@code middleLine} and {@code middleThickness}, the dialog offers
+     * both, and neither reached the screen: only {@code stroke()} was asked, and
+     * that one answers for the bands. Two settings a reader could change with
+     * nothing changing.</p>
+     *
+     * <p>Three strokes and not two, even though the outer bands share one: the
+     * caller pairs this list with {@link #colours} by index, and a shorter list
+     * would pair the middle's stroke with the lower band.</p>
+     */
+    @Override
+    public java.util.List<Stroke> strokes() {
+        return java.util.List.of(line.stroke(thickness),
+                middleLine.stroke(middleThickness),
+                line.stroke(thickness));
+    }
+
     @Override
     public boolean isVisible() {
         return visible;
