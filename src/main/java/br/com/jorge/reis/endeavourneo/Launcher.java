@@ -130,7 +130,14 @@ public final class Launcher {
             }
         }
 
-        theme.remember();
+        if (theme != Theme.remembered()) {
+            // ONLY WHEN IT CHANGED. Without an argument this read the theme
+            // and wrote the same value straight back -- a full rewrite of
+            // settings.properties on every launch, for nothing. And it is the
+            // first write of the run, so it also decided the moment a
+            // half-written file would be noticed.
+            theme.remember();
+        }
 
         String installed = Appearance.install(theme);
 

@@ -47,7 +47,17 @@ public final class Messages {
 
     private static final String BASE = "messages";
 
-    private static ResourceBundle bundle = ResourceBundle.getBundle(BASE);
+    /**
+     * The bundle in force.
+     *
+     * <p>Volatile because it is REPLACED on the interface thread, by {@code
+     * Language.install}, and read from the pool -- the startup "sessions" job
+     * reads it, and so does anything that names a market while a background
+     * read is running. Without it a worker can go on answering from the bundle
+     * of the language before, for as long as its thread happens to hold the old
+     * reference.</p>
+     */
+    private static volatile ResourceBundle bundle = ResourceBundle.getBundle(BASE);
 
     private Messages() {
         throw new AssertionError("Utility class must not be instantiated");

@@ -488,4 +488,25 @@ class SeriesCatalogTest {
                 "a listener that threw took the ones after it down with it, or one was "
                         + "registered twice");
     }
+    @Test
+    @DisplayName("um nome patologico responde ilegivel em vez de derrubar a ordenacao")
+    void apathologicalNameIsUnreadableRatherThanFatal() {
+        // isScale accepts any number of digits and Long.parseLong does not -- and
+        // secondsOf is called from inside coarsestFirst, so the exception came
+        // out of the middle of a sort and took the whole tree with it. Minus one
+        // is what "unreadable" already means here.
+        assertEquals(-1, SeriesCatalog.secondsOf("99999999999999999999999m"),
+                "a name with twenty digits threw instead of answering unreadable");
+
+        // And zero is not a scale. It passed the guard and answered 0, which is
+        // what TICKS answers -- so a folder called win-0m sorted itself in among
+        // the ticks.
+        assertEquals(-1, SeriesCatalog.secondsOf("0m"),
+                "a scale of zero minutes was read as if it were ticks");
+
+        // The ordinary ones still answer, or the two above are satisfied by a
+        // method that refuses everything.
+        assertEquals(60, SeriesCatalog.secondsOf("1m"));
+        assertEquals(0, SeriesCatalog.secondsOf("ticks"));
+    }
 }

@@ -66,8 +66,11 @@ public final class Segmentation {
      * way to test this is to write into the file of whoever runs the suite and
      * hope the cleanup runs -- and a test that fails halfway leaves its
      * scaffolding in their settings.</p>
+     *
+     * <p>Volatile: a test points this somewhere temporary from its own thread
+     * and the tree reads it from the interface thread.</p>
      */
-    private static Settings store;
+    private static volatile Settings store;
 
     private Segmentation() {
         throw new AssertionError("Utility class must not be instantiated");

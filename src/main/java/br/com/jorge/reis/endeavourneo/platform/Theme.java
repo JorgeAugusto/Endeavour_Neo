@@ -53,12 +53,13 @@ public enum Theme {
     NIGHT("com.formdev.flatlaf.FlatDarkLaf", "themes", "night");
 
     /**
-     * The preferences node, ONE for the whole application.
+     * Where the chosen theme is kept: the settings file, like everything else.
      *
-     * <p>Calling {@code userNodeForPackage} from each class creates one node per
-     * package: what the menu in {@code ui} writes, the startup code in {@code
-     * app} never reads. That defect does not show up in tests and surfaces only
-     * as "the program does not remember what I chose".</p>
+     * <p>This paragraph used to explain why {@code userNodeForPackage} is not
+     * called from each class -- a mechanism this class stopped using when the
+     * settings moved to a file. The warning it carried is still true and now
+     * lives where it applies: see the note on "Why files and not
+     * java.util.prefs" in {@link Settings}.</p>
      */
     private static final Settings PREFS = Settings.settings();
 

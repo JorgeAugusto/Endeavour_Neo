@@ -290,6 +290,15 @@ public final class JobService implements AutoCloseable {
         }
 
         public void cancel() {
+            if (settled) {
+                // ALREADY FINISHED, so there is nothing to cancel and nothing to
+                // remember. Adding it here left the handle in the list for the
+                // life of the service: the settle path removes it, and that path
+                // had already run. A cancel arriving late is normal -- the
+                // reader presses the cross while the last write is finishing.
+                return;
+            }
+
             cancelled.add(this);
 
             if (future != null) {

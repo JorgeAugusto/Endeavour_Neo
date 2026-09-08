@@ -179,19 +179,18 @@ public record ReplayFeed(String instrument, String series, TickSource source) {
      * from {@link #warm}, which the launcher runs at startup.</p>
      */
     private static void followTheCatalog() {
-        if (following) {
-            // Once. warm() is called from the launcher, and from tests that
-            // call it again; registering per call would run forget() as many
-            // times as warm() was ever called.
-            return;
+        // ONE ATOMIC STEP. Read-then-write on a volatile is not atomic --
+        // volatile buys visibility, not exclusion -- so two threads arriving
+        // together both saw false and both registered, and every forget then
+        // ran twice. Once is what this method is for: warm() is called from
+        // the launcher AND from tests that call it again.
+        if (following.compareAndSet(false, true)) {
+            SeriesCatalog.whenForgotten(ReplayFeed::forget);
         }
-
-        following = true;
-
-        SeriesCatalog.whenForgotten(ReplayFeed::forget);
     }
 
-    private static volatile boolean following;
+    private static final java.util.concurrent.atomic.AtomicBoolean following =
+            new java.util.concurrent.atomic.AtomicBoolean();
 
     /**
      * Works out every feed's days, for the calendar to be instant later.

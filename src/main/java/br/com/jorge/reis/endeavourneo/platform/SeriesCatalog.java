@@ -523,7 +523,26 @@ public final class SeriesCatalog {
             return -1;
         }
 
-        long count = Long.parseLong(scale.substring(0, scale.length() - 1));
+        // CAUGHT, because isScale accepts any number of digits and parseLong
+        // does not. A file whose name carries twenty digits passed the guard
+        // and threw here -- and this is called from inside coarsestFirst, so
+        // the exception came out of the middle of a sort and took the whole
+        // tree with it. Unreadable is what the -1 already means.
+        long count;
+
+        try {
+            count = Long.parseLong(scale.substring(0, scale.length() - 1));
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+
+        if (count <= 0) {
+            // "0m" is not a scale. It passed the guard and answered 0, which
+            // is what TICKS answers -- so a folder called win-0m sorted itself
+            // in among the ticks.
+            return -1;
+        }
+
 
         return switch (scale.charAt(scale.length() - 1)) {
             case 's' -> count;
