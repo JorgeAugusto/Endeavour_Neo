@@ -397,6 +397,8 @@ public final class MainWindow extends JFrame {
             return;
         }
 
+        String title = titleOf(holder);
+
         holder.canvas().setHistoryBehind(total - loaded, () -> {
             int wanted = loaded + Math.max(1,
                     br.com.jorge.reis.endeavourneo.ui.chart.ChartPreferences.window());
@@ -410,6 +412,13 @@ public final class MainWindow extends JFrame {
 
                 @Override
                 protected void done() {
+                    if (charts.get(title) != holder) {
+                        // Closed while the history was being read. Growing it now
+                        // would also RE-ARM the paging callback on a canvas that
+                        // is no longer on screen, once per page, for ever.
+                        return;
+                    }
+
                     try {
                         PriceSeries longer = get();
 
@@ -471,17 +480,37 @@ public final class MainWindow extends JFrame {
 
         console.write(Messages.get("console.readingTicks", name));
 
+        String title = titleOf(holder);
+
         new javax.swing.SwingWorker<PriceSeries, Void>() {
 
             @Override
             protected PriceSeries doInBackground() {
-                return br.com.jorge.reis.endeavourneo.domain.market.FoldedTicks.all(
+                // ONLY THE DAYS ASKED FOR. This read every exported session and
+                // then threw away what fell outside the segment -- 691 MB of
+                // Profit tape folded to show a week of it. The candle path was
+                // corrected hours earlier for the same thing, and the tick path
+                // was written afterwards with the defect the other way round.
+                return br.com.jorge.reis.endeavourneo.domain.market.FoldedTicks.over(
                         SeriesCatalog.ticksOf(instrument), instrument, source,
+                        daysOf(instrument, source, segment),
                         br.com.jorge.reis.endeavourneo.domain.market.Timeframe.defaultZone());
             }
 
             @Override
             protected void done() {
+                if (charts.get(title) != holder) {
+                    // THE CHART IS GONE. Reading an export is seconds -- the
+                    // measurements are in the comment at the call site -- and a
+                    // window that is still empty looks like it did not work, so
+                    // closing it is exactly what a reader does in that time.
+                    //
+                    // Writing into it announced bars on the console for a window
+                    // that is not there, and held the folded series and the whole
+                    // canvas in memory until the worker was done with them.
+                    return;
+                }
+
                 try {
                     PriceSeries bars = get();
 
@@ -502,6 +531,55 @@ public final class MainWindow extends JFrame {
                 }
             }
         }.execute();
+    }
+
+    /**
+     * @return the sessions of that export the segment covers, in order
+     *
+     * <p>Everything when there is no segment: a chart of the whole export is
+     * still a chart of the whole export.</p>
+     *
+     * <p>Package-visible so the choosing can be tested without the four seconds
+     * of reading that follows it.</p>
+     */
+    static java.util.List<java.time.LocalDate> daysOf(String instrument,
+            br.com.jorge.reis.endeavourneo.domain.market.TickSource source,
+            br.com.jorge.reis.endeavourneo.domain.market.Segment segment) {
+        java.util.List<java.time.LocalDate> exported;
+
+        try (br.com.jorge.reis.endeavourneo.domain.market.TickLibrary library =
+                     new br.com.jorge.reis.endeavourneo.domain.market.TickLibrary(
+                             SeriesCatalog.ticksOf(instrument), instrument, source)) {
+            exported = library.exported();
+        }
+
+        if (segment == null) {
+            return exported;
+        }
+
+        java.util.List<java.time.LocalDate> wanted = new java.util.ArrayList<>();
+
+        for (java.time.LocalDate each : exported) {
+            boolean afterStart = !each.isBefore(segment.from());
+            boolean beforeEnd = segment.to() == null || !each.isAfter(segment.to());
+
+            if (afterStart && beforeEnd) {
+                wanted.add(each);
+            }
+        }
+
+        return wanted;
+    }
+
+    /** @return the title that chart is registered under, or null when it is not */
+    private String titleOf(ChartHolder holder) {
+        for (java.util.Map.Entry<String, ChartHolder> each : charts.entrySet()) {
+            if (each.getValue() == holder) {
+                return each.getKey();
+            }
+        }
+
+        return null;
     }
 
     /**

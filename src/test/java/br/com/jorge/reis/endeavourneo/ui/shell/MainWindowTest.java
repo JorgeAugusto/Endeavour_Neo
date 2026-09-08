@@ -454,4 +454,70 @@ class MainWindowTest {
             });
         }
     }
+
+    @Test
+    @DisplayName("um segmento de um export le SO os pregoes dele")
+    void asegmentOfAnExportReadsOnlyItsOwnSessions(
+            @org.junit.jupiter.api.io.TempDir java.nio.file.Path folder) throws Exception {
+        // FoldedTicks.all lists every exported session and folds every one of
+        // them, and only afterwards was the segment applied -- so asking for a
+        // week of the Profit tape read all 691 MB of it and threw away the rest.
+        // FoldedTicks.over takes the list of days and was sitting there unused.
+        //
+        // The irony is worth keeping: the candle path was corrected for exactly
+        // this hours earlier, and the tick path was written after that with the
+        // same defect the other way round.
+        SeriesCatalog.useFolderForTest(folder);
+
+        java.nio.file.Path ticks = SeriesCatalog.ticksOf("win");
+
+        for (int day = 1; day <= 5; day++) {
+            session(ticks, java.time.LocalDate.of(2026, 9, day));
+        }
+
+        try {
+            java.util.List<java.time.LocalDate> everything = MainWindow.daysOf("win",
+                    br.com.jorge.reis.endeavourneo.domain.market.TickSource.PROFIT, null);
+
+            assertEquals(5, everything.size(),
+                    "the fixture does not hold five sessions: " + everything);
+
+            br.com.jorge.reis.endeavourneo.domain.market.Segment week =
+                    new br.com.jorge.reis.endeavourneo.domain.market.Segment("meio",
+                            java.time.LocalDate.of(2026, 9, 2),
+                            java.time.LocalDate.of(2026, 9, 3));
+
+            assertEquals(java.util.List.of(java.time.LocalDate.of(2026, 9, 2),
+                            java.time.LocalDate.of(2026, 9, 3)),
+                    MainWindow.daysOf("win",
+                            br.com.jorge.reis.endeavourneo.domain.market.TickSource.PROFIT,
+                            week),
+                    "a segment of two sessions asked the disk for more than two");
+
+            // An open-ended segment runs to the end of what was exported.
+            br.com.jorge.reis.endeavourneo.domain.market.Segment onwards =
+                    br.com.jorge.reis.endeavourneo.domain.market.Segment.from("adiante",
+                            java.time.LocalDate.of(2026, 9, 4));
+
+            assertEquals(2, MainWindow.daysOf("win",
+                    br.com.jorge.reis.endeavourneo.domain.market.TickSource.PROFIT,
+                    onwards).size(), "an open-ended segment did not run to the end");
+        } finally {
+            SeriesCatalog.useFolderForTest(null);
+        }
+    }
+
+    /** One session of tape, enough to be listed. */
+    private static void session(java.nio.file.Path ticks, java.time.LocalDate day)
+            throws java.io.IOException {
+        try (br.com.jorge.reis.endeavourneo.domain.market.TapeFile.Writer writer =
+                     new br.com.jorge.reis.endeavourneo.domain.market.TapeFile.Writer(
+                             br.com.jorge.reis.endeavourneo.domain.market.TickSource.PROFIT
+                                     .fileFor(ticks, "win", day), day)) {
+
+            writer.broker(3, "XP");
+            writer.add(9 * 3_600_000, 200, 1, 3, 3,
+                    br.com.jorge.reis.endeavourneo.domain.market.Aggressor.BUYER);
+        }
+    }
 }
