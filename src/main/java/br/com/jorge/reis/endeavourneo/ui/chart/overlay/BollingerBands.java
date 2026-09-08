@@ -116,11 +116,11 @@ public final class BollingerBands implements Overlay {
 
     private Color fillColour;
 
-    private double[] upper = new double[0];
+    private volatile double[] upper = new double[0];
 
-    private double[] middle = new double[0];
+    private volatile double[] middle = new double[0];
 
-    private double[] lower = new double[0];
+    private volatile double[] lower = new double[0];
 
     private boolean visible = true;
 
@@ -347,29 +347,48 @@ public final class BollingerBands implements Overlay {
 
     @Override
     public double[] valueAt(int bar) {
-        if (bar < 0 || bar >= middle.length) {
+        // Read ONCE into locals. A background recalculation replaces these
+        // fields whole, and checking the length of one array while reading from
+        // another is how that swap would show: an index out of bounds, on the
+        // painting thread, at a moment nobody can reproduce.
+        double[] nowUpper = upper;
+        double[] nowMiddle = middle;
+        double[] nowLower = lower;
+
+        if (bar < 0 || bar >= nowMiddle.length
+                || bar >= nowUpper.length || bar >= nowLower.length) {
             return new double[]{Double.NaN, Double.NaN, Double.NaN};
         }
 
         return new double[]{
-                upper[bar],
-                showMiddle ? middle[bar] : Double.NaN,
-                lower[bar],
+                nowUpper[bar],
+                showMiddle ? nowMiddle[bar] : Double.NaN,
+                nowLower[bar],
         };
     }
 
     @Override
     public void calculate(PriceSeries series) {
         int size = series == null ? 0 : series.size();
+        double[] builtUpper = new double[size];
+        double[] builtMiddle = new double[size];
+        double[] builtLower = new double[size];
 
-        upper = new double[size];
-        middle = new double[size];
-        lower = new double[size];
-
-        if (size == 0) {
-            return;
+        if (size > 0) {
+            build(series, builtUpper, builtMiddle, builtLower);
         }
 
+        // PUBLISHED WHOLE, at the end. The fields used to be assigned the empty
+        // arrays first and filled in place, which is invisible while everything
+        // happens on the interface thread -- and this is now called off it, so
+        // a repaint landing halfway through would have read an array half full
+        // of zeros.
+        this.upper = builtUpper;
+        this.middle = builtMiddle;
+        this.lower = builtLower;
+    }
+
+    private void build(PriceSeries series, double[] upper, double[] middle, double[] lower) {
         Aggregation scale = OwnScale.of(ownPeriod());
 
         if (scale == null) {

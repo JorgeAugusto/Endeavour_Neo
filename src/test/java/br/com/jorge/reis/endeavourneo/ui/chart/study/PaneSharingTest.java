@@ -269,6 +269,11 @@ class PaneSharingTest {
 
         stack.recalculate();
 
+        // The recalculation runs off the interface thread now, on one queue, so
+        // reading its result means waiting for that queue. What is asserted
+        // below is unchanged.
+        StudyStack.awaitRecalculations();
+
         double[] both = pane.range(canvas.plotViewport());
 
         pane.studies().get(0).setVisible(false);
@@ -358,11 +363,199 @@ class PaneSharingTest {
         canvas.setSeries(new RandomWalkSeries(400, 200.0));
         stack.recalculate();
 
+        // Off the interface thread now: waited for, not slept on -- the barrier
+        // is a task at the back of the same single queue.
+        StudyStack.awaitRecalculations();
+
         // A study still holding the values of the series before would draw a
         // shape that never happened, at bars that are not the ones it was
         // measured on. The last bar of the new series is the one to ask about:
         // the old one did not have it.
         assertFalse(Double.isNaN(second.valueAt(399)[0]),
                 "the second indicator was never recomputed against the new series");
+    }
+    @Test
+    @DisplayName("o recalculo nao roda na thread da interface")
+    void theRecalculationIsNotOnTheInterfaceThread() throws Exception {
+        // The cost is written down by the code itself: OwnScale records 183 ms
+        // to recalculate one average on its own scale and SlowStochastic 319 ms
+        // for one stochastic. Three studies is close to a second of a frozen
+        // window with nothing on screen saying anything is happening -- and it
+        // ran on a period change, which is one keystroke.
+        List<String> threads = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+
+        StudyPane pane = stack.show(new Recording(threads));
+
+        stack.addTo(pane, new Recording(threads));
+
+        threads.clear();
+
+        javax.swing.SwingUtilities.invokeAndWait(() -> stack.recalculate());
+
+        StudyStack.awaitRecalculations();
+
+        assertFalse(threads.isEmpty(), "nothing was recalculated, so this proves nothing");
+
+        for (String on : threads) {
+            assertFalse(on.startsWith("AWT-EventQueue"),
+                    "a study was recalculated on the interface thread (" + on + "), "
+                            + "which is the freeze this was moved off it to stop");
+        }
+    }
+
+    @Test
+    @DisplayName("quem le durante um recalculo ve a linha anterior inteira, nunca meia")
+    void theValuesArePublishedWhole() throws Exception {
+        // The precondition for running any of that off the interface thread.
+        // The four implementations used to assign the empty array to the field
+        // and fill it IN PLACE, so a repaint landing in the middle read an
+        // array half full of zeros.
+        //
+        // Not a race to be won by timing: the series itself blocks the
+        // recalculation at a known bar and holds it there while this thread
+        // reads. What comes out has to be the whole previous line.
+        canvas.setSeries(rising(600));
+
+        SlowStochastic study = new SlowStochastic(14, 3);
+
+        stack.show(study);
+        StudyStack.awaitRecalculations();
+
+        double[] before = new double[600];
+
+        for (int bar = 0; bar < before.length; bar++) {
+            before[bar] = study.valueAt(bar)[0];
+        }
+
+        assertFalse(Double.isNaN(before[599]),
+                "the first pass computed nothing, so there is no previous line to see");
+
+        java.util.concurrent.CountDownLatch reached = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+
+        canvas.setSeries(heldAt(rising(600), 300, reached, release));
+
+        javax.swing.SwingUtilities.invokeAndWait(() -> stack.recalculate());
+
+        assertTrue(reached.await(10, java.util.concurrent.TimeUnit.SECONDS),
+                "the recalculation never reached the bar it was to be held at");
+
+        try {
+            for (int bar = 0; bar < before.length; bar++) {
+                assertEquals(before[bar], study.valueAt(bar)[0], 0.0,
+                        "bar " + bar + ": read while the recalculation was halfway "
+                                + "through, and it is neither the old value nor a value "
+                                + "the indicator ever computed");
+            }
+        } finally {
+            release.countDown();
+        }
+
+        StudyStack.awaitRecalculations();
+    }
+
+    /**
+     * The same bars, but stopping the reader dead at one of them.
+     *
+     * <p>Counts down {@code reached} the first time that bar's close is asked
+     * for, and does not answer until {@code release}. That turns "a repaint
+     * landing in the middle of a recalculation" from something to be provoked
+     * by timing into something that simply happens.</p>
+     */
+    private static PriceSeries heldAt(PriceSeries bars, int at,
+            java.util.concurrent.CountDownLatch reached,
+            java.util.concurrent.CountDownLatch release) {
+
+        return new PriceSeries() {
+
+            @Override
+            public int size() {
+                return bars.size();
+            }
+
+            @Override
+            public long timeAt(int index) {
+                return bars.timeAt(index);
+            }
+
+            @Override
+            public double openAt(int index) {
+                return bars.openAt(index);
+            }
+
+            @Override
+            public double highAt(int index) {
+                return bars.highAt(index);
+            }
+
+            @Override
+            public double lowAt(int index) {
+                return bars.lowAt(index);
+            }
+
+            @Override
+            public double closeAt(int index) {
+                if (index == at && reached.getCount() > 0) {
+                    reached.countDown();
+
+                    try {
+                        release.await(10, java.util.concurrent.TimeUnit.SECONDS);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+
+                return bars.closeAt(index);
+            }
+        };
+    }
+
+    /** An indicator that writes down which thread recalculated it. */
+    private record Recording(List<String> threads) implements Overlay {
+
+        @Override
+        public String nameKey() {
+            return "study.rsi";
+        }
+
+        @Override
+        public boolean fitsOnPrice() {
+            return false;
+        }
+
+        @Override
+        public double[] bounds() {
+            return new double[] {0, 100};
+        }
+
+        @Override
+        public List<Integer> parameters() {
+            return List.of(1);
+        }
+
+        @Override
+        public List<Color> colours() {
+            return List.of(Color.RED);
+        }
+
+        @Override
+        public double[] valueAt(int bar) {
+            return new double[] {50.0};
+        }
+
+        @Override
+        public void calculate(PriceSeries series) {
+            threads.add(Thread.currentThread().getName());
+        }
+
+        @Override
+        public boolean isVisible() {
+            return true;
+        }
+
+        @Override
+        public void setVisible(boolean visible) {
+            // Always on.
+        }
     }
 }

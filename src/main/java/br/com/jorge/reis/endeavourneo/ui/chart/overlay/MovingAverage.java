@@ -177,7 +177,15 @@ public final class MovingAverage implements Overlay {
      */
     private boolean interpolate = true;
 
-    private double[] values = new double[0];
+    /**
+     * The line, one value per bar.
+     *
+     * <p>Volatile because it is written by a background recalculation and read
+     * by the painting thread. Only ever assigned a FINISHED array -- see {@link
+     * #calculate} -- so a reader sees either the whole previous line or the
+     * whole new one, never a mixture.</p>
+     */
+    private volatile double[] values = new double[0];
 
     private boolean visible = true;
 
@@ -346,45 +354,44 @@ public final class MovingAverage implements Overlay {
      * recalculation, thrown away on the next line.</p>
      */
     double at(int bar) {
+        // Read ONCE into a local. The field is replaced whole by a background
+        // recalculation, and checking the length of one array while reading
+        // from another is how that swap would show up: an index out of bounds,
+        // on the interface thread, at a moment nobody can reproduce.
+        double[] now = values;
         int index = bar - shift;
 
-        return index >= 0 && index < values.length ? values[index] : Double.NaN;
+        return index >= 0 && index < now.length ? now[index] : Double.NaN;
     }
 
     @Override
     public void calculate(PriceSeries series) {
         int size = series == null ? 0 : series.size();
+        double[] built = new double[size];
 
-        values = new double[size];
-
-        if (size == 0) {
-            return;
+        if (size > 0) {
+            if (ownPeriod != null) {
+                onItsOwnPeriod(series, built);
+            } else {
+                computeOver(series, built);
+            }
         }
 
-        if (ownPeriod != null) {
-            onItsOwnPeriod(series);
-
-            return;
-        }
-
-        computeOver(series, values);
+        // PUBLISHED WHOLE, at the end, and the field is never the work area.
+        // It used to be: `values` was assigned the empty array first and then
+        // filled in place, and computeOver even pointed the field at whatever
+        // buffer it was working on. That is invisible while everything happens
+        // on the interface thread -- and this is now called off it, so a repaint
+        // landing halfway through would have read an array half full of zeros,
+        // or an index checked against one array and read from another.
+        this.values = built;
     }
 
     private void computeOver(PriceSeries series, double[] into) {
-        double[] keep = values;
-
-        values = into;
-
-        try {
-            switch (kind) {
-                case EXPONENTIAL -> exponential(series);
-                case WEIGHTED -> weighted(series);
-                default -> arithmetic(series);
-            }
-        } finally {
-            if (into != keep) {
-                values = keep;
-            }
+        switch (kind) {
+            case EXPONENTIAL -> exponential(series, into);
+            case WEIGHTED -> weighted(series, into);
+            default -> arithmetic(series, into);
         }
     }
 
@@ -403,11 +410,11 @@ public final class MovingAverage implements Overlay {
      * the truth: at 09:05 nobody knew what the nine o'clock hour would close
      * at.</p>
      */
-    private void onItsOwnPeriod(PriceSeries series) {
+    private void onItsOwnPeriod(PriceSeries series, double[] into) {
         br.com.jorge.reis.endeavourneo.domain.market.Aggregation scale = scaleOf();
 
         if (scale == null) {
-            computeOver(series, values);
+            computeOver(series, into);
 
             return;
         }
@@ -415,7 +422,7 @@ public final class MovingAverage implements Overlay {
         PriceSeries coarse = scale.apply(series);
 
         if (coarse.size() == 0) {
-            java.util.Arrays.fill(values, Double.NaN);
+            java.util.Arrays.fill(into, Double.NaN);
 
             return;
         }
@@ -427,10 +434,10 @@ public final class MovingAverage implements Overlay {
         // The rule itself lives in OwnScale, and in one place only: a second
         // copy of "the last CLOSED coarse bar" is a second chance to write the
         // version that reads the future.
-        OwnScale.map(series, coarse, slow, values);
+        OwnScale.map(series, coarse, slow, into);
 
         if (interpolate) {
-            OwnScale.smooth(series, coarse, slow, values);
+            OwnScale.smooth(series, coarse, slow, into);
         }
     }
 
@@ -445,10 +452,10 @@ public final class MovingAverage implements Overlay {
         return source.of(series, bar);
     }
 
-    private void arithmetic(PriceSeries series) {
+    private void arithmetic(PriceSeries series, double[] into) {
         double running = 0.0;
 
-        for (int i = 0; i < values.length; i++) {
+        for (int i = 0; i < into.length; i++) {
             running += priceAt(series, i);
 
             if (i >= period) {
@@ -458,36 +465,36 @@ public final class MovingAverage implements Overlay {
             // NaN until the window is full, never a partial average: a partial
             // one is a different indicator wearing this one's name, and it is
             // wrong exactly where a reader looks first, at the left edge.
-            values[i] = i >= period - 1 ? running / period : Double.NaN;
+            into[i] = i >= period - 1 ? running / period : Double.NaN;
         }
     }
 
-    private void exponential(PriceSeries series) {
+    private void exponential(PriceSeries series, double[] into) {
         double weight = 2.0 / (period + 1.0);
         double seed = 0.0;
 
-        for (int i = 0; i < values.length; i++) {
+        for (int i = 0; i < into.length; i++) {
             if (i < period - 1) {
                 seed += priceAt(series, i);
-                values[i] = Double.NaN;
+                into[i] = Double.NaN;
             } else if (i == period - 1) {
                 // Seeded with the arithmetic average of the first window, which
                 // is what every platform does. Starting from the first price
                 // instead leaves a visible hook at the left edge.
                 seed += priceAt(series, i);
-                values[i] = seed / period;
+                into[i] = seed / period;
             } else {
-                values[i] = priceAt(series, i) * weight + values[i - 1] * (1 - weight);
+                into[i] = priceAt(series, i) * weight + into[i - 1] * (1 - weight);
             }
         }
     }
 
-    private void weighted(PriceSeries series) {
+    private void weighted(PriceSeries series, double[] into) {
         double divisor = period * (period + 1) / 2.0;
 
-        for (int i = 0; i < values.length; i++) {
+        for (int i = 0; i < into.length; i++) {
             if (i < period - 1) {
-                values[i] = Double.NaN;
+                into[i] = Double.NaN;
 
                 continue;
             }
@@ -498,7 +505,7 @@ public final class MovingAverage implements Overlay {
                 total += priceAt(series, i - back) * (period - back);
             }
 
-            values[i] = total / divisor;
+            into[i] = total / divisor;
         }
     }
 

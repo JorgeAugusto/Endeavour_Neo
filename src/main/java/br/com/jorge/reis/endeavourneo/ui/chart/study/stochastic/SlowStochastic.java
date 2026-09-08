@@ -110,9 +110,9 @@ public final class SlowStochastic implements Overlay {
 
     private boolean visible = true;
 
-    private transient double[] slow = new double[0];
+    private transient volatile double[] slow = new double[0];
 
-    private transient double[] signal = new double[0];
+    private transient volatile double[] signal = new double[0];
 
     public SlowStochastic() {
         this(PERIOD, AVERAGE);
@@ -333,13 +333,20 @@ public final class SlowStochastic implements Overlay {
 
     @Override
     public double[] valueAt(int bar) {
-        if (bar < 0 || bar >= slow.length) {
+        // Read ONCE into locals. A background recalculation replaces these
+        // fields whole, and checking the length of one array while reading from
+        // another is how that swap would show: an index out of bounds, on the
+        // painting thread, at a moment nobody can reproduce.
+        double[] nowSlow = slow;
+        double[] nowSignal = signal;
+
+        if (bar < 0 || bar >= nowSlow.length || bar >= nowSignal.length) {
             return showAverage ? new double[]{Double.NaN, Double.NaN}
                     : new double[]{Double.NaN};
         }
 
-        return showAverage ? new double[]{slow[bar], signal[bar]}
-                : new double[]{slow[bar]};
+        return showAverage ? new double[]{nowSlow[bar], nowSignal[bar]}
+                : new double[]{nowSlow[bar]};
     }
 
     @Override
@@ -469,14 +476,23 @@ public final class SlowStochastic implements Overlay {
     @Override
     public void calculate(PriceSeries series) {
         int size = series == null ? 0 : series.size();
+        double[] builtSlow = new double[size];
+        double[] builtSignal = new double[size];
 
-        slow = new double[size];
-        signal = new double[size];
-
-        if (size == 0) {
-            return;
+        if (size > 0) {
+            build(series, builtSlow, builtSignal);
         }
 
+        // PUBLISHED WHOLE, at the end. The fields used to be assigned the empty
+        // arrays first and filled in place, which is invisible while everything
+        // happens on the interface thread -- and this is now called off it, so
+        // a repaint landing halfway through would have read an array half full
+        // of zeros.
+        this.slow = builtSlow;
+        this.signal = builtSignal;
+    }
+
+    private void build(PriceSeries series, double[] slow, double[] signal) {
         Aggregation scale = OwnScale.of(ownPeriod);
 
         if (scale == null) {

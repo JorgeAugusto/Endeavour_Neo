@@ -17,6 +17,7 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.chart.study;
 
+import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
 import br.com.jorge.reis.endeavourneo.ui.chart.ChartCanvas;
 import br.com.jorge.reis.endeavourneo.ui.chart.ChartColors;
 import br.com.jorge.reis.endeavourneo.ui.chart.Forms;
@@ -446,15 +447,92 @@ public final class StudyStack extends JPanel {
      * arriving, a period change that refolds. A study still holding the values
      * of the series before would draw a shape that never happened, at bars that
      * are not the ones it was measured on.</p>
+     *
+     * <p><b>Off the interface thread, and it used to be on it.</b> The cost is
+     * written down by the code itself: {@code OwnScale} records 183 ms to
+     * recalculate one average on its own scale, and {@code SlowStochastic} 319
+     * ms for one stochastic. Three studies in a panel is close to a second of a
+     * frozen window, with nothing on screen saying anything was happening --
+     * and this runs on a period change, which is one keystroke.</p>
+     *
+     * <p>Safe to run there because the four implementations publish their
+     * arrays whole: a repaint landing in the middle of a recalculation reads
+     * the previous line, never half of the new one. That was made true first;
+     * moving the work without it would have traded a freeze for an index out of
+     * bounds nobody could reproduce.</p>
+     *
+     * <p>The studies being recomputed are read off the panes BEFORE the worker
+     * starts. A pane closed while it runs is then recomputed for nothing, which
+     * costs a little work and no correctness; reading the list from the
+     * background thread instead would be reading Swing's component tree off the
+     * interface thread, which is the mistake this method exists to stop
+     * making.</p>
      */
     public void recalculate() {
+        List<Overlay> studies = new ArrayList<>();
+
         for (StudyPane pane : panes()) {
-            for (Overlay study : pane.studies()) {
-                study.calculate(canvas.series());
-            }
+            studies.addAll(pane.studies());
         }
 
-        repaint();
+        if (studies.isEmpty()) {
+            return;
+        }
+
+        PriceSeries bars = canvas.series();
+
+        RECALCULATIONS.execute(() -> {
+            for (Overlay study : studies) {
+                study.calculate(bars);
+            }
+
+            javax.swing.SwingUtilities.invokeLater(this::repaint);
+        });
+    }
+
+    /**
+     * The one thread every study recalculation runs on.
+     *
+     * <p><b>One, and in order.</b> A pool -- SwingWorker's included -- would let
+     * two recalculations of the same study overlap, and the older one finishing
+     * last would leave the chart showing values measured against a series that
+     * is no longer on screen: silently, and only sometimes. With a single queue
+     * the last recalculation asked for is the last one to write, which is the
+     * only property this needs.</p>
+     *
+     * <p>Shared by every chart rather than one per stack: the work is rare and
+     * bursty, and two charts recalculating at once would be competing for the
+     * same cores anyway. A daemon thread, so it never holds the application
+     * open.</p>
+     */
+    private static final java.util.concurrent.ExecutorService RECALCULATIONS =
+            java.util.concurrent.Executors.newSingleThreadExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "study-recalculation");
+
+                thread.setDaemon(true);
+
+                return thread;
+            });
+
+    /**
+     * Waits for every recalculation already asked for to have finished.
+     *
+     * <p>For the tests, and it is a real barrier rather than a sleep: a task of
+     * its own at the back of the same single queue, which cannot run until
+     * everything in front of it has. Package-visible because a test that reads
+     * a study's values right after asking for them is otherwise reading a race,
+     * and would pass or fail by timing.</p>
+     */
+    static void awaitRecalculations() {
+        java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+
+        RECALCULATIONS.execute(done::countDown);
+
+        try {
+            done.await(10, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private void relayout() {

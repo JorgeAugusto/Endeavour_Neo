@@ -111,7 +111,7 @@ public final class RelativeStrength implements Overlay {
 
     private boolean visible = true;
 
-    private transient double[] values = new double[0];
+    private transient volatile double[] values = new double[0];
 
     public RelativeStrength() {
         this(PERIOD);
@@ -223,9 +223,15 @@ public final class RelativeStrength implements Overlay {
 
     @Override
     public double[] valueAt(int bar) {
-        return bar < 0 || bar >= values.length
+        // Read ONCE into locals. A background recalculation replaces these
+        // fields whole, and checking the length of one array while reading from
+        // another is how that swap would show: an index out of bounds, on the
+        // painting thread, at a moment nobody can reproduce.
+        double[] now = values;
+
+        return bar < 0 || bar >= now.length
                 ? new double[]{Double.NaN}
-                : new double[]{values[bar]};
+                : new double[]{now[bar]};
     }
 
     @Override
@@ -322,13 +328,21 @@ public final class RelativeStrength implements Overlay {
     @Override
     public void calculate(PriceSeries series) {
         int size = series == null ? 0 : series.size();
+        double[] built = new double[size];
 
-        values = new double[size];
-
-        if (size == 0) {
-            return;
+        if (size > 0) {
+            build(series, built);
         }
 
+        // PUBLISHED WHOLE, at the end. The fields used to be assigned the empty
+        // arrays first and filled in place, which is invisible while everything
+        // happens on the interface thread -- and this is now called off it, so
+        // a repaint landing halfway through would have read an array half full
+        // of zeros.
+        this.values = built;
+    }
+
+    private void build(PriceSeries series, double[] values) {
         Aggregation scale = OwnScale.of(ownPeriod);
 
         if (scale == null) {
