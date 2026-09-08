@@ -1143,3 +1143,65 @@ ser refeita contra o código de hoje**, não copiada do relatório.
 **As duas auditorias estão fechadas.** 464 achados com identificador mais as 48
 BAIXA sem identificador da I. Suíte **732 verdes**, um pulado (o de ambiente
 gráfico), e o log do pre-commit sem nenhuma exceção que não seja de propósito.
+
+---
+
+## Fase 10 — D2 medido no caso real, e D7 feito
+
+### D2 — o renko na EDT: **não é problema, medido**
+
+A medição antiga era o pior caso (caixa de 11 pontos) e a nota dizia que a dobra
+acontecia *"a cada redesenho"*. **As duas coisas estavam erradas.**
+
+Medido na base dele — `data/win/1m/winfull-1m.bin`, **824.881 barras de 1m** —
+sobre a janela de 100.000 barras que o gráfico usa:
+
+| caixa | caixas assentadas | tempo (melhor de 3) | heap retido |
+|---:|---:|---:|---:|
+| **50 pontos (o 11R dele)** | **164.351** | **16 ms** | 34 MB |
+| 25 pontos | 534.230 | 38 ms | 124 MB |
+| 11 pontos (pior caso) | 1.695.537 | 127 ms | 303 MB |
+
+**E não é a cada redesenho.** `refold()` é chamado de `setSeries`, `setPeriod`,
+`growHistory` e `extendBricks` — troca de série, troca de período e paginação do
+histórico. Nenhum deles está no caminho de `paintComponent`; conferido um a um.
+
+**Decisão: não mexer.** Dezesseis milissegundos numa troca de período não é uma
+travada — é menos que um quadro a 60 Hz. Tirar da EDT custaria um worker, o
+estado intermediário de "está dobrando", e a chance de a série trocar no meio;
+tudo isso para ganhar 16 ms que ninguém percebe. Registrado com o número, que é
+o que permite rever se a janela crescer.
+
+**O que ficou de aviso:** 303 MB retidos no pior caso. A caixa de 11 pontos não é
+a dele e a janela é limitada a 100.000 barras, mas é o número que estoura
+primeiro se um dia as duas coisas mudarem juntas.
+
+### D7 — feito, e ele aprovou
+
+Os polígonos saíram de dentro da pintura sem mapa e sem cache: dependem só do
+tamanho, o tamanho é fixo quando o ícone é feito, e os ícones são feitos uma vez
+— então são calculados no método de fábrica e fechados pela lambda. A
+alternativa que eu tinha registrado como pior (um mapa por tamanho) não era
+necessária.
+
+### E atrás do D7, a oitava correção inerte
+
+`TickSource` guarda marca e versão **por fonte**, e o javadoc do campo diz para
+que serve: passar a versão do chamador impede que uma fita da versão 2 seja lida
+como "não é nossa" e a fonte Profit suma da lista sem erro nenhum. Só que os dois
+números continuavam escritos **duas vezes** — `"ENDVTAPE"` e `1` em `TapeFile`, e
+outra vez no enum. Subir só um traz o defeito de volta inteiro: o conversor
+escreve 2, o varredor procura 1.
+
+A correção tinha removido o defeito e deixado a cópia que o reintroduz. Agora o
+formato é o dono e o enum aponta para ele; o teste novo trava o acordo entre
+quem escreve a fita e quem a varre, e a prova de dentes é reduplicar o número e
+subir um só.
+
+### O que continua aberto
+
+- **D6** — candle plana contada como negócio. A única aberta que muda um número
+  na tela.
+- Os **onze métodos que ninguém chama**. Nenhum é defeito; é limpeza.
+
+Suíte **733 verdes**.
