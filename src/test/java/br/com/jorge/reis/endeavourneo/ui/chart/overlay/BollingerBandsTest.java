@@ -309,8 +309,21 @@ class BollingerBandsTest {
 
         double[] row = bands.valueAt(3);
 
-        assertTrue(row[0] >= row[1], "the upper band went below the middle");
+        // EQUAL, not merely not-below. clampDeviation answers zero for a
+        // negative, so the upper band sits exactly on the middle -- and ">=" is
+        // satisfied by that as well as by any other clamp, so it did not say
+        // which one happened.
+        assertEquals(row[1], row[0], 1e-9,
+                "a negative deviation was clamped to something other than nought");
         assertTrue(Double.isFinite(row[2]), "the lower band became NaN and vanished");
+
+        // And the ceiling, which nothing tested at all. Ten standard deviations
+        // is already a band nothing ever touches; a thousand is a chart with two
+        // lines off the top and bottom of the pane and no way back but the file.
+        bands.setUpperDeviations(1_000);
+
+        assertEquals(10.0, bands.upperDeviations(), 1e-9,
+                "the deviation has no ceiling");
     }
     @Test
     @DisplayName("the band centres on the average of the same price, whatever the source is")

@@ -204,8 +204,26 @@ class SlowStochasticTest {
 
         study.calculate(bars(rows));
 
-        assertTrue(study.valueAt(39)[1] > study.valueAt(39)[0],
-                "the average did not lag on the way down");
+        // ALL THE WAY DOWN, and the other way on the way up. Asked at the
+        // last bar alone, a mutation that swapped the two lines only on the
+        // rise passed -- and it is the CROSSING that makes the indicator mean
+        // anything, which one point cannot show.
+        for (int i = 30; i < 40; i++) {
+            assertTrue(study.valueAt(i)[1] > study.valueAt(i)[0],
+                    "bar " + i + ": the average did not lag on the way down");
+        }
+
+        // AND NOT "the other way on the way up", which this fixture cannot
+        // show: the rise closes at the high of every bar, so %K is a hundred
+        // once it is warm and the average catches up to a hundred with it. The
+        // two lines are EQUAL there, and an assertion about their order would
+        // have been satisfied by any mutation at all -- which is exactly the
+        // fault being corrected here, moved one line down.
+        //
+        // What the rise does say is that both lines get there.
+        assertEquals(100.0, study.valueAt(19)[0], 1e-9);
+        assertEquals(100.0, study.valueAt(19)[1], 1e-9,
+                "the average never caught up on a rise that closed at every high");
     }
 
     @Test

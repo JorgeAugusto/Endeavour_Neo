@@ -18,6 +18,8 @@
 package br.com.jorge.reis.endeavourneo.ui.chart;
 
 import br.com.jorge.reis.endeavourneo.domain.market.RandomWalkSeries;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -188,6 +190,22 @@ class SegmentChipTest {
         // series window's palette. Hashing the name instead would give the same
         // segment two colours in two windows.
         assertEquals(3, dots.size());
+
+        // THE FIRST ONE TOO. "The whole series" was counted and never looked at,
+        // so any colour passed -- including the menu's own background, which is
+        // a dot nobody can see.
+        assertNotNull(dots.get(0), "the whole-series item has no dot at all");
+        assertNotEquals(new javax.swing.JMenuItem().getBackground(), dots.get(0),
+                "the whole-series dot is painted in the menu's own ground, so it is "
+                        + "invisible");
+
+        // And it is not one of the segments' colours: the whole series is not a
+        // segment, and a menu where it wears the first segment's mark says the
+        // opposite of what the list is for.
+        assertNotEquals(br.com.jorge.reis.endeavourneo.ui.series.SeriesColors.taken(0),
+                dots.get(0), "the whole-series dot wears the first segment's colour");
+        assertNotEquals(br.com.jorge.reis.endeavourneo.ui.series.SeriesColors.taken(1),
+                dots.get(0), "the whole-series dot wears the second segment's colour");
         assertEquals(br.com.jorge.reis.endeavourneo.ui.series.SeriesColors.taken(0), dots.get(1));
         assertEquals(br.com.jorge.reis.endeavourneo.ui.series.SeriesColors.taken(1), dots.get(2));
     }

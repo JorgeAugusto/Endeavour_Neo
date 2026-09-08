@@ -58,6 +58,14 @@ class OverlayCatalogTest {
             // indicator here was a single line with a single period. Bollinger
             // bands take one parameter and draw three lines, and the old
             // assertion called that a defect.
+            // CALCULATED FIRST. valueAt on an indicator that has never been
+            // given a series answers the array of "nothing yet", which is not
+            // necessarily the array it draws -- the stochastic changes length
+            // when its average is switched off. The check was being made against
+            // the wrong array, and would pass here and fail on the screen.
+            overlay.calculate(new br.com.jorge.reis.endeavourneo.domain.market
+                    .RandomWalkSeries(100, 100.0));
+
             assertEquals(overlay.colours().size(), overlay.valueAt(0).length,
                     kind.nameKey() + " draws a line it has no colour for, or the reverse");
         }

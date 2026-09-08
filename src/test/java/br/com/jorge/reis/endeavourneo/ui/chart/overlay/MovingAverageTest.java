@@ -179,8 +179,18 @@ class MovingAverageTest {
     void automaticColourIsStable() {
         // Adding the same three averages in a different order has to give the
         // same chart.
-        assertEquals(new MovingAverage(9).colours(), new MovingAverage(9).colours());
-        assertNotEquals(new MovingAverage(9).colours(), new MovingAverage(10).colours());
+        // NOT "the same period gives the same colour", which no mutation
+        // short of a random one can break. What the rule actually says is that
+        // the colour is the period's, taken round a fixed list -- so two periods
+        // a full turn apart share it, and two neighbours do not.
+        assertNotEquals(new MovingAverage(9).colours(), new MovingAverage(10).colours(),
+                "two averages a period apart came out the same colour");
+
+        // The list has six colours, so nine and fifteen are the same one. A
+        // colour picked any other way -- by a hash of the period, by the order
+        // the averages were added -- breaks this and not the line above.
+        assertEquals(new MovingAverage(9).colours(), new MovingAverage(15).colours(),
+                "the colour does not come round the list: it is being chosen some other way");
     }
 
     @Test
