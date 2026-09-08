@@ -300,4 +300,32 @@ class TickSourceChoiceTest {
             ReplayBase.release();
         }
     }
+    @Test
+    @DisplayName("ler o feed guardado nao varre o disco de novo")
+    void readingTheSavedFeedDoesNotWalkTheDiskAgain(@TempDir Path folder)
+            throws Exception {
+        // available() opens a TickLibrary per market per export and calls
+        // exported(), which is a recursive four-level directory walk. Opening
+        // the transport asked once to fill the combo and then called
+        // read(text), which asked a second time -- two full rounds of it on the
+        // interface thread, for a list already in hand.
+        ReplayBase.at(folder, DAY);
+
+        try {
+            tape(SeriesCatalog.ticksOf("win"));
+
+            java.util.List<ReplayFeed> feeds = ReplayFeed.available();
+            ReplayFeed tapeFeed = ReplayFeed.of("win", TickSource.PROFIT);
+
+            // The overload that takes the list is the one the panel calls. If
+            // it went and fetched its own, this list would not be needed at
+            // all -- so the test hands it a list the disk does NOT agree with
+            // and requires the answer to come from the list.
+            assertNull(ReplayFeed.read(tapeFeed.saved(), java.util.List.of()),
+                    "read() ignored the list it was given and walked the disk itself");
+            assertEquals(tapeFeed, ReplayFeed.read(tapeFeed.saved(), feeds));
+        } finally {
+            ReplayBase.release();
+        }
+    }
 }

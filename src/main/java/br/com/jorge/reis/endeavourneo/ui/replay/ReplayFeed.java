@@ -266,11 +266,33 @@ public record ReplayFeed(String instrument, String series, TickSource source) {
 
     /** @return the feed that text names, or null if nothing on disk matches */
     public static ReplayFeed read(String text) {
+        return read(text, available());
+    }
+
+    /**
+     * @param text a line written by {@link #saved}
+     * @param feeds what {@link #available} answered, so it is not asked twice
+     * @return the feed that text names, or null if none of them is it
+     *
+     * <p><b>The list is passed in, and it used to be fetched again.</b> Opening
+     * the transport asked {@code available()} once to fill the combo and then
+     * called {@code read(text)}, which asked a second time -- and every round
+     * opens a {@code TickLibrary} per market per export and calls {@code
+     * exported()}, a recursive four-level directory walk, on the interface
+     * thread.</p>
+     *
+     * <p>The list is NOT remembered between calls, and that is deliberate. Which
+     * feeds exist changes when a tape lands on disk, and nothing in this project
+     * guarantees that every way of putting one there passes through the catalog
+     * first -- a memory here would be right until it silently was not. What can
+     * be removed without making that bet is the second walk.</p>
+     */
+    public static ReplayFeed read(String text, List<ReplayFeed> feeds) {
         if (text == null) {
             return null;
         }
 
-        for (ReplayFeed each : available()) {
+        for (ReplayFeed each : feeds) {
             if (each.saved().equals(text)) {
                 return each;
             }

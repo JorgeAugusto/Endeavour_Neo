@@ -382,13 +382,19 @@ public final class ReplayPanel extends JPanel {
         JPanel left = new JPanel();
 
         left.setLayout(new BoxLayout(left, BoxLayout.Y_AXIS));
-        for (ReplayFeed each : ReplayFeed.available()) {
+        // ASKED ONCE. Each round of available() opens a TickLibrary per market
+        // per export and calls exported(), which is a recursive four-level
+        // directory walk -- and this used to pay for two of them on the
+        // interface thread, because read() went and asked again.
+        java.util.List<ReplayFeed> feeds = ReplayFeed.available();
+
+        for (ReplayFeed each : feeds) {
             feed.addItem(each);
         }
 
         ReplayFeed remembered = ReplayFeed.read(
                 br.com.jorge.reis.endeavourneo.platform.Settings.workspace()
-                        .get("replay.feed", null));
+                        .get("replay.feed", null), feeds);
 
         if (remembered != null) {
             feed.setSelectedItem(remembered);

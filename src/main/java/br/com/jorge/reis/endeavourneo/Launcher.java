@@ -146,6 +146,24 @@ public final class Launcher {
         // Off the interface thread, before anyone opens a calendar. Walking the
         // six-year source for its 1.494 sessions costs a tenth of a second, and
         // a tenth of a second is a stutter if it happens when a combo changes.
+        // AND AGAIN WHENEVER THE DISK CHANGES. ReplayFeed.forget() empties the
+        // calendar the moment a session is imported, a tape is exported or a
+        // series is rebuilt -- and nothing refilled it, so the next change of
+        // feed recomputed inside a combo listener, on the interface thread, at
+        // the 39-102 ms per feed that ReplayFeed.KNOWN's own javadoc measures.
+        // The class had declared it did not want that and then cleared the
+        // memory without saying who would fill it.
+        //
+        // Here and not inside ReplayFeed: warming is background work, this is
+        // where the project's background work is submitted, and a job submitted
+        // here appears in the footer like every other. A static utility
+        // starting a thread of its own would be a second answer to "where does
+        // long work run", and one that no window can see.
+        br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.whenForgotten(() ->
+                jobs.submit("sessions", progress ->
+                        Integer.valueOf(
+                                br.com.jorge.reis.endeavourneo.ui.replay.ReplayFeed.warm())));
+
         jobs.submit("sessions", progress -> {
             int feeds = br.com.jorge.reis.endeavourneo.ui.replay.ReplayFeed.warm();
 
