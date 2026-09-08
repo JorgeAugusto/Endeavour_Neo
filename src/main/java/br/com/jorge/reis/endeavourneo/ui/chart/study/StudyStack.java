@@ -421,8 +421,22 @@ public final class StudyStack extends JPanel {
     /** Takes an indicator away, with its pane. */
     public void hide(StudyPane pane) {
         canvas.unfollow(pane);
-        remove(pane);
-        relayout();
+
+        // AFTER the gesture that asked for it has finished being delivered,
+        // exactly as endDrag does eighty lines above and for the reason written
+        // there: taking a component out of this container while its own event
+        // is still on the stack is asking for trouble. This one arrives from
+        // StudyPane.close(), which is called straight out of mousePressed --
+        // so the mouseReleased and the mouseClicked of the same click were then
+        // delivered to a pane already detached, which answered them by asking
+        // getParent() and finding null.
+        //
+        // Two answers to one question in one file was the whole of the finding:
+        // the reorder deferred and the close did not.
+        javax.swing.SwingUtilities.invokeLater(() -> {
+            remove(pane);
+            relayout();
+        });
     }
 
     /**

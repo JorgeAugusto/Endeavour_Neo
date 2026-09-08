@@ -194,7 +194,7 @@ class PaneSharingTest {
 
     @Test
     @DisplayName("tirar um deixa os outros; tirar o ultimo fecha o painel")
-    void droppingThem() {
+    void droppingThem() throws Exception {
         StudyPane pane = stack.show(new SlowStochastic(8, 3));
         SlowStochastic second = new SlowStochastic(21, 5);
 
@@ -205,6 +205,12 @@ class PaneSharingTest {
         assertEquals(1, stack.panes().size(), "the pane went away with one still in it");
 
         pane.drop(pane.studies().get(0));
+
+        // Drained, because closing is POSTED now and not done inline: the pane
+        // is taken out of the container after the gesture that asked for it has
+        // finished being delivered, the way reordering already did. What is
+        // asserted is unchanged -- the pane goes away -- one event later.
+        javax.swing.SwingUtilities.invokeAndWait(() -> { });
 
         assertTrue(stack.panes().isEmpty(),
                 "the pane stayed on screen with nothing left to draw in it");

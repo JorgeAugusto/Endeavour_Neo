@@ -18,6 +18,7 @@
 package br.com.jorge.reis.endeavourneo.ui.chart.study;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import br.com.jorge.reis.endeavourneo.ui.chart.ChartCanvas;
@@ -183,5 +184,71 @@ class PaneOrderTest {
 
         assertEquals(List.of(21, 8, 14), order(),
                 "the layout came back in a different order from the one it stored");
+    }
+    @Test
+    @DisplayName("fechar um painel espera o gesto acabar, como reordenar ja esperava")
+    void hidingWaitsForTheGestureToFinish() throws Exception {
+        // Two answers to one question, in one file: endDrag posts the move with
+        // invokeLater and says why -- "doing that to the component whose event
+        // is still on the stack is asking for trouble" -- and hide() took the
+        // pane out inline. hide() arrives from StudyPane.close(), which is
+        // called straight out of mousePressed, so the mouseReleased and the
+        // mouseClicked of that same click were delivered to a pane already
+        // detached, answering them through a getParent() that was null.
+        put(8);
+        put(14);
+
+        StudyPane going = stack.panes().get(0);
+
+        stack.hide(going);
+
+        assertEquals(2, stack.panes().size(),
+                "the pane was torn out inline, while the gesture that asked for it "
+                        + "was still being delivered");
+        assertSame(stack, going.getParent(),
+                "the pane lost its parent before the click that closed it had finished");
+
+        settle();
+
+        assertEquals(List.of(14), order(), "the pane never went away");
+    }
+
+    @Test
+    @DisplayName("tirar um indicador tira junto as areas de clique dele")
+    void droppingClearsTheHitAreas() {
+        // entries is rebuilt on every paint and read by the mouse in between.
+        // drop() shrank studies without touching it, so until the pending
+        // repaint ran, entryAt() could answer an index that studies.get() no
+        // longer had.
+        SlowStochastic first = new SlowStochastic(8, 3);
+        SlowStochastic second = new SlowStochastic(14, 3);
+
+        stack.show(first);
+        stack.doLayout();
+
+        StudyPane pane = stack.panes().get(0);
+
+        pane.add(second);
+        pane.setSize(600, 160);
+
+        java.awt.image.BufferedImage image = new java.awt.image.BufferedImage(
+                600, 160, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+
+        java.awt.Graphics2D g = image.createGraphics();
+
+        try {
+            pane.paint(g);
+        } finally {
+            g.dispose();
+        }
+
+        assertEquals(2, pane.hitAreas(), "the fixture never painted, so this proves nothing");
+
+        pane.drop(second);
+
+        assertTrue(pane.hitAreas() <= pane.studies().size(),
+                "the hit areas still describe " + pane.hitAreas() + " entries for "
+                        + pane.studies().size() + " studies: the mouse can reach a row "
+                        + "that is not there any more");
     }
 }

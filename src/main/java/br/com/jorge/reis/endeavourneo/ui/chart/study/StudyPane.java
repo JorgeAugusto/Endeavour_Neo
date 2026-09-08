@@ -323,8 +323,24 @@ public final class StudyPane extends JComponent {
         }
 
         studies.add(study);
+
+        // Same reason as in drop(): the hit areas describe the row before this
+        // one, and the mouse reads them until the next paint runs.
+        entries.clear();
+
         onChanged.run();
         repaint();
+    }
+
+    /**
+     * @return how many entry hit areas the last paint left behind
+     *
+     * <p>Package-visible for the test that says a dropped indicator takes its
+     * clickable row with it. Reading it off the screen would be reading
+     * pixels; this is the list the mouse actually consults.</p>
+     */
+    int hitAreas() {
+        return entries.size();
     }
 
     /** Takes one indicator out, and the pane with it when it was the last. */
@@ -334,6 +350,14 @@ public final class StudyPane extends JComponent {
         }
 
         hovered = -1;
+
+        // The hit areas go with it. They are rebuilt on every paint from the
+        // studies that are left, and until that paint runs they still describe
+        // the row that was just taken away -- so entryAt() could answer an
+        // index that studies.get() no longer has. Cleared here, an empty list
+        // means "not painted yet", which every reader of it already handles,
+        // instead of "painted something that is gone".
+        entries.clear();
 
         if (studies.isEmpty()) {
             // A pane drawing nothing is a strip of empty ground with two
