@@ -518,8 +518,15 @@ Duas coisas que a tarde ensinou:
 | **B3-6, B3-7** | A recusa do renko vale no restauro, e o restauro espera as barras | `25ae09f` |
 | **B3-8, B4-14** | O estilo diz o próprio código, volta nos dois sentidos, e se anuncia | `74a0342` |
 | **B3-10, B4-12, B5-7** | O que era construído por barra, por linha e por movimento do mouse | `85218fc` |
+| **B4-7, B4-8, B4-9** | Os layouts gravam uma vez, as cores param de ser refeitas, o Forms passa a ser usado | `849696e` |
+| **B4-4, B4-10** | A régua para de responder duas vezes, e o renko de reler as barras | `a6463ce` |
+| **B3-9** | A busca pela fonte dos tijolos entrega a biblioteca que abriu | `2dda6b0` |
+| **B3-3** | O indicador é perguntado uma vez por barra, não uma vez por linha | `1a33950` |
+| **B5-2, B5-3** | O método morto do OwnScale sai, e o valor para de ser embrulhado por linha | `132eac5` |
 
-**63 MÉDIA fechadas.** Suíte em **622**. As áreas **B1**, **B2** e **B7a** estão fechadas.
+**72 MÉDIA fechadas.** Suíte em **629**. As áreas **B1**, **B2**, **B3**, **B7a**
+estão fechadas. **B4-11** já estava fechada pela correção de B5-5 — o
+`study.setVisible(entry.visible())` do `ChartLayout.Pane.build()`.
 
 Uma terceira lição, e é a mesma três vezes: **o `OrphanJavadocTest` pegou o autor
 dele em três commits diferentes desta fase**, sempre por um membro novo inserido
@@ -532,7 +539,7 @@ qualquer correção individual — e vale mais ainda contra quem a escreveu.
 - **B6-9 sem teste, dito de propósito.** Exercitar aquele caminho exige soltar o
   painel DURANTE os quatro segundos da construção da sessão, o que é dirigir um
   `SwingWorker` pelo meio — um teste sobre o escalonador, não sobre isto.
-- **As 58 MÉDIA e 107 BAIXA restantes** da auditoria II, e as **93 MÉDIA e 115
+- **As 49 MÉDIA e 107 BAIXA restantes** da auditoria II, e as **93 MÉDIA e 115
   BAIXA** da auditoria I que a decisão D5 mandou para cá.
 
 ### Mais duas lições da fase 4
@@ -572,3 +579,19 @@ primeiro do lote. Sob essa disciplina, posição no lote **é** a pergunta de pr
 
 A mudança foi revertida inteira e a explicação ficou escrita no `Untraded`. Um
 relatório de auditoria é uma hipótese, e esta caiu no primeiro teste.
+
+### E uma decisão de escopo, registrada
+
+Na correção de **B3-3** e de **B5-3** o relatório pedia também que os laços de
+pintura andassem de `barsPerColumn()`, como os de candle. **Não passaram a
+andar, e isso é decisão.** Os laços de candle andam assim porque AGREGAM: a
+coluna guarda a máxima e a mínima de tudo que caiu nela. Uma linha não tem com
+o que agregar, então amostrar uma barra por coluna jogaria fora a faixa que o
+indicador percorreu dentro dela — e no zoom em que a economia importaria, essa
+faixa é quase tudo o que a linha mostra. Fica escrito no código, com o motivo.
+
+E mais uma prova de dentes verde, a quinta: em `MovingAverage.at()`, quebrar o
+`at()` não derrubou o teste que compara `at()` com `valueAt()` — porque
+`valueAt` delega a `at`, e as duas se moveram juntas. A quebra que vale é
+reimplementar `valueAt` por fora e errar só o `at()`. **Uma prova verde é uma
+pergunta sobre a quebra, não sobre o teste.**
