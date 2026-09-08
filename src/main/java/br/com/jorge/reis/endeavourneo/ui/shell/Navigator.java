@@ -275,7 +275,8 @@ public final class Navigator extends JPanel {
     private static String labelOf(Segment segment) {
         return segment.name() + "  ·  " + segment.from()
                 + (segment.isOpenEnded()
-                        ? "  " + Messages.get("series.onwards") : "  a  " + segment.to());
+                        ? "  " + Messages.get("series.onwards")
+                        : "  " + Messages.get("series.range", segment.to()));
     }
 
     /**

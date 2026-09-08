@@ -1174,6 +1174,46 @@ public final class MainWindow extends JFrame {
     }
 
     /**
+     * Builds the navigator's tree again, OFF the interface thread.
+     *
+     * <p>{@code treeModel} lists directories and reads the workspace once per
+     * series, and this runs after every segment added, removed or edited and on
+     * every click of the lock -- so each of those froze the window for as long
+     * as it took to walk the tick folders of every instrument. On a network
+     * disk, with sessions of ninety megabytes, that is a freeze a reader
+     * notices.</p>
+     *
+     * <p>The tree built at start-up is still read on this thread: there is no
+     * window yet to keep answering, and a navigator that fills in after the
+     * shell appears would be a different decision about how the program
+     * opens.</p>
+     */
+    private void rebuildNavigator() {
+        new javax.swing.SwingWorker<javax.swing.tree.DefaultTreeModel, Void>() {
+
+            @Override
+            protected javax.swing.tree.DefaultTreeModel doInBackground() {
+                return Navigator.treeModel();
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    navigator.setModel(get());
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } catch (java.util.concurrent.ExecutionException e) {
+                    // A tree that will not build leaves the one on screen
+                    // standing, which is the last one that did. Replacing it
+                    // with an empty tree would say the series are gone.
+                    console.write(Messages.get("console.treeFailed",
+                            String.valueOf(e.getCause())));
+                }
+            }
+        }.execute();
+    }
+
+    /**
      * Opens the window where a series is divided into segments.
      *
      * <p>What it hands back runs when that window changes something, and it
@@ -1193,7 +1233,7 @@ public final class MainWindow extends JFrame {
         br.com.jorge.reis.endeavourneo.ui.series.SeriesWindow.open(this, () -> {
             SeriesCatalog.forget();
 
-            navigator.setModel(Navigator.treeModel());
+            rebuildNavigator();
         });
     }
 

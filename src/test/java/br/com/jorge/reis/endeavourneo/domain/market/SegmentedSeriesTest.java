@@ -65,24 +65,35 @@ class SegmentedSeriesTest {
                 return times[index];
             }
 
+            // A DIFFERENT NUMBER PER ACCESSOR. All five used to answer the
+            // bare index, so a slice that forgot to add its offset in
+            // highAt, lowAt, openAt or volumeAt was indistinguishable from
+            // one that did not -- and no assertion in this file read any of
+            // them. Four accessors of five were uncovered, and the one that
+            // was covered shows the author knew how.
             @Override
             public double openAt(int index) {
-                return index;
+                return 1_000 + index;
             }
 
             @Override
             public double highAt(int index) {
-                return index;
+                return 2_000 + index;
             }
 
             @Override
             public double lowAt(int index) {
-                return index;
+                return 3_000 + index;
             }
 
             @Override
             public double closeAt(int index) {
                 return index;
+            }
+
+            @Override
+            public double volumeAt(int index) {
+                return 4_000 + index;
             }
         };
     }
@@ -221,5 +232,34 @@ class SegmentedSeriesTest {
         assertEquals(4, sliced.size(), "the fixture did not slice, so this proves nothing");
         assertTrue(Untraded.at(sliced, 1), "the slice lost which bricks were grey");
         assertEquals(9L, Counted.at(sliced, 2), "the slice lost the trade count");
+    }
+/**
+     * Every accessor, not only the close.
+     *
+     * <p>The fixture answered the bare index from all five, so a slice that
+     * forgot to add its offset anywhere but {@code closeAt} produced exactly the
+     * same numbers as one that did not — and nothing in this file read the other
+     * four at all. A chart drawn from a segment would have had candles whose
+     * bodies came from the right bar and whose wicks came from the start of the
+     * series.</p>
+     */
+    @Test
+    @DisplayName("os cinco acessores andam com o recorte, e nao so o fechamento")
+    void everyAccessorIsShifted() {
+        PriceSeries cut = slice(LocalDate.of(2026, 9, 3), LocalDate.of(2026, 9, 4));
+
+        assertEquals(1_006.0, cut.openAt(0), "openAt did not move with the slice");
+        assertEquals(2_006.0, cut.highAt(0), "highAt did not move with the slice");
+        assertEquals(3_006.0, cut.lowAt(0), "lowAt did not move with the slice");
+        assertEquals(6.0, cut.closeAt(0), "closeAt did not move with the slice");
+        assertEquals(4_006.0, cut.volumeAt(0), "volumeAt did not move with the slice");
+
+        // And the last bar too, or an accessor that answers the FIRST bar for
+        // everything would satisfy the five above.
+        assertEquals(1_011.0, cut.openAt(5));
+        assertEquals(2_011.0, cut.highAt(5));
+        assertEquals(3_011.0, cut.lowAt(5));
+        assertEquals(11.0, cut.closeAt(5));
+        assertEquals(4_011.0, cut.volumeAt(5));
     }
 }

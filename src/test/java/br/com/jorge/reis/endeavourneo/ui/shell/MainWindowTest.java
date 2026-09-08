@@ -466,19 +466,36 @@ class MainWindowTest {
         });
     }
 
+    /**
+     * @param test what to do with a freshly built window, on the interface thread
+     *
+     * <p><b>The queue is drained between building and testing.</b> The
+     * constructor posts restoreCharts for later, and this used to build, test
+     * and dispose inside ONE task -- so the posted restore ran afterwards, over
+     * a window that had already been disposed: charts opened into a desktop
+     * with no size, and rememberCharts wrote the list of open charts again,
+     * after the test that owned it had finished. Which test that landed in
+     * depended on the order of the queue.</p>
+     *
+     * <p>Drained BEFORE the body rather than after: the restore is part of
+     * opening a window, and a test looking at a window should be looking at one
+     * that has finished opening.</p>
+     */
     private static void onEdt(Consumer<MainWindow> test) throws Exception {
         assumeFalse(GraphicsEnvironment.isHeadless(), "no graphics environment");
 
         try (JobService jobs = new JobService()) {
-            SwingUtilities.invokeAndWait(() -> {
-                MainWindow window = new MainWindow("test", jobs);
+            java.util.concurrent.atomic.AtomicReference<MainWindow> made =
+                    new java.util.concurrent.atomic.AtomicReference<>();
 
-                try {
-                    test.accept(window);
-                } finally {
-                    window.dispose();
-                }
-            });
+            SwingUtilities.invokeAndWait(() -> made.set(new MainWindow("test", jobs)));
+            SwingUtilities.invokeAndWait(() -> { });
+
+            try {
+                SwingUtilities.invokeAndWait(() -> test.accept(made.get()));
+            } finally {
+                SwingUtilities.invokeAndWait(() -> made.get().dispose());
+            }
         }
     }
 
