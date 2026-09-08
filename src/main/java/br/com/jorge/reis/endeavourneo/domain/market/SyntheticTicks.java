@@ -98,8 +98,21 @@ public final class SyntheticTicks implements TickPath {
     /**
      * The fit: {@code changes = 30,1 × ticks^1,241}.
      *
-     * <p>It reads 163 changes for a 4-tick minute against a measured 163, 498
-     * for ten against 534, and 2.716 for forty against 2.745.</p>
+     * <p>It reads <b>168</b> changes for a four-tick minute against a measured
+     * 163, <b>524</b> for ten against 534, and <b>2.929</b> for forty against
+     * 2.745 — so it runs +3,1%, −1,9% and +6,7% against the tape.</p>
+     *
+     * <p><b>Those three numbers used to be 163, 498 and 2.716,</b> which is what
+     * an exponent of 1,2187 produces, not 1,241. One of the two was measured and
+     * the other was left behind by an edit, and there was no way to tell which
+     * from here — in a paragraph that is the only account of where the parameter
+     * comes from, for a number that decides how many prices every minute of the
+     * replay receives.</p>
+     *
+     * <p>The exponent in the code is the one kept, because it is the fit the
+     * tape study recorded. The examples are recomputed from it, with the
+     * residuals beside them, so the next reader can check the arithmetic instead
+     * of trusting the sentence.</p>
      */
     private static final double BUSY = 30.1;
 

@@ -51,6 +51,27 @@ package br.com.jorge.reis.endeavourneo.domain.market;
  * <p>The prices that can put a trade in a band are those traded since the
  * previous brick was laid, and the range of the bar laying this one.</p>
  *
+ * <h2>How it is implemented, and why that reads as something else</h2>
+ *
+ * <p>{@code Renko.settle} decides this by POSITION: the first brick of a batch
+ * takes the trades, the rest take none. That looks like the very thing the rule
+ * says it is not — "not how many bricks arrived at once" — and it was reported
+ * as a rule documented and nowhere implemented. It is not: the two agree, and
+ * the reason is the paragraph directly above.</p>
+ *
+ * <p>The tally is emptied every time a brick is settled, so what it holds is
+ * exactly the trades since the PREVIOUS brick — and those are the trades that
+ * closed the first brick of the batch. The rest of the batch was passed through
+ * in one move, in an instant, with nothing traded inside their bands. Position
+ * in the batch is not a proxy for the price question; under that discipline it
+ * IS the price question.</p>
+ *
+ * <p>What the rule forbids is deciding by how FAR the bar moved or by which
+ * extreme laid the brick, and neither is done. {@code RenkoGapTest} pins the
+ * whole of it: a gap up reads {@code #.........#} — the brick the jump closed
+ * and, separately, the one the next trade closed, with nine empty ones between
+ * them — and a steady climb reads every brick traded.</p>
+ *
  * <p>This is measured from prices, not from volume. Volume is spread across a
  * batch of bricks by a convention the data does not support (see {@link
  * Renko}), so a grey brick can still show a share of it — the count is what is

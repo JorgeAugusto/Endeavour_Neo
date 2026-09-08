@@ -52,9 +52,19 @@ import java.util.List;
  * what stops price oscillating around one level from painting a staircase of
  * alternating bricks. Set it to 1 and every crossing of a level draws a brick.</p>
  *
- * <p><b>A brick carries the time of the source bar that completed it.</b> When
- * one minute completes three bricks, the three share a timestamp. Nothing else
- * is true — they really did all happen inside that minute.</p>
+ * <p><b>A brick carries the time of the source bar that completed it</b> —
+ * except the first of a batch over TICKS, which carries the time of the first
+ * trade since the previous brick. When one minute completes three bricks over
+ * candles, the three share a timestamp and they really did all happen inside
+ * that minute.</p>
+ *
+ * <p>This used to end "nothing else is true", and over ticks that was wrong in a
+ * way worth stating: the first brick of a batch is stamped with {@code
+ * tally.first()}, which is when the move that closed it BEGAN. For a brick that
+ * had been forming since the previous session — the case measured on 02–03/09/2026
+ * — that is the afternoon before, hours from the print that closed it. Anything
+ * that lines a brick up against a clock has to know that, and an emphatic
+ * sentence saying otherwise is worse than no sentence at all.</p>
  *
  * <p><b>One tail, against the brick.</b> The first brick of a batch shows how
  * far price went the OTHER way before it broke -- the move was fought. There is
