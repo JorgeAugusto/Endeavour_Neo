@@ -34,10 +34,18 @@ import java.util.Map;
 /**
  * One session of the tape on disk, losslessly.
  *
- * <p>Every column of Profit's Times &amp; Trades export is kept: the time, the
- * price, the size, both brokers and who crossed. The test that proves it writes
- * a session, reads it back, prints it as the original text and compares —
- * anything dropped shows up as a difference.</p>
+ * <p>Every column of Profit's Times &amp; Trades export is kept but ONE: the
+ * time, the price, the size, both brokers and who crossed. The test that proves
+ * it writes a session, reads it back, prints it as the original text and
+ * compares — anything dropped shows up as a difference.</p>
+ *
+ * <p>The one left out is <b>Ativo</b>, the instrument's own ticker. A tape file
+ * is one instrument for one session and takes its name from the folder it is
+ * written into, so the column would be the same word on every row of every file.
+ * It is not stored, and this paragraph used to say it was — which mattered,
+ * because the column was also not READ: an export holding two instruments went
+ * into one folder as if it were all one market, and nothing afterwards could
+ * tell. The converter refuses that now.</p>
  *
  * <pre>
  * header   ENDVTAPE   8 bytes, ASCII

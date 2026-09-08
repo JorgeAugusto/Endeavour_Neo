@@ -191,6 +191,16 @@ public final class ProfitTrades {
 
         private int count;
 
+        /**
+         * What the first column said on the first row.
+         *
+         * <p>Read only to be compared: a tape file is one instrument for one
+         * session, and an export that changes instrument halfway is refused
+         * rather than written into somebody's folder as if it were all one
+         * market.</p>
+         */
+        private String instrument;
+
         private int[] day = new int[1 << 20];
 
         private int[] millis = new int[1 << 20];
@@ -273,6 +283,26 @@ public final class ProfitTrades {
         return rows;
     }
 
+    /**
+     * @param row the bytes of the first column
+     * @param length how many of them
+     * @param name what it said on the first row
+     * @return whether they are the same word
+     */
+    private static boolean sameBytes(byte[] row, int length, String name) {
+        if (name.length() != length) {
+            return false;
+        }
+
+        for (int i = 0; i < length; i++) {
+            if (name.charAt(i) != (char) (row[i] & 0xFF)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private static void parse(Path csv, Rows rows, byte[] row, int length, long line,
             int[] ends) {
         int fields = 0;
@@ -286,6 +316,31 @@ public final class ProfitTrades {
         if (fields != 7) {
             throw new IllegalArgumentException(csv + ", line " + line + ": expected eight "
                     + "columns and found " + (fields + 1));
+        }
+
+        // THE FIRST COLUMN IS READ NOW. It names the instrument, and it was
+        // located and never looked at -- while the tape's own javadoc claims
+        // "every column of Profit's Times & Trades export is kept".
+        //
+        // What that cost: the instrument comes from the caller's argument and
+        // never from the file, so an export holding TWO instruments -- which the
+        // product will produce -- was written into one instrument's folder as if
+        // it were all one market. The rows interleave, so the same date is
+        // visited again after the writer for it has been finished, and the day
+        // loop only compares against the PREVIOUS date. Nothing downstream could
+        // detect any of it, because the column that would say was never stored.
+        //
+        // Refused rather than stored: keeping it is a change to the file format,
+        // and this is the half that stops the damage. Compared as BYTES, so the
+        // check costs no allocation per row -- the name is built once, for the
+        // first row, and once more only to say what went wrong.
+        if (rows.instrument == null) {
+            rows.instrument = new String(row, 0, ends[0], ENCODING);
+        } else if (!sameBytes(row, ends[0], rows.instrument)) {
+            throw new IllegalArgumentException(csv + ", line " + line + ": this export "
+                    + "holds more than one instrument -- " + rows.instrument + " and "
+                    + new String(row, 0, ends[0], ENCODING) + " -- and a tape file is one "
+                    + "instrument for one session");
         }
 
         int date = ends[0] + 1;

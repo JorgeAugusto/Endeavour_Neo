@@ -470,4 +470,32 @@ class TapeFileTest {
         assertNull(Aggressor.ofCode(6));
         assertNull(Aggressor.ofCode(-1));
     }
+
+    @Test
+    @DisplayName("um export com DOIS ativos e recusado, e nao gravado como se fosse um")
+    void anexportOfTwoInstrumentsIsRefused(@TempDir Path folder) throws IOException {
+        // The first column names the instrument, and it was located and never
+        // read -- while this file's own javadoc claimed every column of the
+        // export is kept. The instrument came from the caller's argument and
+        // never from the file.
+        //
+        // So an export holding two instruments went into ONE folder as if it
+        // were all one market. The rows interleave, so the same date is visited
+        // again after the writer for it has been finished, and the day loop only
+        // compares against the previous date. Nothing downstream could tell,
+        // because the column that would say was never stored.
+        List<String> mixed = new ArrayList<>(NEWEST_FIRST);
+
+        mixed.add("WDOFUT;01/09/2026;09:00:00;3 - XP Investimentos CCTVM S/A;5.421,5;1;"
+                + "85 - BTG Pactual CTVM S.A.;Comprador");
+
+        Path csv = exportOf(folder, "mixed.csv", mixed);
+
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                () -> ProfitTrades.convert(csv, folder.resolve("ticks"), "win", null),
+                "an export of two instruments was written as if it were one market");
+
+        assertTrue(thrown.getMessage().contains("WINFUT"), thrown.getMessage());
+        assertTrue(thrown.getMessage().contains("WDOFUT"), thrown.getMessage());
+    }
 }
