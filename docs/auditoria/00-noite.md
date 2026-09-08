@@ -130,6 +130,33 @@ versão deste arquivo".
 O artefato derivado continua sendo artefato derivado, e diz isso sendo derivado:
 apagar os `.folded` custa os segundos de novo e mais nada.
 
+### D6 — Uma candle plana contada como negócio · **A DECIDIR (08/09/2026)**
+
+`TradeTally.seeing` decide "isto é um resumo" pela faixa da barra: `high != low`.
+Uma candle **plana** — um minuto em que tudo negociou a um preço — tem faixa zero
+e é indistinguível de um negócio único pelos números. Uma fonte de candles cujas
+primeiras barras sejam planas conta CANDLES como negócios até chegar a primeira
+barra com faixa. Improvável no WIN; latente para outro papel.
+
+**Tentei corrigir e voltei atrás.** A correção certa é a série dizer o que ela é —
+um marcador `Printed` no `TickBars`, no mesmo formato do `Untraded` e do
+`Counted`, já que a diferença está em de onde as barras vieram e não no que elas
+contêm. Implementado, **onze testes caíram em três arquivos** — e não por
+fixture: a regra do resumo também governa o CARIMBO do tijolo
+(`settle` só escreve `bricks.times[at]` quando não é resumo), então marcar as
+candles planas move o carimbo de todo tijolo assentado a partir delas.
+
+Mover carimbo de renko é a coisa que este projeto mede com mais cuidado, e o
+achado é BAIXA e latente. **Não é decisão minha.** As opções, com o custo:
+
+1. **Deixar como está.** Zero risco; o defeito espera outro papel.
+2. **Marcador `Printed`**, e aceitar que o carimbo dos tijolos de candle plana
+   passa a vir da barra que os fechou. Três arquivos de teste a reescrever, e a
+   pergunta "qual carimbo é o certo" a responder antes.
+3. **Separar as duas perguntas**: um marcador para a CONTAGEM e a regra da faixa
+   para o carimbo. Corrige o defeito sem mexer no carimbo, ao preço de duas
+   regras onde hoje há uma.
+
 ### D2 — Renko de 11R dobrando 1,7 milhão de caixas na EDT · **A DECIDIR NA FASE 1**
 
 Medido na base dele: `Renko(11, 2)` sobre 100.000 barras assenta **1.695.538
