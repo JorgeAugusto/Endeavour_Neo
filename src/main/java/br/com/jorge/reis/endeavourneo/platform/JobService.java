@@ -133,9 +133,14 @@ public final class JobService implements AutoCloseable {
         }
 
         /** @param action what to do with the result, on the interface thread */
-        public synchronized Handle<T> whenDone(Consumer<T> action) {
-            this.onDone = action;
+        public Handle<T> whenDone(Consumer<T> action) {
+            synchronized (this) {
+                this.onDone = action;
+            }
 
+            // Outside the block. See deliver(): registering here and finding the
+            // job already over is the ordinary case, and the callback would then
+            // run holding this object's monitor.
             deliver();
 
             return this;
@@ -149,8 +154,10 @@ public final class JobService implements AutoCloseable {
          * is the failure vanishing, which is what a bare {@code SwingWorker}
          * does.</p>
          */
-        public synchronized Handle<T> whenFailed(Consumer<Throwable> action) {
-            this.onFailed = action;
+        public Handle<T> whenFailed(Consumer<Throwable> action) {
+            synchronized (this) {
+                this.onFailed = action;
+            }
 
             deliver();
 
@@ -170,8 +177,10 @@ public final class JobService implements AutoCloseable {
          * <p>Optional, like the other two: a caller with nothing to undo simply
          * does not set it.</p>
          */
-        public synchronized Handle<T> whenStopped(Runnable action) {
-            this.onStopped = action;
+        public Handle<T> whenStopped(Runnable action) {
+            synchronized (this) {
+                this.onStopped = action;
+            }
 
             deliver();
 
@@ -214,11 +223,13 @@ public final class JobService implements AutoCloseable {
             return reported;
         }
 
-        synchronized void settle(T result, Throwable failure, boolean cancelled) {
-            this.settled = true;
-            this.value = result;
-            this.error = failure;
-            this.wasCancelled = cancelled;
+        void settle(T result, Throwable failure, boolean cancelled) {
+            synchronized (this) {
+                this.settled = true;
+                this.value = result;
+                this.error = failure;
+                this.wasCancelled = cancelled;
+            }
 
             deliver();
 
@@ -227,14 +238,38 @@ public final class JobService implements AutoCloseable {
         }
 
         /**
-         * Hands the outcome to whoever is listening, at most once.
+         * Hands the outcome to whoever asked for it, OUTSIDE this monitor.
+         *
+         * <p>The chaining -- {@code submit(...).whenDone(...)} -- is done on the
+         * interface thread, and for a short job the work is often already over
+         * by then. {@code onEdt} runs its argument INLINE when it is already on
+         * that thread, so the caller's callback used to execute inside this
+         * object's {@code synchronized}: interface code, holding a lock that a
+         * pool thread waits on in {@code settle}. Today they are console lines;
+         * the day one of them opens a modal dialog it becomes a deadlock, with
+         * the pool thread and then {@code close()} queued behind a window the
+         * reader has to dismiss.</p>
+         *
+         * <p>So the decision is taken under the lock and the delivery happens
+         * after it: {@link #ready()} answers what to run, or null.</p>
+         */
+        private void deliver() {
+            Runnable now = ready();
+
+            if (now != null) {
+                onEdt(now);
+            }
+        }
+
+        /**
+         * @return what to hand over, or null when there is nothing to hand over yet
          *
          * <p>Called from both sides of the race and idempotent, so it does not
          * matter which arrives first.</p>
          */
-        private synchronized void deliver() {
+        private synchronized Runnable ready() {
             if (!settled || delivered) {
-                return;
+                return null;
             }
 
             if (wasCancelled) {
@@ -247,16 +282,14 @@ public final class JobService implements AutoCloseable {
                 // With no handler registered yet, stay pending, exactly as the
                 // other two outcomes do: whoever chains whenStopped next gets it.
                 if (onStopped == null) {
-                    return;
+                    return null;
                 }
 
                 Runnable handler = onStopped;
 
                 delivered = true;
 
-                onEdt(handler);
-
-                return;
+                return handler;
             }
 
             // With no handler registered YET, stay pending. Whoever chains the
@@ -264,7 +297,7 @@ public final class JobService implements AutoCloseable {
             // job finishing first must never consume it.
             if (error != null) {
                 if (onFailed == null) {
-                    return;
+                    return null;
                 }
 
                 Consumer<Throwable> handler = onFailed;
@@ -272,13 +305,11 @@ public final class JobService implements AutoCloseable {
 
                 delivered = true;
 
-                onEdt(() -> handler.accept(failure));
-
-                return;
+                return () -> handler.accept(failure);
             }
 
             if (onDone == null) {
-                return;
+                return null;
             }
 
             Consumer<T> handler = onDone;
@@ -286,7 +317,7 @@ public final class JobService implements AutoCloseable {
 
             delivered = true;
 
-            onEdt(() -> handler.accept(result));
+            return () -> handler.accept(result);
         }
 
         public void cancel() {

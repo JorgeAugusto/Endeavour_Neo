@@ -147,28 +147,57 @@ public record ReplayFeed(String instrument, String series, TickSource source) {
      * holidays, and it never goes out of date.</p>
      */
     public NavigableSet<LocalDate> sessions() {
-        return KNOWN.computeIfAbsent(saved(), key -> {
-            if (isTicks()) {
-                TickLibrary library =
-                        new TickLibrary(SeriesCatalog.ticksOf(instrument), instrument, source);
+        String key = saved();
+        NavigableSet<LocalDate> known = KNOWN.get(key);
 
-                try {
-                    return held(new TreeSet<>(library.exported()));
-                } finally {
-                    library.close();
-                }
-            }
+        if (known != null) {
+            return known;
+        }
+
+        // WORKED OUT OUTSIDE THE MAP, and only then offered to it.
+        //
+        // This was computeIfAbsent, which runs its mapping function while
+        // HOLDING the lock on the map's bin -- and the function here opens a
+        // series from disk and walks it, which the paragraph above measures at
+        // 39 to 102 ms. warm() runs that function for every key, on a job thread
+        // the launcher starts before the window exists, so the two overlap by
+        // construction: opening the transport while the warming was still
+        // running blocked the interface thread until the job finished that key,
+        // and -- through a hash collision in the same bin -- for a key that was
+        // already worked out too. A freeze caused by the optimisation written to
+        // prevent it.
+        //
+        // The price is a rare recomputation when two threads arrive together.
+        // Whoever gets there first wins, everybody is handed the SAME set, and
+        // "was this worked out again" stays a question a test can ask.
+        NavigableSet<LocalDate> worked = workOut();
+        NavigableSet<LocalDate> raced = KNOWN.putIfAbsent(key, worked);
+
+        return raced == null ? worked : raced;
+    }
+
+    /** @return the days this feed can play, read from the disk right now */
+    private NavigableSet<LocalDate> workOut() {
+        if (isTicks()) {
+            TickLibrary library =
+                    new TickLibrary(SeriesCatalog.ticksOf(instrument), instrument, source);
 
             try {
-                return held(br.com.jorge.reis.endeavourneo.domain.market.Sessions.of(
-                        SeriesCatalog.open(series).orElse(null)));
-            } catch (java.io.IOException e) {
-                // A series that will not read has no playable days, which the
-                // calendar shows as everything greyed. Better than a calendar
-                // that offers days nothing can play.
-                return held(new TreeSet<>());
+                return held(new TreeSet<>(library.exported()));
+            } finally {
+                library.close();
             }
-        });
+        }
+
+        try {
+            return held(br.com.jorge.reis.endeavourneo.domain.market.Sessions.of(
+                    SeriesCatalog.open(series).orElse(null)));
+        } catch (java.io.IOException e) {
+            // A series that will not read has no playable days, which the
+            // calendar shows as everything greyed. Better than a calendar
+            // that offers days nothing can play.
+            return held(new TreeSet<>());
+        }
     }
 
     /**

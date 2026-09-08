@@ -416,4 +416,59 @@ class JobServiceTest {
                             + "afterwards got nothing");
         }
     }
+/**
+     * A callback chained onto a job that has already finished runs free of the
+     * handle's monitor.
+     *
+     * <p>{@code submit(...).whenDone(...)} is chained on the interface thread,
+     * and for a short job the work is often over by then — so the delivery is
+     * decided immediately, and {@code onEdt} runs its argument INLINE when it is
+     * already on that thread. The callback therefore ran inside the handle's
+     * {@code synchronized}: interface code holding a lock that a pool thread
+     * waits on in {@code settle}. Today those callbacks write console lines; the
+     * day one of them opens a modal dialog it is a deadlock, with the pool
+     * thread and then {@code close()} queued behind a window somebody has to
+     * dismiss.</p>
+     *
+     * <p>{@code Thread.holdsLock} asks the question directly, which is better
+     * than trying to provoke the deadlock and better than measuring time.</p>
+     */
+    @Test
+    @DisplayName("o retorno de um job ja terminado nao roda segurando o cadeado do handle")
+    void thecallbackDoesNotRunHoldingTheHandlesLock() throws Exception {
+        java.util.concurrent.atomic.AtomicBoolean held =
+                new java.util.concurrent.atomic.AtomicBoolean(true);
+        java.util.concurrent.atomic.AtomicBoolean ran =
+                new java.util.concurrent.atomic.AtomicBoolean();
+
+        try (JobService jobs = new JobService()) {
+            CountDownLatch done = new CountDownLatch(1);
+
+            JobService.Handle<Integer> handle = jobs.submit("curto", progress -> {
+                done.countDown();
+
+                return 1;
+            });
+
+            assertTrue(done.await(TIMEOUT_SECONDS, TimeUnit.SECONDS), "the job never ran");
+
+            // And settled, not merely finished: the delivery is decided in the
+            // step that follows the work, and chaining before it would take the
+            // other path -- the one that leaves the outcome pending.
+            for (int tries = 0; tries < 200 && jobs.isBusy(); tries++) {
+                Thread.sleep(10L);
+            }
+
+            SwingUtilities.invokeAndWait(() -> handle.whenDone(value -> {
+                ran.set(true);
+                held.set(Thread.holdsLock(handle));
+            }));
+
+            assertTrue(ran.get(),
+                    "the callback never ran, so this test is asking about nothing");
+            assertFalse(held.get(),
+                    "the callback ran inside the handle's monitor: any modal dialog in it "
+                            + "would hold the pool thread and the shutdown behind it");
+        }
+    }
 }

@@ -336,6 +336,35 @@ public final class TickLibrary implements AutoCloseable {
                 // replay: the path falls back to synthetic ticks for that day,
                 // which is exactly what happens for every day with no export.
                 announce();
+            } catch (RuntimeException e) {
+                // AND ANYTHING ELSE, because what is at stake is not the
+                // exception: it is that whoever is waiting is told. A failure
+                // that escaped this method left announce() uncalled, and the
+                // replay session waiting on it stayed `preparing` for ever --
+                // the day exists, the session is built, and toggle() returns on
+                // its first line, so the play button never came alive and
+                // nothing anywhere said why.
+                //
+                // WITH THE FINDING'S OWN EXAMPLES REFUTED, and the guard kept
+                // anyway. A truncated file, a bad header, a count that is not a
+                // number: every one of those is checked inside TickFile.read
+                // and TapeFile.read before a byte is decoded, and comes out as
+                // an IOException. So there is no file that reaches this branch
+                // today, and no test can be written for it through the format.
+                //
+                // It is kept because the class of fault is not hypothetical
+                // here: TapeFile.read carries a comment about an aggressor code
+                // of zero that "walked straight through TickLibrary.queue (that
+                // catches IOException) and blew up later on the painting or
+                // replay thread, far from the file that caused it". That one was
+                // closed at the source, which is the right place. This is the
+                // net under it.
+                //
+                // And said out loud rather than swallowed: a silent recovery
+                // from something nobody predicted is how the next one hides.
+                complain(fileFor(day) + ": the session could not be read (" + e + ")");
+
+                announce();
             } finally {
                 loading.remove(day);
             }
