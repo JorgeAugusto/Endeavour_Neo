@@ -513,8 +513,13 @@ Duas coisas que a tarde ensinou:
 | **B7b-10, B7b-11** | Uma folha sem nome abre nada; um segmento em diante fica em diante | `02277dc` |
 | **B1-7, B1-8, B1-12** | O degrau sem sobreposição, a alocação por linha, o "custa nada" | `3c1de03` |
 | **B1-13** | A coluna Ativo deixa de ser ignorada | `22daa0f` |
+| **B2-3, B2-4, B2-5** | Dois comentários que mentiam sobre número medido, e um achado refutado | `775ca1e` |
+| **B2-10, B2-11** | A linha morta do volume pendente, e a frase da thread errada | `8053e1a` |
+| **B3-6, B3-7** | A recusa do renko vale no restauro, e o restauro espera as barras | `25ae09f` |
+| **B3-8, B4-14** | O estilo diz o próprio código, volta nos dois sentidos, e se anuncia | `74a0342` |
+| **B3-10, B4-12, B5-7** | O que era construído por barra, por linha e por movimento do mouse | `85218fc` |
 
-**51 MÉDIA fechadas.** Suíte em **618**. As áreas **B1** e **B7a** estão fechadas.
+**63 MÉDIA fechadas.** Suíte em **622**. As áreas **B1**, **B2** e **B7a** estão fechadas.
 
 Uma terceira lição, e é a mesma três vezes: **o `OrphanJavadocTest` pegou o autor
 dele em três commits diferentes desta fase**, sempre por um membro novo inserido
@@ -527,7 +532,7 @@ qualquer correção individual — e vale mais ainda contra quem a escreveu.
 - **B6-9 sem teste, dito de propósito.** Exercitar aquele caminho exige soltar o
   painel DURANTE os quatro segundos da construção da sessão, o que é dirigir um
   `SwingWorker` pelo meio — um teste sobre o escalonador, não sobre isto.
-- **As 70 MÉDIA e 107 BAIXA restantes** da auditoria II, e as **93 MÉDIA e 115
+- **As 58 MÉDIA e 107 BAIXA restantes** da auditoria II, e as **93 MÉDIA e 115
   BAIXA** da auditoria I que a decisão D5 mandou para cá.
 
 ### Mais duas lições da fase 4
@@ -551,3 +556,19 @@ horas antes, já tinha trocado aquele `close()` por um `discard()` idempotente.
 O mecanismo não reproduzia mais. A FORMA continuava: uma limpeza dentro de um
 `finally` pode substituir a causa. Foi corrigida por isso, e o commit diz que o
 achado chegou pela metade em vez de fingir que fechou inteiro.
+
+### Um achado refutado depois de implementado
+
+**B2-5** dizia que a regra do tijolo cinza está documentada e não implementada em
+lugar nenhum, porque o `settle` decide por POSIÇÃO no lote. Implementei a
+"correção" — a contagem passou a carregar o menor e o maior preço negociado, e o
+tijolo passou a ser conferido pela faixa. **Seis testes do `RenkoGapTest` caíram
+na hora, e eles é que estão certos.**
+
+As duas coisas concordam, e o motivo estava no parágrafo logo acima da frase
+acusada: a contagem é zerada a cada tijolo assentado, então o que ela guarda são
+exatamente os negócios desde o tijolo anterior — e são esses que fecharam o
+primeiro do lote. Sob essa disciplina, posição no lote **é** a pergunta de preço.
+
+A mudança foi revertida inteira e a explicação ficou escrita no `Untraded`. Um
+relatório de auditoria é uma hipótese, e esta caiu no primeiro teste.
