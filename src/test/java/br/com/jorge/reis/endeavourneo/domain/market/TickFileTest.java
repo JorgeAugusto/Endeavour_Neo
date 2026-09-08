@@ -118,6 +118,34 @@ class TickFileTest {
     }
 
     @Test
+    @DisplayName("um preco com lixo no meio e RECUSADO, nao lido pela metade")
+    void anumberWithRubbishInItIsRefused(@TempDir Path folder) throws IOException {
+        // The digits used to be picked out and anything else skipped: "1x2" came
+        // out as 12, "-5" as 5, "1 2" as 12. A price with rubbish in the middle
+        // entered the base as a plausible wrong number, and nothing downstream
+        // could tell -- which is the exact reason the column count, forty lines
+        // above in the same file, refuses instead: "a row half read is a tick
+        // with numbers in the wrong places, which nothing downstream could
+        // detect". The file stated the policy and did the opposite one field
+        // further on.
+        //
+        // The other converter of this family already refused, naming the file
+        // and the line.
+        List<String> rubbish = new ArrayList<>(ROWS);
+
+        rubbish.add("2021.01.04\t10:06:00.000\t\t\t11x450\t1.00000000\t88");
+
+        Path csv = exportOf(folder, "WINFUT.csv", rubbish);
+
+        IOException thrown = assertThrows(IOException.class,
+                () -> MetaTraderTicks.convert(csv, folder.resolve("ticks"), "winfut", null),
+                "a price with a letter in the middle was read as a number and written to "
+                        + "the base, with nothing able to detect it afterwards");
+
+        assertTrue(thrown.getMessage().contains("11x450"), thrown.getMessage());
+    }
+
+    @Test
     @DisplayName("a zero the exchange sent is not the same as a field it left empty")
     void zeroIsNotAbsent(@TempDir Path folder) throws IOException {
         // The difference this file exists to keep. A book rebuilt from a series

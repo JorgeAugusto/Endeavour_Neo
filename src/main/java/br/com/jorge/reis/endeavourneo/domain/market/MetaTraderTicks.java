@@ -215,11 +215,11 @@ public final class MetaTraderTicks {
                     + new String(row, 0, length, java.nio.charset.StandardCharsets.US_ASCII));
         }
 
-        int bid = whole(row, starts[2], starts[3] - 1);
-        int ask = whole(row, starts[3], starts[4] - 1);
-        int last = whole(row, starts[4], starts[5] - 1);
-        int volume = whole(row, starts[5], starts[6] - 1);
-        int flags = whole(row, starts[6], length);
+        int bid = whole(row, starts[2], starts[3] - 1, length);
+        int ask = whole(row, starts[3], starts[4] - 1, length);
+        int last = whole(row, starts[4], starts[5] - 1, length);
+        int volume = whole(row, starts[5], starts[6] - 1, length);
+        int flags = whole(row, starts[6], length, length);
 
         writer.add(millis,
                 Math.max(bid, 0), Math.max(ask, 0), Math.max(last, 0), Math.max(volume, 0),
@@ -229,13 +229,26 @@ public final class MetaTraderTicks {
 
     /**
      * @return the whole part of the number, or -1 when the field is empty
+     * @throws IOException if the field is not a number
      *
      * <p>The whole part only, and that is measured rather than assumed: over
      * the 87 million rows of January 2021 not one price or volume has a
      * fraction. The export still writes volumes as {@code 2.00000000}, so the
      * fraction has to be skipped, not refused.</p>
+     *
+     * <p><b>A byte that is not a digit is REFUSED, and it used to be skipped.</b>
+     * {@code 1x2} came out as 12, {@code -5} as 5, {@code 1 2} as 12 -- a price
+     * with rubbish in the middle entered the base as a plausible wrong number
+     * with nothing to detect it. Forty lines above, the column count refuses for
+     * exactly this reason, in words: "a row half read is a tick with numbers in
+     * the wrong places, which nothing downstream could detect". The same file
+     * stated the policy and then did the opposite one field down.</p>
+     *
+     * <p>The other converter of this family already refuses, naming the file and
+     * the line. This one now does the same, and the cost is one comparison that
+     * was being made anyway.</p>
      */
-    private static int whole(byte[] row, int from, int to) {
+    private static int whole(byte[] row, int from, int to, int length) throws IOException {
         if (to <= from) {
             return -1;
         }
@@ -249,9 +262,14 @@ public final class MetaTraderTicks {
                 break;
             }
 
-            if (b >= '0' && b <= '9') {
-                value = value * 10 + (b - '0');
+            if (b < '0' || b > '9') {
+                throw new IOException("\"" + new String(row, from, to - from,
+                        java.nio.charset.StandardCharsets.US_ASCII)
+                        + "\" is not a number, in: " + new String(row, 0, length,
+                        java.nio.charset.StandardCharsets.US_ASCII));
             }
+
+            value = value * 10 + (b - '0');
         }
 
         return value;
