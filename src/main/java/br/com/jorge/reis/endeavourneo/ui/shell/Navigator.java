@@ -87,8 +87,9 @@ public final class Navigator extends JPanel {
                 // whether the node carries a name, not whether it is a twig.
 
                 // The NAME, never the label: the tree shows "winn-1m . busca"
-                // and the rest of the program only knows "winn-1m". A leaf with
-                // no name -- a tick session, a message -- opens nothing.
+                // and the rest of the program only knows "winn-1m". A node that
+                // carries no name -- a message, a heading, a locked source --
+                // opens nothing.
                 String name = nameOf(leaf);
 
                 if (name != null) {
@@ -120,13 +121,17 @@ public final class Navigator extends JPanel {
      * message has no name and opens nothing.</p>
      */
     static String nameOf(DefaultMutableTreeNode node) {
-        Object held = node.getUserObject();
-
-        if (held instanceof Leaf entry) {
-            return entry.name();
-        }
-
-        return node.isLeaf() ? String.valueOf(held) : null;
+        // A LEAF OR NOTHING. This used to fall back to the node's own text for
+        // any leaf that was not wrapped in one -- and the Studies section builds
+        // exactly that, a plain String. Double-clicking "Sem titulo" under
+        // Studies called open("Sem titulo"), which finds neither series nor
+        // ticks and falls through to the default series: a chart of something
+        // else entirely, from a section that has nothing to do with charts.
+        //
+        // The comment two screens up promised this could not happen -- "a leaf
+        // with no name opens nothing" -- which is why nobody went looking. The
+        // nodes that are meant to open all carry a Leaf.
+        return node.getUserObject() instanceof Leaf entry ? entry.name() : null;
     }
 
     /**

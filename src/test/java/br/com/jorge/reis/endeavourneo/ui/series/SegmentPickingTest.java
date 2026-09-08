@@ -19,6 +19,7 @@ package br.com.jorge.reis.endeavourneo.ui.series;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import br.com.jorge.reis.endeavourneo.domain.market.Segment;
@@ -271,5 +272,41 @@ class SegmentPickingTest {
 
         assertEquals(without.getRGB(beforeIt, middle), with.getRGB(beforeIt, middle),
                 "adding one segment repainted the days before it as well");
+    }
+
+    @Test
+    @DisplayName("editar um segmento EM DIANTE sem mexer nele nao o fecha")
+    void editinganopenSegmentDoesNotCloseIt() {
+        // An open segment -- no end, shown as "em diante" -- comes into the
+        // dialog with its end handle parked on the last session known, because a
+        // handle has to be somewhere. Building a two-date segment from that
+        // CLOSED it: opening Edit, changing nothing and pressing OK turned "from
+        // here on" into "up to the last session that happened to be on disk",
+        // and the only sign was the table showing a date where it used to show
+        // two words.
+        //
+        // The difference is real further down: a chart of an open segment reads
+        // to the end of the file, and a closed one stops at a fixed instant. So
+        // the segment kept for testing quietly stops covering everything
+        // imported after the day somebody opened its dialog -- and the whole
+        // point of that segment is that it goes on being the part nobody looked
+        // at.
+        List<LocalDate> days = tenSessions();
+
+        assertNull(SegmentDialog.endFor(true, days.size() - 1, days),
+                "an open segment whose end handle was never moved came out closed at the "
+                        + "last session on disk");
+
+        // Moving the end off the last session closes it, which is the reader
+        // saying so.
+        assertEquals(days.get(days.size() - 2),
+                SegmentDialog.endFor(true, days.size() - 2, days),
+                "the segment stayed open after the reader moved its end");
+
+        // And a segment that arrived closed stays closed wherever its handle is,
+        // including on the last session.
+        assertEquals(days.get(days.size() - 1),
+                SegmentDialog.endFor(false, days.size() - 1, days),
+                "a closed segment was opened by being dragged to the end");
     }
 }

@@ -524,4 +524,31 @@ class NavigatorTreeTest {
             br.com.jorge.reis.endeavourneo.platform.Segmentation.setSegmentsOnly(key, false);
         }
     }
+
+    @Test
+    @DisplayName("um no que nao carrega nome abre NADA, mesmo sendo folha")
+    void anodeWithNoNameOpensNothing() {
+        // The promise is written in the tree's own comment -- "a leaf with no
+        // name opens nothing" -- and it held only for nodes wrapped in Leaf. The
+        // Studies section builds a plain String, which is a leaf and answers its
+        // own translated label: double-clicking "Sem titulo" called open("Sem
+        // titulo"), which finds neither series nor ticks and falls through to
+        // the DEFAULT SERIES. A chart of something else entirely, opened from a
+        // section that has nothing to do with charts, and the comment is why
+        // nobody went looking.
+        DefaultMutableTreeNode plain =
+                new DefaultMutableTreeNode(Messages.get("document.untitled"));
+
+        assertTrue(plain.isLeaf(), "the fixture is not a leaf, so it tests nothing");
+        assertNull(Navigator.nameOf(plain),
+                "a node carrying only a label answered with the label, and the label was "
+                        + "opened as if it were a series");
+
+        // And a heading, which is a node with children and no name either.
+        DefaultMutableTreeNode heading = new DefaultMutableTreeNode("Estudos");
+
+        heading.add(plain);
+
+        assertNull(Navigator.nameOf(heading), "a heading answered with its own text");
+    }
 }

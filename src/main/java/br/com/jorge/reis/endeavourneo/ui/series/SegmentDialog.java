@@ -150,6 +150,7 @@ public final class SegmentDialog extends JDialog {
 
         this.days = sessions;
         this.existing = segments;
+        this.openEnded = start.isOpenEnded();
 
         NavigableSet<LocalDate> playable = new TreeSet<>(sessions);
 
@@ -564,11 +565,55 @@ public final class SegmentDialog extends JDialog {
         return String.format("%.1f%%", 100.0 * sessions / days.size());
     }
 
+    /**
+     * Whether the segment arrived with no end.
+     *
+     * <p>The handle has to be parked somewhere, so an open segment comes in with
+     * its end on the last session known -- and there is no way to tell that
+     * apart from a reader who chose the last session, unless the answer is
+     * remembered from before the dialog opened.</p>
+     */
+    private final boolean openEnded;
+
+    /**
+     * @return the segment as the handles now stand
+     *
+     * <p><b>An open segment that was not moved stays open.</b> One with no end
+     * -- shown as "em diante" in the table -- comes into this dialog with its
+     * end handle parked on the last session known, because a handle has to be
+     * somewhere. Building a two-date segment from that CLOSED it: opening
+     * <i>Edit</i>, changing nothing and pressing OK turned "from here on" into
+     * "up to the last session that happened to be on disk", and the only sign
+     * was the table showing a date where it used to show two words.</p>
+     *
+     * <p>The difference is real further down. A chart of an open segment reads
+     * to the end of the file; a closed one stops at a fixed instant, so the same
+     * segment now hides every session imported afterwards -- and the whole point
+     * of a segment kept for testing is that it goes on being the part that was
+     * not looked at.</p>
+     *
+     * <p>Moving the end handle off the last session closes it, which is the
+     * reader saying so.</p>
+     */
     private Segment current() {
         String chosenName = name.getText().isBlank()
                 ? Messages.get("series.newName") : name.getText().trim();
 
-        return new Segment(chosenName, days.get(range.from()), days.get(range.to()));
+        return new Segment(chosenName, days.get(range.from()),
+                endFor(openEnded, range.to(), days));
+    }
+
+    /**
+     * @param arrivedOpen whether the segment had no end when the dialog opened
+     * @param handle where the end handle sits now
+     * @param sessions the days the handles run over
+     * @return the end to store, or null to leave it open
+     *
+     * <p>Package-visible and static because it is a RULE, and a rule can be
+     * asked without a window.</p>
+     */
+    static LocalDate endFor(boolean arrivedOpen, int handle, List<LocalDate> sessions) {
+        return arrivedOpen && handle == sessions.size() - 1 ? null : sessions.get(handle);
     }
 
     private static boolean overlaps(Segment a, Segment b) {
