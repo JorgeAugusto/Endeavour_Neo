@@ -120,8 +120,8 @@ public final class Segmentable {
 
         String source = key.substring(key.indexOf(TICKS) + TICKS.length());
 
-        return Messages.market(instrumentOf(key)) + "  ·  " + Messages.get("navigator.ticks")
-                + "  ·  " + Messages.orElse("navigator.tickSource." + source, source);
+        return Messages.market(instrumentOf(key)) + br.com.jorge.reis.endeavourneo.platform.Formats.FIELDS + Messages.get("navigator.ticks")
+                + br.com.jorge.reis.endeavourneo.platform.Formats.FIELDS + Messages.orElse("navigator.tickSource." + source, source);
     }
 
     /**

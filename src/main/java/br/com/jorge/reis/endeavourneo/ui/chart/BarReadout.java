@@ -55,7 +55,7 @@ import java.util.List;
 final class BarReadout {
 
     private static final DateTimeFormatter STAMP =
-            DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+            DateTimeFormatter.ofPattern(br.com.jorge.reis.endeavourneo.platform.Formats.DATE_TIME);
 
     /** Shared with the ruler's box; see Readouts. */
     private static final int PADDING = Readouts.PADDING;

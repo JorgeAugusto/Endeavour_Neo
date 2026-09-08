@@ -114,6 +114,19 @@ public final class MainWindow extends JFrame {
      */
     private static final Settings PREFS = Settings.workspace();
 
+    /**
+     * Where the two dividers start out.
+     *
+     * <p>ONE pair of numbers. They were written twice -- once as the default of
+     * the value read at start-up and once inside "reset the layout" -- so
+     * changing one and not the other gave the program two different default
+     * layouts, and which one a reader saw depended on whether they had ever
+     * pressed reset.</p>
+     */
+    private static final int LEFT_AT = 260;
+
+    private static final double BOTTOM_AT = 0.68;
+
     private static final String WIDTH = "window.width";
 
     private static final String HEIGHT = "window.height";
@@ -1032,7 +1045,7 @@ public final class MainWindow extends JFrame {
         String scale = holder.canvas().periodLabel();
 
         return scale == null || scale.isBlank()
-                ? holder.label() : holder.label() + "  ·  " + scale;
+                ? holder.label() : holder.label() + br.com.jorge.reis.endeavourneo.platform.Formats.FIELDS + scale;
     }
 
     public StatusBar getStatus() {
@@ -1454,9 +1467,9 @@ public final class MainWindow extends JFrame {
 
         // Dividers only accept a position once the window has a size.
         SwingUtilities.invokeLater(() -> {
-            leftDivider.setDividerLocation(PREFS.getInt(LEFT_DIVIDER, 260));
+            leftDivider.setDividerLocation(PREFS.getInt(LEFT_DIVIDER, LEFT_AT));
             bottomDivider.setDividerLocation(
-                    PREFS.getInt(BOTTOM_DIVIDER, (int) (height * 0.68)));
+                    PREFS.getInt(BOTTOM_DIVIDER, (int) (height * BOTTOM_AT)));
         });
     }
 
@@ -1475,8 +1488,8 @@ public final class MainWindow extends JFrame {
     }
 
     private void defaultLayout() {
-        leftDivider.setDividerLocation(260);
-        bottomDivider.setDividerLocation((int) (getHeight() * 0.68));
+        leftDivider.setDividerLocation(LEFT_AT);
+        bottomDivider.setDividerLocation((int) (getHeight() * BOTTOM_AT));
 
         console.write(Messages.get("console.layoutReset"));
     }

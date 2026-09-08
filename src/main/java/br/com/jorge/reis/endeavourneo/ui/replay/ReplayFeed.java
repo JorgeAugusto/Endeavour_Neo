@@ -285,16 +285,16 @@ public record ReplayFeed(String instrument, String series, TickSource source) {
         String market = Messages.market(instrument);
 
         if (isTicks()) {
-            return market + "  ·  " + Messages.get("navigator.ticks")
-                    + "  ·  " + Messages.orElse(
+            return market + br.com.jorge.reis.endeavourneo.platform.Formats.FIELDS + Messages.get("navigator.ticks")
+                    + br.com.jorge.reis.endeavourneo.platform.Formats.FIELDS + Messages.orElse(
                             "navigator.tickSource." + source.key(), source.key());
         }
 
         String scale = SeriesCatalog.scaleOf(series);
 
-        return market + "  ·  "
+        return market + br.com.jorge.reis.endeavourneo.platform.Formats.FIELDS
                 + (scale.isEmpty() ? series
-                        : Messages.orElse("navigator.scale." + scale, scale) + "  ·  "
+                        : Messages.orElse("navigator.scale." + scale, scale) + br.com.jorge.reis.endeavourneo.platform.Formats.FIELDS
                                 + series);
     }
 

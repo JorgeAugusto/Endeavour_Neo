@@ -64,7 +64,7 @@ public final class DatePicker extends JPanel {
      * way. There were three formats in one window before: this, the dd/MM of the
      * end label, and a bare LocalDate.toString() in the chart title.</p>
      */
-    static final DateTimeFormatter TYPED = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+    static final DateTimeFormatter TYPED = DateTimeFormatter.ofPattern(br.com.jorge.reis.endeavourneo.platform.Formats.DATE);
 
     /** Sunday first, then round the week. */
     private static final DayOfWeek[] WEEK = {

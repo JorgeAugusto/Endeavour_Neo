@@ -47,7 +47,7 @@ import java.util.List;
  */
 final class SeriesSummary {
 
-    private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+    private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern(br.com.jorge.reis.endeavourneo.platform.Formats.DATE);
 
     private SeriesSummary() {
         throw new AssertionError("Utility class must not be instantiated");

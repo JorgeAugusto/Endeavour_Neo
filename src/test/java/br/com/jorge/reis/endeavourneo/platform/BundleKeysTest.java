@@ -17,6 +17,7 @@
  */
 package br.com.jorge.reis.endeavourneo.platform;
 
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.io.IOException;
@@ -231,4 +232,70 @@ class BundleKeysTest {
             "Messages.get(" + QUOTE,
             "Messages.orElse(" + QUOTE,
             "Messages.mnemonic(" + QUOTE);
+/**
+     * Every mnemonic is a letter that is actually in its own label.
+     *
+     * <p>A mnemonic the label does not contain underlines nothing: Swing draws
+     * the item without a mark and the keystroke opens nothing. {@code
+     * action.preferences} carried a {@code P} in both bundles — left over from
+     * when the label read "Preferences" — over "Settings..." and
+     * "Configurações...", so the one item of the File menu without an underline
+     * was the one that looked most deliberate.</p>
+     *
+     * <p>Case is ignored, which is how {@code setMnemonic} matches it.</p>
+     */
+    @Test
+    @DisplayName("todo mnemonico e uma letra que existe no proprio rotulo")
+    void everyMnemonicIsInItsLabel() throws IOException {
+        checkMnemonics(ENGLISH, "English");
+        checkMnemonics(BRAZILIAN, "Brazilian");
+    }
+
+    /** @return every key and value of a bundle, as a plain map */
+    private static java.util.Map<String, String> pairsOf(Path bundle) throws IOException {
+        java.util.Properties held = new java.util.Properties();
+
+        try (java.io.Reader in = Files.newBufferedReader(bundle, StandardCharsets.UTF_8)) {
+            held.load(in);
+        }
+
+        java.util.Map<String, String> pairs = new java.util.TreeMap<>();
+
+        for (String key : held.stringPropertyNames()) {
+            pairs.put(key, held.getProperty(key));
+        }
+
+        return pairs;
+    }
+
+    private static void checkMnemonics(Path bundle, String which) throws IOException {
+        java.util.Map<String, String> pairs = pairsOf(bundle);
+
+        for (java.util.Map.Entry<String, String> each : pairs.entrySet()) {
+            checkMnemonic(each.getKey(), each.getValue(), pairs, which);
+        }
+    }
+
+    /** Fails when that key is a mnemonic whose letter is not in its own label. */
+    private static void checkMnemonic(String key, String value,
+                                      java.util.Map<String, String> bundle, String which) {
+
+        if (!key.endsWith(".mnemonic") || value.isBlank()) {
+            return;
+        }
+
+        String label = bundle.get(key.substring(0, key.length() - ".mnemonic".length()));
+
+        if (label == null) {
+            // A mnemonic whose label is gone is a dead key, which is a
+            // different question and has its own answer in the audit.
+            return;
+        }
+
+        assertTrue(label.toLowerCase(java.util.Locale.ROOT)
+                        .indexOf(Character.toLowerCase(value.charAt(0))) >= 0,
+                which + ": " + key + " is '" + value + "', and \"" + label
+                        + "\" has no such letter -- nothing is underlined and the "
+                        + "keystroke opens nothing");
+    }
 }

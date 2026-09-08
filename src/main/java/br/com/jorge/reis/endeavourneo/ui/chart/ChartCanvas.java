@@ -153,7 +153,7 @@ public final class ChartCanvas extends JComponent {
 
     private static final DateTimeFormatter CLOCK = DateTimeFormatter.ofPattern("HH:mm");
 
-    private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("dd/MM");
+    private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern(br.com.jorge.reis.endeavourneo.platform.Formats.DAY);
 
     /** The top row on a chart whose bars are days or longer. */
     private static final DateTimeFormatter DAY_OF_MONTH = DateTimeFormatter.ofPattern("dd");
@@ -170,7 +170,7 @@ public final class ChartCanvas extends JComponent {
      * only shows once per day, in a band the cursor is nowhere near.</p>
      */
     private static final DateTimeFormatter CURSOR_TIME =
-            DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+            DateTimeFormatter.ofPattern(br.com.jorge.reis.endeavourneo.platform.Formats.DATE_TIME);
 
     /**
      * The footer reading, which has less room than the cursor tag.

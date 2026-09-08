@@ -70,7 +70,7 @@ public final class SeriesWindow extends JDialog {
     private static final long serialVersionUID = 1L;
 
     /** Shared with the segment dialog, so a date never reads two ways in one window. */
-    static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+    static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern(br.com.jorge.reis.endeavourneo.platform.Formats.DATE);
 
 
     private final JComboBox<String> series = new JComboBox<>();

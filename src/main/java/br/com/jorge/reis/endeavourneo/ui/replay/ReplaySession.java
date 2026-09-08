@@ -91,8 +91,17 @@ public final class ReplaySession {
      */
     private static final int FRAME = 40;
 
-    /** The smallest step the instrument moves in; goes with the series one day. */
-    private static final double TICK = 5.0;
+    /**
+     * The smallest price step this market moves in.
+     *
+     * <p>Taken from {@link br.com.jorge.reis.endeavourneo.ui.chart.PeriodCatalog},
+     * which already declares it and says where it belongs: "it is a property of
+     * the instrument and belongs with the base once bases carry their own
+     * metadata". It was declared here as well, with the same value, and the two
+     * did not know about each other.</p>
+     */
+    private static final double TICK =
+            br.com.jorge.reis.endeavourneo.ui.chart.PeriodCatalog.TICK;
 
     /** The sessions of real ticks, at most three of them in memory. */
     private final transient TickLibrary ticks;
@@ -126,7 +135,7 @@ public final class ReplaySession {
     private static final DateTimeFormatter CLOCK = DateTimeFormatter.ofPattern("HH:mm:ss");
 
     private static final DateTimeFormatter DAY_AND_CLOCK =
-            DateTimeFormatter.ofPattern("dd/MM HH:mm:ss");
+            DateTimeFormatter.ofPattern(br.com.jorge.reis.endeavourneo.platform.Formats.DAY + " HH:mm:ss");
 
     private final String instrument;
 
@@ -772,7 +781,7 @@ public final class ReplaySession {
             return close.format(DateTimeFormatter.ofPattern("HH:mm"));
         }
 
-        return until.format(DateTimeFormatter.ofPattern("dd/MM"))
+        return until.format(DateTimeFormatter.ofPattern(br.com.jorge.reis.endeavourneo.platform.Formats.DAY))
                 + " " + close.format(DateTimeFormatter.ofPattern("HH:mm"));
     }
 

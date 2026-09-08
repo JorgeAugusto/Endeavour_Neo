@@ -260,7 +260,7 @@ public final class Navigator extends JPanel {
         boolean locked = Segmentation.segmentsOnly(name);
         DefaultMutableTreeNode node = new DefaultMutableTreeNode(new Leaf(
                 locked ? null : name,
-                locked ? labelOf(name) + "  ·  " + Messages.get("navigator.locked")
+                locked ? labelOf(name) + br.com.jorge.reis.endeavourneo.platform.Formats.FIELDS + Messages.get("navigator.locked")
                         : labelOf(name)));
 
         for (Segment segment : Segmentation.of(name)) {
@@ -273,7 +273,7 @@ public final class Navigator extends JPanel {
 
     /** @return a segment as one line: its name, then where it runs */
     private static String labelOf(Segment segment) {
-        return segment.name() + "  ·  " + segment.from()
+        return segment.name() + br.com.jorge.reis.endeavourneo.platform.Formats.FIELDS + segment.from()
                 + (segment.isOpenEnded()
                         ? "  " + Messages.get("series.onwards")
                         : "  " + Messages.get("series.range", segment.to()));
@@ -296,19 +296,16 @@ public final class Navigator extends JPanel {
         // the wrong file being opened.
         return role == null || "source".equals(role)
                 ? displayOf(name)
-                : displayOf(name) + "  ·  " + Messages.orElse("navigator.role." + role, role);
+                : displayOf(name) + br.com.jorge.reis.endeavourneo.platform.Formats.FIELDS + Messages.orElse("navigator.role." + role, role);
     }
 
     /**
      * @return the series as it is NAMED here, which is not its file name
      *
-     * <p>{@code winfull-1m} sits under WINFUT and under "1 minuto", so saying
-     * either again is saying it three times. What is left is what actually
-     * tells this series from its neighbours -- {@code full} -- and it is read
-     * with the market: <b>WINFUT-FULL</b>.</p>
-     *
-     * <p>A series named after the market and nothing else keeps just the
-     * market's name. There is nothing to distinguish it from.</p>
+     * <p>The rule itself is {@link SeriesCatalog#displayOf}, and it is written
+     * out there. It was copied here almost word for word, over a body that only
+     * delegates -- two texts describing one rule, to be changed together and
+     * found separately.</p>
      */
     private static String displayOf(String name) {
         return SeriesCatalog.displayOf(name);
@@ -398,7 +395,7 @@ public final class Navigator extends JPanel {
 
             DefaultMutableTreeNode found = new DefaultMutableTreeNode(new Leaf(
                     locked ? null : key,
-                    locked ? label + "  ·  " + Messages.get("navigator.locked") : label));
+                    locked ? label + br.com.jorge.reis.endeavourneo.platform.Formats.FIELDS + Messages.get("navigator.locked") : label));
 
             // A tick source can be segmented like any other series -- see
             // Segmentable -- and its segments open like any other series's, for
