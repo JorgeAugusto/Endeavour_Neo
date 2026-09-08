@@ -258,7 +258,12 @@ public final class TickRenko {
         // brick on every pass.
         double price = advancingBars.closeAt(upTo - 1);
 
-        forming = carry == null ? null : renko.withForming(true).formingAt(carry, price);
+        // No withForming(true): formingAt reads `wicks` and the carry, and
+        // never the `forming` flag -- so the copy was a Renko allocated on every
+        // frame of a replay for an identical answer. Worse, it read as though
+        // the flag took part in the calculation, which is the confusion
+        // formingAt exists to end ("Here so there is ONE of it").
+        forming = carry == null ? null : renko.formingAt(carry, price);
         formingStamp = advancingBars.timeAt(upTo - 1);
 
         return laid || tail;

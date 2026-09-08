@@ -34,9 +34,9 @@ import java.util.Random;
  * said what the rules were worth:</p>
  *
  * <table>
- *   <caption>The same measurements over the same 5.065 minutes</caption>
+ *   <caption>The same measurements over the same 5.074 minutes</caption>
  *   <tr><th></th><th>real</th><th>the rules this replaced</th><th>here</th></tr>
- *   <tr><td>a step of exactly one tick</td><td>97,2%</td><td>15,4%</td><td>100%</td></tr>
+ *   <tr><td>a step of exactly one tick</td><td>97,1%</td><td>15,4%</td><td>100%</td></tr>
  *   <tr><td>a step keeping the last direction</td>
  *       <td>17,6%</td><td>28,5%</td><td>14,8%</td></tr>
  *   <tr><td>ground covered, in bar ranges</td><td>62,4</td><td>10,0</td><td>60,6</td></tr>
@@ -359,11 +359,13 @@ public final class SyntheticTicks implements TickPath {
      * at the end.</p>
      */
     private static int draw(int up, int down, int last, Random random) {
-        if (up == 0) {
-            return -1;
-        }
-
-        if (down == 0 || last == 0) {
+        // Only the first step of a leg reaches this. The two guards that used to
+        // sit here -- up == 0 and down == 0 -- could never be true: draw is
+        // called from inside `if (rise && fall)`, and those two already require
+        // both counts to be above zero. The javadoc above says a leg that has
+        // spent its up-steps "turns down on its own", and that really happens in
+        // the loop, not here.
+        if (last == 0) {
             return random.nextDouble() < up / (double) (up + down) ? 1 : -1;
         }
 

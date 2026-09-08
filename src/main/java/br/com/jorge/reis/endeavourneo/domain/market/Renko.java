@@ -279,6 +279,14 @@ public final class Renko implements Aggregation {
          * reference let two carries share one accumulator. {@code applyFrom}
          * copied on the way in and the guarantee lived in the caller; here it
          * lives in the type, where a caller cannot forget it.</p>
+         *
+         * <p><b>On the way IN only.</b> The generated {@code tally()} hands the
+         * mutable object back, and {@code TradeTally.add}, {@code clear} and
+         * {@code seeing} are package-visible -- so any class in this package can
+         * empty another carry's accumulator. Copying on the way out too would
+         * cost a copy at every read, and the one caller there is copies before
+         * writing; so this says what it protects instead of pretending to
+         * protect both ends.</p>
          */
         public Carry {
             if (direction < -1 || direction > 1) {
@@ -675,10 +683,12 @@ public final class Renko implements Aggregation {
      * Marks the bricks of one batch at whose prices nothing was traded.
      *
      * @param at where this batch starts in {@code bricks}
-     * @param barLow the low of the bar that laid it
-     * @param barHigh its high
-     * @param coverLow the lowest price traded since the previous brick
-     * @param coverHigh the highest
+     * @param tally what has traded since the previous brick closed
+     *
+     * <p>The list used to name {@code barLow}, {@code barHigh}, {@code
+     * coverLow} and {@code coverHigh}, none of which this method has, and left
+     * out the one it does. A fossil of the signature it had before the tally
+     * replaced the four numbers.</p>
      *
      * <p><b>A brick is a band of price, and the question is whether anybody
      * traded inside that band.</b> Nothing else: not how far the bar moved,
