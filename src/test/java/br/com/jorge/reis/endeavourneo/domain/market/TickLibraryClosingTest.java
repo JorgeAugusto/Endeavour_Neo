@@ -80,8 +80,17 @@ class TickLibraryClosingTest {
         // nothing to remind them.
         Path sources = Path.of("src", "main", "java");
 
-        org.junit.jupiter.api.Assumptions.assumeTrue(Files.isDirectory(sources),
-                "not running from the project root");
+        // A FAILURE AND NOT AN ASSUMPTION, because a skipped test is green in
+        // the report. This is the only guard on "every owner closes what it
+        // opens" for a class that starts a reading thread and holds up to three
+        // sessions of ticks -- hundreds of megabytes -- and run from a
+        // directory that is not the project root it used to disappear without
+        // a word. The house has paid for that shape before: the neo's own GUI
+        // tests once passed with the series deleted from the disk.
+        assertTrue(Files.isDirectory(sources),
+                "the suite has to run from the project root; this rule cannot be "
+                        + "checked from anywhere else, and skipping it would report "
+                        + "green for a check that never happened");
 
         List<String> unguarded = new ArrayList<>();
 

@@ -43,6 +43,31 @@ import org.junit.jupiter.api.Test;
 @DisplayName("Theme switching")
 class ThemeSwitchTest {
 
+    /**
+     * The look and feel this file found, put back before the next file runs.
+     *
+     * <p><b>Global state, and it used to be left behind.</b> Appearance.install
+     * calls UIManager.setLookAndFeel, which the class's own javadoc describes as
+     * a permanent, process-wide registration -- and the four tests here each
+     * install one and none put anything back. Surefire runs the whole suite in
+     * one fork, so whichever theme happened to run last stayed standing for
+     * every later file that builds a component. That changes colours and font
+     * metrics, which is exactly what the chart geometry tests measure: a test
+     * elsewhere passing or failing by which @Test in this file ran last is
+     * indistinguishable from a real defect.</p>
+     */
+    private static javax.swing.LookAndFeel found;
+
+    @org.junit.jupiter.api.BeforeAll
+    static void rememberTheLookAndFeel() {
+        found = javax.swing.UIManager.getLookAndFeel();
+    }
+
+    @org.junit.jupiter.api.AfterAll
+    static void putTheLookAndFeelBack() throws Exception {
+        javax.swing.UIManager.setLookAndFeel(found);
+    }
+
     private static Color background() {
         return UIManager.getColor("Panel.background");
     }

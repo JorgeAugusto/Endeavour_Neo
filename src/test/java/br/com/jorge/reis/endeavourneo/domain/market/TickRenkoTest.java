@@ -106,6 +106,13 @@ class TickRenkoTest {
 
             PriceSeries wholeInOne = new Renko(10, 2, true, false).apply(pricesAsBars(both));
 
+        // A count of nothing agrees with a count of nothing. Said out loud
+        // because the comparison below is between two PATHS of the product, and
+        // a product that laid no brick at all would satisfy it perfectly.
+            assertTrue(wholeInOne.size() > 2,
+                    "the fixture laid " + wholeInOne.size() + " bricks, which is too "
+                            + "few to compare one way of laying them against another");
+
             assertEquals(wholeInOne.size(), inPieces.size(),
                     "building it a day at a time laid a different number of bricks");
 
@@ -314,6 +321,13 @@ class TickRenkoTest {
             for (int i = 1; i <= 20; i++) {
                 piecemeal.advance(DAY, first + (last - first + 1) * i / 20 + 1);
             }
+
+        // A count of nothing agrees with a count of nothing. Said out loud
+        // because the comparison below is between two PATHS of the product, and
+        // a product that laid no brick at all would satisfy it perfectly.
+            assertTrue(whole.size() > 2,
+                    "the fixture laid " + whole.size() + " bricks, which is too few to "
+                            + "compare advancing in one go against advancing in pieces");
 
             assertEquals(whole.size(), piecemeal.size(),
                     "the piecemeal renko laid a different number of bricks");
