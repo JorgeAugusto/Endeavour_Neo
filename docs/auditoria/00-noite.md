@@ -971,3 +971,111 @@ Com isto, **todos os 115 BAIXA da auditoria I estão processados** — 67 por
 identificador nas passadas anteriores, 48 aqui. Somados aos 56 ALTA e 133 MÉDIA,
 a auditoria I não tem mais nada em aberto além do que está registrado como
 decisão adiada (D2 e D6).
+
+---
+
+## Fase 8 — a caça às outras correções inertes
+
+Ele pediu: *"procure as outras correções inertes"*. Uma correção inerte é uma
+que foi feita, está escrita no código, e **não faz efeito nenhum** — o comentário
+lê-se como conserto e o comportamento continua sendo o defeito que ele descreve.
+As duas achadas na fase 7 (`setPeriod.equals` sem `equals`, `strokes()` ignorado
+no gráfico de preço) apareceram por acaso, lendo o vizinho. Aqui foram
+procuradas.
+
+### O método: cinco varreduras mecânicas
+
+| o que se procura | como | resultado |
+|---|---|---|
+| comparação por valor sem `equals` | listar os 152 tipos, marcar quem declara `equals`, cruzar com todo `x.equals(` e toda chave de `Map`/`Set` | **limpo** — só `Renko`, `Timeframe` e `TradeTally` precisam, e os três têm |
+| capacidade construída e nunca chamada | contar `nome(` e `::nome` em todo o código para cada método declarado | 11 métodos mortos de verdade |
+| chave guardada e nunca lida | cruzar `put`/`setProperty` com `get`/`getProperty` | **limpo** — os 10 suspeitos são `UIManager` (lidos pelo Swing) e prefixos |
+| campo atribuído e nunca lido | contar leituras separando as escritas | 3 constantes mortas na Bollinger |
+| ajuste que não chega ao desenho | cada `ChartPreferences` e quem o lê | **limpo** — todos os `set` anunciam, e todos os leitores leem na hora de pintar |
+
+E uma sexta, que foi a que mais rendeu: **comparar os dois leitores da mesma
+interface**. `ChartCanvas` e `StudyPane` consomem ambos um `Overlay`; listar os
+métodos que cada um chama e tirar a diferença mostra, em duas linhas, o que um
+honra e o outro deixa cair.
+
+```
+ChartCanvas: calculate colours fitsOnPrice isVisible label paintUnder stroke strokes valueAt
+StudyPane:   bounds     colours            isVisible label levels    ownPeriod stroke strokes valueAt
+```
+
+### O que foi corrigido (`2f348eb`, `6ccfb0b`, `c7d8b39`)
+
+**1. A escala própria do indicador só aparecia no painel.** `Overlay.ownPeriod()`
+diz no seu javadoc para que existe: *"dois estocásticos num painel são a mesma
+palavra e os mesmos números, e sem isto são duas linhas idênticas sobre duas
+linhas diferentes"*. Quem punha isso na tela era o `StudyPane`, sozinho — e a
+composição estava escrita **dentro** dele. A legenda do gráfico de preço e o
+menu de remover pediam `label()`. Duas médias de período 20, uma nas barras do
+gráfico e outra em 5m, eram duas linhas iguais na legenda e duas entradas iguais
+no menu. A média móvel e a Bollinger, que são os indicadores que vivem no preço,
+são justamente os dois que oferecem a opção. Agora existe `Overlay.title()` e os
+três leitores pedem a mesma coisa.
+
+**2. O painel não desenhava o que o indicador põe embaixo das linhas.**
+`paintUnder` era pedido pelo gráfico de preço e por mais ninguém. O diálogo de
+inserção nunca desabilita "novo painel", então a Bollinger posta num painel
+próprio perdia o preenchimento, em silêncio. E não bastava chamar: o viewport
+tinha de ser **o do painel**. O do gráfico mapeia preços, e os números do
+indicador passados por ele caem a 241 mil pixels do topo — a prova de dentes
+mostrou exatamente isso, o que é a diferença entre honrar o contrato e parecer
+honrá-lo.
+
+**3. O gráfico de preço não desenhava os níveis.** Espelho do anterior:
+`levels()` era honrado só pelo painel. Nenhum indicador de preço declara nível
+hoje — e era por isso que dava para faltar sem ninguém ver.
+
+**4. `ReplaySeries` não carregava `Untraded`/`Counted`.** Os outros três
+envelopes passam as duas perguntas adiante; este respondia "não sei" para toda
+barra. Latente hoje (o que ele embrulha é um dia de minutos), vivo no dia em que
+um renko for reproduzido. A **barra em formação** não responde: contar a barra
+inteira é contar negócios que ainda não aconteceram, e a prova de dentes mostrou
+o vazamento — 10 negócios numa barra um quarto formada.
+
+**5. Peso morto.** `BollingerBands.UPPER/MIDDLE/LOWER`, três constantes sob um
+javadoc dizendo "onde os valores ficam em `valueAt`" que **nada lia** — o acordo
+entre as três listas continuava preso à ordem em que estão escritas, que é
+exatamente o que as constantes deviam ter deixado de valer. E
+`Icons.candleHollow`, o ícone de um desenho recusado: vazio-ou-cheio acabou como
+ajuste e não como estilo, então não há terceira entrada no seletor para ele ficar
+ao lado.
+
+**6. Um javadoc meu, de dois commits antes**, dizia *"candles, hollow candles or
+a line"* — listando o ajuste como um terceiro estilo, que é o erro que o javadoc
+daquele ajuste diz existir para evitar. Corrigido.
+
+**7. A guarda que estourava em vez de guardar.** `SeriesWindow.readDays` devolve
+a resposta com `key.equals(editing)` — a guarda que descarta a resposta de uma
+série que o combo já abandonou. Sem série nenhuma a chave é `null`, e a guarda
+lançava `NullPointerException` dentro de `SwingWorker.done`: o laço de eventos
+imprime e engole, a janela fica dizendo "lendo..." para sempre, e nenhum teste
+falha. **Estava saindo em toda rodada da suíte, no log, desde que a janela
+existe.**
+
+### As duas lições
+
+**Correção inerte não se acha auditando um arquivo por vez.** Acha-se cruzando o
+que uma interface promete com o que cada um dos seus leitores pede. Foi assim que
+saíram quatro das sete.
+
+**O log verde também se lê.** A NPE da janela de séries estava impressa em toda
+rodada da suíte, no meio da saída de sucesso do gancho de pre-commit. Nenhum
+teste falhava, então ninguém olhava. Está agora coberta por um teste que instala
+um `UncaughtExceptionHandler` e pergunta se a thread da interface engoliu alguma
+coisa.
+
+### O que fica anotado e não foi mexido
+
+Onze métodos que ninguém chama, nem o produto nem os testes:
+`Aggregation.none`, `Segment.covers`, `TickSource.version`, `TickSource.suffix`,
+`SeriesCatalog.setFolder`, `Settings.directory`, `ChartCanvas.setMode`,
+`ChartCanvas.onModeChanged`, `ChartCanvas.getStretch`,
+`OverlayLegend.isCollapsed`, `StudyPane.study`. Apagar API pública é decisão
+dele, não minha — e alguns podem ser degrau para coisa que ainda vem.
+`getStretch` ainda carrega o prefixo `get` que a casa não usa.
+
+Suíte 724 → **732**.
