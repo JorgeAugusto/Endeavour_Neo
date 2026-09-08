@@ -116,6 +116,15 @@ final class ReplayIcons {
         });
     }
 
+    /**
+     * The line the glyphs are drawn with.
+     *
+     * <p>One and a bit pixels, to match the rest of the transport. It was a
+     * {@code new BasicStroke} inside the painting, which runs on every repaint
+     * of every icon.</p>
+     */
+    private static final BasicStroke PEN = new BasicStroke(1.4f);
+
     @FunctionalInterface
     private interface Glyph {
         void draw(Graphics2D g, int width, int height, Color colour);
@@ -140,7 +149,7 @@ final class ReplayIcons {
             try {
                 g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
                         RenderingHints.VALUE_ANTIALIAS_ON);
-                g.setStroke(new BasicStroke(1.4f));
+                g.setStroke(PEN);
 
                 Color ink = on != null && !on.isEnabled() ? disabled() : foreground(on);
 
@@ -170,11 +179,31 @@ final class ReplayIcons {
             return colour == null ? Color.DARK_GRAY : colour;
         }
 
+        /**
+         * The same ink, faded, built once per theme.
+         *
+         * <p>It was built on every paint, and the transport repaints twenty-five
+         * times a second while a session is playing -- so did the stroke above.
+         * Neither varies with anything the caller passes.</p>
+         *
+         * <p>Kept against the colour it was faded FROM: a theme change gives a
+         * different foreground, and comparing the two is how this notices
+         * without having to be told.</p>
+         */
         private static Color disabled() {
             Color colour = foreground(null);
 
-            return new Color(colour.getRed(), colour.getGreen(), colour.getBlue(), 90);
+            if (!colour.equals(fadedFrom)) {
+                fadedFrom = colour;
+                faded = new Color(colour.getRed(), colour.getGreen(), colour.getBlue(), 90);
+            }
+
+            return faded;
         }
+
+        private static Color fadedFrom;
+
+        private static Color faded = Color.GRAY;
 
         @Override
         public int getIconWidth() {

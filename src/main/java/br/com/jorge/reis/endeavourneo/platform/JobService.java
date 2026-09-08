@@ -212,9 +212,11 @@ public final class JobService implements AutoCloseable {
             if (settled && !delivered && !reported && error != null) {
                 reported = true;
 
-                FAILURES.println("job \"" + name + "\" failed and nobody handled it:");
-                error.printStackTrace(FAILURES);
-                FAILURES.flush();
+                java.io.PrintStream out = reportingTo;
+
+                out.println("job \"" + name + "\" failed and nobody handled it:");
+                error.printStackTrace(out);
+                out.flush();
             }
         }
 
@@ -364,6 +366,38 @@ public final class JobService implements AutoCloseable {
      * output actually goes.</p>
      */
     private static final java.io.PrintStream FAILURES = System.err;
+
+    /**
+     * Where the report actually goes: {@link #FAILURES}, unless a test says
+     * otherwise.
+     *
+     * <p><b>A seam, because the property cannot be tested without one.</b> The
+     * test can prove where the report does NOT go -- redirect {@code System.err}
+     * and see nothing arrive -- and that half was all it proved: {@code
+     * swallowed.size() == 0} is equally the answer to "it went to the stream
+     * captured at load" and to "it went nowhere at all". Deleting the loop in
+     * {@code close} left the test green, and the safety net against "the job
+     * died and nobody knew" had no test.</p>
+     *
+     * <p>Capturing {@code System.err} before the class loads would do it and
+     * cannot be arranged: the whole suite runs in one JVM and any earlier test
+     * that touches this class has already fixed {@code FAILURES}.</p>
+     *
+     * <p>The default is the field above, so nothing changes for the
+     * application, and {@code FAILURES} is still what the seam restores -- not
+     * whatever {@code System.err} happens to be when the test finishes.</p>
+     */
+    private static java.io.PrintStream reportingTo = FAILURES;
+
+    /** @param stream where the last-chance report should go while a test runs */
+    static void useFailureStreamForTest(java.io.PrintStream stream) {
+        reportingTo = stream == null ? FAILURES : stream;
+    }
+
+    /** Puts the stream captured at load back. */
+    static void stopUsingTestFailureStream() {
+        reportingTo = FAILURES;
+    }
 
     /** Leaves one core for the interface thread, and never fewer than two. */
     private static final int THREADS =

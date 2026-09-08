@@ -52,11 +52,14 @@ import org.junit.jupiter.api.Test;
  * run without a display cannot be run overnight from a script, which is the
  * whole reason for keeping it separate.</p>
  *
- * <p><b>The composition root is exempt, and only it.</b> {@code Main} exists to
- * wire the layers together, so it necessarily touches all of them. Every other
- * class in {@code app} is a platform service and must stay clean. Once the
- * planned reorganisation moves the entry point out of {@code app}, this
- * exemption disappears and the rule becomes purely positional.</p>
+ * <p><b>Nothing is exempt: the rule is purely positional.</b> It was not, and
+ * this paragraph described the arrangement that came before -- a package {@code
+ * app} holding a class {@code Main} that wired the layers together and was
+ * allowed to touch all of them. The reorganisation the old text called
+ * "planned" has happened: there is no {@code app} and no {@code Main}, the
+ * entry point is {@code Launcher} at the root, and {@code isInnerLayer} names
+ * two packages and no exception. A file whose job is to be read for the rule
+ * was describing a rule that had been replaced.</p>
  */
 @DisplayName("Layer boundary")
 class LayerBoundaryTest {

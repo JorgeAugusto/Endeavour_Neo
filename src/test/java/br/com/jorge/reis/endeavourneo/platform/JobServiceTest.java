@@ -218,6 +218,20 @@ class JobServiceTest {
 
         System.setErr(new java.io.PrintStream(swallowed, true, java.nio.charset.StandardCharsets.UTF_8));
 
+        // AND WHERE IT DOES GO. The assertion below is the negative half --
+        // nothing reached the redirected stream -- and on its own it is equally
+        // the answer to "the report went where it should" and to "no report was
+        // written at all": deleting the loop in close() left this test green,
+        // and the safety net had no test.
+        //
+        // The stream captured at load cannot be captured here (the suite is one
+        // JVM, and this class was loaded long before), so the product carries a
+        // seam that says where the report goes.
+        java.io.ByteArrayOutputStream reported = new java.io.ByteArrayOutputStream();
+
+        JobService.useFailureStreamForTest(
+                new java.io.PrintStream(reported, true, java.nio.charset.StandardCharsets.UTF_8));
+
         try {
             CountDownLatch ran = new CountDownLatch(1);
 
@@ -249,7 +263,18 @@ class JobServiceTest {
                     "the report was written to whatever System.err happened to be at the "
                             + "time, which during shutdown is a queue nothing will drain: "
                             + swallowed.toString(java.nio.charset.StandardCharsets.UTF_8));
+
+            String written = reported.toString(java.nio.charset.StandardCharsets.UTF_8);
+
+            assertTrue(written.contains("orphan"),
+                    "no report was written anywhere: the failure nobody handled died in "
+                            + "silence, which is the one thing this class exists to prevent");
+            assertTrue(written.contains("nobody is listening"),
+                    "the report named the job and not what killed it, so the reader is told "
+                            + "that something failed and not what: " + written);
         } finally {
+            JobService.stopUsingTestFailureStream();
+
             System.setErr(real);
         }
     }

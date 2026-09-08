@@ -59,9 +59,19 @@ import javax.swing.JComponent;
  *   background   the theme's surface
  *   grid         horizontal price lines, recessive
  *   style        the price itself -- see {@link ChartStyle}
+ *   overlays     the indicators drawn on the price
  *   axes         prices on the right, times along the bottom
+ *   lastPrice    the tag on the price axis
  *   crosshair    where the mouse is
+ *   jumpButton   back to the newest bars
+ *   ruler        a measurement being made
+ *   readout      the bar under the pointer
  * </pre>
+ *
+ * <p>Ten and not five. The list stopped at the crosshair while
+ * {@code paintComponent} had grown five more, and the four that were missing
+ * are precisely the ones that overlap each other -- which is what the sentence
+ * below means by "the order is the design".</p>
  *
  * <p><b>Each layer knows nothing of the others.</b> That is what the previous
  * project's canvas lacked: one {@code paintComponent} of 1.576 lines drawing
@@ -194,6 +204,71 @@ public final class ChartCanvas extends JComponent {
 
     /** Diameter of the button that jumps back to the newest bars. */
     private static final int JUMP_SIZE = 26;
+
+    /** The size everything written on the axes and the tags is drawn at. */
+    private static final float AXIS_POINTS = 11f;
+
+    /**
+     * The face the axes are written in, derived once from the component's own.
+     *
+     * <p>{@code Font.deriveFont} was called four times per frame -- three plain
+     * and one bold -- and a repaint happens on every movement of the mouse. It
+     * is not free: each call builds a font and, on the first use, has the
+     * platform measure it.</p>
+     *
+     * <p>Kept against the font it was derived FROM, so a theme change is picked
+     * up: {@code setFont} is what a look-and-feel update calls, and comparing
+     * the two is how this notices without having to be told.</p>
+     */
+    private transient java.awt.Font axisFrom;
+
+    private transient java.awt.Font axisPlain;
+
+    private transient java.awt.Font axisBold;
+
+    private java.awt.Font axisFont() {
+        deriveAxisFonts();
+
+        return axisPlain;
+    }
+
+    private java.awt.Font axisFontBold() {
+        deriveAxisFonts();
+
+        return axisBold;
+    }
+
+    private void deriveAxisFonts() {
+        java.awt.Font mine = getFont();
+
+        if (mine != axisFrom || axisPlain == null) {
+            axisFrom = mine;
+            axisPlain = mine.deriveFont(AXIS_POINTS);
+            axisBold = mine.deriveFont(java.awt.Font.BOLD, AXIS_POINTS);
+        }
+    }
+
+    /**
+     * The strokes the painting uses, built once.
+     *
+     * <p>Every one of these was a {@code new BasicStroke} inside a paint
+     * method, and a repaint happens on every movement of the mouse. None of
+     * them varies with anything: the width is a literal at the call site. The
+     * constant beside them, {@link #BOUNDARY}, shows the class already knew
+     * how to do this.</p>
+     */
+    private static final java.awt.Stroke THIN = new java.awt.BasicStroke(1.0f);
+
+    private static final java.awt.Stroke ROUNDED = new java.awt.BasicStroke(
+            1.2f, java.awt.BasicStroke.CAP_ROUND, java.awt.BasicStroke.JOIN_ROUND);
+
+    private static final java.awt.Stroke THICK_ROUNDED = new java.awt.BasicStroke(
+            1.8f, java.awt.BasicStroke.CAP_ROUND, java.awt.BasicStroke.JOIN_ROUND);
+
+    /** The dashes of the vertical line the ruler leaves behind. */
+    private static final java.awt.Stroke DASHED = new java.awt.BasicStroke(
+            1.0f, java.awt.BasicStroke.CAP_BUTT, java.awt.BasicStroke.JOIN_MITER,
+            1.0f, new float[]{3.0f, 3.0f}, 0.0f);
 
     /**
      * How far it sits from the TOP-right corner of the plot.
@@ -2436,7 +2511,7 @@ public final class ChartCanvas extends JComponent {
         double step = gridStep(viewport);
 
         g.setColor(ChartColors.grid());
-        g.setStroke(new BasicStroke(1.0f));
+        g.setStroke(THIN);
 
         double price = Math.ceil(viewport.lowestPrice() / step) * step;
 
@@ -2598,7 +2673,7 @@ public final class ChartCanvas extends JComponent {
         g.drawLine(left, 0, left, bottom);
 
         g.setColor(ChartColors.foreground());
-        g.setFont(getFont().deriveFont(11f));
+        g.setFont(axisFont());
 
         FontMetrics metrics = g.getFontMetrics();
         DecimalFormat format = formatFor(step);
@@ -2642,7 +2717,7 @@ public final class ChartCanvas extends JComponent {
 
         paintDayBand(g, viewport, top + TIME_HEIGHT);
 
-        g.setFont(getFont().deriveFont(11f));
+        g.setFont(axisFont());
 
         FontMetrics metrics = g.getFontMetrics();
         ZoneId zone = br.com.jorge.reis.endeavourneo.domain.market.Timeframe.defaultZone();
@@ -2731,7 +2806,7 @@ public final class ChartCanvas extends JComponent {
     private void paintDayBand(Graphics2D g, Viewport viewport, int top) {
         ZoneId zone = br.com.jorge.reis.endeavourneo.domain.market.Timeframe.defaultZone();
 
-        g.setFont(getFont().deriveFont(11f));
+        g.setFont(axisFont());
 
         FontMetrics metrics = g.getFontMetrics();
         int limit = Math.min(viewport.lastBar(), series.size());
@@ -2944,7 +3019,7 @@ public final class ChartCanvas extends JComponent {
             return;
         }
 
-        g.setFont(getFont().deriveFont(java.awt.Font.BOLD, 11f));
+        g.setFont(axisFontBold());
 
         FontMetrics metrics = g.getFontMetrics();
         String text = formatFor(gridStep(viewport)).format(price);
@@ -2982,7 +3057,7 @@ public final class ChartCanvas extends JComponent {
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
         g.setColor(ChartColors.foreground());
-        g.setStroke(new BasicStroke(1.2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.setStroke(ROUNDED);
         g.drawLine(x1, y1, x2, y2);
 
         g.fillOval(x1 - 3, y1 - 3, 6, 6);
@@ -3074,7 +3149,7 @@ public final class ChartCanvas extends JComponent {
         g.fillOval(where.x, where.y, where.width, where.height);
 
         g.setColor(ChartColors.foreground());
-        g.setStroke(new BasicStroke(1.8f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.setStroke(THICK_ROUNDED);
 
         int cx = where.x + where.width / 2;
         int cy = where.y + where.height / 2;
@@ -3174,8 +3249,7 @@ public final class ChartCanvas extends JComponent {
         int x = (int) Math.round(viewport.x(bar));
 
         g.setColor(ChartColors.grid());
-        g.setStroke(new BasicStroke(1.0f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER,
-                1.0f, new float[]{3.0f, 3.0f}, 0.0f));
+        g.setStroke(DASHED);
 
         g.drawLine(x, 0, x, getHeight() - axisHeight());
         g.drawLine(0, cursor.y, getWidth() - AXIS_WIDTH, cursor.y);
@@ -3195,7 +3269,7 @@ public final class ChartCanvas extends JComponent {
      * mouse moved, and a scale that moves is not a scale.</p>
      */
     private void paintCursorTags(Graphics2D g, Viewport viewport, int bar, int x) {
-        g.setStroke(new BasicStroke(1.0f));
+        g.setStroke(THIN);
         g.setFont(br.com.jorge.reis.endeavourneo.platform.Appearance.monospaced(11));
 
         FontMetrics metrics = g.getFontMetrics();
