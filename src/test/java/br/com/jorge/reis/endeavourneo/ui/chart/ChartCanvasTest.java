@@ -67,10 +67,16 @@ class ChartCanvasTest {
     @Test
     @DisplayName("no drag is long enough to flatten the chart into a line or push it off screen")
     void staysWithinLimits() {
-        assertTrue(ChartCanvas.stretchForDrag(1.0, 100_000) >= 0.1,
-                "an enormous downward drag went below the floor");
-        assertTrue(ChartCanvas.stretchForDrag(1.0, -100_000) <= 20.0,
-                "an enormous upward drag went above the ceiling");
+        // REACHED, not merely respected. Asked only whether the answer stays
+        // on the legal side, a floor raised from 0,1 to 0,9 satisfies every
+        // assertion in this class -- the chart would refuse to flatten past
+        // ninety per cent, the reader would lose nine tenths of the range, and
+        // the suite would stay green. The ceiling was protected only by
+        // accident, through the ratio in dragIsMultiplicative.
+        assertEquals(0.1, ChartCanvas.stretchForDrag(1.0, 100_000), 1e-12,
+                "an enormous downward drag did not reach the floor");
+        assertEquals(20.0, ChartCanvas.stretchForDrag(1.0, -100_000), 1e-12,
+                "an enormous upward drag did not reach the ceiling");
     }
 
     @Test
@@ -99,8 +105,18 @@ class ChartCanvasTest {
         // grew instead, widening the window would remove information.
         long span = 600;
 
-        assertTrue(ChartCanvas.niceTimeStep(span, 20) <= ChartCanvas.niceTimeStep(span, 4),
-                "more labels asked for produced a coarser step");
+        // STRICTLY finer, and both values pinned. Written as "<=" over two
+        // calls, it passed with the wanted-label count IGNORED: both sides then
+        // answer the same step, 720 <= 720 holds, and the width of the window
+        // stops deciding how many labels appear. The other two tests of this
+        // axis stay green under that mutation as well.
+        assertEquals(30, ChartCanvas.niceTimeStep(span, 20),
+                "ten hours across twenty labels is a label every half hour");
+        assertEquals(180, ChartCanvas.niceTimeStep(span, 4),
+                "ten hours across four labels is a label every three hours");
+
+        assertTrue(ChartCanvas.niceTimeStep(span, 20) < ChartCanvas.niceTimeStep(span, 4),
+                "more labels asked for produced a step no finer");
     }
 
     @Test

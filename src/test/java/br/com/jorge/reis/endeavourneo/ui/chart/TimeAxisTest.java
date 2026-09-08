@@ -239,4 +239,33 @@ class TimeAxisTest {
             }
         }
     }
+/**
+     * The threshold itself, from both sides of it.
+     *
+     * <p>The three cases above leave a gap from five hours to ninety days, and
+     * the rule is one comparison: more than two days on screen and the axis
+     * speaks in dates. Any threshold between one and eighty-nine days satisfies
+     * all three — sixty, say, and then a chart of a WEEK is labelled with the
+     * clock, which is the exact defect this class was written about, moved into
+     * a different band.</p>
+     *
+     * <p>Two spans one minute apart pin the two days and pin the {@code >}
+     * against a {@code >=}.</p>
+     */
+    @Test
+    @DisplayName("o limiar sao dois dias, e ele e cercado dos dois lados")
+    void thethresholdIsTwoDays() {
+        ChartCanvas canvas = showing(every(1, 4_000));
+
+        // Bars 0..2880: exactly two days between the two ends.
+        assertFalse(canvas.axisSpeaksInDaysFor(Viewport.of(canvas.series(),
+                        new Rectangle(0, 0, 900, 400), 0, 2_881)),
+                "exactly two days on screen were labelled with dates, so the rule reads "
+                        + "as at-least rather than more-than");
+
+        // One minute more.
+        assertTrue(canvas.axisSpeaksInDaysFor(Viewport.of(canvas.series(),
+                        new Rectangle(0, 0, 900, 400), 0, 2_882)),
+                "two days and a minute were still labelled with the clock");
+    }
 }

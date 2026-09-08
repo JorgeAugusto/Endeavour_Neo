@@ -125,10 +125,28 @@ class PaneSharingTest {
     @Test
     @DisplayName("indicadores diferentes de faixa fixa igual cabem juntos")
     void differentIndicatorsOnTheSameFixedRange() {
+        // TWO ARRAYS, not the same one twice. Both sides used to hand over this
+        // file's own constant, so the rule passed with the comparison mutated
+        // from "same two numbers" to "same object" -- and that mutation is not
+        // academic: RelativeStrength.bounds and SlowStochastic.bounds each
+        // return a NEW double[]{0, 100} on every call, so the real pair named in
+        // the rule's own javadoc would have been refused.
         assertTrue(StudyStack.fits(
-                List.of(new Fake("study.stochastic", OSCILLATOR)),
-                new Fake("study.rsi", OSCILLATOR)),
+                List.of(new Fake("study.stochastic", new double[]{0, 100})),
+                new Fake("study.rsi", new double[]{0, 100})),
                 "nought to a hundred is nought to a hundred whoever is saying it");
+    }
+
+    @Test
+    @DisplayName("o par que a regra nomeia: IFR e estocastico dividem painel")
+    void therealPairTheRuleNames() {
+        // The two the javadoc of the rule names, and the ones a reader actually
+        // puts together. Fakes can agree by accident; these two agree because
+        // both are oscillators bounded at nought and a hundred.
+        assertTrue(StudyStack.fits(
+                List.of(new SlowStochastic(8, 3)),
+                new br.com.jorge.reis.endeavourneo.ui.chart.study.rsi.RelativeStrength(14)),
+                "the RSI and the stochastic, which the rule exists for, were kept apart");
     }
 
     @Test
