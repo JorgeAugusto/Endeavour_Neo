@@ -18,7 +18,12 @@
 package br.com.jorge.reis.endeavourneo.ui.chart;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
+import br.com.jorge.reis.endeavourneo.domain.market.Timeframe;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -111,5 +116,29 @@ class ChartCanvasTest {
         // releasing without moving must not nudge the scale.
         assertEquals(2.5, ChartCanvas.stretchForDrag(2.5, 0), 1e-12,
                 "a click with no movement changed the scale");
+    }
+    @Test
+    @DisplayName("escolher de novo o periodo que ja esta na tela nao refaz tudo")
+    void choosingThesamePeriodAgainIsNotAChange() {
+        // Renko and Timeframe are values and neither overrides equals, and
+        // PeriodCatalog.byCode builds a new object on every call -- so the guard
+        // compared two different objects, said "this is a change", and paid for
+        // a whole refold: the fold, the tick rebuild with its directory
+        // listings, and a SwingWorker. Not a wrong answer; all the work again
+        // for nothing.
+        ChartCanvas canvas = new ChartCanvas();
+
+        canvas.setSeries(new RandomWalkSeries(300, 100.0));
+        canvas.setSize(900, 500);
+        canvas.setPeriod(Timeframe.ofMinutes(5), "5m", "5m");
+
+        PriceSeries folded = canvas.series();
+
+        // A DIFFERENT OBJECT saying the same thing, which is what the period
+        // window hands over.
+        canvas.setPeriod(Timeframe.ofMinutes(5), "5m", "5m");
+
+        assertSame(folded, canvas.series(),
+                "the same period, in a new object, refolded the whole series");
     }
 }

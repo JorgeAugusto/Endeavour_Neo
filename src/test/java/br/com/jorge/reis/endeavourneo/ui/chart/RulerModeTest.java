@@ -62,18 +62,24 @@ class RulerModeTest {
         br.com.jorge.reis.endeavourneo.platform.Settings.useForTest(store);
     }
 
-    @org.junit.jupiter.api.AfterEach
-    void putTheStoreBack() {
-        br.com.jorge.reis.endeavourneo.platform.Settings.stopUsingTestStore();
-    }
-
     private boolean before;
 
+    /**
+     * Puts the switch back and only then puts the store back.
+     *
+     * <p><b>One @AfterEach, because two do not have an order.</b> These were
+     * separate: one restoring the ruler switch, one pointing the settings back
+     * at the home directory. When the second ran first, the restore wrote into
+     * the REAL settings -- and left the ruler on for the whole rest of the
+     * suite. ChartViewTest then measured where it meant to pan, and failed in a
+     * full run while passing on its own, which is the worst shape a failure
+     * can have.</p>
+     */
     @AfterEach
     void restore() {
-        // It is stored in the user's real preferences: a test that leaves it on
-        // changes how the application opens tomorrow.
         RulerMode.set(before);
+
+        br.com.jorge.reis.endeavourneo.platform.Settings.stopUsingTestStore();
     }
 
     @Test

@@ -724,7 +724,7 @@ public final class StudyPane extends JComponent {
 
     /** @return the bar whose values the header shows */
     private int readAt() {
-        int under = canvas.barUnderCursor();
+        int under = canvas.hoveredBar();
 
         return under >= 0 ? under : canvas.lastVisibleBar();
     }

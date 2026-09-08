@@ -1036,7 +1036,13 @@ public final class ChartCanvas extends JComponent {
      * @param label how to write it, or null to let the scale name itself
      */
     public void setPeriod(Aggregation newPeriod, String label, String code) {
-        if (newPeriod == null || newPeriod == period) {
+        // EQUALS, not identity. Renko and Timeframe are values, and
+        // PeriodCatalog.byCode builds a new one on every call -- so choosing the
+        // period already on screen compared two different objects, said "this
+        // is a change", and paid for a whole refold: the fold itself, the tick
+        // rebuild with its directory listings, and a SwingWorker. Not a wrong
+        // answer; all the work again for nothing.
+        if (newPeriod == null || newPeriod.equals(period)) {
             return;
         }
 
@@ -1425,7 +1431,6 @@ public final class ChartCanvas extends JComponent {
             return;
         }
 
-        java.util.List<java.time.LocalDate> days = onScreen;
         Object asked = period;
 
         // The SOURCE as well as the period. The guard in done() compared only
@@ -1439,7 +1444,13 @@ public final class ChartCanvas extends JComponent {
         // A replay KEEPS its renko, so the next frame can extend it instead of
         // folding the whole session again -- 0,018 ms against 0,105 s. An
         // ordinary chart has no next frame, so it folds once and lets go.
-        boolean replaying = playing != null;
+        // NOT called `replaying`, which is the name of a field twenty lines
+        // above that answers a DIFFERENT question -- and whose javadoc spends
+        // five lines on the damage that confusion did. The two happen to agree
+        // here, because the path already returned when the export was null; a
+        // local that shadows the field with the semantics the field replaced is
+        // a trap for whoever edits this worker next.
+        boolean keepsItsRenko = playing != null;
 
         // Which day the replay is STANDING on, so the fold below stops one day
         // short of it and not one day short of the list.
@@ -1450,7 +1461,7 @@ public final class ChartCanvas extends JComponent {
         // the list left that day unfolded for ever, because the clock then
         // moved into the next one and never came back. A whole session of
         // bricks went missing without a mark.
-        java.time.LocalDate standing = replaying ? dayOfClock() : null;
+        java.time.LocalDate standing = keepsItsRenko ? dayOfClock() : null;
 
         new javax.swing.SwingWorker<
                 br.com.jorge.reis.endeavourneo.domain.market.TickRenko, Void>() {
@@ -1467,7 +1478,7 @@ public final class ChartCanvas extends JComponent {
                 // what has printed by the replay's clock -- folding it whole
                 // would put bricks on screen for trades that have not happened
                 // yet.
-                for (java.time.LocalDate each : days) {
+                for (java.time.LocalDate each : onScreen) {
                     if (standing != null && !each.isBefore(standing)) {
                         break;
                     }
@@ -1491,7 +1502,7 @@ public final class ChartCanvas extends JComponent {
                 try {
                     br.com.jorge.reis.endeavourneo.domain.market.TickRenko built = get();
 
-                    if (replaying) {
+                    if (keepsItsRenko) {
                         growFrom(built, library);
 
                         // The session in progress is carried in by the next
@@ -1733,7 +1744,7 @@ public final class ChartCanvas extends JComponent {
 
             requestAround(growingFrom, day);
 
-            if (!growing.advance(day, now + 1) && fromTicks && this.series != null) {
+            if (!growing.advance(day, now + 1) && fromTicks) {
                 // NOTHING PRINTED since the last frame, so there is nothing new
                 // to show. This used to rebuild the whole view anyway -- every
                 // brick copied into a new series, twenty-five times a second,
@@ -1889,11 +1900,6 @@ public final class ChartCanvas extends JComponent {
         return AXIS_WIDTH;
     }
 
-    /** @return the bar under the mouse, or -1 when the mouse is elsewhere */
-    public int barUnderCursor() {
-        return hoveredBar();
-    }
-
     /** @return the last bar on screen, which is what a legend reads when the mouse is away */
     public int lastVisibleBar() {
         return Math.max(0, Math.min(series.size() - 1, firstBar + visibleBars - 1));
@@ -1982,9 +1988,12 @@ public final class ChartCanvas extends JComponent {
     /**
      * @return where the leftmost visible bar may be
      *
-     * <p>Past the end by up to half a screen, which is what makes room on the
-     * right. More than that and the price would be off the edge; less and there
-     * is no room to watch a bar form.</p>
+     * <p>Past the end by up to {@link #AIR_RIGHT} of a screen, which is what
+     * makes room on the right. This used to say "half a screen" while the
+     * constant said three quarters, and the constant's own javadoc explains the
+     * choice -- "Half was not enough to feel like control". Fifteen hundred
+     * lines apart, contradicting each other: whoever read this one first would
+     * "correct" the constant back to the number that was rejected.</p>
      */
     private int clampFirstBar(int candidate) {
         int air = Math.max(1, (int) Math.round(visibleBars * AIR_RIGHT));
@@ -2219,7 +2228,8 @@ public final class ChartCanvas extends JComponent {
     /**
      * Writes down everything about how this chart is being LOOKED AT.
      *
-     * @param into where to write, and @param prefix what to write it under
+     * @param into where to write
+     * @param prefix what to write it under
      *
      * <p>Not the data and not the indicators -- the view: how far in, how far
      * along, how stretched, how slid, and drawn how. Reopening a chart that
@@ -2704,9 +2714,11 @@ public final class ChartCanvas extends JComponent {
 
     private boolean axisSpeaksInDays(Viewport viewport) {
         int first = viewport.firstBar();
+        // No null check on the series: the line above already dereferenced it,
+        // and the field is born PriceSeries.empty() and never assigned null.
         int last = Math.min(viewport.lastBar(), series.size()) - 1;
 
-        if (series == null || last <= first) {
+        if (last <= first) {
             return false;
         }
 
@@ -3246,6 +3258,20 @@ public final class ChartCanvas extends JComponent {
 
         @Override
         public void mouseReleased(MouseEvent e) {
+            // THE SAME BUTTON THE PRESS ASKED ABOUT. This was the only one of
+            // the four handlers without the check, so a right-click released
+            // over the plot cleared the drag state of a gesture the LEFT button
+            // was still making -- and a ruler being measured vanished for a
+            // gesture that has nothing to do with it.
+            //
+            // getButton, and not the isLeftMouseButton the three siblings use:
+            // that one reads the down-mask, and on a RELEASE the button being
+            // released is already up. A release carries which button it was in
+            // getButton and nowhere else.
+            if (e.getButton() != MouseEvent.BUTTON1) {
+                return;
+            }
+
             scalingFrom = -1;
             timingFrom = -1;
             grabbedAt = -1;

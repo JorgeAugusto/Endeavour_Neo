@@ -61,6 +61,14 @@ class ChartViewTest {
     @org.junit.jupiter.api.BeforeEach
     void useAStoreOfOurOwn() {
         br.com.jorge.reis.endeavourneo.platform.Settings.useForTest(store);
+
+        // AND THE MODE, which is a process-wide static read once at class
+        // load. The tests below drag to PAN, and a drag in measuring mode
+        // draws a ruler instead -- so any earlier test class that left the
+        // switch on made these fail, in a full run, while passing on their
+        // own. A test that depends on a global has to establish it; leaving
+        // that to whoever dirtied it only works while nobody forgets.
+        RulerMode.set(false);
     }
 
     @org.junit.jupiter.api.AfterEach
