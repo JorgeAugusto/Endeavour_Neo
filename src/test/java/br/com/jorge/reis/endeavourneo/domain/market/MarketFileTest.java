@@ -304,4 +304,41 @@ class MarketFileTest {
         // header written over an empty file.
         assertEquals(3, MarketFile.read(file).size());
     }
+/**
+     * A header claiming a number of bars that is not one is refused by name.
+     *
+     * <p>Without the guard the count goes straight into {@code new double[]} and
+     * the failure is a {@code NegativeArraySizeException} with no file in it —
+     * and the size check above cannot catch it first, because a negative count
+     * makes the expected size negative too. What is at stake is the message, not
+     * the number, which is why this sits at the bottom of the list.</p>
+     */
+    @Test
+    @DisplayName("um cabecalho que promete um numero de barras que nao e um e recusado pelo nome")
+    void aheaderPromisingAnimpossibleCountIsRefused(@TempDir Path folder) throws IOException {
+        Path file = folder.resolve("win-1m.bin");
+
+        java.nio.ByteBuffer head = java.nio.ByteBuffer.allocate(24)
+                .order(java.nio.ByteOrder.BIG_ENDIAN);
+
+        head.put("ENDVCNDL".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+        head.putInt(1);
+        head.putInt(1);
+        head.putLong(-7);
+
+        Files.write(file, head.array());
+
+        // ASKED OF countIn, and not of read. read computes the expected file
+        // size from the count, and a negative count makes that negative too, so
+        // the size check fires first and the guard is never reached by that
+        // path -- which is how the first version of this test passed with the
+        // guard taken out of the product. countIn has nothing between it and
+        // the header, and without the guard it simply ANSWERS minus seven.
+        IOException thrown = assertThrows(IOException.class, () -> MarketFile.countIn(file));
+
+        assertTrue(thrown.getMessage().contains(file.toString()),
+                "the message does not say which file: " + thrown.getMessage());
+        assertTrue(thrown.getMessage().contains("-7"),
+                "the message does not say what the header claimed: " + thrown.getMessage());
+    }
 }

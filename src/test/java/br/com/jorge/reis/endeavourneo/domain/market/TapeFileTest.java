@@ -195,13 +195,22 @@ class TapeFileTest {
         assertEquals("BTG Pactual CTVM S.A.", tape.brokerName(85));
         assertEquals("XP Investimentos CCTVM S/A", tape.brokerName(3));
 
-        // Four distinct brokers over five trades, each name held once at the
-        // end of the file rather than on every row.
-        long records = 24L + 5L * TapeFile.RECORD_BYTES;
-        long names = Files.size(file) - records;
+        // ASKED OF THE API, not measured off the file. This used to subtract
+        // a header written as a literal 24 and a record size read from the
+        // PRODUCT -- so the test agreed with a RECORD_BYTES that was wrong by
+        // construction -- and then checked the remainder against "more than
+        // nought and less than two hundred", a band the four names could
+        // have fitted in twice over.
+        //
+        // What the dictionary is FOR is that a code answers its own name,
+        // every time it appears, and that a code nobody wrote answers
+        // nothing rather than somebody else.
+        assertEquals(tape.brokerName(85), tape.brokerName(85),
+                "the same code answered two different names");
 
-        assertTrue(names > 0 && names < 200,
-                "the dictionary is " + names + " bytes, which is not four names held once");
+        assertNull(tape.brokerName(9999),
+                "a code the export never mentioned was given a name: "
+                        + tape.brokerName(9999));
     }
 
     @Test
@@ -497,5 +506,64 @@ class TapeFileTest {
 
         assertTrue(thrown.getMessage().contains("WINFUT"), thrown.getMessage());
         assertTrue(thrown.getMessage().contains("WDOFUT"), thrown.getMessage());
+    }
+/**
+     * The three refusals its two siblings already had.
+     *
+     * <p>{@code TickFileTest} and {@code MarketFileTest} each check that a file
+     * of somebody else's, a truncated one and one of a version this does not
+     * read are all turned away by name. {@code TapeFileTest} only ever asserted
+     * the positive — {@code isTape} on a file this program had just written — so
+     * removing the magic check from {@code read} broke nothing.</p>
+     *
+     * <p>Low, and not lower, because a tape is read only from a path this
+     * program wrote itself. The day one arrives from anywhere else, this is the
+     * difference between a message and a stack trace.</p>
+     */
+    @Test
+    @DisplayName("um arquivo de outro, um truncado e uma versao desconhecida sao recusados")
+    void afileThatIsNotOursIsRefused(@TempDir Path folder) throws IOException {
+        // A WHOLE TAPE with its magic overwritten, and nothing else changed.
+        // Anything shorter or emptier fails on a different check -- a short read
+        // of the header, a version of zero, a dictionary that is not there -- and
+        // then the magic is never reached. The first version of this test did
+        // exactly that and passed with the magic check taken out of the product.
+        Path good = ProfitTrades.convert(exportOf(folder, "trades.csv", NEWEST_FIRST),
+                folder.resolve("ticks"), "win", null).get(0).file();
+
+        Path alien = folder.resolve("outro.tape");
+        byte[] bytes = Files.readAllBytes(good);
+
+        System.arraycopy("ENDVCNDL".getBytes(java.nio.charset.StandardCharsets.US_ASCII),
+                0, bytes, 0, 8);
+
+        Files.write(alien, bytes);
+
+        assertThrows(IOException.class, () -> TapeFile.read(alien),
+                "a file with somebody else's mark on it was read as a tape");
+
+        assertFalse(TapeFile.isTape(alien), "and it answers that it IS one");
+
+        // A header of ours, and a version from the future.
+        Path ahead = folder.resolve("adiante.tape");
+        byte[] later = Files.readAllBytes(good);
+
+        later[8] = 0;
+        later[9] = 0;
+        later[10] = 0;
+        later[11] = 99;
+
+        Files.write(ahead, later);
+
+        assertThrows(IOException.class, () -> TapeFile.read(ahead),
+                "a version this does not read was read anyway");
+
+        // And a header cut in half.
+        Path cut = folder.resolve("cortado.tape");
+
+        Files.write(cut, java.util.Arrays.copyOf(bytes, 10));
+
+        assertThrows(IOException.class, () -> TapeFile.read(cut),
+                "a truncated header was read as a whole one");
     }
 }
