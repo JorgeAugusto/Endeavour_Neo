@@ -428,6 +428,36 @@ public final class ChartHolder {
         } else {
             dock();
         }
+
+        restoreTheView();
+    }
+
+    /**
+     * Puts the reader back where they were: scale, style, zoom and position.
+     *
+     * <p><b>Here, on OPENING, and it used to be inside {@code dock}.</b> Two
+     * things came out of that. A chart left floating never had its view restored
+     * at all -- {@code show} reopens in whichever mode it was left in, and
+     * {@code floatIt} did not do this -- so anybody who works with floating
+     * charts wrote the whole state on every close and got none of it back: a
+     * chart left on 11R zoomed into March 2021 came back on 1m, at the end of
+     * the series, at the default zoom and in the default style. The window's own
+     * size and position DID come back, because those are read from the
+     * preferences by {@code restoredSize}, so it looked like the window had
+     * remembered -- which makes losing the rest more confusing, not less.</p>
+     *
+     * <p>And merely DOCKING a floating chart restored it too, which is the same
+     * mistake pointing the other way: the reader had not asked to go anywhere,
+     * and nothing stores the view on the way through a mode change, so floating
+     * a chart and docking it again threw away where they were looking.</p>
+     *
+     * <p>Opening is the one moment there is something to restore. Posted rather
+     * than run now: the view is expressed in bars across a plot, and the plot
+     * has no width until the frame has been laid out.</p>
+     */
+    private void restoreTheView() {
+        javax.swing.SwingUtilities.invokeLater(
+                () -> canvas.restoreView(Settings.workspace(), "chart." + key + "."));
     }
 
     // ------------------------------------------------------------ the modes
@@ -486,11 +516,6 @@ public final class ChartHolder {
         }
 
         PREFS.putBoolean(key + ".floating", false);
-
-        // After the frame exists and has a size: the view is restored in terms
-        // of bars across a plot, and the plot has no width until then.
-        javax.swing.SwingUtilities.invokeLater(
-                () -> canvas.restoreView(Settings.workspace(), "chart." + key + "."));
 
         front();
     }
