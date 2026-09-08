@@ -389,4 +389,82 @@ class ChartViewTest {
                 "turning the tails back on moved the reader");
     }
 
+
+    @Test
+    @DisplayName("um restauro que chega ANTES das barras espera por elas")
+    void arestoreThatArrivesBeforeTheBarsWaitsForThem() {
+        // A chart OF a tick export is filled in the background -- it says so of
+        // itself, "empty now, filled in the background" -- and takes four to
+        // eight seconds. The restore is posted to the next event, so it ran
+        // against an EMPTY series and every number clamped to nothing: the
+        // window collapsed to the minimum and the position to zero. The worker
+        // then called setSeries, whose "same size" shortcut cannot fire from
+        // zero either, and the view landed at the default zoom at the end of the
+        // series.
+        //
+        // Zoom, position, period and style, lost in silence for that whole
+        // family of charts -- the opposite of what storeView promises.
+        ChartCanvas left = new ChartCanvas();
+
+        left.setSeries(bars(1_000));
+        left.scrollTo(300);
+
+        br.com.jorge.reis.endeavourneo.platform.Settings into =
+                br.com.jorge.reis.endeavourneo.platform.Settings.workspace();
+
+        left.storeView(into, "chartViewTest.late.");
+
+        // The chart the reader gets back: restored while still empty, filled
+        // afterwards.
+        ChartCanvas reopened = new ChartCanvas();
+
+        reopened.restoreView(into, "chartViewTest.late.");
+        reopened.setSeries(bars(1_000));
+
+        assertEquals(300, reopened.firstVisibleBar(),
+                "the chart came back at the end of the series: the restore was measured "
+                        + "against a series that had not arrived, and then thrown away");
+    }
+
+    @Test
+    @DisplayName("restaurar um renko respeita a mesma recusa que o dialogo respeita")
+    void arestoredRenkoObeysTheSameRefusal() {
+        // renkoAllowed guarded askForPeriod and nothing else, so it protected
+        // the one door a reader knocks on. Restoring a workspace goes straight
+        // to setPeriod -- so a reader who turned "fill in the ticks that are
+        // missing" OFF, whose whole purpose is "I would rather be told than
+        // shown a chart that is not what it says", got exactly the chart the
+        // setting refuses, on every launch, without a word.
+        boolean was = br.com.jorge.reis.endeavourneo.ui.chart.ChartPreferences.syntheticTicks();
+
+        try {
+            br.com.jorge.reis.endeavourneo.ui.chart.ChartPreferences.setSyntheticTicks(false);
+
+            ChartCanvas canvas = new ChartCanvas();
+
+            canvas.setSeries(bars(2_000));
+            canvas.setInstrument("nothing-on-disk-1m");
+
+            String before = canvas.periodCode();
+
+            canvas.setPeriod(new br.com.jorge.reis.endeavourneo.domain.market.Renko(10, 2),
+                    "10R", "10R");
+
+            assertEquals(before, canvas.periodCode(),
+                    "a renko was built from candles for a reader who asked not to be shown "
+                            + "one, on a path with no dialog to say so");
+
+            // And with the invented walk allowed, which is the default, the same
+            // call goes through.
+            br.com.jorge.reis.endeavourneo.ui.chart.ChartPreferences.setSyntheticTicks(true);
+
+            canvas.setPeriod(new br.com.jorge.reis.endeavourneo.domain.market.Renko(10, 2),
+                    "10R", "10R");
+
+            assertEquals("10R", canvas.periodCode(),
+                    "the refusal is now refusing what it should allow");
+        } finally {
+            br.com.jorge.reis.endeavourneo.ui.chart.ChartPreferences.setSyntheticTicks(was);
+        }
+    }
 }

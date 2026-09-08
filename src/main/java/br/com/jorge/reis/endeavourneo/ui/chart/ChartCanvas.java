@@ -1031,6 +1031,24 @@ public final class ChartCanvas extends JComponent {
             return;
         }
 
+        if (newPeriod instanceof br.com.jorge.reis.endeavourneo.domain.market.Renko
+                && !renkoAllowed()) {
+            // REFUSED HERE, not only in the dialog. This guard used to live in
+            // askForPeriod alone, so it protected the one door a reader knocks
+            // on and no other -- and restoring a workspace goes straight to this
+            // method. A reader who turned "fill in the ticks that are missing"
+            // OFF, whose whole purpose is "I would rather be told than shown a
+            // chart that is not what it says", got exactly the chart the setting
+            // refuses, on every launch, without a word.
+            //
+            // Silent here because there is no window to speak from: the reader
+            // is being handed a workspace, not answering a question. The chart
+            // keeps the period it had, which is the honest fallback -- and the
+            // dialog still says why when the refusal is an answer to something
+            // that was asked.
+            return;
+        }
+
         this.period = newPeriod;
         this.periodLabel = label == null ? newPeriod.label() : label;
         this.periodCode = code == null ? this.periodLabel : code;
@@ -1439,6 +1457,31 @@ public final class ChartCanvas extends JComponent {
         onSeriesChanged.run();
     }
 
+    /** A restore that arrived before the bars did, held until they do. */
+    private transient br.com.jorge.reis.endeavourneo.platform.Settings wanted;
+
+    private transient String wantedPrefix;
+
+    /**
+     * Replays a restore that could not be applied when it was asked for.
+     *
+     * <p>Called from the fold, which is where bars first exist. Cleared before
+     * the replay so a restore that still cannot be applied does not loop.</p>
+     */
+    private void restoreWhatWasWanted() {
+        if (wanted == null || series.size() == 0) {
+            return;
+        }
+
+        br.com.jorge.reis.endeavourneo.platform.Settings from = wanted;
+        String prefix = wantedPrefix;
+
+        wanted = null;
+        wantedPrefix = null;
+
+        restoreView(from, prefix);
+    }
+
     /** @return whether what is drawn came from the exchange's own ticks */
     public boolean isFromTicks() {
         return fromTicks;
@@ -1694,6 +1737,10 @@ public final class ChartCanvas extends JComponent {
         // thing anybody does is drag it left.
         this.rightMargin = birthMargin();
         this.firstBar = clampFirstBar(this.series.size() - visibleBars + rightMargin);
+
+        // AFTER the defaults, so a restore that was waiting for bars overwrites
+        // them rather than being overwritten by them. See restoreView.
+        restoreWhatWasWanted();
 
         repaint();
         onSeriesChanged.run();
@@ -2109,6 +2156,26 @@ public final class ChartCanvas extends JComponent {
         stretch = readDouble(from, prefix + "stretch", 1.0, MINIMUM_STRETCH, MAXIMUM_STRETCH);
         priceOffset = clampOffset(readDouble(from, prefix + "priceOffset", 0.0,
                 -AIR_VERTICAL, AIR_VERTICAL));
+
+        if (series.size() == 0) {
+            // THE SERIES HAS NOT ARRIVED. A chart OF a tick export is filled in
+            // the background -- it says so of itself, "empty now, filled in the
+            // background", and it takes four to eight seconds -- so this runs
+            // against an empty series and every number below clamps to nothing:
+            // the window collapses to the minimum and the position to zero. The
+            // worker then calls setSeries, whose shortcut for "the size did not
+            // change" cannot fire either, and the view lands at the default zoom
+            // at the end of the series.
+            //
+            // Zoom, position, period and style, lost in silence for that whole
+            // family of charts -- the exact opposite of what storeView promises.
+            // So the request is kept and replayed by the first fold that brings
+            // bars.
+            wanted = from;
+            wantedPrefix = prefix;
+
+            return;
+        }
 
         visibleBars = Math.max(MINIMUM_VISIBLE_BARS,
                 Math.min(from.getInt(prefix + "visibleBars", visibleBars),
