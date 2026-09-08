@@ -103,16 +103,32 @@ que muda texto.
 Ele pediu: adiar quando der; quando não der, decidir a melhor opção e registrar
 para apresentar.
 
-### D1 — Cache em disco das barras dobradas de um export · **ADIADA**
+### D1 — Cache em disco das barras dobradas de um export · **FEITA em 08/09/2026**
 
-Abrir o gráfico de um export custa **8,1 s (MetaTrader, 1.838 MB)** ou **4,4 s
-(Profit, 691 MB)**, e produz só 10.766 e 5.074 barras. Guardar essas barras num
-`.bin` ao lado dos ticks tornaria a segunda abertura instantânea.
+Ele aprovou. Medido na base dele, antes e depois:
 
-Adiada porque introduz **artefato derivado** e a pergunta de invalidação (um
-pregão novo importado tem de invalidar o cache), e isso é escolha dele: se esse
-gráfico for de uso diário o cache se paga; se for de consulta rara, é
-complexidade sem dono.
+| export | pregões | lidos | barras | primeira | de novo |
+|---|---:|---:|---:|---:|---:|
+| MetaTrader | 20 | 1.838 MB | 10.766 | **16,6 s** | **0,09 s** |
+| Profit | 9 | 691 MB | 5.074 | **8,8 s** | **0,03 s** |
+
+O cache inteiro são **0,7 MB em 29 arquivos**, e as barras da segunda leitura são
+as mesmas da primeira, conferidas barra a barra.
+
+**A invalidação, que era a razão de adiar, saiu de graça ao guardar POR PREGÃO.**
+Um arquivo entra, um arquivo sai: o dia que nunca foi dobrado não tem cache, e o
+dia reimportado tem outro. Não há conjunto para manter de acordo e não há nada a
+invalidar quando um pregão novo chega — o pregão novo é simplesmente o que não
+está guardado. Abrir uma semana com seis dias já dobrados custa o sétimo.
+
+**Como ele sabe que o cache vale: os dois carimbos são IGUAIS.** Depois de
+escrever, o cache recebe o carimbo de modificação do próprio pregão. A pergunta
+deixa de ser "o cache é mais novo" — que um arquivo restaurado de backup com os
+tempos preservados responde errado — e passa a ser "ele foi feito a partir DESTA
+versão deste arquivo".
+
+O artefato derivado continua sendo artefato derivado, e diz isso sendo derivado:
+apagar os `.folded` custa os segundos de novo e mais nada.
 
 ### D2 — Renko de 11R dobrando 1,7 milhão de caixas na EDT · **A DECIDIR NA FASE 1**
 

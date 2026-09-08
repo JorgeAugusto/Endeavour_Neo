@@ -238,4 +238,130 @@ class FoldedTicksTest {
         assertTrue(!message.isBlank(),
                 "an exported session was dropped from the chart without a word");
     }
+/**
+     * The session is folded once and kept, so the second opening is free.
+     *
+     * <p>Reading an export is seconds — 8,1 s for 1.838 MB of MetaTrader — and
+     * it produces half a megabyte of bars. The proof that the second read comes
+     * from the cache and not from the ticks is direct: the ticks are REPLACED
+     * with a different session, keeping the file's modification time, and the
+     * answer has to be the old bars. Anything that read the ticks again would
+     * answer the new ones.</p>
+     */
+    @Test
+    @DisplayName("o pregao e dobrado uma vez, e a segunda abertura vem do que ficou guardado")
+    void thesessionIsFoldedOnceAndKept(@TempDir Path folder) throws IOException {
+        LocalDate day = LocalDate.of(2021, 1, 4);
+
+        session(folder, day, 3, 100_000);
+
+        PriceSeries first = FoldedTicks.day(folder, "win", TickSource.METATRADER, day, ZONE);
+
+        assertEquals(3, first.size(), "the fixture did not fold to three minutes");
+
+        Path ticks = TickSource.METATRADER.fileFor(folder, "win", day);
+        Path cache = FoldedTicks.cacheFor(ticks);
+
+        assertTrue(java.nio.file.Files.isRegularFile(cache),
+                "nothing was kept, so every opening pays the seconds again");
+
+        // The ticks are rewritten with OTHER prices, and the stamp is put back
+        // as it was: only something that read the ticks again can see the
+        // difference.
+        java.nio.file.attribute.FileTime was = java.nio.file.Files.getLastModifiedTime(ticks);
+
+        java.nio.file.Files.delete(ticks);
+        session(folder, day, 3, 200_000);
+        java.nio.file.Files.setLastModifiedTime(ticks, was);
+
+        PriceSeries again = FoldedTicks.day(folder, "win", TickSource.METATRADER, day, ZONE);
+
+        assertEquals(first.closeAt(0), again.closeAt(0), 1e-9,
+                "the ticks were read a second time, so nothing was saved");
+    }
+
+    /**
+     * And a session imported again is folded again.
+     *
+     * <p>The other half, and the reason the cache is per session: there is no
+     * set to keep in agreement. A day that was imported again carries a new
+     * modification time, the two stamps stop matching, and that day — only that
+     * day — is folded once more.</p>
+     */
+    @Test
+    @DisplayName("um pregao importado de novo e dobrado de novo")
+    void asessionImportedAgainIsFoldedAgain(@TempDir Path folder) throws IOException {
+        LocalDate day = LocalDate.of(2021, 1, 4);
+
+        session(folder, day, 3, 100_000);
+
+        PriceSeries first = FoldedTicks.day(folder, "win", TickSource.METATRADER, day, ZONE);
+
+        Path ticks = TickSource.METATRADER.fileFor(folder, "win", day);
+
+        java.nio.file.Files.delete(ticks);
+        session(folder, day, 3, 200_000);
+
+        // The import gives the file a stamp of its own, which is what the cache
+        // was made against and no longer matches.
+        java.nio.file.Files.setLastModifiedTime(ticks,
+                java.nio.file.attribute.FileTime.fromMillis(
+                        java.nio.file.Files.getLastModifiedTime(ticks).toMillis() + 5_000L));
+
+        PriceSeries again = FoldedTicks.day(folder, "win", TickSource.METATRADER, day, ZONE);
+
+        assertEquals(100_000.0, first.openAt(0), 1e-9, "the fixture is not what it says");
+        assertEquals(200_000.0, again.openAt(0), 1e-9,
+                "the reimported session came back from a cache made before it");
+    }
+
+    /**
+     * A cache that will not read is a cache that is not there.
+     *
+     * <p>It is a derived file: the answer to one that is damaged is to fold
+     * again and write it over, never to refuse the chart.</p>
+     */
+    @Test
+    @DisplayName("um cache estragado nao derruba a abertura: dobra de novo e reescreve")
+    void adamagedCacheIsFoldedAgain(@TempDir Path folder) throws IOException {
+        LocalDate day = LocalDate.of(2021, 1, 4);
+
+        session(folder, day, 3, 100_000);
+
+        FoldedTicks.day(folder, "win", TickSource.METATRADER, day, ZONE);
+
+        Path ticks = TickSource.METATRADER.fileFor(folder, "win", day);
+        Path cache = FoldedTicks.cacheFor(ticks);
+
+        java.nio.file.Files.write(cache, "isto nao e um arquivo de barras".getBytes(
+                java.nio.charset.StandardCharsets.UTF_8));
+        java.nio.file.Files.setLastModifiedTime(cache,
+                java.nio.file.Files.getLastModifiedTime(ticks));
+
+        PriceSeries again = FoldedTicks.day(folder, "win", TickSource.METATRADER, day, ZONE);
+
+        assertEquals(3, again.size(), "a damaged cache took the session down with it");
+        assertTrue(MarketFile.isSeries(cache), "the damaged cache was not written over");
+    }
+
+    /**
+     * The cache is not offered as a session.
+     *
+     * <p>It sits in the same directory as the ticks and its name begins the same
+     * way. A listing that took it for a session would offer the reader a day
+     * that plays nothing.</p>
+     */
+    @Test
+    @DisplayName("o cache nao aparece na lista de pregoes")
+    void thecacheIsNotListedAsAsession(@TempDir Path folder) throws IOException {
+        LocalDate day = LocalDate.of(2021, 1, 4);
+
+        session(folder, day, 3, 100_000);
+        FoldedTicks.day(folder, "win", TickSource.METATRADER, day, ZONE);
+
+        try (TickLibrary library = new TickLibrary(folder, "win", TickSource.METATRADER)) {
+            assertEquals(List.of(day), library.exported(),
+                    "the folded file was offered as a session of its own");
+        }
+    }
 }

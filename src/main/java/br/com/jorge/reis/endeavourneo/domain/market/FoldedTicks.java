@@ -18,6 +18,7 @@
 package br.com.jorge.reis.endeavourneo.domain.market;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -52,9 +53,17 @@ import java.util.List;
  * <h2>What it costs, measured</h2>
  *
  * <pre>
- * MetaTrader   20 sessions   1.838 MB read   10.766 bars   8,1 s
- * Profit        9 sessions     691 MB read    5.074 bars   4,4 s
+ *                                                       first    again
+ * MetaTrader   20 sessions   1.838 MB read   10.766 bars   16,6 s   0,09 s
+ * Profit        9 sessions     691 MB read    5.074 bars    8,8 s   0,03 s
  * </pre>
+ *
+ * <p>Measured on the exports in the data folder, September 2026. The first
+ * column is the fold; the second is the same call once the sessions are
+ * kept -- see below. An earlier measurement of the same files, in the audit
+ * report, read 8,1 s and 4,4 s; the ratio is what the decision rests on, and
+ * a repeat of the cold run gave 16,9 s, so it is not the filesystem cache
+ * warming up.</p>
  *
  * <p>So it is <b>seconds, and it must not be on the interface thread</b>. The
  * result is tiny — ten thousand bars is half a megabyte — and the ticks that
@@ -64,6 +73,32 @@ import java.util.List;
  * <p>Read straight from the files and NOT through {@link TickLibrary}, for that
  * same reason. The library caches, and its cache is the one thing that would
  * keep alive exactly what this exists to let go.</p>
+ *
+ * <h2>And kept, so the second opening is free</h2>
+ *
+ * <p>The seconds above are paid to produce half a megabyte. Each session is
+ * folded once and the RESULT is written beside the ticks, as
+ * {@code winfut-2021-01-04.1m.folded} -- an ordinary {@link MarketFile}, which
+ * is the format the rest of the program already reads.</p>
+ *
+ * <p><b>Per session, and that is what makes the invalidation easy.</b> One file
+ * in, one file out: a session that was never folded has no cache, and a session
+ * that was imported again has a different one. There is no set to keep in
+ * agreement and nothing to invalidate when a new day arrives -- the new day is
+ * simply the one that is not cached. Reading a week that already has six of its
+ * days folded costs the seventh.</p>
+ *
+ * <p><b>How it knows the cache is current: the two stamps are EQUAL.</b> After
+ * writing, the cache is given the session's own modification time, so the
+ * question is not "is the cache newer" -- which a file restored from a backup
+ * with its times preserved would answer wrongly -- but "was it made from THIS
+ * version of this file". A re-import changes the session's stamp and the cache
+ * stops matching on the same instant.</p>
+ *
+ * <p>It is a derived artefact and it says so by being derived: deleting the
+ * {@code .folded} files costs the seconds again and nothing else. Nothing in
+ * the program lists them -- {@link TickLibrary#exported} filters by the
+ * source's own extension, so a cache is never mistaken for a session.</p>
  */
 public final class FoldedTicks {
 
@@ -98,8 +133,19 @@ public final class FoldedTicks {
             return PriceSeries.empty();
         }
 
+        Path cache = cacheFor(file);
+        PriceSeries kept = cached(cache, file);
+
+        if (kept != null) {
+            return kept;
+        }
+
         try {
-            return Timeframe.ONE_MINUTE.fold(TickBars.of(source.read(file)), zone);
+            PriceSeries folded = Timeframe.ONE_MINUTE.fold(TickBars.of(source.read(file)), zone);
+
+            keep(cache, folded, file);
+
+            return folded;
         } catch (IOException e) {
             // NOT THE SAME as the day above. That one was never exported and an
             // empty series is the truth; this one WAS exported and will not
@@ -111,6 +157,73 @@ public final class FoldedTicks {
                     + " from the chart (" + e + ")");
 
             return PriceSeries.empty();
+        }
+    }
+
+    /**
+     * @param session a tick session's own file
+     * @return where its folded form is kept
+     *
+     * <p>Beside it, and not under a folder of its own: the cache belongs to that
+     * one file, and a reader clearing out a month should take the folded form
+     * with it without having to know there is one.</p>
+     *
+     * <p>The extension is neither source's, on purpose. {@code sessionIn} looks
+     * at the suffix before it opens anything, so a cache is skipped by the
+     * listing without costing a read.</p>
+     */
+    static Path cacheFor(Path session) {
+        return session.resolveSibling(session.getFileName() + ".1m.folded");
+    }
+
+    /**
+     * @param cache where the folded session would be
+     * @param session the ticks it would have come from
+     * @return those bars, or null when there is nothing to trust
+     *
+     * <p>Equal stamps, not a newer cache. See the class comment: "newer" is
+     * answered wrongly by a session restored from a backup with its times
+     * preserved, and equality is answered wrongly by nothing short of somebody
+     * forging the stamp.</p>
+     */
+    private static PriceSeries cached(Path cache, Path session) {
+        try {
+            if (!Files.isRegularFile(cache)
+                    || !Files.getLastModifiedTime(cache)
+                            .equals(Files.getLastModifiedTime(session))) {
+
+                return null;
+            }
+
+            return MarketFile.read(cache);
+        } catch (IOException e) {
+            // A cache that will not read is a cache that is not there. It is
+            // written again below, and saying anything here would be a message
+            // about a file the reader never asked for.
+            return null;
+        }
+    }
+
+    /**
+     * Writes the folded session beside the ticks, and stamps it with theirs.
+     *
+     * <p>A failure here is not a failure of the opening: the bars are in hand
+     * and the chart is drawn either way. It is said out loud all the same,
+     * because a cache that silently never writes is seconds paid again on every
+     * open with nothing to show why.</p>
+     *
+     * <p>Two threads folding the same session at once write the same bytes --
+     * the fold is deterministic -- so the worst an overlap can produce is a file
+     * of the wrong length, which {@code MarketFile.read} refuses and the next
+     * open replaces.</p>
+     */
+    private static void keep(Path cache, PriceSeries bars, Path session) {
+        try {
+            MarketFile.write(cache, bars, 1);
+            Files.setLastModifiedTime(cache, Files.getLastModifiedTime(session));
+        } catch (IOException e) {
+            System.err.println(cache + ": the folded session could not be kept, so it will"
+                    + " be folded again next time (" + e + ")");
         }
     }
 
