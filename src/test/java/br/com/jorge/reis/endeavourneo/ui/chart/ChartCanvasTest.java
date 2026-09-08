@@ -18,6 +18,7 @@
 package br.com.jorge.reis.endeavourneo.ui.chart;
 
 import br.com.jorge.reis.endeavourneo.domain.market.RandomWalkSeries;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -157,5 +158,117 @@ class ChartCanvasTest {
 
         assertSame(folded, canvas.series(),
                 "the same period, in a new object, refolded the whole series");
+    }
+/**
+     * The price format is kept, one per number of decimals.
+     *
+     * <p>There are seven possible answers — nought to six — and this built a new
+     * {@code DecimalFormat} every time it was asked, which is three times a
+     * frame: the price axis, the last-price tag and the cursor's label. A
+     * {@code DecimalFormat} parses its pattern and builds its symbols on
+     * construction, inside the painting loop this file spends comments telling
+     * the reader not to allocate in.</p>
+     */
+    @Test
+    @DisplayName("o formato do preco e guardado, um por numero de casas")
+    void thepriceFormatIsKept() {
+        assertSame(ChartCanvas.formatFor(5.0), ChartCanvas.formatFor(5.0),
+                "a new format was built for a step already asked about");
+
+        // The same number of decimals is the same format, whatever the step.
+        assertSame(ChartCanvas.formatFor(5.0), ChartCanvas.formatFor(500.0));
+
+        // And a different number of decimals is a different one, or the cache
+        // would be handing out the wrong shape.
+        assertNotSame(ChartCanvas.formatFor(5.0), ChartCanvas.formatFor(0.05));
+    }
+
+    /**
+     * The price chart asks each line for ITS stroke, not the indicator for one.
+     *
+     * <p>{@code Overlay.strokes()} exists so an indicator can dress each of its
+     * lines apart, and {@code StudyPane} honours it — so the setting worked in a
+     * pane and did nothing on the price chart. Not hypothetical: the Bollinger
+     * bands answer three strokes so the middle line can carry the reader's own
+     * style and thickness, and the bands are drawn here.</p>
+     */
+    @Test
+    @DisplayName("o grafico de preco pergunta o traco de CADA linha")
+    void thepriceChartAsksEachLineForItsStroke() {
+        java.util.concurrent.atomic.AtomicInteger asked =
+                new java.util.concurrent.atomic.AtomicInteger();
+
+        Overlay twoLines = new Overlay() {
+
+            @Override
+            public String nameKey() {
+                return "overlay.movingAverage";
+            }
+
+            @Override
+            public boolean fitsOnPrice() {
+                return true;
+            }
+
+            @Override
+            public java.util.List<Integer> parameters() {
+                return java.util.List.of(1);
+            }
+
+            @Override
+            public java.util.List<java.awt.Color> colours() {
+                return java.util.List.of(java.awt.Color.RED, java.awt.Color.BLUE);
+            }
+
+            @Override
+            public java.util.List<java.awt.Stroke> strokes() {
+                asked.incrementAndGet();
+
+                return java.util.List.of(new java.awt.BasicStroke(1f),
+                        new java.awt.BasicStroke(4f));
+            }
+
+            @Override
+            public double[] valueAt(int bar) {
+                return new double[]{100.0 + bar, 90.0 + bar};
+            }
+
+            @Override
+            public void calculate(PriceSeries series) {
+                // Nothing to compute.
+            }
+
+            @Override
+            public boolean isVisible() {
+                return true;
+            }
+
+            @Override
+            public void setVisible(boolean visible) {
+                // Always on.
+            }
+        };
+
+        ChartCanvas canvas = new ChartCanvas();
+
+        canvas.setSeries(new br.com.jorge.reis.endeavourneo.domain.market
+                .RandomWalkSeries(60, 100.0));
+        canvas.setSize(400, 300);
+        canvas.setFont(new java.awt.Font("SansSerif", java.awt.Font.PLAIN, 11));
+        canvas.setOverlays(java.util.List.of(twoLines));
+
+        java.awt.image.BufferedImage image = new java.awt.image.BufferedImage(400, 300,
+                java.awt.image.BufferedImage.TYPE_INT_ARGB);
+        java.awt.Graphics2D g = image.createGraphics();
+
+        try {
+            canvas.paint(g);
+        } finally {
+            g.dispose();
+        }
+
+        assertTrue(asked.get() > 0,
+                "the price chart never asked for the strokes, so an indicator that dresses "
+                        + "its lines apart is drawn with one stroke for all of them");
     }
 }

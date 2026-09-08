@@ -195,7 +195,13 @@ public final class ChartCanvas extends JComponent {
     /** Diameter of the button that jumps back to the newest bars. */
     private static final int JUMP_SIZE = 26;
 
-    /** How far it sits from the bottom-right corner of the plot. */
+    /**
+     * How far it sits from the TOP-right corner of the plot.
+     *
+     * <p>It said bottom, and {@code jumpBounds} puts it at the top with a
+     * comment saying so. One of the two had been wrong since the button
+     * moved.</p>
+     */
     private static final int JUMP_MARGIN = 14;
 
     /**
@@ -247,7 +253,8 @@ public final class ChartCanvas extends JComponent {
      * The panes drawn from this chart's viewport.
      *
      * <p>Final and built at construction, because {@link #repaint} runs before
-     * a subclass's fields would be assigned -- Swing repaints during
+     * a subclass's fields would be assigned (this class is final now, so that
+     * is no longer the reason; what remains is that Swing repaints during
      * construction, and a null list there is a crash on opening a chart.</p>
      */
     private final transient java.util.List<java.awt.Component> followers =
@@ -734,6 +741,16 @@ public final class ChartCanvas extends JComponent {
      * <p>What the toolbar button shows. Stretching or sliding the price leaves
      * automatic; the button unticks, and that tick is the only thing on screen
      * that says the scale is now the reader's and not the chart's.</p>
+     *
+     * <p>Compared exactly, and that is right here: both are ASSIGNED the
+     * literal, by {@code resetStretch}, and neither is the result of
+     * arithmetic. An epsilon would say "automatic" for a scale the reader
+     * dragged by a hair, which is the opposite of what the caller needs -- it
+     * asks in order to show that the scale is no longer being chosen for
+     * them.</p>
+     *
+     * <p>Written down because the house rule is the other way round, and the
+     * next reader would otherwise be right to "fix" it.</p>
      */
     public boolean isAutomaticScale() {
         return stretch == 1.0 && priceOffset == 0.0;
@@ -1880,13 +1897,23 @@ public final class ChartCanvas extends JComponent {
 
     private transient Runnable onStyleChanged = () -> { };
 
-    public ChartStyle getStyle() {
+    /** @return how the price is drawn: candles, hollow candles or a line */
+    public ChartStyle style() {
         return style;
     }
 
-    /** @return the bar under the mouse, or -1 when the mouse is elsewhere */
+    /**
+     * @return the bar under the mouse, or -1 when the mouse is elsewhere
+     *
+     * <p>"Elsewhere" includes the two axis strips, and it did not. {@code
+     * Viewport.barAt} clamps, so a pointer over the price axis was answered with
+     * the last visible bar -- a bar it is not on -- while the javadoc promised
+     * minus one.</p>
+     */
     public int hoveredBar() {
-        if (cursor == null || series.size() == 0) {
+        if (cursor == null || series.size() == 0
+                || onAxis(cursor.x) || onTimeAxis(cursor.y)) {
+
             return -1;
         }
 
@@ -2438,8 +2465,15 @@ public final class ChartCanvas extends JComponent {
             // Each indicator draws with its OWN stroke: thickness and dash are
             // settings now, and a single stroke set for all of them would make
             // every one of those settings do nothing.
-            g.setStroke(overlay.stroke());
-
+            //
+            // ONE PER LINE, and it used to be one for the whole indicator.
+            // Overlay.strokes() exists precisely so an indicator can dress each
+            // of its lines apart, and StudyPane honours it -- so the setting
+            // worked in a pane and did nothing on the price chart. That is not
+            // hypothetical any more: the Bollinger bands answer three strokes so
+            // the middle line can carry the reader's own choice of style and
+            // thickness, and the bands are drawn HERE.
+            java.util.List<java.awt.Stroke> strokes = overlay.strokes();
             java.util.List<java.awt.Color> colours = overlay.colours();
             int lines = colours.size();
 
@@ -2474,6 +2508,8 @@ public final class ChartCanvas extends JComponent {
                     int y = (int) Math.round(viewport.y(row[line]));
 
                     if (lastX[line] != Integer.MIN_VALUE) {
+                        g.setStroke(line < strokes.size()
+                                ? strokes.get(line) : overlay.stroke());
                         g.setColor(colours.get(line));
                         g.drawLine(lastX[line], lastY[line], x, y);
                     }
@@ -2837,9 +2873,15 @@ public final class ChartCanvas extends JComponent {
     /**
      * The last close, as a filled tag on the price axis.
      *
-     * <p>It answers the question the chart is opened for -- what is it worth
-     * now -- without the reader tracing a grid line across with their eye. Every
+     * <p>It answers the question the chart is opened for -- what is it worth --
+     * without the reader tracing a grid line across with their eye. Every
      * terminal has it, and its absence is felt immediately.</p>
+     *
+     * <p><b>The last VISIBLE bar, not the last bar of the series.</b> Scrolled
+     * back to 2021 the tag reads a price of 2021, and that is the honest answer
+     * for a chart of 2021: the alternative is a number floating over a chart it
+     * does not belong to. The javadoc used to say "what is it worth NOW", which
+     * is the one reading it does not give.</p>
      */
     private void paintLastPrice(Graphics2D g, Viewport viewport) {
         int index = Math.min(viewport.lastBar(), series.size()) - 1;
@@ -3006,20 +3048,37 @@ public final class ChartCanvas extends JComponent {
      * <p>A step of 500 needs none; a step of 0,05 needs two. Fixing the decimals
      * would either print 177.600,00 on an index or round a currency pair to
      * uselessness.</p>
+     *
+     * <p><b>Kept, one per number of decimals.</b> There are seven possible
+     * answers -- nought to six -- and this built a new {@code DecimalFormat}
+     * every time it was asked, which is three times a frame: the price axis, the
+     * last-price tag and the cursor's label. A DecimalFormat parses its pattern
+     * and builds its symbols on construction, inside the painting loop this file
+     * spends comments telling the reader not to allocate in.</p>
+     *
+     * <p>The map is not synchronised because painting is the interface thread's
+     * and nothing else asks. {@code DecimalFormat} is not thread-safe, and this
+     * is the reason that is fine.</p>
      */
     static DecimalFormat formatFor(double step) {
         int decimals = step >= 1.0 ? 0 : (int) Math.min(6, Math.ceil(-Math.log10(step)));
 
-        StringBuilder pattern = new StringBuilder("#,##0");
+        return FORMATS.computeIfAbsent(decimals, places -> {
+            StringBuilder pattern = new StringBuilder("#,##0");
 
-        if (decimals > 0) {
-            pattern.append('.');
-            pattern.append("0".repeat(decimals));
-        }
+            if (places > 0) {
+                pattern.append('.');
+                pattern.append("0".repeat(places));
+            }
 
-        return new DecimalFormat(pattern.toString(),
-                DecimalFormatSymbols.getInstance(Locale.getDefault()));
+            return new DecimalFormat(pattern.toString(),
+                    DecimalFormatSymbols.getInstance(Locale.getDefault()));
+        });
     }
+
+    /** @see #formatFor(double) */
+    private static final java.util.Map<Integer, DecimalFormat> FORMATS =
+            new java.util.HashMap<>();
 
     double gridStep(Viewport viewport) {
         double span = viewport.highestPrice() - viewport.lowestPrice();
@@ -3057,7 +3116,11 @@ public final class ChartCanvas extends JComponent {
      * the bar's centre says which bar is being read.</p>
      */
     private void paintCrosshair(Graphics2D g, Viewport viewport) {
-        if (cursor == null) {
+        if (cursor == null || onAxis(cursor.x) || onTimeAxis(cursor.y)) {
+            // THE SAME GUARD paintReadout has, and for the same reason. Over the
+            // price strip there is no bar under the pointer: barAt clamps, so
+            // the cross jumped to the last visible bar and the label beside it
+            // named a price the pointer was not on.
             return;
         }
 

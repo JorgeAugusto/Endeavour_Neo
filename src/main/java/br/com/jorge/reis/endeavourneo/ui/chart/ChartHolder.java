@@ -809,7 +809,7 @@ public final class ChartHolder {
 
     /** Presses whichever button matches the style the chart is actually drawing. */
     private void followStyle() {
-        JToggleButton mine = styleButtons.get(canvas.getStyle().code());
+        JToggleButton mine = styleButtons.get(canvas.style().code());
 
         if (mine != null) {
             mine.setSelected(true);

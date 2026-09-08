@@ -529,7 +529,7 @@ class ChartViewTest {
         reopened.setSeries(bars(100));
         reopened.restoreView(into, "chartViewTest.style.");
 
-        assertEquals("line", reopened.getStyle().code(),
+        assertEquals("line", reopened.style().code(),
                 "the line chart came back as candles");
 
         // The other direction, which used to be the silent one.
@@ -538,7 +538,7 @@ class ChartViewTest {
 
         reopened.restoreView(into, "chartViewTest.style.");
 
-        assertEquals("candle", reopened.getStyle().code(),
+        assertEquals("candle", reopened.style().code(),
                 "a chart already drawing a line kept the line when candles were stored");
 
         // AND IT SAYS SO. There was no listener for the style at all, so the
