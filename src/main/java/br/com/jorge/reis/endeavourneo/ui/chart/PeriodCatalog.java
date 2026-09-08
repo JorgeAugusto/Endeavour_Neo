@@ -95,14 +95,20 @@ public final class PeriodCatalog {
          *
          * <p>Renko carries both numbers, because neither alone is enough:
          * <code>11R</code> is what was typed and what the reader will type
-         * again, and <code>55 pts</code> is what a brick actually measures. The
+         * again, and <code>50 pts</code> is what a brick actually measures. The
          * conversion needs the instrument's tick size, which is why this lives
          * here and not on {@link Renko} — a brick in the domain knows its height
          * in price and has no business knowing what a tick is worth.</p>
          */
         public String title() {
             if (aggregation instanceof Renko renko) {
-                return code + " - " + trim(renko.brick()) + " pts";
+                // THE KEY, not the literal. The ruler already says this word
+                // through ruler.points, and the two happen to agree because
+                // the bundles both spell it "pts". The day one of them is
+                // translated -- to "pontos", to "points" -- the ruler would
+                // change and the chart title would not, and the same quantity
+                // would be named two ways on two screens.
+                return code + " - " + trim(renko.brick()) + " " + Messages.get("ruler.points");
             }
 
             return code;

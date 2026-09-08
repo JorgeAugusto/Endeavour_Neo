@@ -81,7 +81,13 @@ public final class RsiDialog extends JDialog {
     private transient boolean accepted;
 
     private RsiDialog(Window owner, RelativeStrength study) {
-        super(owner, Messages.get("study.rsi") + " [" + study.period() + "]",
+        // THROUGH overlay.dialog.title, like the other two. Four dialogs of
+        // the same kind, and two of them wore the "Indicators >" prefix while
+        // these two did not -- so opening the moving average and then the RSI
+        // changed the shape of the title bar for no reason the reader could
+        // name.
+        super(owner, Messages.get("overlay.dialog.title",
+                Messages.get("study.rsi") + " [" + study.period() + "]"),
                 ModalityType.APPLICATION_MODAL);
 
         this.study = study;

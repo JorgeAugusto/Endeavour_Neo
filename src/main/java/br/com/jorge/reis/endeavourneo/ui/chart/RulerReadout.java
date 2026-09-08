@@ -39,7 +39,8 @@ final class RulerReadout {
 
     private static final int PADDING = Readouts.PADDING;
 
-    private static final int OFFSET = 16;
+    /** Shared with the bar's box; see Readouts. */
+    private static final int OFFSET = Readouts.OFFSET;
 
     private RulerReadout() {
         throw new AssertionError("Utility class must not be instantiated");

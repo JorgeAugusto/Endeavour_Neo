@@ -319,7 +319,7 @@ public final class ChartCanvas extends JComponent {
      *
      * <p>Kept apart from the label because they answer different questions: the
      * label is for reading and the code is for rebuilding. Restoring a window
-     * from "11R - 55 pts" would mean parsing prose.</p>
+     * from "11R - 50 pts" would mean parsing prose.</p>
      */
     private transient String periodCode = Timeframe.ONE_MINUTE.label();
 

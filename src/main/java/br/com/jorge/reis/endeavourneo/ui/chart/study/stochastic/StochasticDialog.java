@@ -106,7 +106,9 @@ public final class StochasticDialog extends JDialog {
     private transient boolean accepted;
 
     private StochasticDialog(Window owner, SlowStochastic study) {
-        super(owner, Messages.get("study.stochastic") + " [" + study.period() + "]",
+        // See RsiDialog: the same prefix the other two dialogs already use.
+        super(owner, Messages.get("overlay.dialog.title",
+                Messages.get("study.stochastic") + " [" + study.period() + "]"),
                 ModalityType.APPLICATION_MODAL);
 
         this.study = study;

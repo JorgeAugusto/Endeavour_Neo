@@ -60,8 +60,8 @@ final class BarReadout {
     /** Shared with the ruler's box; see Readouts. */
     private static final int PADDING = Readouts.PADDING;
 
-    /** Gap between the cursor and the corner of the box. */
-    private static final int OFFSET = 18;
+    /** Shared with the ruler's box; see Readouts. */
+    private static final int OFFSET = Readouts.OFFSET;
 
     private static final float ALPHA = Readouts.ALPHA;
 

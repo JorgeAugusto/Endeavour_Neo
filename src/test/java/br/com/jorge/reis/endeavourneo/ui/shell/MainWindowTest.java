@@ -614,4 +614,40 @@ class MainWindowTest {
                             + saidIn(window.getStatus()));
         });
     }
+/**
+     * The shell's own layout goes into the workspace file, like the rest of it.
+     *
+     * <p>Seven classes had moved to {@code Settings} and this one had not, so
+     * what stayed in the registry was precisely the LAYOUT: the size of the
+     * window and the two dividers. And the workspace file says, in a line the
+     * reader can read, "delete this to reset the layout" — which was false.
+     * Deleting it brought the window back the same size and the dividers back
+     * where they were.</p>
+     *
+     * <p>It also put this class outside every seam the suite has: the property
+     * that redirects the settings home does not reach {@code java.util.prefs},
+     * so a test that opened a window wrote the reader's own registry even under
+     * Maven.</p>
+     */
+    @Test
+    @DisplayName("o tamanho da janela e as divisorias vao para o arquivo, nao para o registro")
+    void thelayoutOfTheShellGoesToTheWorkspaceFile() throws Exception {
+        onEdt(window -> {
+            window.setSize(1111, 777);
+            window.storeLayout();
+        });
+
+        assertEquals("1111",
+                br.com.jorge.reis.endeavourneo.platform.Settings.workspace()
+                        .get("window.width", null),
+                "the window size went somewhere this test cannot see, which is where the "
+                        + "reader's own registry is");
+
+        // And on disk, in the file the reader is invited to delete.
+        java.nio.file.Path file = store.resolve("workspace.properties");
+
+        assertTrue(java.nio.file.Files.exists(file), "no workspace file was written at all");
+        assertTrue(java.nio.file.Files.readString(file).contains("window.width"),
+                "the file the reader is told to delete does not hold the layout");
+    }
 }

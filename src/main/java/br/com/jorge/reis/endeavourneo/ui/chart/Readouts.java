@@ -53,6 +53,17 @@ final class Readouts {
     static final int PADDING = 10;
 
     /**
+     * Gap between the cursor and the corner of the box.
+     *
+     * <p>ONE number. The two boxes carried their own, eighteen in one and
+     * sixteen in the other, and only the eighteen had a javadoc saying what it
+     * measured -- which is what drift looks like rather than a decision. The two
+     * boxes jumped two pixels sideways against each other when the reader
+     * entered and left ruler mode with the pointer standing still.</p>
+     */
+    static final int OFFSET = 18;
+
+    /**
      * How solid the ground is.
      *
      * <p>Not opaque: a reader wants to see the candle the box is telling them

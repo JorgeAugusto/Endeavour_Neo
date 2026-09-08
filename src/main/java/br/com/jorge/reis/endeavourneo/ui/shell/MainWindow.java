@@ -39,7 +39,6 @@ import br.com.jorge.reis.endeavourneo.ui.settings.SettingsDialog;
 import br.com.jorge.reis.endeavourneo.ui.settings.SettingsPage;
 
 import java.util.List;
-import java.util.prefs.Preferences;
 import javax.swing.AbstractAction;
 import javax.swing.Action;
 import javax.swing.BorderFactory;
@@ -84,15 +83,36 @@ import javax.swing.SwingUtilities;
  * That is the expensive part of RCP and also the least used — worth adding when
  * its absence hurts, and not before.</p>
  *
- * <p>Divider positions and window size are stored in {@link Preferences}, which
- * ships with the JDK. That is the useful half of Eclipse perspectives: the
+ * <p>Divider positions and window size are stored in the workspace file, with
+ * the rest of the layout. That is the useful half of Eclipse perspectives: the
  * application reopens the way you left it.</p>
  */
 public final class MainWindow extends JFrame {
 
     private static final long serialVersionUID = 1L;
 
-    private static final Preferences PREFS = Preferences.userNodeForPackage(MainWindow.class);
+    /**
+     * The layout of the shell, in the workspace file with the rest of it.
+     *
+     * <p><b>Not java.util.prefs any more.</b> Seven classes had already moved
+     * to {@link Settings} and this one had not, so what stayed in the registry
+     * was precisely the LAYOUT: the size of the window, the two dividers and
+     * the folded state of each pane. And the workspace file says, in a line the
+     * reader can read, "delete this to reset the layout" -- which was false.
+     * Deleting it brought the window back the same size, the dividers back
+     * where they were and the panes back folded.</p>
+     *
+     * <p>It also put this class outside every seam the suite has: the property
+     * that redirects the settings home does not reach java.util.prefs, so a
+     * test that opened a window wrote the reader's own registry even under
+     * Maven.</p>
+     *
+     * <p>Keys written by earlier versions stay in the registry, unread. Nothing
+     * removes them, and this program will not: deleting from somebody else's
+     * registry to tidy up is not a thing an application should do without being
+     * asked.</p>
+     */
+    private static final Settings PREFS = Settings.workspace();
 
     private static final String WIDTH = "window.width";
 
@@ -1440,7 +1460,14 @@ public final class MainWindow extends JFrame {
         });
     }
 
-    private void storeLayout() {
+    /**
+     * Writes the size of the window and the two dividers.
+     *
+     * <p>Package-private so a test can run this exact step: what is worth
+     * checking is WHERE it lands, and the only other way in is closing the
+     * application.</p>
+     */
+    void storeLayout() {
         PREFS.putInt(WIDTH, getWidth());
         PREFS.putInt(HEIGHT, getHeight());
         PREFS.putInt(LEFT_DIVIDER, leftDivider.getDividerLocation());

@@ -242,7 +242,7 @@ public final class ChartHolder {
 
             // The header too. It paints the period every time it paints, but
             // nothing repainted it when the period changed -- so it sat showing
-            // "1m" while the title bar already said "11R - 55 pts". Two labels
+            // "1m" while the title bar already said "11R - 50 pts". Two labels
             // reading the same field and disagreeing is worse than one label.
             chartHeader.repaint();
         });
