@@ -641,3 +641,31 @@ desta mesma noite (B4-11, B6-7, B7a-13, B7a-15).
 **Sem teste, de propósito:** B6-1, B6-3, B6-5, B6-9, B2-7, B7b-4, B8a-9. Em
 todos, exercitar o caminho seria um teste sobre o escalonador — do JUnit, do
 Swing ou do JobService — e não sobre o produto.
+
+## Fase 5 — as BAIXA
+
+| Achados | O que era | Commit |
+| --- | --- | --- |
+| **B1-16,17,19,20,21** | Cinco BAIXA do domínio; uma delas era leitura de lixo | `e65f0df` |
+| **B1-22, B1-23** | O load marca o dia que lê, e o aviso ganha canal | `0412e8f` |
+| **B2-19, B2-20** | Dois números que sumiam em silêncio | `2406b6a` |
+| **B2-13,14,15,16,17** | Texto, guarda morta e uma alocação por quadro | `0bb1755` |
+| **B2-18** | Os tijolos passam a ser acumulados em vetores primitivos | `a987eda` |
+| **B1-18** | O recorte e a junção carregam o tijolo cinza e a contagem | `4c4eb95` |
+
+**18 BAIXA fechadas.** Suíte em **645**. As áreas **B1** e **B2** estão fechadas
+por inteiro — ALTA, MÉDIA e BAIXA.
+
+### O que a fase 5 já ensinou
+
+**Uma prova de dentes verde revelou um teste vazio, pela terceira vez.** Em
+B1-22 escrevi um teste que perguntava se o dia está marcado antes e depois do
+`load`: passou verde com a marcação arrancada, porque as duas respostas são
+"não" de qualquer jeito. Observar o meio da leitura exigiria uma costura no
+`TickSource` que não existe. O teste foi **apagado** em vez de ficar dando
+licença, e o commit diz isso.
+
+**Uma quebra que não compila não é uma quebra.** Em B1-18, tirar as duas
+interfaces dos embrulhos deixou os `@Override` órfãos e o build parou — o que
+não prova nada. A quebra que vale é a que reproduz o estado anterior inteiro:
+sem as interfaces E sem os métodos.
