@@ -597,4 +597,54 @@ class TapeFileTest {
         assertTrue(thrown.getMessage().contains("longer than"),
                 "the message does not say what was wrong: " + thrown.getMessage());
     }
+/**
+     * Bytes after the last broker name are refused.
+     *
+     * <p>The size check before the trades is a {@code <}, because the dictionary
+     * comes after them and its length is not known yet — so bytes past the end
+     * of the dictionary were the one kind of malformed file this reader
+     * accepted. {@code MarketFile} and {@code TickFile} both demand the exact
+     * size and say why.</p>
+     */
+    @Test
+    @DisplayName("bytes depois do dicionario de corretoras sao recusados")
+    void bytesAfterTheDictionaryAreRefused(@TempDir Path folder) throws IOException {
+        Path good = ProfitTrades.convert(exportOf(folder, "trades.csv", NEWEST_FIRST),
+                folder.resolve("ticks"), "win", null).get(0).file();
+
+        Path longer = folder.resolve("sobrando.tape");
+        byte[] bytes = Files.readAllBytes(good);
+        byte[] withTail = java.util.Arrays.copyOf(bytes, bytes.length + 7);
+
+        Files.write(longer, withTail);
+
+        assertThrows(IOException.class, () -> TapeFile.read(longer),
+                "seven bytes of nothing after the dictionary were read as a whole tape");
+
+        // And the untouched one still reads, or the check refuses everything.
+        assertEquals(5, TapeFile.read(good).size());
+    }
+
+    /**
+     * A file that is not ours and a file of ours that will not read are
+     * different answers.
+     *
+     * <p>{@code isTape}, {@code isTicks} and {@code isSeries} all answered the
+     * same {@code false} to both, so a session whose disk went away vanished
+     * from the listing with nothing said. The refusals now carry a type of
+     * their own.</p>
+     */
+    @Test
+    @DisplayName("nao-e-nosso e nao-consegui-ler sao respostas diferentes")
+    void notOursAndCouldNotReadAreDifferentAnswers(@TempDir Path folder) throws IOException {
+        Path alien = folder.resolve("outro.tape");
+
+        Files.write(alien, new byte[64]);
+
+        IOException thrown = assertThrows(IOException.class, () -> TapeFile.read(alien));
+
+        assertEquals("NotOurs", thrown.getClass().getSimpleName(),
+                "a file with somebody else's mark came out as an ordinary read failure, "
+                        + "which is what made a real one indistinguishable from it");
+    }
 }

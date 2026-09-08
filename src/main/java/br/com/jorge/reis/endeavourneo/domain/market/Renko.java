@@ -135,6 +135,33 @@ public final class Renko implements Aggregation {
     private final boolean forming;
 
     /**
+     * Two renkos of the same shape are the same renko.
+     *
+     * <p>See {@link Timeframe#equals(Object)}: the caller that needs this is
+     * {@code ChartCanvas.setPeriod}, and it was comparing by identity while its
+     * own comment said it was comparing by value. {@code new Renko(55, 2)} twice
+     * is two objects and one scale.</p>
+     *
+     * <p>All four fields, because all four change what is drawn: the brick and
+     * the reversal decide where a box lands, the wicks decide whether the tails
+     * are there, and the forming one decides whether the box still being built
+     * is shown.</p>
+     */
+    @Override
+    public boolean equals(Object other) {
+        return other instanceof Renko renko
+                && Double.compare(renko.brick, brick) == 0
+                && renko.reversal == reversal
+                && renko.wicks == wicks
+                && renko.forming == forming;
+    }
+
+    @Override
+    public int hashCode() {
+        return java.util.Objects.hash(brick, reversal, wicks, forming);
+    }
+
+    /**
      * @param brick the height of one brick, in price units
      * @param reversal how many bricks a turn costs; 2 is classic renko
      */

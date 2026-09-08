@@ -323,7 +323,17 @@ public final class MarketFile {
             header(channel, file);
 
             return true;
+        } catch (NotOurs e) {
+            // Somebody else's file. The ordinary answer, and worth no words.
+            return false;
         } catch (IOException e) {
+            // A file of OURS that would not read -- the disk went away, the
+            // permission changed. It answers false like the line above and says
+            // so, because a series vanishing from the listing with nothing said
+            // is the failure this format spends its refusals to avoid.
+            System.err.println(file + ": could not be read, so it is not being offered ("
+                    + e + ")");
+
             return false;
         }
     }
@@ -341,20 +351,20 @@ public final class MarketFile {
         head.get(magic);
 
         if (!Arrays.equals(magic, MAGIC)) {
-            throw new IOException(file + ": not an Endeavour series file");
+            throw new NotOurs(file + ": not an Endeavour series file");
         }
 
         int version = head.getInt();
 
         if (version != VERSION) {
-            throw new IOException(file + ": version " + version + " is not one this reads");
+            throw new NotOurs(file + ": version " + version + " is not one this reads");
         }
 
         int minutes = head.getInt();
         long count = head.getLong();
 
         if (count < 0 || count > Integer.MAX_VALUE) {
-            throw new IOException(file + ": " + count + " is not a number of bars");
+            throw new NotOurs(file + ": " + count + " is not a number of bars");
         }
 
         return new Header(minutes, (int) count);

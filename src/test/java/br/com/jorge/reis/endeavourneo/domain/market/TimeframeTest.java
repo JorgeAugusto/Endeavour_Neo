@@ -605,4 +605,78 @@ class TimeframeTest {
 
         assertEquals(101.0, minutes.closeAt(1), 1e-9);
     }
+/**
+     * Two scales of the same length are the same scale, and the same renko is
+     * the same renko.
+     *
+     * <p><b>The correction that reads this was inert.</b>
+     * {@code ChartCanvas.setPeriod} skips the refold when the period asked for
+     * equals the one on screen, and says so in a comment: "Renko and Timeframe
+     * are values, and PeriodCatalog.byCode builds a new one on every call". It
+     * called {@code equals} — and {@code equals} was the one inherited from
+     * {@code Object}, which is identity. The comparison went on comparing two
+     * different objects, went on saying "this is a change", and went on paying
+     * for the whole refold: the fold, the tick rebuild with its directory
+     * listings, and a worker. The comment read as a fix and the behaviour was
+     * the one it describes as the defect.</p>
+     */
+    @Test
+    @DisplayName("duas escalas do mesmo tamanho sao a mesma escala")
+    void twoscalesOfTheSameLengthAreEqual() {
+        // SEVEN, and not sixty. ofMinutes answers the named constant for each of
+        // the eight scales that have a name, so two calls with 60 are the SAME
+        // object and the assertion below would hold by identity -- which is
+        // exactly the defect. Seven has no name, so each call builds one.
+        assertNotSame(Timeframe.ofMinutes(7), Timeframe.ofMinutes(7),
+                "the fixture is not testing anything: the two are the same object");
+
+        assertEquals(Timeframe.ofMinutes(7), Timeframe.ofMinutes(7),
+                "two scales built the same way came out different");
+
+        assertEquals(Timeframe.ofMinutes(7).hashCode(), Timeframe.ofMinutes(7).hashCode());
+
+        // The label is not part of it: the named hour and the one built by
+        // number cover the same bars and differ only in what they are called.
+        assertEquals(Timeframe.ONE_HOUR, Timeframe.ofMinutes(60),
+                "the named scale and the one built by number are not the same scale");
+
+        assertNotEquals(Timeframe.ofMinutes(7), Timeframe.ofMinutes(15));
+
+        // And the renko, which is the other thing setPeriod compares.
+        assertEquals(new Renko(55, 2), new Renko(55, 2),
+                "two renkos of the same shape came out different");
+        assertEquals(new Renko(55, 2).hashCode(), new Renko(55, 2).hashCode());
+        assertNotEquals(new Renko(55, 2), new Renko(50, 2));
+        assertNotEquals(new Renko(55, 2), new Renko(55, 3));
+    }
+
+    /**
+     * A bar begins at a local time, not at midnight plus so many minutes.
+     *
+     * <p>The two are the same number of milliseconds apart only on a day of
+     * twenty-four hours. On the day a zone moves its clocks they differ by the
+     * shift, and the bar came out stamped an hour away from the bar it is —
+     * while {@code bucketOf}, which reads the local clock, went on grouping by
+     * the clock. The two stopped agreeing, which is the whole thing this class
+     * exists to prevent.</p>
+     *
+     * <p>Not reachable on the base in hand — Brazil dropped daylight saving in
+     * 2019 and the data starts in September 2020 — and reachable the moment a
+     * zone that keeps it is read, which the method takes as an argument.</p>
+     */
+    @Test
+    @DisplayName("a barra comeca num horario local, e nao na meia-noite mais tantos minutos")
+    void thebarBeginsAtAlocalTime() {
+        // New York moves its clocks forward at 02:00 on 8 March 2026.
+        ZoneId newYork = ZoneId.of("America/New_York");
+        LocalDateTime afternoon = LocalDateTime.of(2026, 3, 8, 14, 20);
+        long millis = afternoon.atZone(newYork).toInstant().toEpochMilli();
+
+        long start = Timeframe.ofMinutes(30).startOf(millis, newYork);
+
+        assertEquals(LocalDateTime.of(2026, 3, 8, 14, 0).atZone(newYork).toInstant()
+                        .toEpochMilli(), start,
+                "the bar of 14:00 was stamped somewhere else, so the stamp and the "
+                        + "grouping stopped agreeing");
+    }
 }

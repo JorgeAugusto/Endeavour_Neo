@@ -97,6 +97,34 @@ public final class Timeframe implements Aggregation {
     /** Minutes per bar, or one of DAY, WEEK, MONTH. */
     private final int minutes;
 
+    /**
+     * Two scales of the same length are the same scale.
+     *
+     * <p><b>Without this the correction that reads it was inert.</b>
+     * {@code ChartCanvas.setPeriod} skips the refold when the period asked for
+     * equals the one on screen, and it says so in a comment: "Renko and
+     * Timeframe are values, and PeriodCatalog.byCode builds a new one on every
+     * call". It called {@code equals} -- and {@code equals} was the one
+     * inherited from {@code Object}, which is identity. So the comparison went
+     * on comparing two different objects, went on saying "this is a change",
+     * and went on paying for the whole refold: the fold, the tick rebuild with
+     * its directory listings, and a worker. The comment read as a fix and the
+     * behaviour was the one it describes as the defect.</p>
+     *
+     * <p>The label is not part of it. {@code ofMinutes(60)} and {@code H1} cover
+     * the same bars and differ only in what they are called; a chart that has
+     * one and is handed the other has nothing to redraw.</p>
+     */
+    @Override
+    public boolean equals(Object other) {
+        return other instanceof Timeframe scale && scale.minutes == minutes;
+    }
+
+    @Override
+    public int hashCode() {
+        return Integer.hashCode(minutes);
+    }
+
     private Timeframe(String label, int minutes) {
         this.label = label;
         this.minutes = minutes;
@@ -301,7 +329,7 @@ public final class Timeframe implements Aggregation {
      * first bar's time is the session's open, which is what a daily candle
      * should carry. So those keep it.</p>
      */
-    private long startOf(long millis, ZoneId zone) {
+    long startOf(long millis, ZoneId zone) {
         // A DAY OR MORE KEEPS ITS OWN MOMENT. The guard used to be minutes <= 0,
         // which covers DAY, WEEK and MONTH but NOT a scale of several days
         // written in minutes -- and ofMinutes takes up to thirty days, which the
@@ -324,8 +352,22 @@ public final class Timeframe implements Aggregation {
         long sinceMidnight = local.toLocalTime().toSecondOfDay() / 60L;
         long slot = sinceMidnight / minutes * minutes;
 
-        return local.toLocalDate().atStartOfDay(zone).toInstant().toEpochMilli()
-                + slot * 60_000L;
+        // BUILT AS A LOCAL TIME, not as midnight plus minutes of clock. The
+        // two are the same number of milliseconds apart only on a day that has
+        // twenty-four hours: on the day a zone moves its clocks they differ by
+        // the shift, and the bar came out stamped an hour away from the bar it
+        // is. bucketOf reads the local clock, and this has to answer the instant
+        // of that clock reading or the two stop agreeing -- which is the whole
+        // reason this class exists.
+        //
+        // Not reachable on the base in hand (Brazil dropped daylight saving in
+        // 2019 and the data starts in September 2020) and reachable the moment
+        // a zone that keeps it is read, which the method takes as an argument.
+        return local.toLocalDate()
+                .atTime(java.time.LocalTime.ofSecondOfDay(slot * 60L))
+                .atZone(zone)
+                .toInstant()
+                .toEpochMilli();
     }
 
     /**

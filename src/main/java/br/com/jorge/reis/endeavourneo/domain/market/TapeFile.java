@@ -127,7 +127,8 @@ public final class TapeFile {
         // old call worked by coincidence -- and the day the tape goes to 2,
         // every valid tape would answer false here and the Profit source
         // would vanish from the list with no error anywhere.
-        return TickFile.sessionOf(file, "ENDVTAPE", VERSION) != null;
+        return TickFile.sessionOf(file, new String(MAGIC, StandardCharsets.US_ASCII),
+                VERSION) != null;
     }
 
     /**
@@ -147,20 +148,20 @@ public final class TapeFile {
             head.get(magic);
 
             if (!Arrays.equals(magic, MAGIC)) {
-                throw new IOException(file + ": not an Endeavour tape file");
+                throw new NotOurs(file + ": not an Endeavour tape file");
             }
 
             int version = head.getInt();
 
             if (version != VERSION) {
-                throw new IOException(file + ": version " + version + " is not one this reads");
+                throw new NotOurs(file + ": version " + version + " is not one this reads");
             }
 
             int epochDay = head.getInt();
             long promised = head.getLong();
 
             if (promised < 0 || promised > Integer.MAX_VALUE) {
-                throw new IOException(file + ": " + promised + " is not a number of trades");
+                throw new NotOurs(file + ": " + promised + " is not a number of trades");
             }
 
             int size = (int) promised;
@@ -262,6 +263,16 @@ public final class TapeFile {
             fill(channel, name, file);
 
             names.put(code, new String(name.array(), StandardCharsets.UTF_8));
+        }
+
+        if (channel.position() != channel.size()) {
+            // NOTHING AFTER THE LAST NAME. The size check before the trades is
+            // a "<", because the dictionary comes after them and its length is
+            // not known yet -- so bytes past the end of the dictionary were the
+            // one kind of malformed file this reader accepted. MarketFile and
+            // TickFile both demand the exact size, and say why.
+            throw new IOException(file + ": " + (channel.size() - channel.position())
+                    + " bytes after the end of the broker dictionary");
         }
 
         return names;

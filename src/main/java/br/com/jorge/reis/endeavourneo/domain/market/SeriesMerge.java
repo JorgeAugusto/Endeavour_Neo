@@ -134,7 +134,29 @@ public final class SeriesMerge {
      * array to hand back would double that for no gain — the bars are already
      * in memory and neither of them changes.</p>
      */
-    private record Joined(PriceSeries older, int keep, PriceSeries newer) implements PriceSeries {
+    private record Joined(PriceSeries older, int keep, PriceSeries newer)
+            implements PriceSeries, Untraded, Counted {
+
+        /**
+         * <p><b>Carried, not dropped.</b> {@code Untraded} and {@code Counted}
+         * are what a renko knows about a bar and a series of minutes does not,
+         * and a join that answered "does not know" for every bar would take the
+         * knowledge out of the middle of a chart with nothing said. The two
+         * other envelopes -- {@code ConcatSeries} and {@code SegmentedSeries} --
+         * already carry them; this one was written afterwards and did not.</p>
+         */
+        @Override
+        public boolean untradedAt(int index) {
+            return index < keep
+                    ? Untraded.at(older, index) : Untraded.at(newer, index - keep);
+        }
+
+        @Override
+        public long tradesAt(int index) {
+            return index < keep
+                    ? Counted.at(older, index) : Counted.at(newer, index - keep);
+        }
+
 
         @Override
         public int size() {

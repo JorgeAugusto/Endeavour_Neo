@@ -103,7 +103,15 @@ public final class TickFile {
             header(channel, file);
 
             return true;
+        } catch (NotOurs e) {
+            // Somebody else's file. The ordinary answer, and worth no words.
+            return false;
         } catch (IOException e) {
+            // A file of OURS that would not read. It answers false like the
+            // line above and says so: see NotOurs.
+            System.err.println(file + ": could not be read, so it is not being offered ("
+                    + e + ")");
+
             return false;
         }
     }
@@ -392,12 +400,15 @@ public final class TickFile {
         fill(channel, head, file);
         head.flip();
 
-        byte[] magic = new byte[MAGIC.length];
+        // THE TAG'S length, not this file's. The two are eight bytes today, so
+        // it worked; a third source with a mark of another size would read the
+        // wrong number of bytes and compare them against the right ones.
+        byte[] magic = new byte[tag.length];
 
         head.get(magic);
 
         if (!Arrays.equals(magic, tag)) {
-            throw new IOException(file + ": not an Endeavour "
+            throw new NotOurs(file + ": not an Endeavour "
                     + new String(tag, StandardCharsets.US_ASCII) + " file");
         }
 
@@ -411,14 +422,14 @@ public final class TickFile {
         // header by "the first twenty-four bytes are the same" -- which is true
         // of the LAYOUT, and says nothing about the value of the version.
         if (version != wantedVersion) {
-            throw new IOException(file + ": version " + version + " is not one this reads");
+            throw new NotOurs(file + ": version " + version + " is not one this reads");
         }
 
         int epochDay = head.getInt();
         long count = head.getLong();
 
         if (count < 0 || count > Integer.MAX_VALUE) {
-            throw new IOException(file + ": " + count + " is not a number of ticks");
+            throw new NotOurs(file + ": " + count + " is not a number of ticks");
         }
 
         return new Header(epochDay, (int) count);

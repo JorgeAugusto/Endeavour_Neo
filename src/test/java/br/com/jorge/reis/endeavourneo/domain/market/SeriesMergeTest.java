@@ -239,4 +239,31 @@ class SeriesMergeTest {
             }
         };
     }
+/**
+     * The join carries what a renko knows about its bars.
+     *
+     * <p>{@code Untraded} and {@code Counted} are what a renko knows and a
+     * series of minutes does not. {@code ConcatSeries} and
+     * {@code SegmentedSeries} both carry them, and say so; this envelope was
+     * written afterwards and answered "does not know" for every bar — taking
+     * the knowledge out of the middle of a chart with nothing said.</p>
+     */
+    @Test
+    @DisplayName("a juncao carrega o que o renko sabe das barras dele")
+    void thejoinCarriesWhatTheRenkoKnows() {
+        // A walk with room for several boxes on each side of the seam.
+        PriceSeries older = new Renko(10, 2).apply(
+                from(0L, 100, 110, 120, 130, 140, 150, 160));
+        PriceSeries newer = new Renko(10, 2).apply(
+                from(7 * 60_000L, 160, 170, 180, 190, 200));
+
+        assertTrue(older instanceof Untraded, "the fixture is not a renko");
+
+        PriceSeries joined = SeriesMerge.of(older, newer);
+
+        assertTrue(joined instanceof Untraded,
+                "the join dropped what the renko knew about untraded bars");
+        assertTrue(joined instanceof Counted,
+                "the join dropped the trade count of every bar");
+    }
 }
