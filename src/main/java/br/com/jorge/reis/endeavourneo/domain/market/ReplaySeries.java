@@ -143,9 +143,42 @@ public final class ReplaySeries implements PriceSeries {
             return DEFAULT_BAR_MILLIS;
         }
 
-        long gap = day.timeAt(1) - day.timeAt(0);
+        // THE MEDIAN OF THE FIRST HUNDRED GAPS, not the first one. The series is
+        // not evenly spaced: a minute with no trade in it does not exist at all,
+        // which is a rule this package states elsewhere in so many words. One
+        // hole between bar 0 and bar 1 and a one-minute series measured itself
+        // as two minutes -- and the first pair is the first pair of the first
+        // session of HISTORY, which is the least examined stretch there is.
+        //
+        // Three silent effects came out of that: the scrubber labelled the wrong
+        // end, every bar lasted twice as long as it should, and the clock walked
+        // BACKWARDS at each bar boundary, because it had been pushed to
+        // start + barMillis and the next bar's own stamp is nearer than that.
+        //
+        // The median rather than the minimum: a series folded to five minutes
+        // whose first pair happens to be one minute apart would measure itself
+        // as one, and then every bar would close leaving prices behind.
+        int wanted = (int) Math.min(100L, day.size() - 1L);
+        long[] gaps = new long[wanted];
+        int found = 0;
 
-        return gap > 0 ? gap : DEFAULT_BAR_MILLIS;
+        for (int bar = 0; bar < wanted; bar++) {
+            long gap = day.timeAt(bar + 1) - day.timeAt(bar);
+
+            if (gap > 0) {
+                gaps[found++] = gap;
+            }
+        }
+
+        if (found == 0) {
+            return DEFAULT_BAR_MILLIS;
+        }
+
+        long[] positive = java.util.Arrays.copyOf(gaps, found);
+
+        java.util.Arrays.sort(positive);
+
+        return positive[found / 2];
     }
 
     public int total() {

@@ -412,6 +412,68 @@ class ReplaySeriesTest {
                         + "the play icon lit");
     }
 
+    @Test
+    @DisplayName("um buraco no comeco nao faz a serie se medir errado")
+    void aholeatthestartDoesNotChangeTheSpacing() {
+        // The series is not evenly spaced: a minute with no trade in it does not
+        // exist at all. The spacing used to be read from the FIRST pair alone,
+        // so one hole between bar 0 and bar 1 made a one-minute series measure
+        // itself as two -- and the first pair is the first pair of the first
+        // session of history, the least examined stretch there is.
+        //
+        // Measured through the clock, because that is where it shows: every bar
+        // lasting twice as long, and the clock walking backwards at each
+        // boundary.
+        ReplaySeries wrong = new ReplaySeries(withaHoleAfterTheFirst(120), 0);
+        ReplaySeries right = new ReplaySeries(bars(120), 0);
+
+        for (int frame = 0; frame < 3_000; frame++) {
+            wrong.advanceMarketTime(40L);
+            right.advanceMarketTime(40L);
+        }
+
+        assertEquals(right.size(), wrong.size(),
+                "one hole at the start made the whole series run at half speed: the "
+                        + "spacing was read from the first pair of bars alone");
+    }
+
+    /** One minute apart, except for a single missing minute right after the first bar. */
+    private static PriceSeries withaHoleAfterTheFirst(int count) {
+        return new PriceSeries() {
+
+            @Override
+            public int size() {
+                return count;
+            }
+
+            @Override
+            public long timeAt(int index) {
+                // Bar 0 at zero, bar 1 two minutes later, then one minute each.
+                return 1_756_000_000_000L + (index == 0 ? 0L : (index + 1) * 60_000L);
+            }
+
+            @Override
+            public double openAt(int index) {
+                return 100 + index;
+            }
+
+            @Override
+            public double highAt(int index) {
+                return 101 + index;
+            }
+
+            @Override
+            public double lowAt(int index) {
+                return 99 + index;
+            }
+
+            @Override
+            public double closeAt(int index) {
+                return 100 + index;
+            }
+        };
+    }
+
     /** Bars of one minute, closing at their own index. */
     private static PriceSeries bars(int count) {
         return new PriceSeries() {
