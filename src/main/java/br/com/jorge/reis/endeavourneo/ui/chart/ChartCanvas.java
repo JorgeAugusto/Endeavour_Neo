@@ -758,7 +758,16 @@ public final class ChartCanvas extends JComponent {
      * harder to read.</p>
      */
     public String cursorReading() {
-        int bar = hoveredBar();
+        if (cursor == null || series.size() == 0) {
+            return "";
+        }
+
+        // ONE VIEWPORT, and there used to be two: hoveredBar() builds one to
+        // answer which bar is under the pointer, and the line below built
+        // another to work out the grid step. This runs on every movement of the
+        // mouse.
+        Viewport viewport = viewport();
+        int bar = viewport.barAt(cursor.x);
 
         if (bar < 0 || bar >= series.size()) {
             return "";
@@ -772,7 +781,7 @@ public final class ChartCanvas extends JComponent {
         return java.time.Instant.ofEpochMilli(series.timeAt(bar))
                 .atZone(br.com.jorge.reis.endeavourneo.domain.market.Timeframe.defaultZone())
                 .format(FOOTER_TIME)
-                + "   " + formatFor(gridStep(viewport())).format(series.closeAt(bar));
+                + "   " + formatFor(gridStep(viewport)).format(series.closeAt(bar));
     }
 
     /**

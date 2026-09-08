@@ -323,8 +323,7 @@ public final class OverlayLegend extends JComponent {
         g.setFont(Appearance.monospaced(11));
 
         FontMetrics mono = g.getFontMetrics();
-        DecimalFormat format = new DecimalFormat("#,##0.###",
-                DecimalFormatSymbols.getInstance(Locale.getDefault()));
+        DecimalFormat format = format();
 
         for (int line = 0; line < values.length; line++) {
             // A dash during the warm-up, not a zero and not a blank: the reader
@@ -649,4 +648,30 @@ public final class OverlayLegend extends JComponent {
             return -1;
         }
     }
+
+    /**
+     * @return the format every number in this legend is written with
+     *
+     * <p>Built once and kept, and it used to be built inside the method that
+     * draws ONE row -- so a chart with six indicators built six of them on every
+     * repaint, and a {@code DecimalFormat} parses its pattern and reads the
+     * locale's symbols each time.</p>
+     *
+     * <p>Rebuilt when the language changes, because the decimal separator
+     * does.</p>
+     */
+    private static DecimalFormat format() {
+        Locale now = Locale.getDefault();
+
+        if (format == null || !now.equals(formatFor)) {
+            formatFor = now;
+            format = new DecimalFormat("#,##0.###", DecimalFormatSymbols.getInstance(now));
+        }
+
+        return format;
+    }
+
+    private static DecimalFormat format;
+
+    private static Locale formatFor;
 }

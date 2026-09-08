@@ -909,7 +909,30 @@ public final class StudyPane extends JComponent {
         return Math.max(1, getWidth() - canvas.axisWidth());
     }
 
+    /**
+     * @return the format every number in this pane is written with
+     *
+     * <p>Built once and kept, and it used to be built on every call -- which is
+     * every number drawn, on every repaint. A {@code DecimalFormat} parses its
+     * pattern and reads the locale's symbols each time; the pane writes one per
+     * level, plus the two ends of the scale, on every frame of a replay.</p>
+     *
+     * <p>Rebuilt when the language changes, because the decimal separator does.
+     * The check is a reference comparison against the locale in force, which
+     * costs nothing next to what it replaces.</p>
+     */
     private static DecimalFormat format() {
-        return new DecimalFormat("#,##0.00", DecimalFormatSymbols.getInstance(Locale.getDefault()));
+        Locale now = Locale.getDefault();
+
+        if (format == null || !now.equals(formatFor)) {
+            formatFor = now;
+            format = new DecimalFormat("#,##0.00", DecimalFormatSymbols.getInstance(now));
+        }
+
+        return format;
     }
+
+    private static DecimalFormat format;
+
+    private static Locale formatFor;
 }
