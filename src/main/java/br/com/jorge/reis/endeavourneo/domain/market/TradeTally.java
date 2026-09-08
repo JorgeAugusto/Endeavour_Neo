@@ -159,15 +159,31 @@ public final class TradeTally {
      * report the number of CANDLES as its number of trades.</p>
      */
     void seeing(PriceSeries source, int index) {
+        // THE SERIES SAYS SO, and the range is only the fallback.
+        //
+        // The range alone got it wrong for a FLAT bar: a minute in which every
+        // trade happened at one price has high == low and is indistinguishable,
+        // by its numbers, from a single print. A candle source whose first bars
+        // are flat -- a quiet open, a thin instrument -- therefore counted
+        // CANDLES as trades until the first bar with a range arrived. Unlikely
+        // on the WIN and waiting for whatever is read next.
+        //
+        // A series of prints says it is one, and it is the only thing that can:
+        // the difference is in where the bars came from, not in what they hold.
         if (source.highAt(index) != source.lowAt(index)) {
             summarised = true;
         }
     }
 
-    /** Adds one bar. */
+    /**
+     * Adds one bar.
+     *
+     * <p>{@link #seeing} has already been asked about this bar, by the caller,
+     * before the bricks it laid were settled -- which is the order that method's
+     * javadoc says is the whole reason it exists apart. Asking again from here
+     * gave the opposite impression, that the order did not matter.</p>
+     */
     void add(PriceSeries source, int index) {
-        seeing(source, index);
-
         double lots = source.volumeAt(index);
 
         trades++;

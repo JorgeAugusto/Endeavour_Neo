@@ -129,7 +129,7 @@ public final class MetaTraderTicks {
                     }
 
                     if (rows++ > 0 && inRow > 0) {
-                        LocalDate date = dateOf(row);
+                        LocalDate date = dateOf(row, inRow);
 
                         if (!date.equals(open)) {
                             finish(written, progress, open, writer,
@@ -154,7 +154,7 @@ public final class MetaTraderTicks {
 
             // Some exports end without a newline, so the last row is still here.
             if (rows > 0 && inRow > 0) {
-                LocalDate date = dateOf(row);
+                LocalDate date = dateOf(row, inRow);
 
                 if (!date.equals(open)) {
                     finish(written, progress, open, writer, folder, instrument);
@@ -205,6 +205,23 @@ public final class MetaTraderTicks {
             return;
         }
 
+        for (Session each : written) {
+            if (each.date().equals(date)) {
+                // OUT OF ORDER, AND REFUSED. The change of file is driven by the
+                // date changing, so a date that comes back after the export has
+                // moved past it opens a SECOND writer over the same path and
+                // overwrites the session already written -- silently, and with
+                // only the rows that came after the gap in it. Both converters
+                // trusted the export's ordering without ever checking it.
+                //
+                // "A value nobody can trust is worse than a conversion that has
+                // to run again", which this file says in so many words.
+                throw new IOException(date + " appears again after the export moved past it,"
+                        + " so the rows are not in order and this session would be written"
+                        + " over the one already there");
+            }
+        }
+
         long ticks = writer.count();
 
         writer.close();
@@ -218,17 +235,18 @@ public final class MetaTraderTicks {
         }
     }
 
-    private static LocalDate dateOf(byte[] row) {
+    private static LocalDate dateOf(byte[] row, int length) throws IOException {
         // yyyy.MM.dd, always ten bytes.
-        return LocalDate.of(number(row, 0, 4), number(row, 5, 7), number(row, 8, 10));
+        return LocalDate.of(number(row, 0, 4, length), number(row, 5, 7, length),
+                number(row, 8, 10, length));
     }
 
     private static void write(TickFile.Writer writer, byte[] row, int length,
             int[] starts) throws IOException {
-        int millis = number(row, 11, 13) * 3_600_000
-                + number(row, 14, 16) * 60_000
-                + number(row, 17, 19) * 1_000
-                + number(row, 20, 23);
+        int millis = number(row, 11, 13, length) * 3_600_000
+                + number(row, 14, 16, length) * 60_000
+                + number(row, 17, 19, length) * 1_000
+                + number(row, 20, 23, length);
 
         int fields = 0;
 
@@ -308,15 +326,47 @@ public final class MetaTraderTicks {
         return value;
     }
 
-    private static int number(byte[] row, int from, int to) {
+    /**
+     * @param length how much of the row is this row's
+     * @return the digits between those two offsets
+     * @throws IOException when the row does not reach that far, or holds
+     *         something else there
+     *
+     * <p><b>The length matters, and this used to walk past it.</b> The date and
+     * the time are read at FIXED offsets -- zero to ten, eleven to twenty-three
+     * -- while everything after them is found by tab. The row buffer is reused
+     * between rows, so a row that stops short of offset twenty-three was read
+     * into the bytes of the row BEFORE it, and produced a plausible, wrong
+     * millisecond in silence: a print filed at a time nothing happened.</p>
+     *
+     * <p>And a non-digit is refused rather than skipped, which is what {@code
+     * whole} beside it already does. Skipping meant a separator in the wrong
+     * place quietly changed the number instead of stopping the conversion.</p>
+     */
+    private static int number(byte[] row, int from, int to, int length)
+            throws IOException {
+
+        if (to > length) {
+            throw new IOException("a row of " + length + " bytes does not reach offset "
+                    + to + ", where the timestamp is: " + new String(row, 0,
+                            Math.min(length, row.length),
+                            java.nio.charset.StandardCharsets.US_ASCII));
+        }
+
         int value = 0;
 
-        for (int i = from; i < to && i < row.length; i++) {
+        for (int i = from; i < to; i++) {
             byte b = row[i];
 
-            if (b >= '0' && b <= '9') {
-                value = value * 10 + (b - '0');
+            if (b < '0' || b > '9') {
+                throw new IOException("\"" + new String(row, from, to - from,
+                        java.nio.charset.StandardCharsets.US_ASCII)
+                        + "\" is not a number, in: " + new String(row, 0,
+                                Math.min(length, row.length),
+                                java.nio.charset.StandardCharsets.US_ASCII));
             }
+
+            value = value * 10 + (b - '0');
         }
 
         return value;

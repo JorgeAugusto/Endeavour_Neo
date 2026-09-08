@@ -647,4 +647,33 @@ class TapeFileTest {
                 "a file with somebody else's mark came out as an ordinary read failure, "
                         + "which is what made a real one indistinguishable from it");
     }
+/**
+     * A session that comes back after the export moved past it is refused.
+     *
+     * <p>The change of file is driven by the date changing, so a date that
+     * reappears out of order opens a SECOND writer over the same path and
+     * overwrites the session already written — silently, and with only the rows
+     * that came after the gap in it. Both converters trusted the export's
+     * ordering without ever checking it.</p>
+     */
+    @Test
+    @DisplayName("um pregao que reaparece fora de ordem e recusado, nao gravado por cima")
+    void asessionThatComesBackIsRefused(@TempDir Path folder) throws IOException {
+        // The export is read backwards, so written oldest first: 01, then 02,
+        // then 01 again. That last one lands on the file already written.
+        List<String> outOfOrder = new java.util.ArrayList<>();
+
+        outOfOrder.add("WINFUT;01/09/2026;09:00:02;3 - XP;182.100;1;85 - BTG;Comprador");
+        outOfOrder.add("WINFUT;02/09/2026;09:00:01;3 - XP;182.050;1;85 - BTG;Comprador");
+        outOfOrder.add("WINFUT;01/09/2026;09:00:00;3 - XP;182.000;1;85 - BTG;Comprador");
+
+        Path csv = exportOf(folder, "trades.csv", outOfOrder);
+
+        IOException thrown = assertThrows(IOException.class,
+                () -> ProfitTrades.convert(csv, folder.resolve("ticks"), "win", null),
+                "the session was written a second time, over the one already there");
+
+        assertTrue(thrown.getMessage().contains("2026-09-01"),
+                "the message does not name the day that came back: " + thrown.getMessage());
+    }
 }

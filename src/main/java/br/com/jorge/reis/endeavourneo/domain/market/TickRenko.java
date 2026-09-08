@@ -73,7 +73,7 @@ public final class TickRenko {
     /** The bricks so far, as {open, high, low, close, volume}. */
     private final List<double[]> bricks = new ArrayList<>();
 
-    private final List<Long> stamps = new ArrayList<>();
+    private final Longs stamps = new Longs();
 
     /**
      * Which of those bricks no trade went through.
@@ -87,7 +87,43 @@ public final class TickRenko {
     private final java.util.BitSet untraded = new java.util.BitSet();
 
     /** How many trades made each brick, or UNKNOWN. See {@link Counted}. */
-    private final List<Long> counts = new ArrayList<>();
+    private final Longs counts = new Longs();
+
+    /**
+     * A growable {@code long[]}, because these two hold one number per brick.
+     *
+     * <p>An {@code ArrayList<Long>} boxes every one of them: a renko over a long
+     * stretch lays hundreds of thousands of bricks, and each stamp and each
+     * count was an object of its own for a number that fits in eight bytes. The
+     * {@code List<Boolean>} beside them was free -- {@code Boolean} has a cache
+     * of two -- and these two were not.</p>
+     *
+     * <p>{@code ProfitTrades.Rows} does the same thing for the same reason, and
+     * says so.</p>
+     */
+    private static final class Longs {
+
+        private long[] values = new long[1 << 10];
+
+        private int count;
+
+        void add(long value) {
+            if (count == values.length) {
+                values = java.util.Arrays.copyOf(values, values.length * 2);
+            }
+
+            values[count++] = value;
+        }
+
+        int size() {
+            return count;
+        }
+
+        /** @return a copy of exactly what is held, for handing outside */
+        long[] toArray() {
+            return java.util.Arrays.copyOf(values, count);
+        }
+    }
 
     /** Which sessions are already in, so folding one twice is impossible. */
     private final Set<LocalDate> folded = new LinkedHashSet<>();
@@ -460,19 +496,11 @@ public final class TickRenko {
         }
 
         double[][] rows = bricks.toArray(new double[0][]);
-        long[] times = new long[stamps.size()];
-
-        for (int i = 0; i < times.length; i++) {
-            times[i] = stamps.get(i);
-        }
+        long[] times = stamps.toArray();
 
         java.util.BitSet gaps = (java.util.BitSet) untraded.clone();
 
-        long[] made = new long[counts.size()];
-
-        for (int i = 0; i < made.length; i++) {
-            made[i] = counts.get(i);
-        }
+        long[] made = counts.toArray();
 
         builtBricks = new Marked() {
 

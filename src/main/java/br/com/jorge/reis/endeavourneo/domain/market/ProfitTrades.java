@@ -169,6 +169,23 @@ public final class ProfitTrades {
     private static void finish(List<Session> written, Consumer<Session> progress,
             LocalDate date, TapeFile.Writer writer, Path file, int trades, long contracts)
             throws IOException {
+        for (Session each : written) {
+            if (each.date().equals(date)) {
+                // OUT OF ORDER, AND REFUSED. The change of file is driven by the
+                // date changing, so a date that comes back after the export has
+                // moved past it opens a SECOND writer over the same path and
+                // overwrites the session already written -- silently, and with
+                // only the rows that came after the gap in it. Both converters
+                // trusted the export's ordering without ever checking it.
+                //
+                // "A value nobody can trust is worse than a conversion that has
+                // to run again", which this file says in so many words.
+                throw new IOException(date + " appears again after the export moved past it,"
+                        + " so the rows are not in order and this session would be written"
+                        + " over the one already there");
+            }
+        }
+
         writer.close();
 
         Session done = new Session(date, file, trades, contracts);

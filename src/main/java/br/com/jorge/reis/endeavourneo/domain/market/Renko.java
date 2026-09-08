@@ -731,27 +731,42 @@ public final class Renko implements Aggregation {
      * count: the brick it draws grey reads <i>Contratos Neg: 0,00</i>.</p>
      */
     private void settle(Laid bricks, int at, TradeTally tally) {
+        long trades = tally.trades();
+
+        bricks.volumes[at] = tally.volume();
+
+        if (tally.summarised()) {
+            // Candles cannot be counted -- a minute is a summary of trades at
+            // times it does not report -- so nothing here is claimed either
+            // way. See Counted.
+            //
+            // ASKED ONCE, BEFORE THE LOOP. It was asked INSIDE it, so a batch
+            // of two thousand bricks was walked two thousand times to do
+            // nothing at all -- and the name says "settle", which does not warn
+            // that it may settle nothing.
+            tally.clear();
+
+            return;
+        }
+
+        if (trades > 0) {
+            // The stamp of the first trade of the batch, and the count going
+            // into the loop below rather than here: writing bricks.trades[at]
+            // at this point was a dead write, because the loop's first turn is
+            // b == at and puts the same number there again.
+            //
+            // Guarded by trades > 0 and not by anything about `first` itself:
+            // TradeTally starts it at Long.MAX_VALUE and only a trade can lower
+            // it, so "some trade arrived" is exactly the condition under which
+            // it means anything.
+            bricks.times[at] = tally.first();
+        }
+
         // THE FIRST BRICK OF A BATCH TAKES EVERYTHING; the rest take nothing.
         // A batch is one price move: the first brick is the one that was being
         // built, and the others were passed through in the same instant and
         // were never anybody's chart. See TradeTally.
-        long trades = tally.trades();
-
-        if (!tally.summarised() && trades > 0) {
-            bricks.trades[at] = trades;
-            bricks.times[at] = tally.first();
-        }
-
-        bricks.volumes[at] = tally.volume();
-
         for (int b = at; b < bricks.size(); b++) {
-            if (tally.summarised()) {
-                // Candles cannot be counted -- a minute is a summary of trades
-                // at times it does not report -- so nothing here is claimed
-                // either way. See Counted.
-                continue;
-            }
-
             long mine = b == at ? trades : 0L;
 
             bricks.trades[b] = mine;
