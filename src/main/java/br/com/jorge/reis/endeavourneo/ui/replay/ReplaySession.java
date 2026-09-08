@@ -357,13 +357,57 @@ public final class ReplaySession {
                 !walking.isAfter(to) && days.size() < MOST_SESSIONS;
                 walking = walking.plusDays(1)) {
 
-            if (walking.getDayOfWeek() != java.time.DayOfWeek.SATURDAY
-                    && walking.getDayOfWeek() != java.time.DayOfWeek.SUNDAY) {
+            if (isSession(walking)) {
                 days.add(walking);
             }
         }
 
         return days;
+    }
+
+    /**
+     * @param day any date
+     * @return whether a replay would play anything on it
+     *
+     * <p>The weekend rule, in one place. It used to be written out inside the
+     * walk above and nowhere else, so the other side of the same setting --
+     * {@code ReplayPanel.keepInWindow}, which decides how far the "Até" field
+     * may go -- counted CALENDAR days instead, and the two disagreed about what
+     * the number in the preferences meant.</p>
+     *
+     * <p>Weekends only. A holiday is not excluded here because this cannot know
+     * about one: what a holiday costs is an empty session in the middle of the
+     * range, which the replay already draws nothing for.</p>
+     */
+    static boolean isSession(LocalDate day) {
+        return day.getDayOfWeek() != java.time.DayOfWeek.SATURDAY
+                && day.getDayOfWeek() != java.time.DayOfWeek.SUNDAY;
+    }
+
+    /**
+     * @param from the first day of the range
+     * @param sessions how many sessions the range may hold, counting the first
+     * @return the last day it may reach
+     *
+     * <p>Counted in SESSIONS, because that is what the setting says it is:
+     * "ten sessions at sixty times real time is an hour and a half of sitting
+     * there". Counting calendar days instead delivers eight of them -- Monday
+     * plus nine days is the Wednesday of the week after -- which is 20% less
+     * than the justification measured.</p>
+     */
+    static LocalDate endOfWindow(LocalDate from, int sessions) {
+        int wanted = Math.max(1, sessions);
+        LocalDate furthest = from;
+        int counted = 0;
+
+        for (LocalDate walking = from; counted < wanted; walking = walking.plusDays(1)) {
+            if (isSession(walking)) {
+                counted++;
+                furthest = walking;
+            }
+        }
+
+        return furthest;
     }
 
     /**

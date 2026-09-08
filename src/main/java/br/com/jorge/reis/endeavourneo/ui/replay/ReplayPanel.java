@@ -537,7 +537,7 @@ public final class ReplayPanel extends JPanel {
     // ------------------------------------------------------------ the actions
 
     /**
-     * @param maxDays how long the window may be, counting both ends
+     * @param maxDays how many SESSIONS the window may hold, counting the first
      * @return the end date, brought into range
      *
      * <p>Two corrections in one place, because they are the same question asked
@@ -549,6 +549,14 @@ public final class ReplayPanel extends JPanel {
      *
      * <p>Null when either is unreadable: somebody is still typing, and moving a
      * field under a cursor is worse than leaving it alone for a moment.</p>
+     *
+     * <p><b>Sessions, and this used to count calendar days.</b> The other end of
+     * the same number counts sessions -- ReplaySession.sessionsIn skips
+     * Saturday and Sunday, and the constructor's javadoc says so out loud --
+     * and the setting's own justification is written in sessions: "ten sessions
+     * at sixty times real time is an hour and a half". Monday plus nine
+     * calendar days is the Wednesday after, which is eight sessions: the
+     * setting delivered 20% less than the paragraph explaining it claimed.</p>
      */
     static LocalDate keepInWindow(LocalDate from, LocalDate to, int maxDays) {
         if (from == null || to == null) {
@@ -559,7 +567,7 @@ public final class ReplayPanel extends JPanel {
             return from;
         }
 
-        LocalDate furthest = from.plusDays(Math.max(1, maxDays) - 1L);
+        LocalDate furthest = ReplaySession.endOfWindow(from, maxDays);
 
         return to.isAfter(furthest) ? furthest : to;
     }

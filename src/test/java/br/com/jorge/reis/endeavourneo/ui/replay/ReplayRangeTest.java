@@ -99,9 +99,39 @@ class ReplayRangeTest {
         // The correction now happens in the next event, so drain it.
         javax.swing.SwingUtilities.invokeAndWait(() -> { });
 
-        assertTrue(until.date() != null && !until.date().isAfter(
-                        MONDAY.plusDays(ReplayPreferences.windowDays())),
-                "three years past the start was left standing: " + until.date());
+        // The EXACT day, and this used to be `!isAfter(MONDAY.plusDays(window))`
+        // -- loose enough to pass whether the window was counted in sessions or
+        // in calendar days, which is the very thing the two ends disagreed
+        // about. A range that ends anywhere at or before the ceiling satisfies
+        // "was it corrected"; only the exact day says WHICH ceiling.
+        assertEquals(ReplaySession.sessionsIn(MONDAY, MONDAY.plusYears(3))
+                        .get(ReplayPreferences.windowDays() - 1),
+                until.date(),
+                "three years past the start was not pulled back to the "
+                        + ReplayPreferences.windowDays() + "th session: " + until.date());
+    }
+
+    @Test
+    @DisplayName("a janela vale em pregoes, e nao em dias de calendario")
+    void theWindowIsCountedInSessions() {
+        // The setting's own justification is written in sessions -- "ten
+        // sessions at sixty times real time is an hour and a half of sitting
+        // there" -- and keepInWindow counted calendar days. Monday plus nine
+        // calendar days is the Wednesday of the week after: eight sessions, 20%
+        // less than the paragraph explaining the number claimed.
+        LocalDate corrected = ReplayPanel.keepInWindow(MONDAY, MONDAY.plusYears(1), 10);
+
+        assertEquals(10, ReplaySession.sessionsIn(MONDAY, corrected).size(),
+                "the window holds "
+                        + ReplaySession.sessionsIn(MONDAY, corrected).size()
+                        + " sessions where the setting says ten: " + MONDAY + " to "
+                        + corrected);
+
+        // And the weekends really are in the way here, or the fixture proves
+        // nothing: ten sessions from a Monday reach the Friday of the week
+        // after, four calendar days further than ten days would.
+        assertEquals(MONDAY.plusDays(11), corrected,
+                "ten sessions from a Monday end on the Friday of the following week");
     }
 
     private static ReplaySession over(LocalDate from, LocalDate to) {
@@ -224,15 +254,23 @@ class ReplayRangeTest {
     @Test
     @DisplayName("the window cannot be longer than the limit, counting both ends")
     void theWindowIsCapped() {
-        // Ten days means the tenth day is the last one that fits, not the
-        // eleventh: an off-by-one here is the difference between "ten days" and
-        // "ten days plus one".
+        // Ten SESSIONS means the tenth session is the last one that fits, not
+        // the eleventh: an off-by-one here is the difference between "ten" and
+        // "ten plus one". This test used to say "ten days" and assert
+        // MONDAY.plusDays(9) -- it was the place where the calendar-day reading
+        // was written down, and the paragraph that justifies the setting counts
+        // sessions.
         assertEquals(MONDAY.plusDays(9), ReplayPanel.keepInWindow(MONDAY, MONDAY.plusDays(9), 10),
-                "the tenth day has to fit inside a ten-day window");
-        assertEquals(MONDAY.plusDays(9), ReplayPanel.keepInWindow(MONDAY, MONDAY.plusDays(30), 10),
-                "a range past the limit was not pulled back");
+                "a day inside the window was pulled back anyway");
+        assertEquals(MONDAY.plusDays(11), ReplayPanel.keepInWindow(MONDAY, MONDAY.plusDays(30), 10),
+                "a range past the limit was not pulled back to the tenth session");
         assertEquals(MONDAY, ReplayPanel.keepInWindow(MONDAY, MONDAY.plusDays(30), 1),
-                "a window of one day is one day");
+                "a window of one session is one session");
+
+        // A weekend start counts from the first session it can play, not from
+        // the Saturday nobody trades on.
+        assertEquals(MONDAY, ReplayPanel.keepInWindow(MONDAY.minusDays(2), MONDAY.plusDays(30), 1),
+                "a Saturday start put the single session on the Saturday itself");
     }
 
     @Test
