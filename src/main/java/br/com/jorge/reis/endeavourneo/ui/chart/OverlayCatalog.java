@@ -51,6 +51,32 @@ public final class OverlayCatalog {
     public record Kind(String nameKey, List<Integer> defaults, int minimum, int maximum,
                        Function<int[], Overlay> factory) {
 
+        /**
+         * @param parameters what a stored line or a dialog asked for
+         * @return the same numbers, held to the range this kind declares
+         *
+         * <p>The range used to be obeyed in ONE place: the insert dialog, through
+         * a SpinnerNumberModel. Both load paths -- OverlayCatalog.build and
+         * ChartLayout.Entry.build -- handed whatever was in the file straight to
+         * the factory, so a guard documented as "the lowest any parameter may
+         * be" protected one door of three.</p>
+         *
+         * <p>Held rather than refused: a stored layout is the reader's work, and
+         * a number outside the range is a file edited by hand or written by
+         * another version -- not a reason to lose the chart. Each indicator still
+         * defends itself after this, and now the three agree.</p>
+         */
+        public int[] held(List<Integer> parameters) {
+            int[] numbers = new int[parameters.size()];
+
+            for (int i = 0; i < numbers.length; i++) {
+                numbers[i] = Math.max(minimum, Math.min(maximum, parameters.get(i)));
+            }
+
+            return numbers;
+        }
+
+
         /** @return the translated name, for the list and the legend */
         public String label() {
             return Messages.get(nameKey);
@@ -123,11 +149,7 @@ public final class OverlayCatalog {
                 continue;
             }
 
-            int[] numbers = new int[parameters.size()];
-
-            for (int i = 0; i < numbers.length; i++) {
-                numbers[i] = parameters.get(i);
-            }
+            int[] numbers = kind.held(parameters);
 
             return kind.factory().apply(numbers);
         }

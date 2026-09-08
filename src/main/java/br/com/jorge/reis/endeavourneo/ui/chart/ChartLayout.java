@@ -46,13 +46,16 @@ public record ChartLayout(String name, List<Entry> entries, List<Pane> panes) {
     }
 
     /**
-     * One indicator in a pane of its own, as a layout remembers it.
+     * One pane of the stack, as a layout remembers it.
      *
-     * @param kindKey the catalogue key, e.g. {@code study.stochastic}
-     * @param parameters the numbers that decide what is computed
-     * @param appearance everything else, as one line
+     * @param entries the indicators sharing it, in order
      * @param height how tall the pane was
      * @param minimised whether it was folded away
+     *
+     * <p>The first three tags used to be kindKey, parameters and appearance --
+     * the components of {@code Entry}, not of this -- so javadoc complained
+     * about three parameters that do not exist and {@code entries}, which
+     * does, had none.</p>
      *
      * <p>The height and the minimised flag belong to the LAYOUT and not to the
      * chart, for the same reason the indicators do: a layout is a way of
@@ -122,11 +125,7 @@ public record ChartLayout(String name, List<Entry> entries, List<Pane> panes) {
                     continue;
                 }
 
-                int[] values = new int[parameters.size()];
-
-                for (int i = 0; i < values.length; i++) {
-                    values[i] = parameters.get(i);
-                }
+                int[] values = kind.held(parameters);
 
                 Overlay overlay = kind.factory().apply(values);
 

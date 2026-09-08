@@ -81,4 +81,31 @@ class OverlayCatalogTest {
             }
         }
     }
+    @Test
+    @DisplayName("o caminho de carga obedece a faixa que a especie declara")
+    void theLoadPathHoldsTheDeclaredRange() {
+        // The range was obeyed in ONE place -- the insert dialog, through a
+        // SpinnerNumberModel -- and both load paths handed whatever was in the
+        // file straight to the factory. A guard documented as "the lowest any
+        // parameter may be" that protected one door of three.
+        //
+        // A file edited by hand, or written by another version, is where a
+        // number outside the range comes from.
+        OverlayCatalog.Kind average = null;
+
+        for (OverlayCatalog.Kind kind : OverlayCatalog.kinds()) {
+            if ("overlay.movingAverage".equals(kind.nameKey())) {
+                average = kind;
+            }
+        }
+
+        assertNotNull(average, "the moving average is not in the catalogue any more");
+
+        assertEquals(average.minimum(), average.held(java.util.List.of(0))[0],
+                "a period of zero went through untouched");
+        assertEquals(average.maximum(), average.held(java.util.List.of(9_999_999))[0],
+                "a period of ten million went through untouched");
+        assertEquals(21, average.held(java.util.List.of(21))[0],
+                "a period inside the range was moved anyway");
+    }
 }
