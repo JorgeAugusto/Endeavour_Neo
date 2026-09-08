@@ -1904,7 +1904,15 @@ public final class ChartCanvas extends JComponent {
 
     private transient Runnable onStyleChanged = () -> { };
 
-    /** @return how the price is drawn: candles, hollow candles or a line */
+    /**
+     * @return how the price is drawn: candles or a line
+     *
+     * <p>Two styles and not three. Hollow candles are a SETTING of the candle
+     * style -- {@code ChartPreferences.hollowCandles}, read by {@code
+     * CandleStyle} as it draws -- and this javadoc listed them as a third,
+     * which is the very mistake that setting's own javadoc says it exists to
+     * avoid.</p>
+     */
     public ChartStyle style() {
         return style;
     }

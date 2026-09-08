@@ -509,4 +509,102 @@ class ReplaySeriesTest {
             }
         };
     }
+
+    /** A day that KNOWS what a renko knows: which bars are gaps, and the counts. */
+    private static PriceSeries marked() {
+        class Marked implements PriceSeries, Untraded, Counted {
+
+            @Override
+            public int size() {
+                return 10;
+            }
+
+            @Override
+            public long timeAt(int index) {
+                return 1_756_000_000_000L + index * 60_000L;
+            }
+
+            @Override
+            public double openAt(int index) {
+                return index;
+            }
+
+            @Override
+            public double highAt(int index) {
+                return index;
+            }
+
+            @Override
+            public double lowAt(int index) {
+                return index;
+            }
+
+            @Override
+            public double closeAt(int index) {
+                return index;
+            }
+
+            @Override
+            public boolean untradedAt(int index) {
+                return index == 1;
+            }
+
+            @Override
+            public long tradesAt(int index) {
+                return index * 10L;
+            }
+        }
+
+        return new Marked();
+    }
+
+    /**
+     * The replay carries what the day it is playing knows.
+     *
+     * <p>Three other envelopes around a series -- {@code ConcatSeries}, {@code
+     * SegmentedSeries} and the join inside {@code SeriesMerge} -- pass {@code
+     * Untraded} and {@code Counted} through, and this one answered "does not
+     * know" for every bar. What it wraps today is a day of minutes, which
+     * cannot answer either; the moment a renko is played back it would take the
+     * knowledge out of the middle of the screen with nothing said.</p>
+     */
+    @Test
+    @DisplayName("a reproducao carrega o que o dia sabe")
+    void theReplayCarriesWhatTheDayKnows() {
+        ReplaySeries replay = new ReplaySeries(marked(), 4);
+
+        assertTrue(Untraded.at(replay, 1),
+                "the gap in the middle of the day stopped being a gap on the way through "
+                        + "the replay");
+        assertFalse(Untraded.at(replay, 2), "a traded bar came back as a gap");
+
+        assertEquals(30L, Counted.at(replay, 3),
+                "the trade count did not survive the replay");
+    }
+
+    /**
+     * And the bar being formed says nothing.
+     *
+     * <p>Whether anything traded inside it, and how much, is decided by trades
+     * that have not arrived yet. Answering from the whole bar would be reading
+     * the future — which is the one thing this class exists to prevent.</p>
+     */
+    @Test
+    @DisplayName("a barra em formacao nao conta o que ainda nao chegou")
+    void theFormingBarDoesNotCountWhatHasNotArrived() {
+        // A tick path, because without one there is no half-formed bar at all:
+        // advanceMarketTime falls back to whole bars.
+        ReplaySeries replay = new ReplaySeries(marked(), 0, 1,
+                (bars, index) -> new double[]{100, 101, 102, 103, 104, 105, 106, 107});
+
+        replay.advanceMarketTime(15_000L);
+
+        int forming = replay.size() - 1;
+
+        assertEquals(Counted.UNKNOWN, Counted.at(replay, forming),
+                "the bar still forming answered with the count of the WHOLE bar, which is "
+                        + "the count of trades that have not all happened yet");
+        assertFalse(Untraded.at(replay, forming),
+                "the bar still forming claimed to know that nothing traded in it");
+    }
 }

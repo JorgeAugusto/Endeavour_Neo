@@ -38,7 +38,7 @@ package br.com.jorge.reis.endeavourneo.domain.market;
  * <p>Not thread-safe, and does not need to be: the clock that advances it and
  * the chart that reads it are both on the interface thread.</p>
  */
-public final class ReplaySeries implements PriceSeries {
+public final class ReplaySeries implements PriceSeries, Untraded, Counted {
 
     private static final long DEFAULT_BAR_MILLIS = 60_000L;
 
@@ -569,6 +569,43 @@ public final class ReplaySeries implements PriceSeries {
         int steps = Math.max(1, path.length - 1);
 
         return Double.isFinite(whole) ? whole * cursor / (double) steps : Double.NaN;
+    }
+
+    /**
+     * @return whether nothing traded inside that bar
+     *
+     * <p><b>Carried, not dropped.</b> The other three envelopes -- {@code
+     * ConcatSeries}, {@code SegmentedSeries} and the join inside {@code
+     * SeriesMerge} -- pass these two questions through to what they wrap, and
+     * this one answered "does not know" for every bar. Today what it wraps is
+     * a day of minutes, which cannot answer either; the moment a renko is
+     * played back it would take the knowledge out of the middle of the screen
+     * with nothing said.</p>
+     *
+     * <p><b>The bar being formed says nothing</b>, and that is not a shortcut.
+     * Whether anything traded inside it is decided by trades that have not
+     * arrived yet, so answering from the whole bar would be reading the
+     * future -- which is the one thing this class exists to prevent. False here
+     * means "it does not know", which is what {@link Untraded} says false means
+     * for every series that cannot answer.</p>
+     */
+    @Override
+    public boolean untradedAt(int index) {
+        return !forming(index) && Untraded.at(day, check(index));
+    }
+
+    /**
+     * @return how many trades made that bar, or {@link Counted#UNKNOWN}
+     *
+     * <p>Unknown for the bar being formed, for the reason in {@link
+     * #untradedAt}: the count of the whole bar is the count of trades that have
+     * not all happened yet. {@code volumeAt} shows a SHARE of the bar's volume
+     * instead, and a share of a count is not a count -- "seven and a half
+     * trades" is not a thing to put on a screen.</p>
+     */
+    @Override
+    public long tradesAt(int index) {
+        return forming(index) ? Counted.UNKNOWN : Counted.at(day, check(index));
     }
 
     private boolean forming(int index) {

@@ -68,13 +68,15 @@ import java.util.Map;
  */
 public final class BollingerBands implements Overlay {
 
-    /** Where the values sit in {@link #valueAt}. */
-    private static final int UPPER = 0;
-
-    private static final int MIDDLE = 1;
-
-    private static final int LOWER = 2;
-
+    // UPPER, MIDDLE and LOWER are gone. Three constants under a javadoc that
+    // said "where the values sit in valueAt", and nothing read any of them:
+    // valueAt builds its answer as an array literal in that order, colours()
+    // and strokes() build lists in that order, and paintUnder reads the fields
+    // by name. Naming the positions is a good idea and this was not it -- the
+    // names existed and the agreement between the three lists went on being
+    // held by the order they are written in, which is what the constants were
+    // supposed to stop being true. What holds it now is that colours() says so
+    // and OverlayLegendTest pairs them.
     private static final Color BAND = new Color(0xE8, 0x8C, 0x3A);
 
     private static final Color CENTRE = new Color(0x5E, 0xC2, 0x76);

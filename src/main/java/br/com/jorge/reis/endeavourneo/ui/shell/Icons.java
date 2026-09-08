@@ -56,22 +56,11 @@ public final class Icons {
         });
     }
 
-    /**
-     * The same candle, hollow.
-     *
-     * <p>Outline against fill, and the same silhouette: the pair has to read as
-     * two settings of one thing rather than as two different tools.</p>
-     */
-    public static Icon candleHollow(int size) {
-        return new Painted(size, (g, w, h, colour) -> {
-            g.setColor(colour);
-
-            int mid = w / 2;
-
-            g.drawLine(mid, 1, mid, h - 2);
-            g.drawRect(mid - 3, 4, 6, h - 9);
-        });
-    }
+    // candleHollow is gone: it was the icon of a drawing that was refused.
+    // Hollow-or-filled ended up a SETTING and not a style of its own -- see
+    // ChartPreferences.hollowCandles, which says why -- so there is no third
+    // entry in the style chooser for it to sit beside, and there never will
+    // be. It was built for the list that was not made.
 
     /** A polyline: the close-only drawing style. */
     public static Icon line(int size) {
