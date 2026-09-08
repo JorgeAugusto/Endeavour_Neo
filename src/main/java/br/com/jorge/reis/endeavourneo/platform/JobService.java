@@ -75,6 +75,24 @@ public final class JobService implements AutoCloseable {
 
         private final String name;
 
+        /**
+         * What this job is doing, and how far it has got.
+         *
+         * <p><b>Per job, and they used to be per SERVICE.</b> The pool has
+         * {@code max(2, cores - 1)} threads and nothing serialises the
+         * submissions -- the launcher already starts one while the window is
+         * opening, and the reader can start another. Both wrote into one {@code
+         * stage} and one {@code fraction}, so the status bar showed the stage of
+         * one with the progress of the other and there was no way to tell.</p>
+         *
+         * <p>Worse at the end: the reset only happened when the running list
+         * went EMPTY, so the job that finished first left its stage on screen,
+         * describing something that was over, while another was still going.</p>
+         */
+        private volatile String stage = "";
+
+        private volatile double fraction = -1.0;
+
         private Future<?> future;
 
         private Consumer<T> onDone;
@@ -160,15 +178,40 @@ public final class JobService implements AutoCloseable {
             return this;
         }
 
-        /** Last chance for a failure nobody handled to be seen at all. */
+        /**
+         * Says out loud that a job died with nobody listening.
+         *
+         * <p><b>Called when it dies, and it used to be called only at {@code
+         * close}.</b> The class javadoc promises that "a failure always reaches
+         * a handler", and without a {@code whenFailed} the outcome stayed
+         * pending on purpose -- so the only report happened on the way out of
+         * the program, which is hooked to the JVM shutdown. Between the death
+         * and the report the job had left the running list, the status bar had
+         * cleared, and the reader had watched a job finish normally. The
+         * launcher's own job registers no failure handler at all, so it is the
+         * case.</p>
+         *
+         * <p>It does NOT consume the outcome. A handler chained afterwards still
+         * receives the failure -- the pending behaviour is deliberate and stays
+         * -- and {@code reported} is what stops the same failure being written
+         * twice, once here and once at close.</p>
+         */
         synchronized void reportIfUnclaimed() {
-            if (settled && !delivered && error != null) {
-                delivered = true;
+            if (settled && !delivered && !reported && error != null) {
+                reported = true;
 
                 FAILURES.println("job \"" + name + "\" failed and nobody handled it:");
                 error.printStackTrace(FAILURES);
                 FAILURES.flush();
             }
+        }
+
+        /** Whether the unhandled failure has already been written out. */
+        private boolean reported;
+
+        /** @return whether this one died with nobody listening and said so */
+        synchronized boolean wasReported() {
+            return reported;
         }
 
         synchronized void settle(T result, Throwable failure, boolean cancelled) {
@@ -178,6 +221,9 @@ public final class JobService implements AutoCloseable {
             this.wasCancelled = cancelled;
 
             deliver();
+
+            // Now, not at the end of the program.
+            reportIfUnclaimed();
         }
 
         /**
@@ -298,10 +344,6 @@ public final class JobService implements AutoCloseable {
      */
     private final List<Handle<?>> unclaimed = new CopyOnWriteArrayList<>();
 
-    private volatile String stage = "";
-
-    private volatile double fraction = -1.0;
-
     public JobService() {
         AtomicInteger counter = new AtomicInteger();
 
@@ -362,10 +404,6 @@ public final class JobService implements AutoCloseable {
                 running.remove(handle);
                 cancelled.remove(handle);
 
-                if (running.isEmpty()) {
-                    stage = "";
-                    fraction = -1.0;
-                }
 
                 notifyListeners();
             }
@@ -379,7 +417,7 @@ public final class JobService implements AutoCloseable {
 
             @Override
             public void report(double value) {
-                fraction = value;
+                handle.fraction = value;
                 notifyListeners();
             }
 
@@ -390,7 +428,7 @@ public final class JobService implements AutoCloseable {
 
             @Override
             public void say(String text) {
-                stage = text == null ? "" : text;
+                handle.stage = text == null ? "" : text;
                 notifyListeners();
             }
         };
@@ -432,12 +470,31 @@ public final class JobService implements AutoCloseable {
 
     /** @return the current stage text, or empty */
     public String stage() {
-        return stage;
+        Handle<?> first = first();
+
+        return first == null ? "" : first.stage;
+    }
+
+    /**
+     * @return the job the status bar speaks for, or null when nothing is running
+     *
+     * <p>The FIRST still running, which is the one {@code runningNames} already
+     * names when there is one. Two jobs at once is the case this exists for, and
+     * showing one of them completely beats showing half of each.</p>
+     */
+    private Handle<?> first() {
+        for (Handle<?> each : running) {
+            return each;
+        }
+
+        return null;
     }
 
     /** @return progress from 0 to 1, or negative when unknown */
     public double fraction() {
-        return fraction;
+        Handle<?> first = first();
+
+        return first == null ? -1.0 : first.fraction;
     }
 
     public boolean isBusy() {

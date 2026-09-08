@@ -321,4 +321,99 @@ class JobServiceTest {
             hold.countDown();
         }
     }
+
+    @Test
+    @DisplayName("com DOIS trabalhos, o estagio e a fracao sao do mesmo")
+    void twojobsAtOnceDoNotMixTheirProgress() throws Exception {
+        // The pool has max(2, cores - 1) threads and nothing serialises the
+        // submissions -- the launcher already starts one while the window is
+        // opening, and the reader can start another. Both used to write into ONE
+        // stage and ONE fraction on the service, so the status bar showed the
+        // stage of one with the progress of the other, and nothing said which.
+        //
+        // The assertion is not "which job wins": it is that the two numbers
+        // belong to the SAME job. Showing one of them completely is an answer;
+        // showing half of each is not.
+        CountDownLatch bothReported = new CountDownLatch(2);
+        CountDownLatch hold = new CountDownLatch(1);
+
+        try (JobService jobs = new JobService()) {
+            jobs.submit("A", progress -> {
+                progress.say("stage-A");
+                progress.report(0.25);
+                bothReported.countDown();
+                hold.await(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+
+                return null;
+            });
+
+            jobs.submit("B", progress -> {
+                progress.say("stage-B");
+                progress.report(0.75);
+                bothReported.countDown();
+                hold.await(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+
+                return null;
+            });
+
+            assertTrue(bothReported.await(TIMEOUT_SECONDS, TimeUnit.SECONDS),
+                    "the two jobs did not both report");
+
+            String stage = jobs.stage();
+            double fraction = jobs.fraction();
+
+            assertTrue("stage-A".equals(stage) || "stage-B".equals(stage),
+                    "the stage belongs to no job at all: " + stage);
+            assertEquals("stage-A".equals(stage) ? 0.25 : 0.75, fraction, 1e-9,
+                    "the status bar is showing the stage of one job with the progress of "
+                            + "the other: " + stage + " at " + fraction);
+        } finally {
+            hold.countDown();
+        }
+    }
+
+    @Test
+    @DisplayName("uma falha sem ouvinte e dita QUANDO acontece, nao no fim do programa")
+    void anunhandledFailureIsReportedWhenItHappens() throws Exception {
+        // The class javadoc promises that "a failure always reaches a handler".
+        // Without a whenFailed the outcome stays pending on purpose -- which is
+        // right, so a handler chained later still gets it -- and the only report
+        // happened at close(), which is hooked to the JVM shutdown. Between the
+        // death and the report the job had left the running list, the status bar
+        // had cleared, and the reader had watched a job finish normally. The
+        // launcher's own job registers no failure handler, so it is the case.
+        CountDownLatch ran = new CountDownLatch(1);
+
+        try (JobService jobs = new JobService()) {
+            JobService.Handle<Object> handle = jobs.submit("doomed", progress -> {
+                ran.countDown();
+
+                throw new IllegalStateException("on purpose");
+            });
+
+            assertTrue(ran.await(TIMEOUT_SECONDS, TimeUnit.SECONDS), "the job never ran");
+
+            for (int tries = 0; tries < 200 && !handle.wasReported(); tries++) {
+                Thread.sleep(25L);
+            }
+
+            assertTrue(handle.wasReported(),
+                    "a job died with nobody listening and nothing said so until the "
+                            + "program was closing");
+
+            // And the outcome is still pending: a handler chained afterwards
+            // must receive it, which is what the report must not consume.
+            AtomicReference<Throwable> caught = new AtomicReference<>();
+
+            handle.whenFailed(caught::set);
+
+            for (int tries = 0; tries < 200 && caught.get() == null; tries++) {
+                Thread.sleep(25L);
+            }
+
+            assertNotNull(caught.get(),
+                    "saying the failure out loud consumed it, so a handler registered "
+                            + "afterwards got nothing");
+        }
+    }
 }
