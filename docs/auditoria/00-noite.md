@@ -796,7 +796,58 @@ relatório são todos conferidos dentro de `TickFile.read` e saem como
 `IOException`: não existe arquivo que alcance o ramo. A rede fica porque a
 classe de falha já custou caro uma vez, e o `TapeFile` registra isso.
 
-**O que falta:** as **67 BAIXA** da auditoria I.
+### As 67 BAIXA
+
+| lote | o quê | commit |
+|---|---|---|
+| A5-16, A5-19..22, A5-24 | alinhamento de cor, invariantes de record, onze imports mortos | `0e4aff3` |
+| A6-20, A6-22..26 | dois ícones por quadro, um método sem uso, um invólucro | `44b6a32` |
+| A7a-22, A7a-24..26, A7a-28, A7a-30 | a fonte que existe, a bandeira que ninguém entendeu | `521a6fe` |
+| A7b-26..28, A7b-31..35 | teclado no painel, cor do tema, o cursor do console | `74a47d1` |
+| A8a-16..18 | o tape ganha as recusas que os irmãos já tinham | `7f16004` |
+| A8b-16..20 | cinco asserções que não discriminavam nada | `139def2` |
+| L1-8, L1-9, L2-4, L3-12, L3-14 | progresso coalescido, linha longa recusada | `50ef074` |
+| L4-11..17 | o separador e as datas num lugar; os mnemônicos que não sublinham | `ad186c8` |
+
+## A auditoria I, fechada
+
+**52 ALTA (na época), 130 MÉDIA e 67 BAIXA.** Suíte em **711**.
+
+Boa parte das MÉDIA e das BAIXA já tinha sido fechada pela auditoria II, que
+correu sobre o mesmo código; cada uma dessas está nomeada no commit como
+*fechada por conferência*, com quem a fechou. O resto foi corrigido aqui, com
+teste quando muda comportamento e com o motivo escrito quando não leva teste.
+
+### Duas guardas novas
+
+- **`BundleKeysTest`**: todo mnemônico é uma letra que existe no próprio rótulo,
+  nos dois idiomas. Foi assim que `action.preferences = P` sobre "Settings..."
+  deixou de ser possível.
+- **`platform/Formats`**: o separador de campos e os formatos de data passaram a
+  ter um lugar só, e o arquivo diz por que não estão no bundle.
+
+### O que a fase 6 ensinou, ao todo
+
+**Cinco provas de dentes verdes**, e todas por o teste não alcançar a quebra:
+uma fixture que esvaziava o cache sobre o qual perguntava (A7a-13), uma guarda
+recém-posta que fazia o teste passar sem exercitar nada (A7b-14), um arquivo
+curto demais que falhava antes da checagem em questão (A8a-17), uma guarda que o
+próprio caminho de leitura torna inalcançável (A8a-18) e uma asserção simétrica
+que a fixture não podia mostrar (A8b-18).
+
+**A guarda da casa pegou a minha edição cinco vezes.** O `OrphanJavadocTest`
+acusou, em cinco commits diferentes, um bloco novo inserido entre um javadoc e a
+assinatura que ele documenta — sempre porque o script de edição ancorou na
+assinatura, que vem depois do javadoc.
+
+**Uma correção minha criou uma regressão**, achada pela prova de dentes do
+achado seguinte (A7b-13 → A7b-14).
+
+**Metade de dois achados foi refutada e a correção ficou**: em L1-4 os exemplos
+do relatório são todos conferidos antes, e saem como `IOException`; em A7a-15 o
+arquivo do leitor já estava protegido pelo `endeavourneo.home` do pom, e o que
+restava era o vazamento entre testes e entre rodadas — que a prova de dentes
+mostrou ao vivo.
 
 ### A sexta prova de dentes verde
 
