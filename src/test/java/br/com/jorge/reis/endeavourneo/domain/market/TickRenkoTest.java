@@ -556,8 +556,31 @@ class TickRenkoTest {
         try {
             TickRenko live = new TickRenko(new Renko(10, 2), library);
 
+            // REAL INSTANTS, and the loop used to walk on Long.MIN_VALUE + 1 --
+            // 292 million years before the session. countUntil answered zero
+            // every time, advance returned without folding anything, and all
+            // twenty frames were dead. What was left measured only the state
+            // after the whole day had arrived at once, which is exactly the
+            // moment when settled and forming are least interesting.
+            //
+            // Checked at EVERY frame against the same renko built up to that
+            // same instant, which is the claim this test's name makes.
+            TickSeries ticks = library.load(DAY);
+            long first = ticks.timeAt(0);
+            long last = ticks.timeAt(ticks.size() - 1);
+
             for (int i = 1; i <= 20; i++) {
-                live.advance(DAY, Long.MIN_VALUE + 1);
+                long when = first + (last - first + 1) * i / 20 + 1;
+
+                live.advance(DAY, when);
+
+                TickRenko upToHere = new TickRenko(new Renko(10, 2), library);
+
+                upToHere.addUpTo(DAY, when);
+
+                assertEquals(upToHere.size(), live.size(),
+                        "frame " + i + ": the forming brick was counted among the "
+                                + "settled ones");
             }
 
             live.advance(DAY, Long.MAX_VALUE);

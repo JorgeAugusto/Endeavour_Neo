@@ -435,13 +435,20 @@ class RenkoTest {
     @Test
     @DisplayName("the bar count never falls while a bar is still forming")
     void theCountNeverFalls() {
-        // The trembling, as a property. The ruler is anchored on the first
-        // bar's OPEN, which never moves; anchoring it on the first CLOSE was the
-        // defect -- while that bar formed, its close wandered and every brick
-        // was measured from a shifting origin. Instrumented at the time: the
-        // same bar, the same high, the same low, and the completed bricks going
-        // from four to two.
-        double[] first = {100, 100, 100, 100};
+        // THE TREMBLING, as a property, and only that. The count of completed
+        // bricks may not fall as the last bar grows.
+        //
+        // What this does NOT hold is the anchor. The comment here used to claim
+        // it did -- "the ruler is anchored on the first bar's OPEN, which never
+        // moves" -- and it does not: moving the anchor to closeAt(0) leaves this
+        // test green, because monotonicity is true either way. The anchor is
+        // held by anchoredOnTheFirstOpen below, which is where that break
+        // actually lands.
+        //
+        // The fixture still opens away from its close, so it cannot pass by the
+        // two answers being the same number. It used to be {100, 100, 100, 100},
+        // where an anchor on the open and one on the close start from 100 alike.
+        double[] first = {100, 130, 100, 125};
         int most = 0;
 
         for (double[] step : new double[][]{
@@ -455,6 +462,11 @@ class RenkoTest {
 
             most = Math.max(most, now);
         }
+
+        // Or an empty series would satisfy every step: 0 >= 0, twenty times
+        // over. The brother test bricksAreNeverUnlaid closes exactly this hole
+        // and this one did not.
+        assertTrue(most > 0, "no brick was ever laid, so the check proved nothing");
     }
 
     @Test

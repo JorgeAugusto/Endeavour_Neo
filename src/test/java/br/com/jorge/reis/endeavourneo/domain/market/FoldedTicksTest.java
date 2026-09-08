@@ -91,12 +91,60 @@ class FoldedTicksTest {
 
     @Test
     @DisplayName("um dia que nao foi exportado vem vazio, nunca de outro lugar")
-    void aDayThatWasNotExportedIsEmpty(@TempDir Path folder) {
+    void aDayThatWasNotExportedIsEmpty(@TempDir Path folder) throws IOException {
         // A chart of the ticks shows ticks, and where there are none it shows
         // nothing. Falling back to the candle file would put two different
         // measurements of the same hours in one window.
+        //
+        // THE CANDLE FILE HAS TO BE THERE, or this cannot see the thing it
+        // forbids. The folder used to be an empty @TempDir: no ticks and no
+        // candles either, so a fallback to the candles would have found nothing
+        // to fall back TO and the test would have passed with the fallback
+        // switched on.
+        MarketFile.write(folder.resolve("win-1m.bin"),
+                bars(LocalDate.of(2021, 1, 4), 4, 118_000), 1);
+
         assertEquals(0, FoldedTicks.day(folder, "win", TickSource.METATRADER,
-                LocalDate.of(2021, 1, 4), ZONE).size());
+                LocalDate.of(2021, 1, 4), ZONE).size(),
+                "the tick chart fell back to the candle file sitting beside it");
+    }
+
+    /** @return bars of that day, one a minute, so a candle file can be written */
+    private static PriceSeries bars(LocalDate day, int howMany, double from) {
+        long open = day.atStartOfDay(ZONE).toInstant().toEpochMilli() + 9 * 3_600_000L;
+
+        return new PriceSeries() {
+
+            @Override
+            public int size() {
+                return howMany;
+            }
+
+            @Override
+            public long timeAt(int index) {
+                return open + index * 60_000L;
+            }
+
+            @Override
+            public double openAt(int index) {
+                return from + index;
+            }
+
+            @Override
+            public double highAt(int index) {
+                return from + index + 5;
+            }
+
+            @Override
+            public double lowAt(int index) {
+                return from + index - 5;
+            }
+
+            @Override
+            public double closeAt(int index) {
+                return from + index + 2;
+            }
+        };
     }
 
     @Test
@@ -129,8 +177,26 @@ class FoldedTicksTest {
         session(folder, monday, 4, 118_000);
         session(folder, tuesday, 3, 119_000);
 
-        assertEquals(3, FoldedTicks.over(folder, "win", TickSource.METATRADER,
-                List.of(tuesday), ZONE).size());
+        PriceSeries only = FoldedTicks.over(folder, "win", TickSource.METATRADER,
+                List.of(tuesday), ZONE);
+
+        assertEquals(3, only.size());
+
+        // WHICH day, and not just how many bars. Counting alone cannot tell
+        // Tuesday's three from any other three.
+        assertEquals(119_000, only.openAt(0), 1e-9, "these are Monday's bars");
+
+        // AND THE ORDER, which the name of this test promised and a list of one
+        // element cannot exercise. over() is how the segments window opens a
+        // chosen stretch of sessions, and the order decides where each bar
+        // lands on the axis -- sorting the list inside it would pass a test
+        // that only ever asks for one day.
+        PriceSeries backwards = FoldedTicks.over(folder, "win", TickSource.METATRADER,
+                List.of(tuesday, monday), ZONE);
+
+        assertEquals(7, backwards.size());
+        assertEquals(119_000, backwards.openAt(0), 1e-9,
+                "the list was asked for Tuesday first and came back Monday first");
     }
 
     @Test
