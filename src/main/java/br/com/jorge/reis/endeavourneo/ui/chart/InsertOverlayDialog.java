@@ -325,7 +325,13 @@ public final class InsertOverlayDialog extends JDialog {
         // The width is written into the html because that is the only thing a
         // label wraps on. Left free, it lays itself out on one line as wide as
         // the sentence and the dialog clips it mid-word.
-        JLabel reason = new JLabel("<html><body style='width:250px'>" + why + "</body></html>");
+        // ESCAPED, because `why` carries an indicator's name inside it and a
+        // name is text somebody can choose. SeriesSummary already solves this
+        // exact problem the same way and says why: a name typed by the reader
+        // tomorrow could carry a bracket and take the rest of the label with
+        // it.
+        JLabel reason = new JLabel("<html><body style='width:250px'>"
+                + escape(why) + "</body></html>");
 
         reason.setAlignmentX(Component.LEFT_ALIGNMENT);
         reason.setBorder(BorderFactory.createEmptyBorder(0, 22, 4, 0));
@@ -413,5 +419,17 @@ public final class InsertOverlayDialog extends JDialog {
                 dispose();
             }
         }, KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), JRootPane.WHEN_IN_FOCUSED_WINDOW);
+    }
+    /**
+     * @param text anything that may carry a name somebody chose
+     * @return the same text, safe to put inside a Swing HTML label
+     *
+     * <p>The same four replacements SeriesSummary makes, and for the reason it
+     * states there: a name typed by the reader tomorrow could carry a bracket
+     * and take the rest of the label with it.</p>
+     */
+    private static String escape(String text) {
+        return text.replace("&", "&amp;").replace("<", "&lt;")
+                .replace(">", "&gt;").replace("\"", "&quot;");
     }
 }

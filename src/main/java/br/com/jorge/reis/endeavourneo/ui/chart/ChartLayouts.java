@@ -289,9 +289,18 @@ public final class ChartLayouts {
                 gathering.clear();
             }
 
+            // FROM THE FIRST line of the pane, which is what the format's own
+            // javadoc promises: "they are read from the first and the
+            // repetition costs nothing". It read them from every line, so the
+            // LAST one won. The writer puts the same values on all of them, so
+            // the two agree -- until somebody edits the file by hand, which is
+            // the reason this format is plain text in the first place.
+            if (mine != belongsTo) {
+                height = number(fields[3], 0);
+                minimised = Boolean.parseBoolean(fields[4].trim());
+            }
+
             belongsTo = mine;
-            height = number(fields[3], 0);
-            minimised = Boolean.parseBoolean(fields[4].trim());
 
             gathering.add(new ChartLayout.Entry(fields[1].trim(), numbers(fields[2]), true,
                     fields.length > 5 ? fields[5] : ""));

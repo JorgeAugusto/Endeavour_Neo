@@ -435,11 +435,25 @@ public final class OverlayLegend extends JComponent {
 
     // -------------------------------------------------------------- the mouse
 
+    /**
+     * @param y a pixel down this component
+     * @return which row of the list is drawn there
+     *
+     * <p>The rows start at y = 1, not at zero: paintRow fills from {@code top
+     * - 1} with {@code top = i * ROW_HEIGHT + 2}. Dividing the raw y put the
+     * top pixel of every band on the row ABOVE it -- so the line under the
+     * pointer and the line lit up were different lines, by one pixel, in two
+     * places that each did the arithmetic themselves.</p>
+     */
+    private static int rowUnder(int y) {
+        return (y - 1) / ROW_HEIGHT;
+    }
+
     private final class Mouse extends MouseAdapter {
 
         @Override
         public void mouseMoved(MouseEvent e) {
-            int row = e.getY() / ROW_HEIGHT;
+            int row = rowUnder(e.getY());
             int previous = hovered;
 
             hovered = !collapsed && row >= 0 && row < canvas.overlays().size() ? row : -1;
@@ -469,7 +483,7 @@ public final class OverlayLegend extends JComponent {
                 return -1;
             }
 
-            int row = e.getY() / ROW_HEIGHT;
+            int row = rowUnder(e.getY());
 
             return row >= 0 && row < canvas.overlays().size() ? row : -1;
         }

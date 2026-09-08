@@ -106,8 +106,13 @@ public final class Sessions {
      * @return the change formatted the way a quote screen writes it, or an empty
      *         string when there is no change to show
      *
-     * <p>Always signed, including the plus: a bare "3,04%" beside an instrument
-     * name reads as a quantity rather than as a move.</p>
+     * <p>Signed whenever there is a direction, plus included: a bare "3,04%"
+     * beside an instrument name reads as a quantity rather than as a move.</p>
+     *
+     * <p><b>Except exactly zero</b>, which has no direction to state. This used
+     * to say "always signed" and print "0,00%" bare, which is the right output
+     * under a promise it was not keeping. A "+0,00%" would be claiming a rise
+     * of nothing.</p>
      */
     public static String formatChange(double percent) {
         if (!Double.isFinite(percent)) {

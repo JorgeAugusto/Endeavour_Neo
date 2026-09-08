@@ -128,8 +128,13 @@ public final class LineStyle implements ChartStyle {
         g.setStroke(new BasicStroke(1.4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
         g.drawPolyline(xs, ys, points);
 
-        if (previous != null) {
-            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, previous);
-        }
+        // PUT BACK EVEN WHEN THERE WAS NOTHING THERE. A null hint means the
+        // caller had never set one, and leaving antialiasing ON in that case
+        // hands the next painter a setting it did not ask for -- the candles
+        // draw straight after this on a shared Graphics, and antialiasing blurs
+        // the one-pixel body of a doji into grey. Which is the very reason the
+        // comment above says it is turned on "only here".
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                previous == null ? RenderingHints.VALUE_ANTIALIAS_DEFAULT : previous);
     }
 }

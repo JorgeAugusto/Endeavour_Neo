@@ -279,4 +279,24 @@ class ChartLayoutTest {
         assertEquals(90, back.get(1).height());
         assertTrue(back.get(1).minimised(), "the second pane lost the first one's flags");
     }
+    @Test
+    @DisplayName("a altura de um painel vem da PRIMEIRA linha dele, como o formato promete")
+    void thepaneHeightComesFromItsFirstLine() {
+        // The format's own javadoc says the height and the minimised flag "are
+        // read from the first and the repetition costs nothing" -- and the
+        // parser assigned them on every line, so the LAST one won. The writer
+        // puts the same values on all of them, so the two agreed until somebody
+        // edited the file by hand, which is the reason this format is plain
+        // text at all.
+        String written = "0|overlay.ema|9|140|false|\n"
+                + "0|overlay.ema|21|999|true|";
+
+        java.util.List<ChartLayout.Pane> panes = ChartLayouts.parsePanes(written);
+
+        assertEquals(1, panes.size(), "the two lines did not land in one pane");
+        assertEquals(140, panes.get(0).height(),
+                "the height came from the last line of the pane, not the first");
+        assertFalse(panes.get(0).minimised(),
+                "the minimised flag came from the last line of the pane, not the first");
+    }
 }

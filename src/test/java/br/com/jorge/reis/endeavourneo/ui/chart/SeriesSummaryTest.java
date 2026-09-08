@@ -199,4 +199,23 @@ class SeriesSummaryTest {
         assertTrue(html.contains("win&lt;b&gt;&amp;"), "the name went in raw: " + html);
         assertFalse(html.contains("win<b>&amp;"), "a tag from the name reached the tooltip");
     }
+    @Test
+    @DisplayName("zero por cento nao leva sinal, e o javadoc passou a dizer isso")
+    void zeroCarriesNoSign() {
+        // The javadoc said "always signed, including the plus", and the code
+        // printed "0,00%" bare. The code is right -- a "+0,00%" claims a rise of
+        // nothing -- so the sentence moved, not the output. Asserted here so the
+        // next reader of that paragraph cannot "fix" it back.
+        assertFalse(Sessions.formatChange(0.0).startsWith("+"),
+                "zero came out claiming a direction: " + Sessions.formatChange(0.0));
+        assertFalse(Sessions.formatChange(0.0).startsWith("-"),
+                "zero came out claiming a direction: " + Sessions.formatChange(0.0));
+
+        // And a real move still does carry it, or the assertions above are
+        // satisfied by a formatter that signs nothing at all.
+        assertTrue(Sessions.formatChange(3.04).startsWith("+"),
+                "a rise lost its plus: " + Sessions.formatChange(3.04));
+        assertTrue(Sessions.formatChange(-3.04).startsWith("-"),
+                "a fall lost its minus: " + Sessions.formatChange(-3.04));
+    }
 }

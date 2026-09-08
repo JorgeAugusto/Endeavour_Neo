@@ -264,19 +264,43 @@ public final class MovingAverageDialog extends JDialog {
 
         panel.add(interpolate, last);
 
-        ownPeriod.addActionListener(e -> refreshPeriod());
+        // TICKING IT ASKS. Ticked with no scale chosen, `periodCode` stayed null
+        // and apply() wrote null -- so the indicator went back to following the
+        // chart with the box ticked, which is the state saying it does not.
+        // refreshPeriod only enabled the button; nothing required it to be used
+        // and OK accepted the result.
+        //
+        // The chooser opens instead of the OK refusing: refusing at the end
+        // means telling somebody they did the wrong thing after they finished,
+        // and there is exactly one thing they can do about it.
+        ownPeriod.addActionListener(e -> {
+            if (ownPeriod.isSelected() && periodCode == null) {
+                askForTheScale();
 
-        periodButton.addActionListener(e -> {
-            PeriodCatalog.Choice choice = PeriodDialog.ask(this, null);
-
-            if (choice != null) {
-                periodCode = choice.code();
-
-                refreshPeriod();
+                if (periodCode == null) {
+                    // They cancelled. The box goes back rather than standing
+                    // ticked over a scale that was never picked.
+                    ownPeriod.setSelected(false);
+                }
             }
+
+            refreshPeriod();
         });
 
+        periodButton.addActionListener(e -> askForTheScale());
+
         return panel;
+    }
+
+    /** Opens the scale chooser, and keeps what it answers. */
+    private void askForTheScale() {
+        PeriodCatalog.Choice choice = PeriodDialog.ask(this, null);
+
+        if (choice != null) {
+            periodCode = choice.code();
+
+            refreshPeriod();
+        }
     }
 
     private void refreshPeriod() {
