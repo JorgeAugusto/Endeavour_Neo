@@ -23,9 +23,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import br.com.jorge.reis.endeavourneo.domain.market.MetaTraderTicks;
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
+import br.com.jorge.reis.endeavourneo.domain.market.Sessions;
 import br.com.jorge.reis.endeavourneo.domain.market.TickFile;
 import br.com.jorge.reis.endeavourneo.domain.market.TickLibrary;
 import br.com.jorge.reis.endeavourneo.domain.market.TickSource;
+import br.com.jorge.reis.endeavourneo.domain.market.Timeframe;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -176,5 +178,74 @@ class RenkoSourceTest {
         } finally {
             library.close();
         }
+    }
+    @Test
+    @DisplayName("the bars are not walked again: the sessions already known are used")
+    void theWalkIsNotRepeated(@TempDir Path folder) throws IOException {
+        // The comment in RenkoSource.allows claimed "the calendar is only asked
+        // where the day changes" while the conversion sat inside the loop and
+        // ran on every bar -- 693 thousand of them on the full series, on the
+        // interface thread, for one keystroke. Only the `contains` was skipped.
+        //
+        // Counted rather than timed: a stopwatch on the interface thread is a
+        // coin toss, and what was wrong was the number of reads, not the clock.
+        session(folder, LocalDate.of(2021, 1, 4));
+
+        int[] reads = new int[1];
+        PriceSeries counted = counting(over(LocalDate.of(2021, 1, 4)), reads);
+
+        // Warmed first, because the point is that allows() USES what Sessions
+        // already walked, not that Sessions is free.
+        Sessions.of(counted, Timeframe.defaultZone());
+        reads[0] = 0;
+
+        TickLibrary library = new TickLibrary(folder, "win", TickSource.METATRADER);
+
+        try {
+            assertTrue(RenkoSource.allows(counted, library, false));
+        } finally {
+            library.close();
+        }
+
+        assertEquals(0, reads[0],
+                "allows() walked the bars itself instead of using the sessions already known");
+    }
+
+    /** The same series, counting how many times a bar's time is read. */
+    private static PriceSeries counting(PriceSeries series, int[] reads) {
+        return new PriceSeries() {
+
+            @Override
+            public int size() {
+                return series.size();
+            }
+
+            @Override
+            public long timeAt(int index) {
+                reads[0]++;
+
+                return series.timeAt(index);
+            }
+
+            @Override
+            public double openAt(int index) {
+                return series.openAt(index);
+            }
+
+            @Override
+            public double highAt(int index) {
+                return series.highAt(index);
+            }
+
+            @Override
+            public double lowAt(int index) {
+                return series.lowAt(index);
+            }
+
+            @Override
+            public double closeAt(int index) {
+                return series.closeAt(index);
+            }
+        };
     }
 }

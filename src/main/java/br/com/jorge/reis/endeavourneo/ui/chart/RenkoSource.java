@@ -20,7 +20,6 @@ package br.com.jorge.reis.endeavourneo.ui.chart;
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
 import br.com.jorge.reis.endeavourneo.domain.market.TickLibrary;
 
-import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -88,19 +87,17 @@ final class RenkoSource {
 
         ZoneId zone = br.com.jorge.reis.endeavourneo.domain.market.Timeframe.defaultZone();
 
-        // Walked once, and the calendar is only asked where the day changes. A
-        // conversion per bar would be 693 thousand of them on the full series, on
-        // the interface thread, for one keystroke.
-        LocalDate seen = null;
-
-        for (int i = 0; i < series.size(); i++) {
-            LocalDate day = Instant.ofEpochMilli(series.timeAt(i)).atZone(zone).toLocalDate();
-
-            if (day.equals(seen)) {
-                continue;
-            }
-
-            seen = day;
+        // ASKED ONCE PER DAY, and the comment here used to say so while the code
+        // did the opposite: the conversion sat INSIDE the loop and ran on every
+        // bar -- 693 thousand of them on the full series, on the interface
+        // thread, for one keystroke -- and only the `contains` was skipped. The
+        // same defect, in the same words, was found and corrected in
+        // SeriesSummary; this is the other place it lived.
+        //
+        // The cached answer was twelve lines below all along: Sessions.of walks
+        // the series once and remembers.
+        for (LocalDate day : br.com.jorge.reis.endeavourneo.domain.market.Sessions
+                .of(series, zone)) {
 
             if (!exported.contains(day)) {
                 return false;

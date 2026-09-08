@@ -96,12 +96,25 @@ final class RulerReadout {
         }
     }
 
-    private static List<String[]> rowsFor(Measurement measurement) {
+    static List<String[]> rowsFor(Measurement measurement) {
         double difference = measurement.difference();
         double percent = measurement.percent();
 
         DecimalFormat price = format(2);
         DecimalFormat plain = format(0);
+
+        // THE SAME NUMBER WAS WRITTEN TWICE, under two labels. "Change" showed
+        // `difference` with two decimals and " pts"; "Difference" showed the
+        // SAME variable rounded to none, so a measurement of 12,50 points read
+        // +12,50 pts on one line and 13 on the next. Two answers to "how much is
+        // this", one of them rounded, with nothing saying they were the same
+        // question -- and on an instrument whose tick is five points that is
+        // visible immediately.
+        //
+        // The second line is gone rather than given a different meaning. The
+        // useful thing it might have said -- the distance in TICKS -- needs the
+        // tick size, and this box does not have it; inventing a number here
+        // would be a third answer.
 
         String mood = difference > 0 ? "up" : difference < 0 ? "down" : "flat";
         String sign = difference > 0 ? "+" : "";
@@ -115,7 +128,6 @@ final class RulerReadout {
             rows.add(new String[]{"", sign + price.format(percent) + "%", mood});
         }
 
-        rows.add(new String[]{Messages.get("ruler.difference"), plain.format(difference)});
         rows.add(new String[]{Messages.get("ruler.first"), plain.format(measurement.fromPrice())});
         rows.add(new String[]{Messages.get("ruler.second"), plain.format(measurement.toPrice())});
         rows.add(new String[]{Messages.get("ruler.interval"), measurement.elapsedInWords()});
