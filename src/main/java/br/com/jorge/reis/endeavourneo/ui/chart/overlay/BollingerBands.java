@@ -464,14 +464,11 @@ public final class BollingerBands implements Overlay {
     }
 
     private double priceAt(PriceSeries series, int bar) {
-        return switch (source()) {
-            case OPEN -> series.openAt(bar);
-            case HIGH -> series.highAt(bar);
-            case LOW -> series.lowAt(bar);
-            case MEDIAN -> (series.highAt(bar) + series.lowAt(bar)) / 2.0;
-            case TYPICAL -> (series.highAt(bar) + series.lowAt(bar) + series.closeAt(bar)) / 3.0;
-            default -> series.closeAt(bar);
-        };
+        // The average's rule, not a copy of it. This switch used to be written
+        // out again here, letter for letter, reading the same source() -- two
+        // answers to one question, in the class whose own javadoc says that is
+        // what it exists to prevent.
+        return source().of(series, bar);
     }
 
     /**

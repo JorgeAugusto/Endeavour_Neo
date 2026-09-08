@@ -311,4 +311,103 @@ class BollingerBandsTest {
         assertTrue(row[0] >= row[1], "the upper band went below the middle");
         assertTrue(Double.isFinite(row[2]), "the lower band became NaN and vanished");
     }
+    @Test
+    @DisplayName("the band centres on the average of the same price, whatever the source is")
+    void bothSidesReadOneRule() {
+        // The rule "which price of the bar is this Source" used to be written
+        // twice, letter for letter: once in MovingAverage and once here, both
+        // reading the same source() and both ending in `default ->`. A seventh
+        // source added tomorrow would have made the average use it and the band
+        // fall through to the close -- a band centred on a line that is not the
+        // one drawn, which is exactly what the javadoc of basis says this class
+        // exists to prevent.
+        //
+        // Asserted over EVERY constant, because the defect is about the one
+        // nobody wrote a case for.
+        PriceSeries series = ohlc();
+
+        for (MovingAverage.Source source : MovingAverage.Source.values()) {
+            BollingerBands bands = new BollingerBands(3);
+
+            bands.setSource(source);
+            bands.calculate(series);
+
+            MovingAverage average = new MovingAverage(3);
+
+            average.setSource(source);
+            average.calculate(series);
+
+            for (int bar = 0; bar < series.size(); bar++) {
+                double[] row = bands.valueAt(bar);
+                double line = average.valueAt(bar)[0];
+
+                if (Double.isNaN(line)) {
+                    continue;
+                }
+
+                assertEquals(line, row[1], 1e-9,
+                        source + ", bar " + bar + ": the band is centred on a price the "
+                                + "average is not drawing");
+
+                // The WIDTH, which is where the copy lived: the centre comes
+                // from a MovingAverage of its own, so it never went through the
+                // duplicated switch. The deviation did, and a deviation
+                // measured on one price around a centre made of another is a
+                // band that belongs to neither.
+                double sum = 0.0;
+
+                for (int back = bar - 2; back <= bar; back++) {
+                    double difference = source.of(series, back) - row[1];
+
+                    sum += difference * difference;
+                }
+
+                assertEquals(2 * Math.sqrt(sum / 3), row[0] - row[1], 1e-9,
+                        source + ", bar " + bar + ": the band is as wide as the spread of "
+                                + "some other price around this centre");
+            }
+        }
+    }
+
+    /**
+     * A series whose four prices all differ, so a source that is read wrongly shows.
+     *
+     * <p>{@code closes(...)} above answers the same number to all four, which
+     * would make every source agree and this test pass on any rule at all.</p>
+     */
+    private static PriceSeries ohlc() {
+        return new PriceSeries() {
+
+            @Override
+            public int size() {
+                return 12;
+            }
+
+            @Override
+            public long timeAt(int index) {
+                return LocalDateTime.of(2026, 9, 2, 9, 0).plusMinutes(index)
+                        .atZone(ZONE).toInstant().toEpochMilli();
+            }
+
+            @Override
+            public double openAt(int index) {
+                return 100 + index;
+            }
+
+            @Override
+            public double highAt(int index) {
+                return 107 + index * 2;
+            }
+
+            @Override
+            public double lowAt(int index) {
+                return 93 + index / 2.0;
+            }
+
+            @Override
+            public double closeAt(int index) {
+                return 101 + index * 3;
+            }
+        };
+    }
 }

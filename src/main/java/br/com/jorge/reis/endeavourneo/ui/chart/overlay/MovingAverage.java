@@ -63,7 +63,38 @@ public final class MovingAverage implements Overlay {
 
     /** Which price of the bar is averaged. */
     public enum Source {
-        CLOSE, OPEN, HIGH, LOW, MEDIAN, TYPICAL
+        CLOSE, OPEN, HIGH, LOW, MEDIAN, TYPICAL;
+
+        /**
+         * @param series the bars
+         * @param bar an index into them
+         * @return the price this source names there
+         *
+         * <p><b>The rule, in one place.</b> This switch used to be written
+         * twice, letter for letter -- once here in the average and once in
+         * BollingerBands, which reads the SAME {@code source()} to decide what
+         * its centre line is made of. The javadoc of {@code BollingerBands.basis}
+         * says a duplicated indicator is what it exists to prevent: "Two
+         * implementations of one idea drift". It was right, and did not notice
+         * that the second implementation was its own, sixty lines below.</p>
+         *
+         * <p>No {@code default}: a seventh source added tomorrow breaks the
+         * compilation here instead of silently falling through to the close.
+         * That was the other half of the defect -- both copies ended in
+         * {@code default ->}, so a new constant would have made the average
+         * use it and the band centre on a line that was not the one drawn.</p>
+         */
+        public double of(PriceSeries series, int bar) {
+            return switch (this) {
+                case CLOSE -> series.closeAt(bar);
+                case OPEN -> series.openAt(bar);
+                case HIGH -> series.highAt(bar);
+                case LOW -> series.lowAt(bar);
+                case MEDIAN -> (series.highAt(bar) + series.lowAt(bar)) / 2.0;
+                case TYPICAL ->
+                        (series.highAt(bar) + series.lowAt(bar) + series.closeAt(bar)) / 3.0;
+            };
+        }
     }
 
     /** How the line is drawn. */
@@ -154,7 +185,19 @@ public final class MovingAverage implements Overlay {
         this.period = Math.max(1, period);
     }
 
-    /** @param settings period, kind, shift -- the shape, as a layout stores it */
+    /**
+     * @param settings period, then shift -- the shape, as a layout stores it
+     *
+     * <p>Period and shift, and the javadoc used to say "period, kind, shift"
+     * while the code read {@code settings[1]} as the SHIFT. The other side of
+     * this trip agrees with the code and not with the comment: {@link
+     * #parameters} writes {@code [period]} or {@code [period, shift]}. Only the
+     * sentence was wrong, and it was wrong about the one thing a reader would
+     * come here to check.</p>
+     *
+     * <p>The kind is not in the list because it is not a number. It travels as
+     * part of the appearance, which a layout stores beside these.</p>
+     */
     public MovingAverage(int... settings) {
         this.period = settings.length > 0 ? Math.max(1, settings[0]) : 9;
         this.shift = settings.length > 1 ? settings[1] : 0;
@@ -399,14 +442,7 @@ public final class MovingAverage implements Overlay {
     }
 
     private double priceAt(PriceSeries series, int bar) {
-        return switch (source) {
-            case OPEN -> series.openAt(bar);
-            case HIGH -> series.highAt(bar);
-            case LOW -> series.lowAt(bar);
-            case MEDIAN -> (series.highAt(bar) + series.lowAt(bar)) / 2.0;
-            case TYPICAL -> (series.highAt(bar) + series.lowAt(bar) + series.closeAt(bar)) / 3.0;
-            default -> series.closeAt(bar);
-        };
+        return source.of(series, bar);
     }
 
     private void arithmetic(PriceSeries series) {
