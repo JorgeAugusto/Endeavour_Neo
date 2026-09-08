@@ -628,7 +628,20 @@ public final class Settings {
         save();
     }
 
-    /** @return every key starting with that prefix, sorted */
+    /**
+     * @param prefix what the key starts with
+     * @return every key that starts with it, in an order a NUMBER understands
+     *
+     * <p><b>Not plain alphabetical, and it used to be.</b> These keys are
+     * numbered -- {@code chart.open.0.series}, {@code chart.open.1.series} --
+     * and sorting them as text puts {@code chart.open.10} before {@code
+     * chart.open.2}. With ten charts open, the next launch restored them in a
+     * different order: the "(2)" suffix changed owner, and with it which
+     * window the reader had arranged where.</p>
+     *
+     * <p>Runs of digits compare as numbers and everything else as text, so a
+     * key with no numbers in it sorts exactly as it did.</p>
+     */
     public List<String> keysStartingWith(String prefix) {
         List<String> found = new ArrayList<>();
 
@@ -638,9 +651,69 @@ public final class Settings {
             }
         }
 
-        Collections.sort(found);
+        found.sort(Settings::byNumberThenText);
 
         return found;
+    }
+
+    /**
+     * @return the two compared with runs of digits read as numbers
+     *
+     * <p>Package-visible so the ordering can be checked directly, without
+     * building a settings file of ten charts to see it.</p>
+     */
+    static int byNumberThenText(String left, String right) {
+        int a = 0;
+        int b = 0;
+
+        while (a < left.length() && b < right.length()) {
+            char one = left.charAt(a);
+            char other = right.charAt(b);
+
+            if (Character.isDigit(one) && Character.isDigit(other)) {
+                int endA = a;
+                int endB = b;
+
+                while (endA < left.length() && Character.isDigit(left.charAt(endA))) {
+                    endA++;
+                }
+
+                while (endB < right.length() && Character.isDigit(right.charAt(endB))) {
+                    endB++;
+                }
+
+                // Compared as text once the leading zeros are gone, so a run of
+                // any length works and nothing has to be parsed -- a key with
+                // forty digits in it is somebody else's problem, not an
+                // exception here.
+                String runA = left.substring(a, endA).replaceFirst("^0+(?=.)", "");
+                String runB = right.substring(b, endB).replaceFirst("^0+(?=.)", "");
+
+                if (runA.length() != runB.length()) {
+                    return runA.length() - runB.length();
+                }
+
+                int order = runA.compareTo(runB);
+
+                if (order != 0) {
+                    return order;
+                }
+
+                a = endA;
+                b = endB;
+
+                continue;
+            }
+
+            if (one != other) {
+                return one - other;
+            }
+
+            a++;
+            b++;
+        }
+
+        return (left.length() - a) - (right.length() - b);
     }
 
     /** Drops every key starting with that prefix, writing once at the end. */

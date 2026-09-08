@@ -31,7 +31,6 @@ import java.awt.Window;
 import java.io.IOException;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
@@ -73,7 +72,6 @@ public final class SeriesWindow extends JDialog {
     /** Shared with the segment dialog, so a date never reads two ways in one window. */
     static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
-    private static final ZoneId ZONE = br.com.jorge.reis.endeavourneo.domain.market.Timeframe.defaultZone();
 
     private final JComboBox<String> series = new JComboBox<>();
 

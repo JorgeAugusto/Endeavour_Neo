@@ -359,4 +359,39 @@ class SettingsTest {
             Settings.stopUsingTestStore();
         }
     }
+    @Test
+    @DisplayName("as chaves numeradas voltam em ordem de NUMERO, nao de texto")
+    void numberedKeysComeBackInNumericOrder(@org.junit.jupiter.api.io.TempDir
+            java.nio.file.Path folder) {
+        // The keys are numbered -- chart.open.0.series, chart.open.1.series --
+        // and sorting them as text puts chart.open.10 before chart.open.2. With
+        // ten charts open, the next launch restored them in a different order:
+        // the "(2)" suffix changed owner, and with it which window the reader
+        // had arranged where.
+        // Through keysStartingWith, not through the comparator: what is being
+        // held is that the LIST comes back in that order, and a test that sorted
+        // the list itself would stay green with the sort call put back to
+        // Collections.sort.
+        Settings store = Settings.at(folder.resolve("ordem.properties"), "teste");
+
+        for (int at = 10; at >= 1; at--) {
+            store.put("chart.open." + at + ".series", "win-1m");
+        }
+
+        java.util.List<String> keys = store.keysStartingWith("chart.open.");
+
+        assertEquals("chart.open.1.series", keys.get(0));
+        assertEquals("chart.open.2.series", keys.get(1));
+        assertEquals("chart.open.10.series", keys.get(keys.size() - 1),
+                "the tenth chart came back before the second one: " + keys);
+
+        // And a key with no digits still sorts as plain text, or this would be
+        // a comparator that only knows one shape of key.
+        java.util.List<String> words = new java.util.ArrayList<>(
+                java.util.List.of("theme", "language", "data.zone"));
+
+        words.sort(Settings::byNumberThenText);
+
+        assertEquals(java.util.List.of("data.zone", "language", "theme"), words);
+    }
 }

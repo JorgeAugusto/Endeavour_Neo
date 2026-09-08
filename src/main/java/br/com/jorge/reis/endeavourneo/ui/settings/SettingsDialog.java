@@ -102,7 +102,14 @@ public final class SettingsDialog extends JDialog {
 
     /** Opens the dialog and blocks until it is dismissed. */
     public static void show(Window owner, List<SettingsPage> pages) {
-        new SettingsDialog(owner, pages).setVisible(true);
+        SettingsDialog dialog = new SettingsDialog(owner, pages);
+
+        // DISPOSED when the X closes it, which is the default a JDialog does
+        // NOT have: DO_NOTHING would hang and HIDE keeps the whole tree of
+        // pages -- and their listeners -- alive for the life of the
+        // application, one copy per time the reader opened preferences.
+        dialog.setDefaultCloseOperation(javax.swing.WindowConstants.DISPOSE_ON_CLOSE);
+        dialog.setVisible(true);
     }
 
     private JComponent buildCategoryTree() {

@@ -165,7 +165,15 @@ public final class MainWindow extends JFrame {
 
         setDefaultCloseOperation(EXIT_ON_CLOSE);
 
-        desktop.setBackground(java.awt.Color.DARK_GRAY);
+        // FROM THE THEME, and it used to be Color.DARK_GRAY fixed in the code.
+        // Icons.java argues against exactly this a few files over -- "a PNG
+        // exported for the light theme becomes a dark smudge on the night one"
+        // -- and a desktop is the largest surface in the window. On the light
+        // theme it was a dark slab behind pale charts.
+        //
+        // A shade DARKER than the panel behind it, so the charts sitting on it
+        // read as raised. That is what a desktop is for.
+        desktop.setBackground(br.com.jorge.reis.endeavourneo.ui.chart.ChartColors.desktop());
 
         consolePane = new CollapsiblePane(Messages.get("view.console"), console, "console");
 
@@ -594,7 +602,7 @@ public final class MainWindow extends JFrame {
      * are not the market's, drawn without a word, are the one thing a chart
      * must never do.</p>
      */
-    private PriceSeries seriesFor(String name, String title,
+    private PriceSeries seriesFor(String name,
             br.com.jorge.reis.endeavourneo.domain.market.Segment segment) {
         try {
             // A WINDOW of the most recent bars, not the file. See
@@ -643,19 +651,6 @@ public final class MainWindow extends JFrame {
         console.write(Messages.get("console.seriesMissing", SeriesCatalog.folder().toString()));
 
         return new RandomWalkSeries(2_000, 135_000.0);
-    }
-
-    /** @return the title the chart just opened for that series ended up with */
-    private String uniqueTitleOf(String series) {
-        String last = series;
-
-        for (String title : charts.keySet()) {
-            if (title.equals(series) || title.startsWith(series + " (")) {
-                last = title;
-            }
-        }
-
-        return last;
     }
 
     /**
@@ -747,7 +742,7 @@ public final class MainWindow extends JFrame {
         } else {
             // Sliced, or not: SegmentedSeries hands back the base itself when
             // there is no segment, so nothing below has to know which it got.
-            PriceSeries loaded = seriesFor(name, title, segment);
+            PriceSeries loaded = seriesFor(name, segment);
 
             holder.canvas().setSeries(
                     br.com.jorge.reis.endeavourneo.domain.market.SegmentedSeries.of(

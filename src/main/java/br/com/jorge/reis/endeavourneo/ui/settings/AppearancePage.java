@@ -107,7 +107,10 @@ public final class AppearancePage implements SettingsPage {
     public void apply() {
         Theme chosen = selected();
 
-        if (chosen == Theme.remembered() && !buttons.isEmpty()) {
+        // No `&& !buttons.isEmpty()`: the list is filled in the constructor
+        // from Theme.values() and never emptied, so that half was always true
+        // and read as though some case could make it false.
+        if (chosen == Theme.remembered()) {
             // Nothing changed. Reinstalling would still work, but it repaints
             // every window for no reason -- visible as a flicker on Apply.
             return;

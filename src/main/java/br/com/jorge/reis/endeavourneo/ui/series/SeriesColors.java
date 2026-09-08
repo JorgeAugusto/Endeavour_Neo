@@ -98,7 +98,15 @@ public final class SeriesColors {
         return new Color(base.getRed(), base.getGreen(), base.getBlue(), 150);
     }
 
-    /** @param at which segment, from zero; beyond the sixth they repeat */
+    /** @param at which segment, from zero; beyond the sixth they re
+     *
+     * <p><b>Public, unlike its siblings here, and on purpose.</b> {@code free},
+     * {@code rule}, {@code faint}, {@code fresh}, {@code clash} and {@code dark}
+     * are package-visible because only this package asks them. This one is also
+     * asked from {@code ui.chart} -- the header paints a segment chip in the
+     * colour the map gave that segment, and the two have to agree or the same
+     * segment is two colours in one window.</p>
+     */
     public static Color taken(int at) {
         Color base = new Color(TAKEN[Math.floorMod(at, TAKEN.length)]);
 

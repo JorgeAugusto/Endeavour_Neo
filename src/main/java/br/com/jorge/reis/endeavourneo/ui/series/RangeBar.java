@@ -219,7 +219,13 @@ final class RangeBar extends JComponent {
     }
 
     private void move(int wanted) {
-        int before = from * 100000 + to;
+        // The pair, held as a pair. It used to be packed into one int as
+        // `from * 100000 + to`: a multiplier with no origin written anywhere,
+        // which works only while no series reaches 21.474 sessions -- and
+        // overflows in silence past that, where "did anything move" starts
+        // answering wrongly.
+        int wasFrom = from;
+        int wasTo = to;
 
         if (tail) {
             to = Math.max(from, clamp(wanted));
@@ -227,7 +233,7 @@ final class RangeBar extends JComponent {
             from = Math.min(to, clamp(wanted));
         }
 
-        if (before != from * 100000 + to) {
+        if (from != wasFrom || to != wasTo) {
             repaint();
             onChange.run();
         }

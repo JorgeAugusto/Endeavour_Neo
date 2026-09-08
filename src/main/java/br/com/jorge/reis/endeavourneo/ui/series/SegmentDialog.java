@@ -439,7 +439,11 @@ public final class SegmentDialog extends JDialog {
         if (readOnly) {
             // One button, and it closes. A "Cancelar" beside a "Fechar" would
             // ask the reader which of the two does nothing.
-            create.addActionListener(e -> dispose());
+            //
+            // No second listener: the one registered above already calls
+            // dispose() on every path. Adding another was harmless -- dispose
+            // is idempotent -- and it read as though the first did not cover
+            // this case.
             getRootPane().setDefaultButton(create);
             row.add(create);
 
@@ -559,7 +563,11 @@ public final class SegmentDialog extends JDialog {
      */
     private String share(int sessions) {
         if (days.isEmpty()) {
-            return "0,0%";
+            // Through the same format as the line below, not "0,0%" written out:
+            // the comma is the separator of pt_BR, and the bundle's base
+            // language is English. The one case that never went through the
+            // formatter was the one that hard-coded a locale.
+            return String.format("%.1f%%", 0.0);
         }
 
         return String.format("%.1f%%", 100.0 * sessions / days.size());

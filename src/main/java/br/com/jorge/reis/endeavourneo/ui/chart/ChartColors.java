@@ -89,6 +89,29 @@ public final class ChartColors {
 
     private static final Color[] DOWN = {new Color(0xC62828), new Color(0xE05252)};
 
+    /**
+     * @return the ground the chart windows sit on
+     *
+     * <p>A shade darker than the panel behind it, so the windows on top read as
+     * raised -- which is what a desktop is for. Taken from the look and feel
+     * rather than fixed: it used to be {@code Color.DARK_GRAY} written into
+     * MainWindow, so the largest surface in the application was a dark slab
+     * behind pale charts on the light theme. Icons argues against exactly this
+     * a few files over.</p>
+     */
+    public static Color desktop() {
+        Color ground = background();
+        double step = dark() ? 1.12 : 0.88;
+
+        return new Color(clamp(ground.getRed() * step),
+                clamp(ground.getGreen() * step),
+                clamp(ground.getBlue() * step));
+    }
+
+    private static int clamp(double value) {
+        return (int) Math.max(0, Math.min(255, Math.round(value)));
+    }
+
     /** @return the grid colour: present, but never competing with the data */
     public static Color grid() {
         Color base = foreground();
