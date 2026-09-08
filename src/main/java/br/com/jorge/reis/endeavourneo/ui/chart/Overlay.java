@@ -205,7 +205,22 @@ public interface Overlay {
      * @param colour how it is drawn
      * @param stroke thickness and dash
      */
-    record Level(double at, Color colour, java.awt.Stroke stroke) { }
+    record Level(double at, Color colour, java.awt.Stroke stroke) {
+
+        /**
+         * Refuses a level that is not a number.
+         *
+         * <p>{@code at} goes straight into {@code Math.round(y(at))} where the
+         * pane draws it, and rounding NaN gives zero -- a line across the top of
+         * the pane that no indicator asked for, at a price nothing has. Better
+         * to fail where the level is made, with the value in the message.</p>
+         */
+        public Level {
+            if (Double.isNaN(at) || Double.isInfinite(at)) {
+                throw new IllegalArgumentException(at + " is not a level");
+            }
+        }
+    }
 
     /**
      * @return the code of the scale this is computed on, or null to follow the chart

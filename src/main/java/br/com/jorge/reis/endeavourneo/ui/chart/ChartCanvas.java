@@ -862,6 +862,18 @@ public final class ChartCanvas extends JComponent {
         }
 
         replacement.setVisible(existing.isVisible());
+
+        // AND ITS LOOK, not only whether it is shown. What comes back from
+        // the insert dialog is built by the catalog's factory, so it wears
+        // the defaults: the colour, the stroke, the scale of its own and the
+        // interpolation the reader had chosen were all dropped by an edit
+        // that was only meant to change the period.
+        //
+        // Not reachable today -- OverlayLegend.edit sends the moving average
+        // and the bands to their own dialogs, and those two are the only
+        // overlays that answer fitsOnPrice() -- so nothing gets here. It is
+        // the third price indicator that would have paid for it.
+        replacement.applyAppearance(existing.appearance());
         replacement.calculate(series);
         overlays.set(at, replacement);
 

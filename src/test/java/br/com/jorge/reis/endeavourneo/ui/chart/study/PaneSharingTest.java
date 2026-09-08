@@ -17,6 +17,8 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.chart.study;
 
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -575,5 +577,92 @@ class PaneSharingTest {
         public void setVisible(boolean visible) {
             // Always on.
         }
+    }
+/**
+     * A range this cannot read means "does not fit", not an exception.
+     *
+     * <p>The contract of {@code bounds()} says {@code {low, high}} or null, and
+     * nothing enforces it: an implementation answering {@code new double[]{0}}
+     * took the insert dialog down with an index out of bounds, in the middle of
+     * the reader choosing where to put an indicator.</p>
+     */
+    @Test
+    @DisplayName("uma faixa curta demais recusa o painel, em vez de estourar")
+    void ashortBoundsArrayRefusesRatherThanThrows() {
+        assertFalse(StudyStack.fits(
+                List.of(new Fake("study.stochastic", new double[]{0, 100})),
+                new Fake("study.broken", new double[]{0})),
+                "a bounds array of one number was read as a range");
+
+        assertFalse(StudyStack.fits(
+                List.of(new Fake("study.broken", new double[]{0})),
+                new Fake("study.stochastic", new double[]{0, 100})),
+                "and the same on the other side");
+    }
+
+    /**
+     * A line with no value yet keeps its place, so the numbers keep their colours.
+     *
+     * <p>The header pairs the numbers with {@code colours()} by index. Leaving
+     * the NaNs out shifted every number after them onto the colour of the line
+     * before — line 0 not yet warmed up and line 1 finite meant line 1's value
+     * painted in line 0's colour.</p>
+     */
+    @Test
+    @DisplayName("uma linha ainda sem valor guarda o lugar dela na lista")
+    void alineWithNoValueYetKeepsItsPlace() {
+        // Its own overlay, because Fake is a record and cannot be extended:
+        // what this needs is two lines whose warm-ups differ, which is the shape
+        // no indicator in the project has yet -- and the reason the alignment
+        // held by accident.
+        Overlay half = new Overlay() {
+
+            @Override
+            public String nameKey() {
+                return "study.half";
+            }
+
+            @Override
+            public boolean fitsOnPrice() {
+                return false;
+            }
+
+            @Override
+            public List<Integer> parameters() {
+                return List.of(1);
+            }
+
+            @Override
+            public List<Color> colours() {
+                return List.of(Color.RED, Color.BLUE);
+            }
+
+            @Override
+            public double[] valueAt(int bar) {
+                return new double[]{Double.NaN, 42.0};
+            }
+
+            @Override
+            public void calculate(PriceSeries series) {
+                // Nothing to compute.
+            }
+
+            @Override
+            public boolean isVisible() {
+                return true;
+            }
+
+            @Override
+            public void setVisible(boolean visible) {
+                // Always on.
+            }
+        };
+
+        List<String> numbers = StudyPane.numbersOf(half, 0);
+
+        assertEquals(2, numbers.size(),
+                "the line with no value was left out, and the one after it took its colour");
+        assertNull(numbers.get(0));
+        assertNotNull(numbers.get(1));
     }
 }

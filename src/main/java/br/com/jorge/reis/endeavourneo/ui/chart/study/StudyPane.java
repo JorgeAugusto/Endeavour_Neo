@@ -571,7 +571,9 @@ public final class StudyPane extends JComponent {
             int wide = metrics.stringWidth(name) + 10 + SLOT;
 
             for (String each : numbers) {
-                wide += metrics.stringWidth(each) + 8;
+                if (each != null) {
+                    wide += metrics.stringWidth(each) + 8;
+                }
             }
 
             if (i > 0 && at + wide > limit) {
@@ -601,6 +603,13 @@ public final class StudyPane extends JComponent {
             List<Color> colours = study.colours();
 
             for (int n = 0; n < numbers.size(); n++) {
+                if (numbers.get(n) == null) {
+                    // A line with nothing to say yet. Its SLOT is skipped and
+                    // its colour with it, which is what keeps the numbers that
+                    // follow on their own colours.
+                    continue;
+                }
+
                 g.setColor(n < colours.size() ? colours.get(n) : ChartColors.foreground());
                 g.drawString(numbers.get(n), text, baseline);
 
@@ -624,7 +633,7 @@ public final class StudyPane extends JComponent {
      */
     private void paintMore(Graphics2D g, int at, int baseline, int left) {
         g.setColor(blend(1));
-        g.drawString("+" + left, at, baseline);
+        g.drawString(Messages.get("study.more", left), at, baseline);
     }
 
     /** @return the indicator's name as the header says it */
@@ -636,17 +645,32 @@ public final class StudyPane extends JComponent {
         // one on the chart's bars and one on five minutes, are otherwise the
         // same word over two different lines -- and that pairing is a large
         // part of why a pane holds more than one.
-        return scale == null || scale.isBlank() ? name : name + " · " + scale;
+        return scale == null || scale.isBlank()
+                ? name : Messages.get("study.withScale", name, scale);
     }
 
-    /** @return the values under the cursor, as they are written */
-    private static List<String> numbersOf(Overlay study, int bar) {
-        List<String> found = new ArrayList<>();
+    /**
+     * @return one entry per LINE, null where that line has no value yet
+     *
+     * <p>Package-private so the alignment can be checked without painting: the
+     * header pairs this list with {@code colours()} by index, and that pairing
+     * is the whole of what there is to get wrong here.</p>
+     */
+    static List<String> numbersOf(Overlay study, int bar) {
+        double[] values = study.valueAt(bar);
+        List<String> found = new ArrayList<>(values.length);
 
-        for (double each : study.valueAt(bar)) {
-            if (!Double.isNaN(each)) {
-                found.add(format().format(each));
-            }
+        for (double each : values) {
+            // NULL, NOT LEFT OUT. The painting below pairs this list with
+            // colours() by index, and dropping the NaNs shifted every number
+            // after them onto the colour of the line before: line 0 not yet
+            // warmed up and line 1 finite meant line 1's value painted in line
+            // 0's colour. It does not happen today -- in the stochastic the
+            // signal is NaN whenever the main line is, and the bands' middle is
+            // index 1 and only disappears with showMiddle, which leaves colour 1
+            // in the list -- so the alignment holds by accident, and goes on the
+            // first indicator whose lines warm up at different bars.
+            found.add(Double.isNaN(each) ? null : format().format(each));
         }
 
         return found;

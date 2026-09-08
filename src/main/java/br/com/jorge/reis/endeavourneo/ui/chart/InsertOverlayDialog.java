@@ -93,6 +93,22 @@ public final class InsertOverlayDialog extends JDialog {
      */
     public record Placement(Overlay indicator, StudyPane pane, boolean onPrice) {
 
+        /**
+         * Refuses the state that means two things at once.
+         *
+         * <p>A placement on the price line has no pane, and one in a pane is not
+         * on the price line. Holding both, {@code inNewPane()} answers "no",
+         * which is a third meaning nobody wrote -- and the caller reads
+         * {@code onPrice()} first and escapes only because of the order it
+         * happens to test in.</p>
+         */
+        public Placement {
+            if (onPrice && pane != null) {
+                throw new IllegalArgumentException(
+                        "a placement on the price line cannot also name a pane");
+            }
+        }
+
         /** @return whether this asks for a pane of its own */
         public boolean inNewPane() {
             return !onPrice && pane == null;

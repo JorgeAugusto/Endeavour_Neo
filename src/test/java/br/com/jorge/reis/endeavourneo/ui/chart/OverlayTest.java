@@ -21,6 +21,7 @@ import br.com.jorge.reis.endeavourneo.ui.chart.overlay.MovingAverage;
 
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
 
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -260,5 +261,24 @@ class OverlayTest {
                         + average.label());
         assertFalse(average.label().contains(","),
                 "the label still carries List.toString()'s comma: " + average.label());
+    }
+/**
+     * A level that is not a number is refused where it is made.
+     *
+     * <p>{@code at} goes straight into {@code Math.round(y(at))} where the pane
+     * draws it, and rounding NaN gives zero — a line across the top of the pane
+     * that no indicator asked for, at a price nothing has.</p>
+     */
+    @Test
+    @DisplayName("um nivel que nao e numero e recusado, e nao desenhado no topo")
+    void alevelThatIsNotAnumberIsRefused() {
+        assertThrows(IllegalArgumentException.class,
+                () -> new Overlay.Level(Double.NaN, java.awt.Color.RED, null));
+
+        assertThrows(IllegalArgumentException.class,
+                () -> new Overlay.Level(Double.POSITIVE_INFINITY, java.awt.Color.RED, null));
+
+        // And an ordinary level still passes, or the guard refuses everything.
+        assertEquals(20.0, new Overlay.Level(20.0, java.awt.Color.RED, null).at());
     }
 }

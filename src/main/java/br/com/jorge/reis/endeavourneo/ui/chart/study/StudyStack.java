@@ -189,7 +189,17 @@ public final class StudyStack extends JPanel {
             double[] mine = wanted.bounds();
             double[] theirs = each.bounds();
 
-            if (mine == null || theirs == null
+            // LENGTH FIRST. The contract of bounds() says {low, high} or
+            // null, and nothing enforces it: an implementation answering
+            // new double[]{0} took the insert dialog down with an index out of
+            // bounds. Refusing to share a pane is the safe answer for a range
+            // this cannot read.
+            //
+            // And the != on doubles is right here, deliberately: the question is
+            // "a FIXED range, and the same one", and a fixed range is a literal
+            // in the source -- 0.0 and 100.0 in both -- not the result of
+            // arithmetic. An epsilon would be the wrong correction.
+            if (mine == null || theirs == null || mine.length < 2 || theirs.length < 2
                     || mine[0] != theirs[0] || mine[1] != theirs[1]) {
                 return false;
             }

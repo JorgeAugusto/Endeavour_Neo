@@ -17,11 +17,8 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic;
 
-import br.com.jorge.reis.endeavourneo.ui.chart.ChartCanvas;
-import br.com.jorge.reis.endeavourneo.ui.chart.ChartColors;
 import br.com.jorge.reis.endeavourneo.ui.chart.Forms;
 import br.com.jorge.reis.endeavourneo.ui.chart.LinePen;
-import br.com.jorge.reis.endeavourneo.ui.chart.Overlay;
 import br.com.jorge.reis.endeavourneo.ui.chart.PeriodCatalog;
 import br.com.jorge.reis.endeavourneo.ui.chart.PeriodDialog;
 
@@ -30,18 +27,12 @@ import br.com.jorge.reis.endeavourneo.ui.chart.overlay.MovingAverage;
 
 import java.awt.BorderLayout;
 import java.awt.Color;
-import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Graphics;
-import java.awt.Graphics2D;
-import java.awt.RenderingHints;
 import java.awt.Window;
-import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
-import javax.swing.JColorChooser;
 import javax.swing.JComboBox;
-import javax.swing.JComponent;
 import javax.swing.JDialog;
 import javax.swing.JPanel;
 import javax.swing.JSpinner;
