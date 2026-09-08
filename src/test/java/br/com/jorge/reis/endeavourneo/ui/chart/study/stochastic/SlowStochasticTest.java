@@ -290,4 +290,91 @@ class SlowStochasticTest {
         assertEquals(100.0, exponential.valueAt(19)[0], 1e-9);
         assertEquals(100.0, exponential.valueAt(19)[1], 1e-9);
     }
+/**
+     * The fifteen fields, all of them, all different from their defaults.
+     *
+     * <p>The longest positional format in the project was the one nobody
+     * tested: fifteen fields separated by semicolons, and the RSI, the bands
+     * and the moving average each had a round trip while this had none. A field
+     * inserted in the middle reinterprets every layout already saved, and
+     * nothing would have said so.</p>
+     *
+     * <p>Every value set here differs from the default, which is what makes the
+     * test able to fail. A round trip written with defaults passes with
+     * {@code applyAppearance} doing nothing at all -- and the point of this one
+     * is that it did catch something: {@code appearance()} wrote the buy
+     * colour, {@code applyAppearance} forced the sell colour to equal it, and
+     * the second colour was lost on every save. There is one colour now, and
+     * the format kept the field it always had.</p>
+     */
+    @Test
+    @DisplayName("a aparencia da a volta inteira, nos quinze campos")
+    void theAppearanceRoundTrip() {
+        SlowStochastic written = new SlowStochastic(21, 5);
+
+        written.setKind(MovingAverage.Kind.EXPONENTIAL);
+        written.setLine(MovingAverage.Line.DOTTED);
+        written.setColour(new java.awt.Color(0x123456));
+        written.setWidth(2.5f);
+
+        written.setAverageLine(MovingAverage.Line.DASHED);
+        written.setAverageColour(new java.awt.Color(0x654321));
+        written.setAverageWidth(3.5f);
+
+        written.setLevelLine(MovingAverage.Line.SOLID);
+        written.setLevelColour(new java.awt.Color(0xABCDEF));
+        written.setLevelWidth(4.5f);
+
+        written.setShowsAverage(false);
+        written.setShowsLevels(false);
+        written.setBuyLevel(15.0);
+        written.setSellLevel(85.0);
+        written.setOwnPeriod("5m");
+
+        SlowStochastic read = new SlowStochastic(21, 5);
+
+        read.applyAppearance(written.appearance());
+
+        assertEquals(MovingAverage.Kind.EXPONENTIAL, read.kind());
+        assertEquals(MovingAverage.Line.DOTTED, read.line());
+        assertEquals(new java.awt.Color(0x123456), read.colour());
+        assertEquals(2.5f, read.width());
+
+        assertEquals(MovingAverage.Line.DASHED, read.averageLine());
+        assertEquals(new java.awt.Color(0x654321), read.averageColour());
+        assertEquals(3.5f, read.averageWidth());
+
+        assertEquals(MovingAverage.Line.SOLID, read.levelLine());
+        assertEquals(new java.awt.Color(0xABCDEF), read.levelColour());
+        assertEquals(4.5f, read.levelWidth());
+
+        assertFalse(read.showsAverage(), "the average came back switched on");
+        assertFalse(read.showsLevels(), "the levels came back switched on");
+        assertEquals(15.0, read.buyLevel());
+        assertEquals(85.0, read.sellLevel());
+        assertEquals("5m", read.ownPeriod(), "the scale is what tells two of them apart");
+    }
+
+    /**
+     * And the two levels wear the one colour, on the screen.
+     *
+     * <p>The round trip above would still pass with the drawing reading some
+     * other field, so this asks the thing that is actually drawn: both levels
+     * come out of {@code levels()} in the colour that was set, and the sell
+     * level is the one that used to be lost.</p>
+     */
+    @Test
+    @DisplayName("os dois niveis saem na cor que foi escolhida")
+    void bothLevelsWearTheChosenColour() {
+        SlowStochastic study = new SlowStochastic();
+
+        study.setLevelColour(new java.awt.Color(0xABCDEF));
+
+        assertEquals(2, study.levels().size(), "a stochastic draws two levels");
+
+        for (br.com.jorge.reis.endeavourneo.ui.chart.Overlay.Level each : study.levels()) {
+            assertEquals(new java.awt.Color(0xABCDEF), each.colour(),
+                    "the level at " + each.at() + " is drawn in another colour");
+        }
+    }
 }

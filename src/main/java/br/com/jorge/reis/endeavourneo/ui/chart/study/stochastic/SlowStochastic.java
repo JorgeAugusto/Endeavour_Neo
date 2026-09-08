@@ -89,9 +89,22 @@ public final class SlowStochastic implements Overlay {
 
     private Color averageColour = new Color(0x3FA85C);
 
-    private Color buyColour = new Color(0x7C8B99);
-
-    private Color sellColour = new Color(0x7C8B99);
+    /**
+     * ONE colour for the two levels, and the reason it is one.
+     *
+     * <p>There used to be two fields, {@code buyColour} and {@code sellColour},
+     * each with a public setter -- and only one of them was ever written down:
+     * {@code appearance()} wrote the buy colour and {@code applyAppearance} then
+     * forced the sell colour to match it. Any value a caller put in the second
+     * one vanished the first time the workspace was saved, in silence.</p>
+     *
+     * <p>The dialog had already decided this and said so: the two levels "are a
+     * pair -- twenty and eighty say the same kind of thing at opposite ends --
+     * and two colours for them would be two more decisions for no more
+     * meaning". So the decision is now in the type instead of being made twice
+     * a line apart, and the format keeps the field it always had.</p>
+     */
+    private Color levelColour = new Color(0x7C8B99);
 
     private MovingAverage.Line line = MovingAverage.Line.SOLID;
 
@@ -207,20 +220,12 @@ public final class SlowStochastic implements Overlay {
         averageColour = value == null ? averageColour : value;
     }
 
-    public Color buyColour() {
-        return buyColour;
+    public Color levelColour() {
+        return levelColour;
     }
 
-    public void setBuyColour(Color value) {
-        buyColour = value == null ? buyColour : value;
-    }
-
-    public Color sellColour() {
-        return sellColour;
-    }
-
-    public void setSellColour(Color value) {
-        sellColour = value == null ? sellColour : value;
+    public void setLevelColour(Color value) {
+        levelColour = value == null ? levelColour : value;
     }
 
     public MovingAverage.Line line() {
@@ -328,7 +333,8 @@ public final class SlowStochastic implements Overlay {
 
         Stroke drawn = levelLine.stroke(levelWidth);
 
-        return List.of(new Level(buy, buyColour, drawn), new Level(sell, sellColour, drawn));
+        return List.of(new Level(buy, levelColour, drawn),
+                new Level(sell, levelColour, drawn));
     }
 
     @Override
@@ -377,7 +383,7 @@ public final class SlowStochastic implements Overlay {
     public String appearance() {
         return kind + ";" + line + ";" + hex(colour) + ";" + width
                 + ";" + averageLine + ";" + hex(averageColour) + ";" + averageWidth
-                + ";" + levelLine + ";" + hex(buyColour) + ";" + levelWidth
+                + ";" + levelLine + ";" + hex(levelColour) + ";" + levelWidth
                 + ";" + showAverage + ";" + showLevels + ";" + buy + ";" + sell
                 + ";" + (ownPeriod == null ? "chart" : ownPeriod);
     }
@@ -405,8 +411,7 @@ public final class SlowStochastic implements Overlay {
 
         setLevelLine(readEnum(MovingAverage.Line.class, at(fields, 7),
                 MovingAverage.Line.DASHED));
-        setBuyColour(readColour(at(fields, 8), buyColour));
-        setSellColour(buyColour);
+        setLevelColour(readColour(at(fields, 8), levelColour));
         setLevelWidth(readFloat(at(fields, 9), levelWidth));
 
         setShowsAverage(readBoolean(at(fields, 10), showAverage));

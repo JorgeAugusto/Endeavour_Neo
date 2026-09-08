@@ -126,7 +126,7 @@ public final class StochasticDialog extends JDialog {
         main = new LinePen(this, study.line(), study.colour(), study.width());
         signal = new LinePen(this, study.averageLine(), study.averageColour(),
                 study.averageWidth());
-        levels = new LinePen(this, study.levelLine(), study.buyColour(),
+        levels = new LinePen(this, study.levelLine(), study.levelColour(),
                 study.levelWidth());
 
         JTabbedPane tabs = new JTabbedPane();
@@ -286,8 +286,8 @@ public final class StochasticDialog extends JDialog {
 
         // One colour for both levels. They are a pair -- twenty and eighty say
         // the same kind of thing at opposite ends -- and two colours for them
-        // would be two more decisions for no more meaning.
-        study.setBuyColour(levels.colour());
-        study.setSellColour(levels.colour());
+        // would be two more decisions for no more meaning. This used to say it
+        // in two calls, into two fields, of which only one was ever saved.
+        study.setLevelColour(levels.colour());
     }
 }

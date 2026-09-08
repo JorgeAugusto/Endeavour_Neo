@@ -158,6 +158,18 @@ public final class ReplayPanel extends JPanel {
      */
     private boolean building;
 
+    /**
+     * Why the last build gave no session, or null when none failed.
+     *
+     * <p>The exception used to be swallowed whole: no console line, no message,
+     * no trace. The reader chose a date, pressed Request, watched the progress
+     * bar for four seconds and saw the transport come back exactly as it was --
+     * as though the button did nothing. The comment there defended not showing
+     * prices that came from nowhere, which is right, and concluded from it that
+     * nothing should be said, which does not follow.</p>
+     */
+    private transient String failure;
+
     public ReplayPanel() {
         setLayout(new BorderLayout(0, 8));
         setBorder(BorderFactory.createEmptyBorder(10, 12, 12, 12));
@@ -667,6 +679,7 @@ public final class ReplayPanel extends JPanel {
         // The controls stay frozen and the clock says so, which is the same
         // state the first session's ticks already put the transport in.
         building = true;
+        forget();
         refresh();
 
         LocalDate first = day;
@@ -716,13 +729,52 @@ public final class ReplayPanel extends JPanel {
                 } catch (java.util.concurrent.ExecutionException e) {
                     // A session that will not build leaves the transport with
                     // none, which it already knows how to show. Better than a
-                    // window of prices that came from nowhere.
+                    // window of prices that came from nowhere -- and now it
+                    // says so as well, which is a different question.
                     session = null;
+
+                    buildFailed(e.getCause() == null ? e : e.getCause());
                 }
 
                 refresh();
             }
         }.execute();
+    }
+
+    /**
+     * Drops the reason the last build gave, because a new one is starting.
+     *
+     * <p>A reason that outlives the attempt it belongs to is worse than none:
+     * the transport would go on explaining a failure the reader has already
+     * moved past. Its own method so that clearing it is a step with a name,
+     * and one a test can run.</p>
+     */
+    void forget() {
+        failure = null;
+    }
+
+    /**
+     * Says a build failed, in the transport and in the console.
+     *
+     * @param cause what came out of the worker
+     *
+     * <p>Package-private so a test can run this exact step, for the same reason
+     * {@code adopt} is: driving a build that fails would mean a feed built to
+     * fail, and what is being checked is what the panel does with the failure,
+     * not how it arrived.</p>
+     *
+     * <p><b>Standard error, not a console of its own.</b> {@code Console}
+     * redirects {@code System.err} into the application console, which is how
+     * every {@code printStackTrace} in this program already reaches the reader.
+     * Asking {@code MainWindow} for its console would make the replay window
+     * depend on the shell to report an error, and the replay window is opened
+     * from more than one place.</p>
+     */
+    void buildFailed(Throwable cause) {
+        failure = String.valueOf(cause.getMessage() == null
+                ? cause.getClass().getSimpleName() : cause.getMessage());
+
+        System.err.println(Messages.get("console.replayFailed", failure));
     }
 
     /**
@@ -745,6 +797,16 @@ public final class ReplayPanel extends JPanel {
         fresh.watch(refresh);
     }
 
+    /** @return what the transport is showing where the time goes */
+    String clockShows() {
+        return clock.getText();
+    }
+
+    /** @return the reason under the clock, or null when there is none */
+    String clockReason() {
+        return clock.getToolTipText();
+    }
+
     /** @return the speed the transport is showing right now */
     int chosenSpeed() {
         Object selected = speed.getSelectedItem();
@@ -758,7 +820,16 @@ public final class ReplayPanel extends JPanel {
         }
     }
 
-    private void refresh() {
+    /**
+     * Puts on the transport whatever state the panel is in.
+     *
+     * <p>Package-private for the same reason {@code adopt} and
+     * {@code showLoading} are: a test that wanted to see what a failed build
+     * looks like would otherwise have to build a feed that fails, and what is
+     * being checked is what the transport says, not how the failure got
+     * here.</p>
+     */
+    void refresh() {
         boolean ready = session != null;
 
         if (building) {
@@ -829,6 +900,19 @@ public final class ReplayPanel extends JPanel {
 
             return;
         }
+
+        // BEFORE the "--:--:--" of the idle transport, and only while there is
+        // no session: a build that failed leaves the panel looking idle, and
+        // idle is exactly the state the reader started from.
+        if (!ready && failure != null) {
+            clock.setText(Messages.get("replay.failed"));
+            clock.setToolTipText(failure);
+            ends.setText("");
+
+            return;
+        }
+
+        clock.setToolTipText(null);
 
         clock.setText(ready ? session.clockText() : "--:--:--");
         ends.setText(ready ? session.endText() : "");
