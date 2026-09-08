@@ -653,8 +653,15 @@ Swing ou do JobService — e não sobre o produto.
 | **B2-18** | Os tijolos passam a ser acumulados em vetores primitivos | `a987eda` |
 | **B1-18** | O recorte e a junção carregam o tijolo cinza e a contagem | `4c4eb95` |
 
-**18 BAIXA fechadas.** Suíte em **645**. As áreas **B1** e **B2** estão fechadas
-por inteiro — ALTA, MÉDIA e BAIXA.
+| **B4-18,20,23,24,28,31** | Seis que mudam o que aparece na tela | `026d883` |
+| **B4-16,17,19,21,27,30** | Código morto, um teto sem origem, três comentários errados | `a5eef09` |
+| **B4-15, B4-29** | A faixa declarada vale nos três caminhos | `6945e54` |
+| **B4-22, B4-25, B4-26** | Três duplicações, e a ambiguidade de nome | `3efcc2e` |
+| **B5-11..17** | O rótulo ganha a forma que o contrato declara | `c02d0dc` |
+| **B6-10,11,12,15** | A cor de erro passa a seguir o tema | `5b971b6` |
+
+**49 BAIXA fechadas.** Suíte em **658**. As áreas **B1**, **B2**, **B3**, **B4**, **B5** e **B6**
+estão fechadas por inteiro — ALTA, MÉDIA e BAIXA.
 
 ### O que a fase 5 já ensinou
 
@@ -669,3 +676,20 @@ licença, e o commit diz isso.
 interfaces dos embrulhos deixou os `@Override` órfãos e o build parou — o que
 não prova nada. A quebra que vale é a que reproduz o estado anterior inteiro:
 sem as interfaces E sem os métodos.
+
+### O que a fase 5 ensinou depois disso
+
+**Um teste que ja existia pegou a minha correcao obvia.** No B3-12 escrevi
+`isLeftMouseButton`, como os três irmãos usam — e essa lê a máscara de botões
+*apertados*, que numa soltura já não tem o que acabou de subir. O botão
+esquerdo parou de arrastar e o `therightButtonDoesNotPan` caiu.
+
+**Uma flaky que eu plantei ficou escondida por vários commits.** O
+`RulerModeTest` ganhou um segundo `@AfterEach` no B8b-10, e dois não têm ordem
+entre si: o modo régua, que é estático do processo, vazava ligado. Falhava na
+suíte inteira e passava sozinho. Corrigido dos dois lados.
+
+**E dois parágrafos que eu mesmo escrevi estavam errados**, os dois conferidos
+no código antes de comitar: o determinismo do `RandomWalkSeries` (a semente é
+fixa; o que varia é o instante) e a diferença entre os dois readouts (não é só
+a âncora — um tem título).
