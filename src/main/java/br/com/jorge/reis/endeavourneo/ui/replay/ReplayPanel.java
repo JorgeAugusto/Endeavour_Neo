@@ -18,6 +18,7 @@
 package br.com.jorge.reis.endeavourneo.ui.replay;
 
 import br.com.jorge.reis.endeavourneo.platform.Messages;
+import br.com.jorge.reis.endeavourneo.ui.chart.ChartColors;
 
 import java.awt.BorderLayout;
 import java.awt.Component;
@@ -578,6 +579,35 @@ public final class ReplayPanel extends JPanel {
         return to.isAfter(furthest) ? furthest : to;
     }
 
+    /**
+     * @return the ground a field takes while what is typed in it cannot be read
+     *
+     * <p><b>Mixed with the theme, and it used to be a fixed pale pink.</b> The
+     * undo half of the same pair already reads {@code
+     * UIManager.getColor("TextField.background")} -- so in a dark theme the
+     * field turned into a light plate and then went back to being dark. A text
+     * field is exactly the thing the look and feel knows how to paint.</p>
+     *
+     * <p>Compare HANDLE_GROUND above, which IS fixed on purpose and says why.
+     * Here there was no reason given, and the case is the opposite one.</p>
+     */
+    private static java.awt.Color wrongGround() {
+        java.awt.Color ground = javax.swing.UIManager.getColor("TextField.background");
+        java.awt.Color warn = ChartColors.down();
+
+        if (ground == null) {
+            return warn;
+        }
+
+        // A fifth of the way towards the colour a fall is drawn in: enough to
+        // read as wrong at a glance, not enough to stop the text being legible
+        // in either theme.
+        return new java.awt.Color(
+                (ground.getRed() * 4 + warn.getRed()) / 5,
+                (ground.getGreen() * 4 + warn.getGreen()) / 5,
+                (ground.getBlue() * 4 + warn.getBlue()) / 5);
+    }
+
     private void requestDay() {
         LocalDate day = date.date();
         LocalDate last = until.date();
@@ -586,7 +616,7 @@ public final class ReplayPanel extends JPanel {
             // Said where the mistake is rather than in a dialog. A range that
             // ends before it starts is a typo, not an error worth a window.
             until.field().setToolTipText(Messages.get("replay.badRange"));
-            until.field().setBackground(new java.awt.Color(255, 235, 230));
+            until.field().setBackground(wrongGround());
 
             return;
         }
@@ -598,7 +628,7 @@ public final class ReplayPanel extends JPanel {
             // Said in place rather than in a dialog: the field is right there,
             // and a dialog to report a typo in a date is a dialog too many.
             date.field().setToolTipText(Messages.get("replay.badDate"));
-            date.field().setBackground(new java.awt.Color(255, 235, 230));
+            date.field().setBackground(wrongGround());
 
             return;
         }

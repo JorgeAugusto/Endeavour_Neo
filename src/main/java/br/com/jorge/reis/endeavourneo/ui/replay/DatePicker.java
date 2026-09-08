@@ -112,7 +112,12 @@ public final class DatePicker extends JPanel {
     }
 
     public void setDate(LocalDate date) {
-        field.setText(date.format(TYPED));
+        // Today for null, which is what the constructor already decided this
+        // class's answer to null is -- and the public method did not apply it,
+        // so it threw. keepInWindow returns null while somebody is still
+        // typing; the one caller happens to guard both arguments, which is the
+        // kind of thing that stops being true.
+        field.setText((date == null ? LocalDate.now() : date).format(TYPED));
     }
 
     /**

@@ -321,4 +321,19 @@ class ReplayRangeTest {
             weekend.stop();
         }
     }
+    @Test
+    @DisplayName("setDate(null) responde hoje, como o construtor ja decidia")
+    void settingaNullDateAnswersToday() throws Exception {
+        // The constructor decides this class's answer to null -- `initial ==
+        // null ? LocalDate.now() : initial` -- and the public setter did not
+        // apply it, so it threw. keepInWindow returns null while somebody is
+        // still typing; the one caller happens to guard both arguments, which
+        // is the kind of thing that stops being true.
+        DatePicker picker = new DatePicker(LocalDate.of(2026, 9, 2));
+
+        javax.swing.SwingUtilities.invokeAndWait(() -> picker.setDate(null));
+
+        assertEquals(LocalDate.now(), picker.date(),
+                "a null date did not fall back to today");
+    }
 }

@@ -128,11 +128,6 @@ public final class ReplaySession {
     private static final DateTimeFormatter DAY_AND_CLOCK =
             DateTimeFormatter.ofPattern("dd/MM HH:mm:ss");
 
-    /** The trading day this stands in for, until a real loader exists. */
-    private static final LocalTime OPEN = LocalTime.of(9, 0);
-
-    private static final int MINUTES = 565;
-
     private final String instrument;
 
     /**
@@ -581,8 +576,16 @@ public final class ReplaySession {
      * feed answers no even on the twenty days that were exported: it plays the
      * candle series, and the path inside each bar is the invented walk. One
      * rule, so a reader never has to remember which minutes came from where.</p>
+     *
+     * <p><b>Package-visible, because only tests ask.</b> It was public, and
+     * `grep` in src/main found the declaration and nothing else: a rule that
+     * exists in the code and is observable only from a test. On screen the
+     * question is answered by {@link #feedLabel}, which names the export. If
+     * the transport ever wants to say out loud where the animation comes from,
+     * this is what it should ask -- and then it becomes public again, with a
+     * caller.</p>
      */
-    public boolean isRecorded() {
+    boolean isRecorded() {
         return animation instanceof RecordedTicks && ticks.has(date);
     }
 
