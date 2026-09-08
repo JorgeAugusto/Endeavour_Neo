@@ -207,4 +207,74 @@ class MarketFileTest {
         assertEquals(0, MarketFile.read(file).size());
         assertTrue(MarketFile.isSeries(file));
     }
+    @Test
+    @DisplayName("uma gravacao que falha no meio nao destroi a base que estava la")
+    void afailedWriteLeavesThePreviousBaseAlone(@TempDir Path folder) throws IOException {
+        // This opened the real file with TRUNCATE_EXISTING and wrote into it, so
+        // the previous base was destroyed before anything knew whether the new
+        // one could be written at all. A disk that filled up halfway through six
+        // years of minutes left a header, some bars, and nothing that reads --
+        // and the file that was already there is the one thing that cannot be
+        // recovered.
+        Path file = folder.resolve("win-1m.bin");
+
+        MarketFile.write(file, breaksAt(4, 4), 1);
+
+        long was = Files.size(file);
+
+        assertTrue(MarketFile.isSeries(file), "the fixture did not write a readable base");
+
+        // A series that throws partway through writing, which is what a disk
+        // filling up looks like from here.
+        assertThrows(IllegalStateException.class,
+                () -> MarketFile.write(file, breaksAt(10, 6), 1),
+                "the fixture wrote without failing, so nothing below is being tested");
+
+        assertTrue(MarketFile.isSeries(file),
+                "the base that was already there was destroyed by a write that failed");
+        assertEquals(was, Files.size(file), "the previous base changed size");
+        assertFalse(Files.exists(folder.resolve("win-1m.bin.parcial")),
+                "the half-written file was left behind, where something can mistake it "
+                        + "for a base");
+    }
+
+    /** Bars that answer normally until the one given, and then throw. */
+    private static PriceSeries breaksAt(int bars, int fails) {
+        return new PriceSeries() {
+
+            @Override
+            public int size() {
+                return bars;
+            }
+
+            @Override
+            public long timeAt(int index) {
+                if (index >= fails) {
+                    throw new IllegalStateException("no space left on device");
+                }
+
+                return index * 60_000L;
+            }
+
+            @Override
+            public double openAt(int index) {
+                return 100;
+            }
+
+            @Override
+            public double highAt(int index) {
+                return 105;
+            }
+
+            @Override
+            public double lowAt(int index) {
+                return 95;
+            }
+
+            @Override
+            public double closeAt(int index) {
+                return 102;
+            }
+        };
+    }
 }

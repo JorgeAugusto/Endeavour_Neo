@@ -223,11 +223,42 @@ public final class MarketFile {
      * <p>Here so a base built from two others can be saved and read back by
      * both programs. Nothing else in this application writes a base: the raw
      * exports are produced elsewhere and this only ever reads them.</p>
+     *
+     * <p><b>Written beside it first, then moved over.</b> This opened the real
+     * file with TRUNCATE_EXISTING -- so the previous base was destroyed before
+     * anything knew whether the new one could be written at all. A disk that
+     * filled up halfway through six years of minutes left a header, some bars,
+     * and nothing that reads; and the file that was already there is the one
+     * thing that cannot be recovered.</p>
+     *
+     * <p>The same discipline {@code Settings.save} states, for the same reason:
+     * a partial file must never be able to take the place of a whole one.</p>
      */
     public static void write(Path file, PriceSeries series, int minutes) throws IOException {
         Files.createDirectories(file.toAbsolutePath().getParent());
 
-        try (FileChannel channel = FileChannel.open(file, StandardOpenOption.CREATE,
+        Path working = file.resolveSibling(file.getFileName() + ".parcial");
+
+        // IN A FINALLY over the whole thing, and not in a catch of IOException:
+        // the series being written is somebody else's object and may throw
+        // anything at all. However this method leaves, the half-written file
+        // must not stay -- something would eventually mistake it for a base.
+        boolean moved = false;
+
+        try {
+            fill(working, series, minutes);
+            replace(working, file);
+
+            moved = true;
+        } finally {
+            if (!moved) {
+                Files.deleteIfExists(working);
+            }
+        }
+    }
+
+    private static void fill(Path working, PriceSeries series, int minutes) throws IOException {
+        try (FileChannel channel = FileChannel.open(working, StandardOpenOption.CREATE,
                 StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING)) {
 
             ByteBuffer head = ByteBuffer.allocate(HEADER_BYTES).order(ByteOrder.BIG_ENDIAN);
@@ -260,6 +291,19 @@ public final class MarketFile {
 
             buffer.flip();
             drain(channel, buffer);
+        }
+    }
+
+    private static void replace(Path working, Path file) throws IOException {
+        try {
+            Files.move(working, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+        } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+            // Some network filesystems cannot promise it. A plain replace is
+            // still better than having written into the real file from the
+            // start: the window where neither exists is one move wide instead
+            // of one series wide.
+            Files.move(working, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
         }
     }
 
