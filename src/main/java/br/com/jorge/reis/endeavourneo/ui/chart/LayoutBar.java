@@ -448,12 +448,31 @@ public final class LayoutBar extends JComponent {
             return;
         }
 
-        layouts.set(index, layouts.get(index).renamedTo(name.trim()));
+        // MADE UNIQUE, the same way duplicating already does it. The
+        // selection is remembered by NAME -- ChartLayouts.remember writes the
+        // name, not the slot -- so two tabs called the same thing leave the
+        // chart pointing at whichever the lookup finds first, and renaming
+        // one of them could silently move the reader to the other.
+        //
+        // copyName with the identity phrase: the typed name if it is free,
+        // and "name (2)" if it is not. Duplicating takes exactly this care
+        // and renaming did not.
+        List<String> others = new ArrayList<>();
+
+        for (int at = 0; at < layouts.size(); at++) {
+            if (at != index) {
+                others.add(layouts.get(at).name());
+            }
+        }
+
+        String unique = ChartLayouts.copyName(others, name.trim(), of -> of);
+
+        layouts.set(index, layouts.get(index).renamedTo(unique));
 
         ChartLayouts.save(layouts);
 
         if (index == selected) {
-            ChartLayouts.remember(chartKey, name.trim());
+            ChartLayouts.remember(chartKey, unique);
         }
 
         rebuild();

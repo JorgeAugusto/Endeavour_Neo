@@ -31,9 +31,16 @@ import javax.swing.JFrame;
  * inside the main window would make that drag cross a boundary the window
  * manager does not let it cross.</p>
  *
- * <p>It is hidden rather than disposed when closed, so the session survives:
- * closing the transport by mistake in the middle of a replay would otherwise
- * throw away the day and the position in it.</p>
+ * <p><b>Hidden rather than disposed, and the session ends anyway.</b> The
+ * window object survives so reopening the transport is instant and keeps
+ * where it was on screen; what does NOT survive is the replay. Closing it
+ * releases the session and gives every chart back its own data -- the
+ * listener below says why, and this paragraph used to say the opposite: that
+ * the session survived a close.</p>
+ *
+ * <p>Which is the right behaviour, and worth stating rather than leaving to
+ * be discovered: charts left frozen on a day that stopped playing, under a
+ * title still claiming a replay, would each need closing too.</p>
  *
  * <p><b>Above everything, and not resizable.</b> It is a transport, not a view:
  * there is nothing inside it that more room would show more of, and a maximised

@@ -156,6 +156,14 @@ final class ArraySeries implements PriceSeries, Untraded, Counted {
 
     @Override
     public double volumeAt(int index) {
-        return volumes[index];
+        // NaN when there is no volume array at all, the way untradedAt and
+        // tradesAt beside it already answer for theirs. The three are
+        // optional in the same way and this one threw instead -- the
+        // constructor accepts a null volumes and every other reader of the
+        // three handles it, so the one that did not was the odd one.
+        //
+        // NaN and not zero: the contract of PriceSeries.volumeAt says NaN is
+        // "this series has no volume", and zero would be a measurement.
+        return volumes == null ? Double.NaN : volumes[index];
     }
 }

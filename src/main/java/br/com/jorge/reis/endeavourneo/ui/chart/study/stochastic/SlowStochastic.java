@@ -521,6 +521,15 @@ public final class SlowStochastic implements Overlay {
         // OwnScale, where the rule and the reason live.
         OwnScale.map(series, coarse, coarseSlow, slow);
         OwnScale.map(series, coarse, coarseSignal, signal);
+
+        // NO SMOOTHING, unlike the average and the RSI, and it is a decision
+        // rather than an omission. Those two draw ONE line, and sloping it
+        // between closed points changes nothing about what it says. This
+        // draws two whose CROSSING is the signal -- sloping them would move
+        // where they cross, to an instant the coarse scale never reached.
+        //
+        // So there is no "interpolate" setting here either: a switch that
+        // must never be turned on is a switch that will be.
     }
 
     private void computeOver(PriceSeries bars, double[] intoSlow, double[] intoSignal) {
