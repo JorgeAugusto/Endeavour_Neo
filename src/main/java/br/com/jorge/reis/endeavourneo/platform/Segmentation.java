@@ -104,17 +104,32 @@ public final class Segmentation {
         store = null;
     }
 
-    /** @return the segments of that series, in the order they were saved */
+    /**
+     * @return the segments of that series, in the order they were saved
+     *
+     * <p><b>Over the indices that are THERE, not counting up from zero until
+     * something is missing.</b> The counting version stopped at the first index
+     * with no name or no date and returned what it had -- so a hand-edited file
+     * missing one line threw away every segment written below it, in silence.
+     * That is precisely the "losing all of them" the catch below says is not
+     * what the reader would have chosen, arrived at by the other door: deleting
+     * a line is easier than typing an invalid date.</p>
+     *
+     * <p>And hand-editing is not an edge case here. It is the declared reason
+     * this is stored as plain text.</p>
+     */
     public static List<Segment> of(String series) {
         Settings workspace = store();
         List<Segment> found = new ArrayList<>();
 
-        for (int at = 0; ; at++) {
+        for (int at : indicesOf(workspace, series)) {
             String name = workspace.get(keyOf(series, at, "name"), null);
             String from = workspace.get(keyOf(series, at, "from"), null);
 
             if (name == null || from == null) {
-                return found;
+                // Half an entry. The same treatment as a bad date, for the same
+                // reason -- one segment lost, and not the rest of them with it.
+                continue;
             }
 
             try {
@@ -130,6 +145,42 @@ public final class Segmentation {
                 continue;
             }
         }
+
+        return found;
+    }
+
+    /**
+     * @param workspace where the segments are written
+     * @param series the series being read
+     * @return the indices that have at least one key, smallest first
+     *
+     * <p>Read off the keys rather than assumed contiguous. {@code set} does
+     * write them contiguously, and a file only this program has touched will
+     * always look that way; the whole point is the file somebody has
+     * touched.</p>
+     */
+    private static java.util.SortedSet<Integer> indicesOf(Settings workspace, String series) {
+        String prefix = PREFIX + series + ".";
+        java.util.SortedSet<Integer> found = new java.util.TreeSet<>();
+
+        for (String key : workspace.keysStartingWith(prefix)) {
+            String rest = key.substring(prefix.length());
+            int dot = rest.indexOf('.');
+
+            if (dot <= 0) {
+                continue;
+            }
+
+            try {
+                found.add(Integer.parseInt(rest.substring(0, dot)));
+            } catch (NumberFormatException e) {
+                // Not an index at all. Another key that happens to live under
+                // this series's prefix is somebody else's business, not a fault.
+                continue;
+            }
+        }
+
+        return found;
     }
 
     /**

@@ -20,6 +20,7 @@ package br.com.jorge.reis.endeavourneo.platform;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -34,6 +35,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -44,9 +46,28 @@ import org.junit.jupiter.api.io.TempDir;
 @DisplayName("SeriesCatalog")
 class SeriesCatalogTest {
 
+    /**
+     * Settings of this file's own, not the ones on the machine running it.
+     *
+     * <p>There was a seam for the FOLDER and none for the settings, so what the
+     * tree answers -- which bases are retired, what a market is called, what
+     * scale a name means -- was read from the settings of whoever ran the suite.
+     * A reader who un-retires win-1m through the interface breaks
+     * aRetiredBaseIsHiddenNotDeleted; one who names a market by hand breaks
+     * aScaleIsNotAMarket. The failure then reads as "the catalog broke".</p>
+     */
+    @TempDir
+    Path settings;
+
+    @BeforeEach
+    void useSettingsOfMyOwn() {
+        SeriesCatalog.useSettingsForTest(settings.resolve("settings.properties"));
+    }
+
     @AfterEach
     void stopPointingAtTheTemporaryFolder() {
         SeriesCatalog.useFolderForTest(null);
+        SeriesCatalog.stopUsingTestSettings();
         SeriesCatalog.forget();
     }
 
@@ -58,30 +79,25 @@ class SeriesCatalogTest {
         // one -- and nothing said so, because a market with no stated name falls
         // back to a guess that usually looks reasonable. The tree they were
         // trying to improve came out worse than before they touched it.
-        Settings settings = Settings.settings();
-        String was = settings.get("data.groups", null);
+        // THE CATALOG'S OWN STORE, which this file points at a temporary
+        // file. Written through Settings.settings() it went into the settings of
+        // whoever runs the suite -- and had to be put back afterwards by hand,
+        // which only works while every test passes.
+        Settings settings = SeriesCatalog.store();
 
-        try {
-            settings.put("data.groups", "ouro-1m=ouro");
+        settings.put("data.groups", "ouro-1m=ouro");
 
-            assertEquals("ouro", SeriesCatalog.groupOf("ouro-1m"),
-                    "what the reader wrote was not read at all");
-            assertEquals("win", SeriesCatalog.groupOf("winfull-1m"),
-                    "naming one market threw away the built-in name of every other one");
+        assertEquals("ouro", SeriesCatalog.groupOf("ouro-1m"),
+                "what the reader wrote was not read at all");
+        assertEquals("win", SeriesCatalog.groupOf("winfull-1m"),
+                "naming one market threw away the built-in name of every other one");
 
-            // And what the reader writes WINS where the two meet, which is the
-            // other thing this file is for.
-            settings.put("data.groups", "winfull-1m=outro");
+        // And what the reader writes WINS where the two meet, which is the
+        // other thing this file is for.
+        settings.put("data.groups", "winfull-1m=outro");
 
-            assertEquals("outro", SeriesCatalog.groupOf("winfull-1m"),
-                    "the built-in value overrode the reader's own");
-        } finally {
-            if (was == null) {
-                settings.remove("data.groups");
-            } else {
-                settings.put("data.groups", was);
-            }
-        }
+        assertEquals("outro", SeriesCatalog.groupOf("winfull-1m"),
+                "the built-in value overrode the reader's own");
     }
 
     /** A base of one bar, written the way the first Endeavour writes it. */
@@ -592,5 +608,20 @@ class SeriesCatalogTest {
         PriceSeries again = SeriesCatalog.open("winfut-1m").orElseThrow();
 
         assertSame(first, again, "the base was read a second time for nothing");
+    }
+/**
+     * The seam is armed, and this is what says so.
+     *
+     * <p>Every other test here would pass just as well reading the settings of
+     * whoever runs the suite -- and would then fail on the day that reader
+     * un-retires a base or names a market by hand, as "the catalog broke". The
+     * property worth asserting is that this file is not touching them at
+     * all.</p>
+     */
+    @Test
+    @DisplayName("o catalogo le as configuracoes DESTE teste, nao as da maquina")
+    void thecatalogReadsThisTestsSettings() {
+        assertNotSame(Settings.settings(), SeriesCatalog.store(),
+                "the suite is reading, and writing, the settings of whoever runs it");
     }
 }

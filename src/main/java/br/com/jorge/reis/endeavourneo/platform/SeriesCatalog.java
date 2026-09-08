@@ -103,6 +103,29 @@ public final class SeriesCatalog {
     private static final Map<String, Held> LOADED = new ConcurrentHashMap<>();
 
     /**
+     * Where the answers about the tree are read from.
+     *
+     * <p>The reader's settings, unless a test says otherwise. There was a seam
+     * for the FOLDER and none for the settings, so what the tree answers --
+     * which bases are retired, what a market is called, what scale a name means
+     * -- was read from {@code ~/.endeavourneo/settings.properties} on whatever
+     * machine ran the suite. A reader who un-retires {@code win-1m} through the
+     * interface breaks a test in this file; so does one who names a market by
+     * hand. The failure then reads as "the catalog broke", which it did
+     * not.</p>
+     *
+     * <p>The defaults do not save it: {@code get(key, fallback)} uses the
+     * fallback only when the key is ABSENT, and these keys exist the moment the
+     * reader touches the settings page once.</p>
+     *
+     * <p>Volatile, and the same shape {@link
+     * br.com.jorge.reis.endeavourneo.platform.Segmentation} already uses: a test
+     * points it somewhere temporary from its own thread and the tree reads it
+     * from the interface thread.</p>
+     */
+    private static volatile Settings store;
+
+    /**
      * One lock per name, so the same series is not read twice at once.
      *
      * <p>Not {@code computeIfAbsent} on {@code LOADED} itself: that would hold
@@ -168,7 +191,7 @@ public final class SeriesCatalog {
             return known;
         }
 
-        String saved = Settings.settings().get(KEY, "");
+        String saved = store().get(KEY, "");
         Path answer = null;
 
         if (!saved.isBlank()) {
@@ -222,11 +245,42 @@ public final class SeriesCatalog {
     public static void setFolder(Path folder) {
         Path absolute = folder.toAbsolutePath();
 
-        Settings.settings().put(KEY, absolute.toString());
+        store().put(KEY, absolute.toString());
 
         SeriesCatalog.folder = absolute;
 
         LOADED.clear();
+    }
+
+    /**
+     * @return where the answers about the tree are read from
+     *
+     * <p>Package-private rather than private: a test that puts a value in has
+     * to put it where this class will look, and pointing it at a temporary file
+     * and then writing through {@code Settings.settings()} writes into the
+     * reader's own -- which is the whole thing the seam is for.</p>
+     */
+    static Settings store() {
+        return store == null ? Settings.settings() : store;
+    }
+
+    /**
+     * Points the catalog's SETTINGS at a file of the test's own.
+     *
+     * @param file where to keep them
+     *
+     * <p>A Path and not a {@link Settings}, so that class's constructor can stay
+     * closed: a test needs an isolated store, not the ability to build one of
+     * any shape. The same seam, for the same reason, as {@code
+     * Segmentation.useForTest}.</p>
+     */
+    public static void useSettingsForTest(java.nio.file.Path file) {
+        store = new Settings(file, "a test");
+    }
+
+    /** Puts the reader's own settings back. Named apart so neither call is ambiguous. */
+    public static void stopUsingTestSettings() {
+        store = null;
     }
 
     /**
@@ -334,7 +388,7 @@ public final class SeriesCatalog {
         Map<String, String> pairs = new LinkedHashMap<>();
 
         readInto(pairs, fallback);
-        readInto(pairs, Settings.settings().get(key, ""));
+        readInto(pairs, store().get(key, ""));
 
         return pairs;
     }
@@ -615,7 +669,7 @@ public final class SeriesCatalog {
 
     /** @return the names not offered, which the reader may change */
     public static Set<String> retired() {
-        String saved = Settings.settings().get(RETIRED_KEY, RETIRED_BY_DEFAULT);
+        String saved = store().get(RETIRED_KEY, RETIRED_BY_DEFAULT);
         Set<String> names = new LinkedHashSet<>();
 
         for (String each : saved.split(",")) {
@@ -631,7 +685,7 @@ public final class SeriesCatalog {
 
     /** @param names the series to stop offering; the files are untouched */
     public static void setRetired(Set<String> names) {
-        Settings.settings().put(RETIRED_KEY, String.join(",", names));
+        store().put(RETIRED_KEY, String.join(",", names));
     }
 
     /**

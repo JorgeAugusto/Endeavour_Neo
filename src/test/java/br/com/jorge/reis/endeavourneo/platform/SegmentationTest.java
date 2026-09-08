@@ -223,4 +223,51 @@ class SegmentationTest {
     void unlockedIsUnlocked() {
         assertFalse(Segmentation.segmentsOnly("nunca-vista"));
     }
+/**
+     * A line deleted by hand costs that segment, and only that one.
+     *
+     * <p>The reading loop counted up from zero and stopped at the first index
+     * with no name or no date -- so a file missing one line threw away every
+     * segment written below it, in silence. And a series marked
+     * {@code segmentsOnly} then cannot be opened at all: whole, the lock refuses
+     * it; by segment, they are gone.</p>
+     *
+     * <p>Deleting a line is the likeliest hand edit there is, and hand editing
+     * is the declared reason this is stored as plain text.</p>
+     */
+    @Test
+    @DisplayName("uma linha apagada a mao custa um segmento, nao todos")
+    void ahandDeletedLineCostsOneSegment() throws java.io.IOException {
+        Segmentation.set(SERIES, List.of(
+                new Segment("busca", LocalDate.of(2020, 9, 1), LocalDate.of(2023, 12, 31)),
+                new Segment("validacao", LocalDate.of(2024, 1, 1), LocalDate.of(2024, 12, 31)),
+                Segment.from("teste", LocalDate.of(2025, 1, 1))));
+
+        // WHAT A READER WITH A TEXT EDITOR DOES, on the file itself and not
+        // through the API: one line goes, and the store is opened again so the
+        // file is what is read rather than what is still in memory.
+        java.nio.file.Path file = folder.resolve("workspace.properties");
+
+        java.util.List<String> kept = new java.util.ArrayList<>();
+
+        for (String line : java.nio.file.Files.readAllLines(file)) {
+            if (!line.startsWith("segments." + SERIES + ".0.from")) {
+                kept.add(line);
+            }
+        }
+
+        assertEquals(java.nio.file.Files.readAllLines(file).size() - 1, kept.size(),
+                "the line the test means to delete is not in the file");
+
+        java.nio.file.Files.write(file, kept);
+
+        Segmentation.useForTest(file);
+
+        List<Segment> read = Segmentation.of(SERIES);
+
+        assertEquals(2, read.size(),
+                "the segments below the damaged one went with it: " + read);
+        assertEquals("validacao", read.get(0).name());
+        assertEquals("teste", read.get(1).name(), "and they came back out of order");
+    }
 }
