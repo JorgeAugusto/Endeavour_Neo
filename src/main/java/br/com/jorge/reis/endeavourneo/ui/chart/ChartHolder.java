@@ -101,6 +101,34 @@ public final class ChartHolder {
 
     private final String key;
 
+    /**
+     * @param name the chart's title
+     * @return the name this chart's settings are filed under
+     *
+     * <p><b>Readable, and still its own.</b> This was the collapse alone, and
+     * a collapse is not injective: every run of non-alphanumerics became ONE
+     * underscore, so the dash of a scale, a dot, a space and the {@code #}
+     * that separates a series from one of its segments were all the same
+     * character afterwards. {@code winfut-1m#treino} and a series named
+     * {@code winfut-1m-treino} both filed under {@code winfut_1m_treino}, and
+     * the two charts then shared their period, their visible bars, their
+     * stretch, the geometry of the floating window and the layout chosen for
+     * them -- the last one closed writing over the other.</p>
+     *
+     * <p>The readable part is kept, because this file is meant to be opened in
+     * an editor, and the name's own hash is added so that two names which
+     * collapse the same way still do not collide. {@code String.hashCode} is
+     * specified, so the answer is the same on every machine and every run.</p>
+     *
+     * <p>Keys written by earlier versions no longer match, which costs a
+     * reader the remembered geometry of their open charts once. The workspace
+     * repairs itself the next time they close the program.</p>
+     */
+    static String keyOf(String name) {
+        return name.replaceAll("[^A-Za-z0-9]+", "_")
+                + "_" + Integer.toHexString(name.hashCode());
+    }
+
     private final ChartCanvas canvas = new ChartCanvas();
 
     /**
@@ -192,7 +220,7 @@ public final class ChartHolder {
     public ChartHolder(String name, String label, JDesktopPane desktop, Window owner, Runnable onClosed) {
         this.name = name;
         this.label = label == null || label.isBlank() ? name : label;
-        this.key = name.replaceAll("[^A-Za-z0-9]+", "_");
+        this.key = keyOf(name);
         this.legend = new OverlayLegend(canvas, this.key);
         this.chartHeader = new ChartHeader(canvas, this.label, name);
 

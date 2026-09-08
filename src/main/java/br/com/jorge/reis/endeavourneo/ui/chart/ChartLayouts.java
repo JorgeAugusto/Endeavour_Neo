@@ -78,7 +78,7 @@ public final class ChartLayouts {
         List<ChartLayout> layouts = new ArrayList<>(count);
 
         for (int i = 0; i < count; i++) {
-            String name = PREFS.get("layout." + i + ".name", null);
+            String name = restored(PREFS.get("layout." + i + ".name", null));
 
             if (name != null) {
                 layouts.add(new ChartLayout(name,
@@ -114,7 +114,7 @@ public final class ChartLayouts {
             for (int i = 0; i < layouts.size(); i++) {
                 ChartLayout layout = layouts.get(i);
 
-                PREFS.put("layout." + i + ".name", layout.name());
+                PREFS.put("layout." + i + ".name", stored(layout.name()));
                 PREFS.put("layout." + i + ".entries", format(layout.entries()));
 
                 // A key of its own rather than more fields on the entry lines,
@@ -136,13 +136,43 @@ public final class ChartLayouts {
         });
     }
 
+    /**
+     * What the built-in layout is called in the file, in every language.
+     *
+     * <p>A layout is identified by its NAME -- in the list, in the selection of
+     * each chart, and in the file -- and the built-in one is called
+     * {@code Messages.get("layout.default")}. So changing the language renamed
+     * it: the reader's chart had "Padrao" saved as its selection while the list
+     * now answered "Default", the search failed, and the chart came back
+     * silently on the first tab with the reader's choice thrown away. A layout
+     * they had captured kept a Portuguese name inside an English interface, for
+     * good.</p>
+     *
+     * <p>The at-sign cannot begin a name the reader types, because a layout is
+     * named through a dialog that trims what it is given and the copy names are
+     * built from the bundle -- and if one ever did, the worst case is that their
+     * layout is treated as the built-in one, which is the collision the code
+     * already had.</p>
+     */
+    static final String DEFAULT_MARK = "@default";
+
+    /** @return that name as it goes into the file */
+    static String stored(String name) {
+        return Messages.get("layout.default").equals(name) ? DEFAULT_MARK : name;
+    }
+
+    /** @return that name as it comes back out of the file, in today's language */
+    static String restored(String name) {
+        return DEFAULT_MARK.equals(name) ? Messages.get("layout.default") : name;
+    }
+
     /** @return which layout each chart was last showing */
     public static String selectedFor(String chartKey) {
-        return PREFS.get("selected." + chartKey, null);
+        return restored(PREFS.get("selected." + chartKey, null));
     }
 
     public static void remember(String chartKey, String layoutName) {
-        PREFS.put("selected." + chartKey, layoutName);
+        PREFS.put("selected." + chartKey, stored(layoutName));
     }
 
     /**
@@ -315,7 +345,15 @@ public final class ChartLayouts {
 
             belongsTo = mine;
 
-            gathering.add(new ChartLayout.Entry(fields[1].trim(), numbers(fields[2]), true,
+            List<Integer> held = numbers(fields[2]);
+
+            if (held == null) {
+                // Same rule as the overlay path: a number that will not read
+                // takes its entry with it, and leaves the rest of the pane.
+                continue;
+            }
+
+            gathering.add(new ChartLayout.Entry(fields[1].trim(), held, true,
                     fields.length > 5 ? fields[5] : ""));
         }
 
@@ -326,17 +364,40 @@ public final class ChartLayouts {
         return panes;
     }
 
+    /**
+     * @param text the numbers of one entry, separated by commas
+     * @return them in order, empty when there are none, or NULL when one of
+     *         them will not read
+     *
+     * <p><b>Three answers, because there are three cases</b>, and this file used
+     * to have two readers of the same field that disagreed about them. The pane
+     * reader called this and accepted whatever came back; the overlay reader had
+     * its own loop and dropped the whole ENTRY whenever the list came out empty
+     * -- which is what an indicator with no parameters at all writes. So an
+     * indicator without a number could not be saved: it was written correctly
+     * and vanished on the way back in, in silence, through one path and not the
+     * other.</p>
+     *
+     * <p>Nothing in the program has no parameters today; all four indicators
+     * carry one. It was a trap set for the fifth.</p>
+     *
+     * <p>Null and not an empty list for the unreadable case: one bad number
+     * makes the whole list meaningless, and building the indicator with its
+     * defaults would put a shape on the chart the reader never chose. The
+     * caller drops the entry.</p>
+     */
     private static List<Integer> numbers(String text) {
         List<Integer> found = new ArrayList<>();
+
+        if (text.isBlank()) {
+            return List.of();
+        }
 
         for (String piece : text.split(",")) {
             try {
                 found.add(Integer.valueOf(piece.trim()));
             } catch (NumberFormatException e) {
-                // One unreadable number makes the whole list meaningless: the
-                // indicator would be built with the wrong shape rather than
-                // with its defaults.
-                return List.of();
+                return null;
             }
         }
 
@@ -402,20 +463,15 @@ public final class ChartLayouts {
                 continue;
             }
 
-            List<Integer> parameters = new ArrayList<>();
+            // THE SAME READER the pane path uses. This had a loop of its own
+            // that answered "empty" for both "no numbers" and "a number I
+            // cannot read", and then dropped the entry for either -- so an
+            // indicator with no parameters was written correctly and lost on
+            // the way back in. See numbers().
+            List<Integer> parameters = numbers(fields[1]);
 
-            for (String piece : fields[1].split(",")) {
-                try {
-                    parameters.add(Integer.valueOf(piece.trim()));
-                } catch (NumberFormatException e) {
-                    parameters.clear();
-
-                    break;
-                }
-            }
-
-            if (!parameters.isEmpty()) {
-                entries.add(new ChartLayout.Entry(fields[0], List.copyOf(parameters),
+            if (parameters != null) {
+                entries.add(new ChartLayout.Entry(fields[0], parameters,
                         Boolean.parseBoolean(fields[2]),
                         fields.length > 3 ? fields[3] : ""));
             }

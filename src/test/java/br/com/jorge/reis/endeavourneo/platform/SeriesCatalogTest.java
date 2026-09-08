@@ -22,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
@@ -623,5 +624,31 @@ class SeriesCatalogTest {
     void thecatalogReadsThisTestsSettings() {
         assertNotSame(Settings.settings(), SeriesCatalog.store(),
                 "the suite is reading, and writing, the settings of whoever runs it");
+    }
+/**
+     * A name with a comma in it is refused rather than written and lost.
+     *
+     * <p>The retired list is joined with commas and read back by splitting on
+     * them, with no escape anywhere — and a comma is a legal character in a file
+     * name on Windows, which is where these names come from. A series called
+     * "win-5m,antiga" written here comes back as two entries that name nothing,
+     * and the real series goes on being offered as though it had never been
+     * retired.</p>
+     *
+     * <p>Refusing beats escaping for a file the reader is meant to edit by hand:
+     * an escaped name is one more thing they have to know to type correctly.</p>
+     */
+    @Test
+    @DisplayName("um nome com virgula e recusado, nao gravado de um jeito que nao volta")
+    void anameWithAcommaIsRefused() {
+        assertThrows(IllegalArgumentException.class,
+                () -> SeriesCatalog.setRetired(java.util.Set.of("win-5m,antiga")),
+                "the name was written into a list that separates names with commas");
+
+        // And an ordinary name still goes in, or the guard above is satisfied by
+        // a method that refuses everything.
+        SeriesCatalog.setRetired(java.util.Set.of("win-1m"));
+
+        assertTrue(SeriesCatalog.store().get("data.retired", "").contains("win-1m"));
     }
 }

@@ -685,6 +685,25 @@ public final class SeriesCatalog {
 
     /** @param names the series to stop offering; the files are untouched */
     public static void setRetired(Set<String> names) {
+        for (String each : names) {
+            // REFUSED, not written and lost. The list is joined with commas
+            // and read back by splitting on them, with no escape anywhere --
+            // and a comma is a legal character in a file name on Windows,
+            // which is where these names come from. A series called
+            // "win-5m,antiga" written here comes back as two entries that name
+            // nothing, and the real series goes on being offered as though the
+            // reader had never retired it.
+            //
+            // Saying so beats an escape scheme for a file that is meant to be
+            // edited by hand: an escaped name is one more thing the reader has
+            // to know in order to type it correctly.
+            if (each.contains(",")) {
+                throw new IllegalArgumentException(each
+                        + ": a series with a comma in its name cannot be retired, because "
+                        + RETIRED_KEY + " separates names with commas");
+            }
+        }
+
         store().put(RETIRED_KEY, String.join(",", names));
     }
 

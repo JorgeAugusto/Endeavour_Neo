@@ -107,7 +107,14 @@ public final class LayoutBar extends JComponent {
         add(scroll, java.awt.BorderLayout.CENTER);
 
         layouts.addAll(ChartLayouts.all());
-        selected = indexOf(ChartLayouts.selectedFor(chartKey));
+        // MINUS ONE MEANS NOT FOUND, and the fallback is decided here rather
+        // than inside the search. indexOf used to answer 0 for both "it is the
+        // first one" and "there is no such layout", so a selection that could
+        // not be found came back looking like a deliberate choice of the first
+        // tab.
+        int wanted = indexOf(ChartLayouts.selectedFor(chartKey));
+
+        selected = wanted < 0 ? 0 : wanted;
 
         rebuild();
         apply();
@@ -532,6 +539,7 @@ public final class LayoutBar extends JComponent {
         rebuild();
     }
 
+    /** @return where that layout is in the list, or -1 when it is not in it */
     private int indexOf(String name) {
         for (int i = 0; i < layouts.size(); i++) {
             if (layouts.get(i).name().equals(name)) {
@@ -539,6 +547,6 @@ public final class LayoutBar extends JComponent {
             }
         }
 
-        return 0;
+        return -1;
     }
 }

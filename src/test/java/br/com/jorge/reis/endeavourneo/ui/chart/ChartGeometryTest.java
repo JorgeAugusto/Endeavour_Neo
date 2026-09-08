@@ -17,6 +17,7 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.chart;
 
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -96,5 +97,37 @@ class ChartGeometryTest {
     void arrivingChartTakesAQuarter() {
         assertFalse(ChartHolder.opensMaximised(false, false, false),
                 "a chart arriving beside others would bury what was being watched");
+    }
+/**
+     * Two charts whose names differ only in punctuation are filed apart.
+     *
+     * <p>The key was the name with every run of non-alphanumerics collapsed to
+     * one underscore, and a collapse is not injective: the {@code #} that
+     * separates a series from one of its segments, a dash, a dot and a space all
+     * became the same character. {@code winfut-1m#treino} and a series named
+     * {@code winfut-1m-treino} filed under the same key — and then shared their
+     * period, their visible bars, their stretch, the geometry of the floating
+     * window and the layout chosen for them, with the last one closed writing
+     * over the other.</p>
+     */
+    @Test
+    @DisplayName("dois nomes que so diferem na pontuacao nao dividem a mesma chave")
+    void twonamesThatDifferOnlyInPunctuationAreFiledApart() {
+        assertNotEquals(ChartHolder.keyOf("winfut-1m#treino"),
+                ChartHolder.keyOf("winfut-1m-treino"),
+                "a segment of one series and a series of that name share every setting");
+
+        assertNotEquals(ChartHolder.keyOf("busca 2020-2022"),
+                ChartHolder.keyOf("busca 2020 2022"));
+
+        // And the same name still answers the same key, or nothing would ever
+        // be found again.
+        assertEquals(ChartHolder.keyOf("winfut-1m#treino"),
+                ChartHolder.keyOf("winfut-1m#treino"));
+
+        // Still readable: this file is meant to be opened in an editor.
+        assertTrue(ChartHolder.keyOf("winfut-1m#treino").startsWith("winfut_1m_treino_"),
+                "the key stopped saying which chart it belongs to: "
+                        + ChartHolder.keyOf("winfut-1m#treino"));
     }
 }

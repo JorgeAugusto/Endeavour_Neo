@@ -18,6 +18,7 @@
 package br.com.jorge.reis.endeavourneo.ui.chart;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -343,5 +344,98 @@ class ChartLayoutTest {
 
         assertEquals(java.util.List.of(9), kind.defaults(),
                 "the kind is holding the caller's list and changed with it");
+    }
+/**
+     * An indicator with no parameters at all survives the round trip.
+     *
+     * <p>{@code format} writes {@code kind||true} for one, and the reader used
+     * to answer "empty" for both "no numbers" and "a number I cannot read" —
+     * then drop the entry for either. So an indicator without a number was
+     * written correctly and lost on the way back in, in silence. The pane
+     * reader, on the same field, kept it: the same layout survived one path and
+     * died in the other.</p>
+     *
+     * <p>Nothing in the program has no parameters today; all four indicators
+     * carry one. It was a trap set for the fifth.</p>
+     */
+    @Test
+    @DisplayName("um indicador sem parametro sobrevive a ida e volta")
+    void anindicatorWithNoParametersSurvives() {
+        List<ChartLayout.Entry> entries = List.of(
+                new ChartLayout.Entry("overlay.vwap", List.of(), true, ""),
+                new ChartLayout.Entry("overlay.movingAverage", List.of(17), true, ""));
+
+        List<ChartLayout.Entry> back = ChartLayouts.parse(ChartLayouts.format(entries));
+
+        assertEquals(2, back.size(),
+                "the indicator with no parameters vanished on the way back: " + back);
+        assertEquals("overlay.vwap", back.get(0).kindKey());
+        assertEquals(List.of(), back.get(0).parameters());
+        assertEquals(List.of(17), back.get(1).parameters());
+    }
+
+    /**
+     * And a number that will not read still takes its entry with it.
+     *
+     * <p>The other half of the same rule: empty is a valid answer, unreadable is
+     * not. Building the indicator with its defaults would put a shape on the
+     * chart the reader never chose.</p>
+     */
+    @Test
+    @DisplayName("um numero ilegivel continua levando a entrada dele embora")
+    void anunreadableNumberStillDropsItsEntry() {
+        List<ChartLayout.Entry> back = ChartLayouts.parse(
+                "overlay.movingAverage|abc|true\noverlay.movingAverage|55|true");
+
+        assertEquals(1, back.size(), "the unreadable entry came through: " + back);
+        assertEquals(List.of(55), back.get(0).parameters());
+    }
+/**
+     * The built-in layout keeps its identity across a change of language.
+     *
+     * <p>A layout is identified by its NAME — in the list, in each chart's
+     * selection, and in the file — and the built-in one is called
+     * {@code Messages.get("layout.default")}. So changing the language renamed
+     * it: the chart had "Padrão" saved as its selection while the list now
+     * answered "Default", the search failed, and the chart came back silently on
+     * the first tab with the reader's choice thrown away. A layout they had
+     * captured kept a Portuguese name inside an English interface, for good.</p>
+     *
+     * <p>What goes into the file is a mark that is not a language.</p>
+     */
+    @Test
+    @DisplayName("o layout padrao guarda uma marca, e nao o nome traduzido")
+    void thedefaultLayoutIsStoredByAmarkAndNotByItsName() {
+        java.util.Locale was = java.util.Locale.getDefault();
+
+        try {
+            br.com.jorge.reis.endeavourneo.platform.Messages.setLocale(
+                    java.util.Locale.forLanguageTag("pt-BR"));
+
+            String inPortuguese = ChartLayouts.defaultLayout().name();
+            String written = ChartLayouts.stored(inPortuguese);
+
+            assertNotEquals(inPortuguese, written,
+                    "the translated name went into the file, so it stops matching the "
+                            + "moment the language changes");
+
+            br.com.jorge.reis.endeavourneo.platform.Messages.setLocale(
+                    java.util.Locale.forLanguageTag("en"));
+
+            String inEnglish = ChartLayouts.defaultLayout().name();
+
+            assertNotEquals(inPortuguese, inEnglish, "the fixture is not testing anything: "
+                    + "the two languages call the layout the same thing");
+
+            assertEquals(inEnglish, ChartLayouts.restored(written),
+                    "the layout saved in one language was not found in the other, so the "
+                            + "chart came back on whichever tab happened to be first");
+
+            // And an ordinary name travels untouched, or the mark would swallow
+            // the reader's own layouts.
+            assertEquals("Meu estudo", ChartLayouts.restored(ChartLayouts.stored("Meu estudo")));
+        } finally {
+            br.com.jorge.reis.endeavourneo.platform.Messages.setLocale(was);
+        }
     }
 }
