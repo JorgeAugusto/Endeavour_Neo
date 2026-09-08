@@ -257,9 +257,14 @@ class ReplaySessionTest {
         assertEquals(1, replay.speed(), "a speed of zero would never advance");
 
         // Capped where the animation stops showing everything: a bar is about
-        // thirty-one prices, one every 1,93 s of market time, so fifty times is
-        // one price per 40 ms frame. Faster skips prices, and the bar starts
-        // forming in jumps again -- which is what the ticks exist to prevent.
+        // thirty-one prices, one every 1,93 s of market time, so at SIXTY times
+        // one arrives every 32 ms and a 40 ms frame drops the odd one. That is
+        // the price of the round number, and past here the bar stops forming and
+        // starts jumping -- which is the thing the ticks exist to prevent.
+        //
+        // This used to conclude "fifty times", which is the number the cap had
+        // before it was rounded up; the javadoc of FASTEST carries the same
+        // arithmetic and was corrected then.
         replay.setSpeed(1000);
         assertEquals(ReplaySession.FASTEST, replay.speed());
 

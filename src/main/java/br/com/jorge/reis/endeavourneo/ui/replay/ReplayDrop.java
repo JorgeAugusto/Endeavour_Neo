@@ -78,6 +78,17 @@ public final class ReplayDrop {
     }
 
     private static void attach(ChartHolder holder, ReplaySession session) {
+        if (session.isStopped()) {
+            // A session that is over has already run its endings, so the
+            // ending registered below would never fire: the chart would show a
+            // frozen replay series and never get its own data back. Refusing
+            // quietly, like the failed drag above -- the reader sees the chart
+            // not change, which is what happened.
+            //
+            // isStopped was written for this question and had no caller at all.
+            return;
+        }
+
         // Redrawn on every tick, and the aggregation applied again: a replay at
         // five minutes has to refold the minutes that have arrived, or the last
         // bar would stop growing the moment its period began.

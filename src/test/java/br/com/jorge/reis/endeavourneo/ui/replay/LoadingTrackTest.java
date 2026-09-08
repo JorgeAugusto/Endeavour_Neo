@@ -20,6 +20,7 @@ package br.com.jorge.reis.endeavourneo.ui.replay;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.Component;
@@ -203,5 +204,31 @@ class LoadingTrackTest {
         });
 
         assertEquals(900, panel.handleAt(), "released, the handle stopped following the clock");
+    }
+/**
+     * The play button keeps the icon it has instead of getting a new one each frame.
+     *
+     * <p>{@code refresh} runs from every announce — twenty-five times a second —
+     * and it used to build an icon on each pass and hand it to {@code setIcon},
+     * which fires a property change, a revalidate and a repaint on the button
+     * whether or not the icon is the same one it had for the last twenty frames.
+     * Each painting of an icon then allocates a stroke and four arrays of its
+     * own. There are two icons and they never change.</p>
+     */
+    @Test
+    @DisplayName("o botao de play nao ganha um icone novo a cada quadro")
+    void theplayButtonKeepsTheIconItHas() throws Exception {
+        onEdt(() -> panel.refresh());
+
+        javax.swing.Icon first = panel.playIcon();
+
+        assertNotNull(first, "the play button has no icon at all");
+
+        onEdt(() -> panel.refresh());
+        onEdt(() -> panel.refresh());
+
+        assertSame(first, panel.playIcon(),
+                "a new icon was built and set on every refresh, and the button repainted "
+                        + "itself for each of them");
     }
 }

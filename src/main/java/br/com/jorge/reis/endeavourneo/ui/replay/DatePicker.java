@@ -230,7 +230,9 @@ public final class DatePicker extends JPanel {
 
         LocalDate first = showing.atDay(1);
 
-        // How many blanks before the first of the month, counting from Sunday.
+        // FROM SUNDAY, because the header of this calendar starts there --
+        // Java's own week starts on Monday, and taking getValue() as the offset
+        // put every month one column to the left.
         int blanks = Math.floorMod(first.getDayOfWeek().getValue() - DayOfWeek.SUNDAY.getValue(), 7);
 
         for (int i = 0; i < blanks; i++) {

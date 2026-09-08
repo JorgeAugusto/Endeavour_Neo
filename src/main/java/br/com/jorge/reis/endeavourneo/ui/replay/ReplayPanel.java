@@ -97,6 +97,11 @@ public final class ReplayPanel extends JPanel {
 
     private final JSlider scrubber = new JSlider(0, 1000, 0);
 
+    /** The two states of the play button, built once. See refresh(). */
+    private static final javax.swing.Icon PLAY = ReplayIcons.play(18);
+
+    private static final javax.swing.Icon PAUSE = ReplayIcons.pause(18);
+
     /**
      * What stands in the scrubber's place while there is nothing to scrub.
      *
@@ -178,7 +183,7 @@ public final class ReplayPanel extends JPanel {
         add(transport(), BorderLayout.CENTER);
 
         request.addActionListener(e -> requestDay());
-        stop.addActionListener(e -> stopSession());
+        stop.addActionListener(e -> release());
         play.addActionListener(e -> withSession(ReplaySession::toggle));
         back.addActionListener(e -> withSession(s -> {
             s.pause();
@@ -304,18 +309,6 @@ public final class ReplayPanel extends JPanel {
     }
 
     /**
-     * Ends the session and hands every chart its own data back.
-     *
-     * <p>Exactly what closing does, minus the closing. Which is the point: the
-     * reader who has watched a day and wants another one used to have to close
-     * the transport and open it again, throwing away everything typed into
-     * it.</p>
-     */
-    private void stopSession() {
-        release();
-    }
-
-    /**
      * Whether this panel has been let go of.
      *
      * <p>Set on the way out and never cleared: a released panel is not reused,
@@ -324,7 +317,18 @@ public final class ReplayPanel extends JPanel {
      */
     private transient boolean released;
 
-    /** Ends whatever is playing and gives every chart following it back. */
+    /**
+     * Ends whatever is playing and gives every chart following it back.
+     *
+     * <p>Exactly what closing does, minus the closing. Which is the point: the
+     * reader who has watched a day and wants another one used to have to close
+     * the transport and open it again, throwing away everything typed into
+     * it.</p>
+     *
+     * <p>The stop button called this through a private wrapper of one line that
+     * carried its own copy of this paragraph. Two names for the same step, and
+     * the same text in two places to fall out of date apart.</p>
+     */
     public void release() {
         released = true;
 
@@ -833,6 +837,11 @@ public final class ReplayPanel extends JPanel {
         adjusting = false;
     }
 
+    /** @return the icon the play button is wearing; for a test */
+    javax.swing.Icon playIcon() {
+        return play.getIcon();
+    }
+
     /** @return where the handle is, out of a thousand */
     int handleAt() {
         return scrubber.getValue();
@@ -922,15 +931,23 @@ public final class ReplayPanel extends JPanel {
             each.setEnabled(!ready);
         }
 
-        play.setIcon(ready && session.isPlaying()
-                ? ReplayIcons.pause(18) : ReplayIcons.play(18));
+        // TWO CONSTANTS, and only when it changes. refresh() runs from every
+        // announce -- twenty-five times a second -- and this built a new icon on
+        // each pass and handed it to setIcon, which fires a property change, a
+        // revalidate and a repaint on the button whether or not the icon is the
+        // same one it had for the last twenty frames. Each painting of an icon
+        // then allocates a stroke and four arrays of its own.
+        javax.swing.Icon wanted = ready && session.isPlaying() ? PAUSE : PLAY;
+
+        if (play.getIcon() != wanted) {
+            play.setIcon(wanted);
+        }
 
         showLoading(waiting);
 
         if (waiting) {
             clock.setText(Messages.get("replay.loading"));
             ends.setText("");
-            chip.setEnabled(true);
 
             return;
         }

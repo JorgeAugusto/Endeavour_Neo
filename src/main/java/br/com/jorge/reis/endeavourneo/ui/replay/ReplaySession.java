@@ -783,6 +783,9 @@ public final class ReplaySession {
         }
     }
 
+    /** Set once, by stop(); see {@link #isStopped()}. */
+    private boolean stopped;
+
     /**
      * @return whether this session has been stopped for good
      *
@@ -790,12 +793,14 @@ public final class ReplaySession {
      * still showing its day and pressing play carries on from where it was.
      * A stopped one is over, the charts have their own data back, and the
      * transport is free to be set up for another one.</p>
+     *
+     * <p>Asked by {@code ReplayDrop} before a chart is attached: a session that
+     * is over has already run its endings, so a chart joining it now would
+     * never be handed back its own data.</p>
      */
     public boolean isStopped() {
         return stopped;
     }
-
-    private boolean stopped;
 
     /**
      * Ends the session and hands every chart back to itself.
