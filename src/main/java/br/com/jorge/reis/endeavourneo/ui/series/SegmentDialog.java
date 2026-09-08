@@ -140,6 +140,21 @@ public final class SegmentDialog extends JDialog {
         "segment.calendar", "segment.sessions", "segment.share"
     };
 
+    /**
+     * @param sessions the days the series has
+     * @param start what the fields open on
+     * @return one of these, built but never shown
+     *
+     * <p>For a test. {@link #ask} is the way in for everything else and it is
+     * modal, so a test that went through it would block until somebody pressed
+     * a button -- and what is worth checking is what the fields say after a
+     * date is typed into them.</p>
+     */
+    static SegmentDialog forTest(List<LocalDate> sessions, Segment start) {
+        return new SegmentDialog(null, "test-1m", sessions, new ArrayList<>(),
+                start, Mode.CREATE);
+    }
+
     private SegmentDialog(Window owner, String series, List<LocalDate> sessions,
                           List<Segment> segments, Segment start, Mode mode) {
         super(owner, Messages.get(mode.title), Dialog.ModalityType.APPLICATION_MODAL);
@@ -189,6 +204,12 @@ public final class SegmentDialog extends JDialog {
             range.setEnabled(false);
             range.setFocusable(false);
         }
+
+        // DISPOSED, not hidden. See SeriesWindow: JDialog defaults to
+        // HIDE_ON_CLOSE, and a window shut with the X stays in
+        // Window.getWindows() for the life of the program, where every change
+        // of theme walks it again.
+        setDefaultCloseOperation(DISPOSE_ON_CLOSE);
 
         pack();
         setMinimumSize(new Dimension(620, getHeight()));
@@ -250,6 +271,16 @@ public final class SegmentDialog extends JDialog {
         dialog.setVisible(true);
 
         return java.util.Optional.ofNullable(dialog.chosen);
+    }
+
+    /** @return the field where the start is typed; for a test */
+    DatePicker fromField() {
+        return from;
+    }
+
+    /** @return the field where the end is typed; for a test */
+    DatePicker toField() {
+        return to;
     }
 
     // ---------------------------------------------------------------- layout
@@ -497,12 +528,51 @@ public final class SegmentDialog extends JDialog {
             return;
         }
 
+        int wantedFrom = indexOf(first);
+        int wantedTo = indexOf(last);
+
         echoing = true;
 
         try {
-            range.setRange(days.size(), indexOf(first), indexOf(last));
+            range.setRange(days.size(), wantedFrom, wantedTo);
         } finally {
             echoing = false;
+        }
+
+        // AND BACK INTO THE FIELDS when the bar refused what it was asked for.
+        // RangeBar collapses an inverted range -- an end before the start gives
+        // to = from -- and nothing wrote that back, so the field the reader had
+        // just typed into went on showing the date they typed while the segment
+        // being built was one session long. The sentence and the counters showed
+        // the collapsed value, because those read the range; current() reads the
+        // range too, so the field was the only thing saying what would not
+        // happen.
+        //
+        // ONLY when the indices differ, and not on every keystroke: a date that
+        // merely falls on a day the market was shut is snapped by indexOf and
+        // the bar takes it as asked, so nothing is rewritten under the pointer
+        // while somebody is still typing.
+        //
+        // POSTED, not written here. This runs inside the date field's own
+        // document notification, and Swing refuses a document change from
+        // within one -- "Attempt to mutate in notification". followHandles does
+        // not have the problem because it is called from the bar.
+        if (range.from() != wantedFrom || range.to() != wantedTo) {
+            LocalDate showFrom = days.get(range.from());
+            LocalDate showTo = days.get(range.to());
+
+            javax.swing.SwingUtilities.invokeLater(() -> {
+                echoing = true;
+
+                try {
+                    from.setDate(showFrom);
+                    to.setDate(showTo);
+                } finally {
+                    echoing = false;
+                }
+
+                describe();
+            });
         }
 
         describe();

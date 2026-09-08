@@ -21,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 import br.com.jorge.reis.endeavourneo.domain.market.Segment;
 
@@ -112,6 +113,16 @@ class SegmentPickingTest {
         RangeBar bar = bar();
 
         bar.setRange(10, 8, 3);
+
+        // PINNED, not merely related. bar() already answers (2, 6), which
+        // satisfies to >= from -- so the assertion passed with setRange doing
+        // nothing at all. And it left the important half unwritten: WHICH side
+        // gives. The bar collapses the end onto the start, and a caller that
+        // does not know that is the defect in SegmentDialog, where the date
+        // field went on showing what was typed while the range being saved was
+        // one session long.
+        assertEquals(8, bar.from(), "the start moved; it is the end that gives way");
+        assertEquals(8, bar.to(), "the end did not collapse onto the start");
 
         assertTrue(bar.to() >= bar.from(),
                 "the end went in front of the start, which is not a range");
@@ -308,5 +319,54 @@ class SegmentPickingTest {
         assertEquals(days.get(days.size() - 1),
                 SegmentDialog.endFor(false, days.size() - 1, days),
                 "a closed segment was opened by being dragged to the end");
+    }
+/**
+     * A date typed backwards: the field has to agree with what will be saved.
+     *
+     * <p>{@code RangeBar} collapses an inverted range -- an end before the start
+     * gives {@code to = from} -- and nothing wrote that back into the fields. So
+     * the reader typed 05/01 into "até" with 10/03 in "de", saw 05/01 sitting
+     * there, and saved a segment of ONE session. The sentence and the counters
+     * showed the collapsed value, because those read the range; the field, which
+     * is where they had just typed and where they were looking, showed the
+     * other one.</p>
+     *
+     * <p>{@code current()} builds the segment from the range, so the field was
+     * the only thing saying what was not going to happen.</p>
+     */
+    @Test
+    @DisplayName("data invertida: o campo passa a dizer o que sera salvo")
+    void aninvertedDateIsShownAsItWillBeSaved() throws Exception {
+        assumeFalse(java.awt.GraphicsEnvironment.isHeadless(), "no graphics environment");
+
+        List<java.time.LocalDate> days = new java.util.ArrayList<>();
+
+        for (int i = 0; i < 20; i++) {
+            days.add(java.time.LocalDate.of(2026, 3, 2).plusDays(i));
+        }
+
+        java.util.concurrent.atomic.AtomicReference<SegmentDialog> made =
+                new java.util.concurrent.atomic.AtomicReference<>();
+
+        try {
+            javax.swing.SwingUtilities.invokeAndWait(() -> made.set(SegmentDialog.forTest(days,
+                    new br.com.jorge.reis.endeavourneo.domain.market.Segment("busca",
+                            days.get(8), days.get(15)))));
+
+            SegmentDialog dialog = made.get();
+
+            javax.swing.SwingUtilities.invokeAndWait(() -> dialog.toField().setDate(days.get(3)));
+            // TWICE: the write-back is posted, because it cannot touch the
+            // field from inside the field's own notification. The first pump
+            // runs it, the second waits for whatever it posted in turn.
+            javax.swing.SwingUtilities.invokeAndWait(() -> { });
+            javax.swing.SwingUtilities.invokeAndWait(() -> { });
+
+            assertEquals(dialog.fromField().date(), dialog.toField().date(),
+                    "the end field is still showing the date that was typed, and the segment "
+                            + "being saved is not that one");
+        } finally {
+            javax.swing.SwingUtilities.invokeAndWait(() -> made.get().dispose());
+        }
     }
 }

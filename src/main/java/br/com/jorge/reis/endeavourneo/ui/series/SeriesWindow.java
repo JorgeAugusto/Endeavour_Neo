@@ -177,6 +177,15 @@ public final class SeriesWindow extends JDialog {
 
         load();
 
+        // DISPOSED, not hidden. JDialog defaults to HIDE_ON_CLOSE, so a window
+        // shut with the X stayed in Window.getWindows() for the life of the
+        // program -- and applying a theme walks every window there, calling
+        // updateComponentTreeUI on each. A long session made changing the theme
+        // progressively slower, over dozens of invisible windows.
+        //
+        // The windowClosing below still runs, and still runs first.
+        setDefaultCloseOperation(DISPOSE_ON_CLOSE);
+
         setSize(560, 360);
         setMinimumSize(new Dimension(460, 260));
         setLocationRelativeTo(owner);
@@ -311,8 +320,20 @@ public final class SeriesWindow extends JDialog {
             // unreadable series the old behaviour stands: a row appears and is
             // typed into. Refusing to add a segment because a FILE will not
             // open would be the window losing a job it can still do.
+            if (editing == null) {
+                // No series at all. Nothing to divide, and the dialog would be
+                // asked to place a range inside a series that is not there.
+                return;
+            }
+
             if (days.isEmpty()) {
+                // AND MARKED EDITED. This row is only written by the save
+                // on the way out, and that save now asks whether anything
+                // was changed -- so without this the one add the window can
+                // still do with an unreadable series would be lost on
+                // closing, silently.
                 model.add(suggested());
+                edited = true;
 
                 return;
             }
@@ -451,13 +472,21 @@ public final class SeriesWindow extends JDialog {
      * and the sessions column -- when they arrive.</p>
      */
     private void load() {
-        String key = String.valueOf(series.getSelectedItem());
+        // NULL AND NOT "null". String.valueOf turns an empty combo into the
+        // four-letter string, which is not null and so passed every guard: on a
+        // machine with no data folder -- a state the navigator treats explicitly
+        // -- this wrote keys of the form segments.null.* into the reader's
+        // workspace, where they stayed for good, and the window headed itself
+        // with the count of a series called "null".
+        Object picked = series.getSelectedItem();
+        String key = picked == null ? null : String.valueOf(picked);
 
         editing = key;
         edited = false;
 
-        model.replaceAll(Segmentation.of(key));
-        segmentsOnly.setSelected(Segmentation.segmentsOnly(key));
+        model.replaceAll(key == null ? List.of() : Segmentation.of(key));
+        segmentsOnly.setSelected(key != null && Segmentation.segmentsOnly(key));
+        segmentsOnly.setEnabled(key != null);
         refreshWarning();
 
         // Empty until the answer comes back, and SAYING so. The counts read
@@ -544,6 +573,11 @@ public final class SeriesWindow extends JDialog {
 
             onChanged.run();
         }
+    }
+
+    /** @return the series being edited, or null when there is none; for a test */
+    String editingSeries() {
+        return editing;
     }
 
     private void refreshWarning() {

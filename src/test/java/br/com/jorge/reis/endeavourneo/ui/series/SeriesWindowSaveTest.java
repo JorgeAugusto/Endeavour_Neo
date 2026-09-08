@@ -17,6 +17,7 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.series;
 
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
@@ -153,5 +154,96 @@ class SeriesWindowSaveTest {
         } finally {
             SwingUtilities.invokeAndWait(() -> made.get().dispose());
         }
+    }
+
+    /**
+     * With no series at all, nothing is written under the name "null".
+     *
+     * <p>{@code String.valueOf} turns an empty combo into the four-letter
+     * string, which is not null and so passed every guard: on a machine with no
+     * data folder -- a state the navigator treats explicitly, with its own
+     * "no series" leaf -- this wrote {@code segments.null.*} into the reader's
+     * workspace, where they stayed for good, and the window headed itself with
+     * the count of a series called "null".</p>
+     */
+    @Test
+    @DisplayName("sem serie nenhuma, nada e gravado sob a chave \"null\"")
+    void withNoSeriesNothingIsWrittenUnderNull() throws Exception {
+        assumeFalse(GraphicsEnvironment.isHeadless(), "no graphics environment");
+
+        // An empty data folder: the catalog finds nothing, so the combo has
+        // nothing to offer.
+        SeriesCatalog.useSettingsForTest(settings.resolve("settings.properties"));
+        SeriesCatalog.useFolderForTest(data.resolve("vazia"));
+
+        Path file = data.resolve("workspace.properties");
+
+        Files.write(file, List.of("# nada aqui"));
+        Segmentation.useForTest(file);
+
+        AtomicReference<SeriesWindow> made = new AtomicReference<>();
+
+        try {
+            SwingUtilities.invokeAndWait(() -> made.set(new SeriesWindow(null)));
+
+            // THE KEY ITSELF, because the guard on saving would hide the
+            // defect: nothing was edited, so nothing is written either way,
+            // and the file below would stay clean with the four-letter
+            // string right there in the field.
+            assertNull(made.get().editingSeries(),
+                    "with no series at all the window is editing one called \"null\"");
+
+            SwingUtilities.invokeAndWait(() -> made.get().dispatchEvent(
+                    new java.awt.event.WindowEvent(made.get(),
+                            java.awt.event.WindowEvent.WINDOW_CLOSING)));
+
+            for (String line : Files.readAllLines(file)) {
+                assertTrue(!line.startsWith("segments.null."),
+                        "a series called \"null\" was written into the workspace: " + line);
+            }
+        } finally {
+            SwingUtilities.invokeAndWait(() -> made.get().dispose());
+        }
+    }
+
+    /**
+     * Closed with the X, the window is gone and not merely hidden.
+     *
+     * <p>{@code JDialog} defaults to {@code HIDE_ON_CLOSE}, so every window shut
+     * that way stayed in {@code Window.getWindows()} for the life of the
+     * program -- and applying a theme walks every window there, calling
+     * {@code updateComponentTreeUI} on each. A long session made changing the
+     * theme progressively slower, over dozens of invisible windows carrying
+     * their whole component trees.</p>
+     */
+    @Test
+    @DisplayName("fechada no X, a janela e descartada e nao apenas escondida")
+    void closingWithTheCrossDisposesIt() throws Exception {
+        assumeFalse(GraphicsEnvironment.isHeadless(), "no graphics environment");
+
+        base();
+        workspaceWithAbadDate();
+
+        AtomicReference<SeriesWindow> made = new AtomicReference<>();
+
+        SwingUtilities.invokeAndWait(() -> {
+            made.set(new SeriesWindow(null));
+
+            // Given a peer without being put on screen. isDisplayable is
+            // false until there is one, and "gone" is exactly the absence
+            // of a peer -- so without this the assertion below would hold
+            // for a window that was never built.
+            made.get().pack();
+        });
+
+        assertTrue(made.get().isDisplayable(), "the window was never built");
+
+        SwingUtilities.invokeAndWait(() -> made.get().dispatchEvent(
+                new java.awt.event.WindowEvent(made.get(),
+                        java.awt.event.WindowEvent.WINDOW_CLOSING)));
+
+        assertTrue(!made.get().isDisplayable(),
+                "the window was only hidden: it stays in Window.getWindows() for good, "
+                        + "and every change of theme walks it again");
     }
 }
