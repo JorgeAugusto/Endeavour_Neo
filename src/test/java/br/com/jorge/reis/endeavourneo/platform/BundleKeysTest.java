@@ -112,4 +112,101 @@ class BundleKeysTest {
         assertEquals(Set.of(), missingThere, "keys with no Brazilian text");
         assertEquals(Set.of(), missingHere, "keys with no English text");
     }
+
+    @Test
+    @DisplayName("toda chave que o codigo pede existe no bundle")
+    void everyKeyTheCodeAsksForExists() throws IOException {
+        // The two tests above compare the bundles WITH EACH OTHER: no repeats,
+        // and the same set on both sides. Neither compares a bundle with the
+        // CODE -- so a key missing from both files satisfies them perfectly,
+        // and the screen shows !chart.renkoNeedsTicks! where words should be.
+        // This file was the only automatic barrier between the bundle and the
+        // screen, and it was looking the other way.
+        Set<String> defined = new TreeSet<>(keysOf(ENGLISH));
+        List<String> missing = new ArrayList<>();
+        int seen = 0;
+
+        try (java.util.stream.Stream<Path> tree =
+                Files.walk(Path.of("src", "main", "java"))) {
+
+            for (Path file : tree.filter(p -> p.toString().endsWith(".java")).toList()) {
+                String source = Files.readString(file, StandardCharsets.UTF_8);
+
+                for (String call : CALLS) {
+                    int at = source.indexOf(call);
+
+                    while (at >= 0) {
+                        int from = at + call.length();
+                        int to = source.indexOf(QUOTE, from);
+
+                        if (to > from && !isBuiltAtRuntime(source, to)) {
+                            seen++;
+
+                            String key = source.substring(from, to);
+
+                            if (!defined.contains(key)) {
+                                missing.add(file.getFileName() + ": " + key);
+                            }
+                        }
+
+                        at = source.indexOf(call, at + 1);
+                    }
+                }
+            }
+        }
+
+        // The sweep has to have found something, or an empty list would mean
+        // "nothing asked for anything" and this would pass for ever. Every
+        // source sweep fails that way, and this file now has three of them.
+        assertEquals(true, seen > 100,
+                "only " + seen + " keys were found in the source: the sweep is not "
+                        + "reading what it thinks it is reading");
+
+        assertEquals(List.of(), missing,
+                "a screen will show !key! where words should be");
+    }
+
+    /**
+     * @param source the file being read
+     * @param quote where the literal ends
+     * @return whether the key goes on past it
+     *
+     * <p>{@code Messages.orElse("navigator.scale." + scale, scale)} names half a
+     * key: the other half is a value only the running program has. Asked whether
+     * that half is in the bundle, the answer is always no, and it means nothing
+     * -- which is why those calls take a fallback in the first place.</p>
+     *
+     * <p>Detected by looking for the concatenation itself rather than by
+     * guessing from the shape of the key. A rule like "ends with a dot" would
+     * also excuse a real typo that happened to end with one.</p>
+     */
+    private static boolean isBuiltAtRuntime(String source, int quote) {
+        for (int at = quote + 1; at < source.length(); at++) {
+            char letter = source.charAt(at);
+
+            if (letter == ' ') {
+                continue;
+            }
+
+            return letter == '+';
+        }
+
+        return false;
+    }
+
+    /** A double quote, named so the calls above read as what they match. */
+    private static final String QUOTE = "\"";
+
+    /**
+     * The calls that name a key as a literal, up to the opening quote.
+     *
+     * <p>Only the literal ones. A key built at runtime -- {@code
+     * "settings.language." + code} -- is not a string in the source, and
+     * pretending to check it would mean guessing what the halves add up to.
+     * Those are what {@code Messages.orElse} takes a fallback for.</p>
+     */
+    private static final List<String> CALLS = List.of(
+            "Messages.get(" + QUOTE,
+            "Messages.orElse(" + QUOTE,
+            "Messages.mnemonic(" + QUOTE);
 }
