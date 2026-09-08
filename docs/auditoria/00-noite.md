@@ -1079,3 +1079,67 @@ dele, não minha — e alguns podem ser degrau para coisa que ainda vem.
 `getStretch` ainda carrega o prefixo `get` que a casa não usa.
 
 Suíte 724 → **732**.
+
+---
+
+## Fase 9 — a conferência final: acabou?
+
+Pergunta dele: *"acabou a auditoria?"*. Conferido contra o índice das duas
+auditorias, e não contra a memória.
+
+### O que a conta diz
+
+| | achados com id | citados no registro ou num commit | abertos |
+|---|---:|---:|---:|
+| auditoria I | 249 (52 ALTA, 130 MÉDIA, 67 BAIXA) + 48 BAIXA sem id | todos | 0 |
+| auditoria II | 215 (26 ALTA, 99 MÉDIA, 90 BAIXA) | todos | 0 |
+
+A auditoria II **não repete a armadilha da fase 7**: o cabeçalho diz 26/99/90 e
+há exatamente 26/99/90 identificadores. Conferido com `grep -c`, que é a lição
+daquela fase.
+
+Sete achados da II ainda não tinham citação nenhuma. Dois **já estavam
+fechados** por outro caminho e faltava só o registro: **B5-15** (javadoc
+empilhado no `Overlay`, derrubado pelo `OrphanJavadocTest`) e **B5-18**
+(`computeOver` já recebe o destino por parâmetro em vez de trocar o campo por
+baixo de si mesma). Os outros cinco foram corrigidos em `8970f90`.
+
+### B8a-2, e uma quebra que o relatório errou
+
+O teste do relatório de última chance afirmava só a metade negativa: nada chegou
+ao `System.err` redirecionado. Isso é igualmente a resposta de *"foi para o
+fluxo capturado na carga"* e de *"não foi escrito em lugar nenhum"*.
+
+Capturar o `System.err` antes de a classe carregar — a correção que o relatório
+propõe — **não dá**: a suíte inteira roda numa JVM só, e qualquer teste anterior
+que toque a classe já fixou `FAILURES`. O produto ganhou uma costura, no padrão
+que a casa já usa (`useSettingsForTest`, `useForTest`), e o teste passou a
+afirmar que o relatório **aconteceu** e que nomeia a causa.
+
+**E a quebra que o relatório propõe não quebra mais nada.** Apagar o laço do
+`close()` deixa o teste verde — porque `reportIfUnclaimed` também é chamado
+quando o job assenta, e o laço do `close` é a segunda rede. A quebra de verdade
+é esvaziar `reportIfUnclaimed`, e essa derruba dois testes. O diagnóstico do
+achado estava certo e o "como quebro" estava velho: **a prova de dentes tem de
+ser refeita contra o código de hoje**, não copiada do relatório.
+
+### O que fica aberto, e é dele
+
+- **D2** — dobra do renko na EDT. Falta medir no caso real dele.
+- **D6** — candle plana contada como negócio. Três opções com custo medido;
+  tentei uma e voltei atrás porque quebrou 11 testes em 3 arquivos.
+- **D7 (novo)** — **os polígonos dos ícones do transporte.** O B6-13 pede três
+  coisas: o `BasicStroke`, a cor apagada e os `int[]` que cada `fillPolygon`
+  monta. As duas primeiras foram feitas. Os arrays **não**: são oito vetores de
+  três inteiros por pintura, a 25 quadros por segundo — 200 vetores minúsculos
+  por segundo, que para o coletor de hoje é nada — e guardá-los exigiria um mapa
+  por tamanho numa classe que hoje é uma lista de literais. **Desistir de uma
+  otimização é decisão dele**; fica registrado com o custo, não executado.
+- Os **onze métodos que ninguém chama** da fase 8, pelo mesmo motivo: apagar API
+  pública é decisão dele.
+
+### Estado
+
+**As duas auditorias estão fechadas.** 464 achados com identificador mais as 48
+BAIXA sem identificador da I. Suíte **732 verdes**, um pulado (o de ambiente
+gráfico), e o log do pre-commit sem nenhuma exceção que não seja de propósito.
