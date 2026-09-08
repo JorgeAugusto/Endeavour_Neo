@@ -858,10 +858,24 @@ public final class SeriesCatalog {
      * round for the sake of one line.</p>
      */
     public static void forget() {
+        // THE CACHE FIRST, and this is the one line here whose order cannot be
+        // changed without consequence: a listener that reopens a series while
+        // being told must get the FILE, not the copy that was just declared
+        // stale. It was right and nothing said so.
         LOADED.clear();
 
         for (Runnable each : FORGETFUL) {
-            each.run();
+            try {
+                each.run();
+            } catch (RuntimeException e) {
+                // ONE LISTENER CANNOT SILENCE THE OTHERS. With a single listener
+                // this is invisible; with two, the first one throwing left the
+                // second cache holding what the files no longer say, and nobody
+                // knew. Whoever threw is a defect worth seeing, and the others
+                // are still owed the news.
+                System.err.println("a listener failed while the catalog was being"
+                        + " forgotten (" + e + ")");
+            }
         }
     }
 
@@ -869,11 +883,17 @@ public final class SeriesCatalog {
      * @param listener told whenever {@link #forget} drops what is held
      *
      * <p>For a cache built out of these files that has no way of knowing they
-     * changed. Registered once at startup and never removed, so a list and not
-     * a map: there is nothing to unregister.</p>
+     * changed.</p>
+     *
+     * <p><b>The same listener twice is once.</b> There is no way to unregister,
+     * which is fair for something registered at start-up and kept for the life
+     * of the program -- and it is only fair while a second registration cannot
+     * happen. It could: nothing here refused one, and a caller that registers on
+     * a path taken more than once would have been told twice per forget, for
+     * ever, with no way back.</p>
      */
     public static void whenForgotten(Runnable listener) {
-        if (listener != null) {
+        if (listener != null && !FORGETFUL.contains(listener)) {
             FORGETFUL.add(listener);
         }
     }

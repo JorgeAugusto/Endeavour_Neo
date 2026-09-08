@@ -295,6 +295,50 @@ public final class Settings {
     }
 
     /**
+     * Which shape this file is in.
+     *
+     * <p><b>There was no version, and it had already cost twice.</b> Two format
+     * changes were resolved by guessing at the content instead of by reading a
+     * number: the encoding repair above -- seventy lines that undo up to eight
+     * rounds of damage and decide by examining the bytes whether the text is
+     * broken -- and the change of the default series name, which leaves any
+     * older workspace pointing at a series that still exists and is no longer
+     * the source.</p>
+     *
+     * <p>Written as a comment rather than as a key so it cannot be mistaken for
+     * a preference, read back by {@link #formatOf}, and one is what every file
+     * without it is taken to be. Nothing migrates yet, and that is the point:
+     * the next change has somewhere to look.</p>
+     */
+    static final int FORMAT = 1;
+
+    /**
+     * @param text the whole file as read
+     * @return the format it declares, or 1 when it declares none
+     */
+    static int formatOf(String text) {
+        for (String line : text.split("\r?\n")) {
+            String trimmed = line.trim();
+
+            if (!trimmed.startsWith("#")) {
+                // Past the header. A "# format" further down is a comment
+                // somebody wrote, not the file saying what it is.
+                break;
+            }
+
+            if (trimmed.startsWith("# format ")) {
+                try {
+                    return Integer.parseInt(trimmed.substring("# format ".length()).trim());
+                } catch (NumberFormatException e) {
+                    return FORMAT;
+                }
+            }
+        }
+
+        return 1;
+    }
+
+    /**
      * Writes the file, one key per line, sorted.
      *
      * <p>Written by hand rather than with {@link Properties#store}, which writes
@@ -340,6 +384,8 @@ public final class Settings {
 
             try (BufferedWriter out = Files.newBufferedWriter(working, StandardCharsets.UTF_8)) {
                 out.write("# " + banner);
+                out.newLine();
+                out.write("# format " + FORMAT);
                 out.newLine();
 
                 // NO TIMESTAMP. The sorting exists so that a change is one line

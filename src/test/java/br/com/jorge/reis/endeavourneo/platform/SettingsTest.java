@@ -290,4 +290,42 @@ class SettingsTest {
                 "writing the same settings a second later gave a different file: every "
                         + "save is a diff, which is what the sorting exists to prevent");
     }
+
+    @Test
+    @DisplayName("o arquivo diz em que formato esta, e um arquivo antigo vale como 1")
+    void thefileSaysWhichFormatItIsIn(@TempDir Path folder) throws IOException {
+        // There was no version, and it had already cost twice: the encoding
+        // repair is seventy lines that undo up to eight rounds of damage and
+        // decide by examining the bytes whether the text is broken, and the
+        // change of the default series name leaves any older workspace pointing
+        // at a series that still exists and is no longer the source. Both were
+        // resolved by guessing at the content instead of by reading a number.
+        //
+        // Nothing migrates yet. The point is that the next change has somewhere
+        // to look.
+        Path file = folder.resolve("formato.properties");
+        Settings settings = at(file);
+
+        settings.put("theme", "dark");
+
+        String written = Files.readString(file, StandardCharsets.UTF_8);
+
+        // The LINE, spelled out. Asking formatOf what the file says answers 1
+        // for a file that says nothing at all, so while the format IS one that
+        // assertion passes with the line taken out -- which is what the teeth
+        // proof caught.
+        assertTrue(written.contains("# format " + Settings.FORMAT),
+                "the file does not say what shape it is in: " + written);
+        assertEquals(Settings.FORMAT, Settings.formatOf(written));
+
+        // A file written before this existed says nothing, and is the first
+        // format by definition.
+        assertEquals(1, Settings.formatOf("theme=dark" + System.lineSeparator()));
+
+        // And a "# format" further down is a comment somebody wrote, not the
+        // file speaking: the header is over at the first line that is not one.
+        assertEquals(1, Settings.formatOf("# banner" + System.lineSeparator()
+                + "theme=dark" + System.lineSeparator()
+                + "# format 9" + System.lineSeparator()));
+    }
 }

@@ -453,4 +453,39 @@ class SeriesCatalogTest {
         assertEquals(299.0, stretch.closeAt(stretch.size() - 1), 1e-9,
                 "the last bar is not the last bar of the stretch");
     }
+
+    @Test
+    @DisplayName("um ouvinte que estoura nao cala os outros, e registrar duas vezes e uma")
+    void alisteneR_thatThrowsDoesNotSilenceTheOthers() {
+        // There is no try/catch around the loop that tells the listeners. With a
+        // single listener that is invisible; with two, the first one throwing
+        // left the SECOND cache holding what the files no longer say, and
+        // nothing knew. Both of them are caches of these files with no other way
+        // to learn that the files changed -- which is the whole reason the hook
+        // exists.
+        java.util.List<String> told = new java.util.ArrayList<>();
+
+        Runnable angry = () -> {
+            told.add("angry");
+
+            throw new IllegalStateException("on purpose");
+        };
+        Runnable quiet = () -> told.add("quiet");
+
+        SeriesCatalog.whenForgotten(angry);
+        SeriesCatalog.whenForgotten(quiet);
+
+        // AND TWICE IS ONCE. There is no way to unregister, which is fair for
+        // something registered at start-up and kept for the life of the program
+        // -- and only while a second registration cannot happen. Nothing refused
+        // one, so a caller on a path taken twice would have been told twice per
+        // forget, for ever, with no way back.
+        SeriesCatalog.whenForgotten(quiet);
+
+        SeriesCatalog.forget();
+
+        assertEquals(java.util.List.of("angry", "quiet"), told,
+                "a listener that threw took the ones after it down with it, or one was "
+                        + "registered twice");
+    }
 }
