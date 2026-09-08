@@ -181,11 +181,57 @@ public final class TickLibrary implements AutoCloseable {
             return null;
         }
 
-        TickSeries read = source.read(fileFor(day));
+        // MARKED AS LOADING, so a request for the same day queues nothing.
+        // That set exists, in its own words, so "a second request does not queue
+        // a second read" -- and this method never looked at it. A load running
+        // beside a request for the same day read the file twice and built two
+        // sessions, around 226 MB in flight by this class's own measurement,
+        // before one overwrote the other. Not a wrong answer: a peak that the
+        // whole "never more than three" design exists to avoid.
+        //
+        // A load already in flight elsewhere is waited for by reading anyway --
+        // this one has a caller holding on for the answer, and blocking on
+        // another thread's read would need a latch this class does not have.
+        // What is removed is the case where the OTHER side is the one that has
+        // not started yet.
+        boolean mine = loading.add(day);
 
-        keep(day, read);
+        try {
+            TickSeries read = source.read(fileFor(day));
 
-        return read;
+            keep(day, read);
+
+            return read;
+        } finally {
+            if (mine) {
+                loading.remove(day);
+            }
+        }
+    }
+
+    /**
+     * Where a listing failure is said, and who decides that.
+     *
+     * <p><b>Not System.err by default any more.</b> The reasoning of the
+     * comments below is right -- a listing that failed halfway deserves to be
+     * said -- but the channel was not: it was the only text output in this
+     * whole package, a reader of a Swing application never sees standard
+     * error, and a sentence written in English in the code walks straight past
+     * the bundle on the day it reaches a screen.</p>
+     *
+     * <p>So the domain says WHAT happened and the caller decides where it
+     * goes. Standard error stays as the default, because a warning nobody
+     * asked to receive is still better said than swallowed.</p>
+     */
+    public static void reportTo(java.util.function.Consumer<String> where) {
+        complaints = where == null ? System.err::println : where;
+    }
+
+    private static volatile java.util.function.Consumer<String> complaints =
+            System.err::println;
+
+    private static void complain(String what) {
+        complaints.accept(what);
     }
 
     /** @return how many sessions are in memory */
@@ -378,8 +424,7 @@ public final class TickLibrary implements AutoCloseable {
             // The walk could not even START -- the folder went away between the
             // check above and here. Nothing was found, so there is nothing to
             // keep, but there is still something to say.
-            System.err.println(folder + ": the tick sessions could not be listed ("
-                    + e + ")");
+            complain(folder + ": the tick sessions could not be listed (" + e + ")");
 
             return List.of();
         }
@@ -436,8 +481,8 @@ public final class TickLibrary implements AutoCloseable {
             // message. This is not one of those: it is the whole listing
             // failing, and the reader is about to be shown a shorter list of
             // playable days with nothing to say why.
-            System.err.println(folder + ": the tick sessions could not all be"
-                    + " listed (" + e + "); showing the " + days.size() + " found");
+            complain(folder + ": the tick sessions could not all be listed ("
+                    + e + "); showing the " + days.size() + " found");
         }
 
         days.sort(null);

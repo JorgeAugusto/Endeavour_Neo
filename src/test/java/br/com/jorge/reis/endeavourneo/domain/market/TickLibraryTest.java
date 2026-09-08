@@ -620,4 +620,31 @@ class TickLibraryTest {
             library.close();
         }
     }
+    @Test
+    @DisplayName("o aviso da listagem vai para quem o chamador escolher")
+    void theListingComplaintGoesWhereTheCallerSays(@TempDir Path folder) {
+        // The reasoning behind the warning is right -- a listing that failed
+        // halfway deserves to be said -- and the channel was not: System.err was
+        // the only text output in this whole package, a reader of a Swing
+        // application never sees it, and an English sentence written in the code
+        // walks straight past the bundle on the day it reaches a screen.
+        java.util.List<String> said = new java.util.ArrayList<>();
+
+        TickLibrary.reportTo(said::add);
+
+        TickLibrary library = new TickLibrary(folder, "winfut", TickSource.METATRADER);
+
+        try {
+            library.daysIn(java.util.stream.Stream.<Path>generate(() -> {
+                throw new java.io.UncheckedIOException(
+                        new IOException("the volume went away"));
+            }));
+
+            assertEquals(1, said.size(), "the warning did not reach the caller's channel");
+            assertTrue(said.get(0).contains("could not"), said.get(0));
+        } finally {
+            library.close();
+            TickLibrary.reportTo(null);
+        }
+    }
 }
