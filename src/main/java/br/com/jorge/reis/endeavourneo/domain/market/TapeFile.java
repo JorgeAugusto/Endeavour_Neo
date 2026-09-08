@@ -98,9 +98,12 @@ import java.util.Map;
  */
 public final class TapeFile {
 
-    private static final byte[] MAGIC = "ENDVTAPE".getBytes(StandardCharsets.US_ASCII);
+    /** See {@link TickFile#TAG}: one owner for the mark and the version. */
+    static final String TAG = "ENDVTAPE";
 
-    private static final int VERSION = 1;
+    static final int VERSION = 1;
+
+    private static final byte[] MAGIC = TAG.getBytes(StandardCharsets.US_ASCII);
 
     /**
      * The aggressors, held once.
@@ -127,8 +130,7 @@ public final class TapeFile {
         // old call worked by coincidence -- and the day the tape goes to 2,
         // every valid tape would answer false here and the Profit source
         // would vanish from the list with no error anywhere.
-        return TickFile.sessionOf(file, new String(MAGIC, StandardCharsets.US_ASCII),
-                VERSION) != null;
+        return TickFile.sessionOf(file, TAG, VERSION) != null;
     }
 
     /**

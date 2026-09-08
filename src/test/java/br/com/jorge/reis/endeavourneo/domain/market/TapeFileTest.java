@@ -676,4 +676,37 @@ class TapeFileTest {
         assertTrue(thrown.getMessage().contains("2026-09-01"),
                 "the message does not name the day that came back: " + thrown.getMessage());
     }
+
+    /**
+     * Quem escreve a fita e quem a procura concordam sobre a marca e a versão.
+     *
+     * <p>{@code TickSource} guarda a marca e a versão de cada fonte, e o
+     * comentário em {@code TickFile.header} diz para que: passar a versão do
+     * chamador, e não a do próprio arquivo, é o que impede que uma fita da
+     * versão 2 seja lida como "não é nossa". Só que os dois números continuavam
+     * escritos duas vezes — uma em {@code TapeFile} e outra no enum — e subir só
+     * um deles traz o defeito de volta inteiro: o conversor escreve 2, o
+     * varredor procura 1, a fonte Profit some da lista e ninguém vê erro
+     * nenhum.</p>
+     *
+     * <p>Este teste é o que sobra depois de o formato passar a ser o dono do
+     * número: ele pega a duplicação sendo reintroduzida.</p>
+     */
+    @Test
+    @DisplayName("quem escreve a fita e quem a varre concordam sobre marca e versao")
+    void theWriterAndTheScannerAgree(@TempDir Path folder) throws Exception {
+        Path csv = exportOf(folder, "trades.csv", NEWEST_FIRST);
+        Path ticks = folder.resolve("ticks");
+
+        Path file = ProfitTrades.convert(csv, ticks, "win", null).get(0).file();
+
+        assertEquals(java.time.LocalDate.of(2026, 9, 1), TickSource.PROFIT.sessionIn(file),
+                "the scanner did not recognise a tape this program had just written: the "
+                        + "mark or the version it looks for is not the one the writer put "
+                        + "there, and the Profit source vanishes from the list with nothing "
+                        + "said");
+
+        assertTrue(TapeFile.isTape(file),
+                "the reader did not recognise its own file either");
+    }
 }

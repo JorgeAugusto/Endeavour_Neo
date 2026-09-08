@@ -38,10 +38,28 @@ final class ReplayIcons {
         throw new AssertionError("Utility class must not be instantiated");
     }
 
+    /**
+     * The triangle, worked out once and not on every repaint.
+     *
+     * <p><b>Outside the lambda, which is the whole of the trick.</b> Every
+     * glyph here built its {@code int[]} pairs inside the painting -- eight
+     * arrays in {@code drag} alone -- and the transport repaints twenty-five
+     * times a second while a session plays. The arrays depend only on the size,
+     * the size is fixed when the icon is made, and the icons are made once. So
+     * they are computed here and closed over.</p>
+     *
+     * <p>No cache and no map: the alternative considered was keeping the shapes
+     * against the size in a map, which is machinery this class -- a list of
+     * literals -- has no other use for. The lambda ignores its {@code w} and
+     * {@code h} because for a given icon they ARE the size.</p>
+     */
     static Icon play(int size) {
+        int[] xs = {3, 3, size - 3};
+        int[] ys = {2, size - 2, size / 2};
+
         return new Painted(size, (g, w, h, colour) -> {
             g.setColor(colour);
-            g.fillPolygon(new int[]{3, 3, w - 3}, new int[]{2, h - 2, h / 2}, 3);
+            g.fillPolygon(xs, ys, 3);
         });
     }
 
@@ -67,19 +85,29 @@ final class ReplayIcons {
         });
     }
 
+    /** Two triangles pointing left. See {@link #play} about the arrays. */
     static Icon back(int size) {
+        int[] leftX = {size / 2, size / 2, 2};
+        int[] rightX = {size - 2, size - 2, size / 2};
+        int[] ys = {2, size - 2, size / 2};
+
         return new Painted(size, (g, w, h, colour) -> {
             g.setColor(colour);
-            g.fillPolygon(new int[]{w / 2, w / 2, 2}, new int[]{2, h - 2, h / 2}, 3);
-            g.fillPolygon(new int[]{w - 2, w - 2, w / 2}, new int[]{2, h - 2, h / 2}, 3);
+            g.fillPolygon(leftX, ys, 3);
+            g.fillPolygon(rightX, ys, 3);
         });
     }
 
+    /** Two triangles pointing right. See {@link #play} about the arrays. */
     static Icon forward(int size) {
+        int[] leftX = {2, 2, size / 2};
+        int[] rightX = {size / 2, size / 2, size - 2};
+        int[] ys = {2, size - 2, size / 2};
+
         return new Painted(size, (g, w, h, colour) -> {
             g.setColor(colour);
-            g.fillPolygon(new int[]{2, 2, w / 2}, new int[]{2, h - 2, h / 2}, 3);
-            g.fillPolygon(new int[]{w / 2, w / 2, w - 2}, new int[]{2, h - 2, h / 2}, 3);
+            g.fillPolygon(leftX, ys, 3);
+            g.fillPolygon(rightX, ys, 3);
         });
     }
 
@@ -93,26 +121,31 @@ final class ReplayIcons {
      * same label the same way.</p>
      */
     static Icon drag(int size) {
+        // Eight arrays, and they were all built on every repaint. See play().
+        int cx = size / 2;
+        int cy = size / 2;
+        int arm = size / 2 - 1;
+        int head = Math.max(2, arm / 2);
+
+        int[] acrossX = {cx - head, cx + head, cx};
+        int[] upY = {cy - arm + head, cy - arm + head, cy - arm};
+        int[] downY = {cy + arm - head, cy + arm - head, cy + arm};
+
+        int[] leftX = {cx - arm + head, cx - arm + head, cx - arm};
+        int[] rightX = {cx + arm - head, cx + arm - head, cx + arm};
+        int[] acrossY = {cy - head, cy + head, cy};
+
         return new Painted(size, (g, w, h, colour) -> {
             g.setColor(colour);
-            g.setStroke(new BasicStroke(1.0f));
-
-            int cx = w / 2;
-            int cy = h / 2;
-            int arm = Math.min(w, h) / 2 - 1;
-            int head = Math.max(2, arm / 2);
+            g.setStroke(HAIRLINE);
 
             g.drawLine(cx, cy - arm, cx, cy + arm);
             g.drawLine(cx - arm, cy, cx + arm, cy);
 
-            g.fillPolygon(new int[]{cx - head, cx + head, cx},
-                    new int[]{cy - arm + head, cy - arm + head, cy - arm}, 3);
-            g.fillPolygon(new int[]{cx - head, cx + head, cx},
-                    new int[]{cy + arm - head, cy + arm - head, cy + arm}, 3);
-            g.fillPolygon(new int[]{cx - arm + head, cx - arm + head, cx - arm},
-                    new int[]{cy - head, cy + head, cy}, 3);
-            g.fillPolygon(new int[]{cx + arm - head, cx + arm - head, cx + arm},
-                    new int[]{cy - head, cy + head, cy}, 3);
+            g.fillPolygon(acrossX, upY, 3);
+            g.fillPolygon(acrossX, downY, 3);
+            g.fillPolygon(leftX, acrossY, 3);
+            g.fillPolygon(rightX, acrossY, 3);
         });
     }
 
@@ -124,6 +157,9 @@ final class ReplayIcons {
      * of every icon.</p>
      */
     private static final BasicStroke PEN = new BasicStroke(1.4f);
+
+    /** The thinner line the four-way arrow's shaft is drawn with. */
+    private static final BasicStroke HAIRLINE = new BasicStroke(1.0f);
 
     @FunctionalInterface
     private interface Glyph {

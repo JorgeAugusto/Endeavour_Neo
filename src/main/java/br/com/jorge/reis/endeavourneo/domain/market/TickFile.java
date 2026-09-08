@@ -70,9 +70,27 @@ import java.util.Arrays;
  */
 public final class TickFile {
 
-    private static final byte[] MAGIC = "ENDVTICK".getBytes(StandardCharsets.US_ASCII);
+    /**
+     * The eight bytes at the head of a MetaTrader session, and the version it
+     * is written with.
+     *
+     * <p><b>Package-visible because {@link TickSource} names them, and used to
+     * repeat them.</b> The enum carried its own {@code "ENDVTICK"} and its own
+     * {@code 1}, and the comment in {@code header} explains what the second
+     * copy costs: the scanner passes the enum's version to the reader, so
+     * bumping the one here and not the one there makes every valid session of
+     * this source answer "not one of ours" -- and it vanishes from the list
+     * with no error anywhere. That comment describes the defect being possible;
+     * it went on being possible one level up.</p>
+     *
+     * <p>The format owns them, not the enum: the enum is a list of sources and
+     * this class is what a session of this source IS.</p>
+     */
+    static final String TAG = "ENDVTICK";
 
-    private static final int VERSION = 1;
+    static final int VERSION = 1;
+
+    private static final byte[] MAGIC = TAG.getBytes(StandardCharsets.US_ASCII);
 
     private static final int HEADER_BYTES = 8 + Integer.BYTES + Integer.BYTES + Long.BYTES;
 

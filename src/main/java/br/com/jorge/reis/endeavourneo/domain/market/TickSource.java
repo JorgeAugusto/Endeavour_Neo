@@ -59,7 +59,7 @@ import java.time.LocalDate;
 public enum TickSource {
 
     /** MetaTrader's tick export: bid, ask, last, volume, to the millisecond. */
-    METATRADER("ENDVTICK", "bin", 1),
+    METATRADER(TickFile.TAG, "bin", TickFile.VERSION),
 
     /**
      * Profit's Times &amp; Trades: every print, with both brokers and the
@@ -69,7 +69,7 @@ public enum TickSource {
      * exists on disk this source simply lists nothing, which is the truth: no
      * tape has been exported.</p>
      */
-    PROFIT("ENDVTAPE", "tape", 1);
+    PROFIT(TapeFile.TAG, "tape", TapeFile.VERSION);
 
     private final String tag;
 
@@ -84,6 +84,12 @@ public enum TickSource {
      * as "not one of ours" and the Profit source would vanish from the list
      * with no error anywhere. The header LAYOUT is shared; the version in it is
      * each source's own.</p>
+     *
+     * <p><b>And it is taken from the class that writes it</b>, not written out
+     * again here. Carrying the number per source removed the defect the
+     * paragraph above describes and left a second copy of the number, which
+     * brings it straight back: bumping {@code TapeFile.VERSION} alone made the
+     * writer produce a 2 and this scanner refuse it. Same for the tag.</p>
      */
     private final int version;
 
