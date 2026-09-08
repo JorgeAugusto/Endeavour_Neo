@@ -206,16 +206,16 @@ class SeriesSummaryTest {
         // printed "0,00%" bare. The code is right -- a "+0,00%" claims a rise of
         // nothing -- so the sentence moved, not the output. Asserted here so the
         // next reader of that paragraph cannot "fix" it back.
-        assertFalse(Sessions.formatChange(0.0).startsWith("+"),
-                "zero came out claiming a direction: " + Sessions.formatChange(0.0));
-        assertFalse(Sessions.formatChange(0.0).startsWith("-"),
-                "zero came out claiming a direction: " + Sessions.formatChange(0.0));
+        assertFalse(DayChange.formatChange(0.0).startsWith("+"),
+                "zero came out claiming a direction: " + DayChange.formatChange(0.0));
+        assertFalse(DayChange.formatChange(0.0).startsWith("-"),
+                "zero came out claiming a direction: " + DayChange.formatChange(0.0));
 
         // And a real move still does carry it, or the assertions above are
         // satisfied by a formatter that signs nothing at all.
-        assertTrue(Sessions.formatChange(3.04).startsWith("+"),
-                "a rise lost its plus: " + Sessions.formatChange(3.04));
-        assertTrue(Sessions.formatChange(-3.04).startsWith("-"),
-                "a fall lost its minus: " + Sessions.formatChange(-3.04));
+        assertTrue(DayChange.formatChange(3.04).startsWith("+"),
+                "a rise lost its plus: " + DayChange.formatChange(3.04));
+        assertTrue(DayChange.formatChange(-3.04).startsWith("-"),
+                "a fall lost its minus: " + DayChange.formatChange(-3.04));
     }
 }

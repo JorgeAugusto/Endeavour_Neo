@@ -17,20 +17,15 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.chart;
 
-import br.com.jorge.reis.endeavourneo.platform.Appearance;
 import br.com.jorge.reis.endeavourneo.platform.Messages;
 
-import java.awt.Color;
 import java.awt.Font;
-import java.awt.FontMetrics;
 import java.awt.Graphics2D;
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.text.DecimalFormat;
-import java.text.DecimalFormatSymbols;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
 /**
  * The box the ruler shows: what the two points are worth apart.
@@ -42,66 +37,33 @@ import java.util.Locale;
  */
 final class RulerReadout {
 
-    private static final int PADDING = 10;
+    private static final int PADDING = Readouts.PADDING;
 
     private static final int OFFSET = 16;
-
-    private static final float ALPHA = 0.94f;
 
     private RulerReadout() {
         throw new AssertionError("Utility class must not be instantiated");
     }
 
     static void paint(Graphics2D g, Measurement measurement, Point anchor, Rectangle area) {
-        Font labelFont = g.getFont().deriveFont(11f);
-        Font valueFont = Appearance.monospaced(11);
-
+        // The box itself is drawn by Readouts, which BarReadout also uses:
+        // the two carried identical copies of the number format, the mood
+        // colour, the translucency, the padding and the whole
+        // measure-fill-frame-rows routine. What is this class's own is where
+        // the box goes and what is in it.
         List<String[]> rows = rowsFor(measurement);
+        Readouts.Fonts fonts = Readouts.Fonts.of(g);
+        java.awt.Dimension size = Readouts.sizeOf(g, rows, fonts);
 
-        FontMetrics labels = g.getFontMetrics(labelFont);
-        FontMetrics values = g.getFontMetrics(valueFont);
-
-        int labelWidth = 0;
-        int valueWidth = 0;
-
-        for (String[] row : rows) {
-            labelWidth = Math.max(labelWidth, labels.stringWidth(row[0]));
-            valueWidth = Math.max(valueWidth, values.stringWidth(row[1]));
-        }
-
-        int lineHeight = Math.max(labels.getHeight(), values.getHeight());
-        int width = labelWidth + 18 + valueWidth + PADDING * 2;
-        int height = lineHeight * rows.size() + PADDING * 2;
-
-        Rectangle box = place(anchor, width, height, area);
-
-        g.setColor(withAlpha(ChartColors.background(), ALPHA));
-        g.fillRect(box.x, box.y, box.width, box.height);
-
-        g.setColor(ChartColors.grid());
-        g.drawRect(box.x, box.y, box.width - 1, box.height - 1);
-
-        int y = box.y + PADDING;
-
-        for (String[] row : rows) {
-            y += lineHeight;
-
-            g.setFont(labelFont);
-            g.setColor(withAlpha(ChartColors.foreground(), 0.7f));
-            g.drawString(row[0], box.x + PADDING, y - 4);
-
-            g.setFont(valueFont);
-            g.setColor(row.length > 2 ? colourOf(row[2]) : ChartColors.foreground());
-            g.drawString(row[1], box.x + box.width - PADDING - values.stringWidth(row[1]), y - 4);
-        }
+        Readouts.draw(g, rows, fonts, place(anchor, size.width, size.height, area));
     }
 
     static List<String[]> rowsFor(Measurement measurement) {
         double difference = measurement.difference();
         double percent = measurement.percent();
 
-        DecimalFormat price = format(2);
-        DecimalFormat plain = format(0);
+        DecimalFormat price = Readouts.format(2);
+        DecimalFormat plain = Readouts.format(0);
 
         // THE SAME NUMBER WAS WRITTEN TWICE, under two labels. "Change" showed
         // `difference` with two decimals and " pts"; "Difference" showed the
@@ -156,29 +118,5 @@ final class RulerReadout {
 
         return new Rectangle(Math.max(4, x),
                 Math.max(4, Math.min(y, area.height - height - 4)), width, height);
-    }
-
-    private static DecimalFormat format(int decimals) {
-        StringBuilder pattern = new StringBuilder("#,##0");
-
-        if (decimals > 0) {
-            pattern.append('.').append("0".repeat(decimals));
-        }
-
-        return new DecimalFormat(pattern.toString(),
-                DecimalFormatSymbols.getInstance(Locale.getDefault()));
-    }
-
-    private static Color colourOf(String mood) {
-        return switch (mood) {
-            case "up" -> ChartColors.up();
-            case "down" -> ChartColors.down();
-            default -> ChartColors.foreground();
-        };
-    }
-
-    private static Color withAlpha(Color colour, float alpha) {
-        return new Color(colour.getRed(), colour.getGreen(), colour.getBlue(),
-                Math.round(alpha * 255));
     }
 }

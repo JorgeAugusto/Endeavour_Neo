@@ -31,8 +31,8 @@ import org.junit.jupiter.api.Test;
  * Where the previous session's close is found, and what happens when there
  * isn't one.
  */
-@DisplayName("Sessions")
-class SessionsTest {
+@DisplayName("DayChange")
+class DayChangeTest {
 
     private static final ZoneId ZONE = ZoneId.of("America/Sao_Paulo");
 
@@ -94,7 +94,7 @@ class SessionsTest {
     void takesTheLastBarOfThePreviousDay() {
         // Day 2 runs over bars 3..5. Its reference is bar 2 (close 12), the last
         // of day 1 -- taking bar 0 would compare against a price nine hours stale.
-        assertEquals(12.0, Sessions.previousDayClose(threeDays(), 4, ZONE));
+        assertEquals(12.0, DayChange.previousDayClose(threeDays(), 4, ZONE));
     }
 
     @Test
@@ -102,8 +102,8 @@ class SessionsTest {
     void allBarsOfADayAgree() {
         PriceSeries series = threeDays();
 
-        assertEquals(Sessions.previousDayClose(series, 3, ZONE),
-                Sessions.previousDayClose(series, 5, ZONE),
+        assertEquals(DayChange.previousDayClose(series, 3, ZONE),
+                DayChange.previousDayClose(series, 5, ZONE),
                 "two bars of the same session disagreed about where it opened from");
     }
 
@@ -111,8 +111,8 @@ class SessionsTest {
     @DisplayName("the first day of the series has no previous close")
     void firstDayHasNoReference() {
         // NaN and not zero: zero would be drawn as a price and read as one.
-        assertTrue(Double.isNaN(Sessions.previousDayClose(threeDays(), 1, ZONE)));
-        assertTrue(Double.isNaN(Sessions.changeOnDay(
+        assertTrue(Double.isNaN(DayChange.previousDayClose(threeDays(), 1, ZONE)));
+        assertTrue(Double.isNaN(DayChange.changeOnDay(
                 series(new long[]{0L}, new double[]{10.0}), ZONE)));
     }
 
@@ -120,16 +120,16 @@ class SessionsTest {
     @DisplayName("the change on the day is the last bar against the day before")
     void changeOnDay() {
         // Last bar closes 18; the previous day closed 15. Three points on 15.
-        assertEquals(20.0, Sessions.changeOnDay(threeDays(), ZONE), 1e-9);
+        assertEquals(20.0, DayChange.changeOnDay(threeDays(), ZONE), 1e-9);
     }
 
     @Test
     @DisplayName("nothing to compare against gives nothing, never zero")
     void missingReferenceIsNotZero() {
-        assertTrue(Double.isNaN(Sessions.percentChange(0.0, 10.0)),
+        assertTrue(Double.isNaN(DayChange.percentChange(0.0, 10.0)),
                 "dividing by a zero reference must not answer");
-        assertTrue(Double.isNaN(Sessions.percentChange(Double.NaN, 10.0)));
-        assertEquals("", Sessions.formatChange(Double.NaN),
+        assertTrue(Double.isNaN(DayChange.percentChange(Double.NaN, 10.0)));
+        assertEquals("", DayChange.formatChange(Double.NaN),
                 "an unknown change has to render as nothing at all");
     }
 
@@ -138,15 +138,15 @@ class SessionsTest {
     void alwaysSigned() {
         // A bare "3,04%" beside an instrument name reads as a quantity rather
         // than as a move.
-        assertTrue(Sessions.formatChange(3.04).startsWith("+"));
-        assertTrue(Sessions.formatChange(-3.04).startsWith("-"));
+        assertTrue(DayChange.formatChange(3.04).startsWith("+"));
+        assertTrue(DayChange.formatChange(-3.04).startsWith("-"));
     }
 
     @Test
     @DisplayName("an empty or absent series answers nothing")
     void emptySeries() {
-        assertTrue(Double.isNaN(Sessions.changeOnDay(PriceSeries.empty(), ZONE)));
-        assertTrue(Double.isNaN(Sessions.changeOnDay(null, ZONE)));
-        assertTrue(Double.isNaN(Sessions.previousDayClose(threeDays(), 99, ZONE)));
+        assertTrue(Double.isNaN(DayChange.changeOnDay(PriceSeries.empty(), ZONE)));
+        assertTrue(Double.isNaN(DayChange.changeOnDay(null, ZONE)));
+        assertTrue(Double.isNaN(DayChange.previousDayClose(threeDays(), 99, ZONE)));
     }
 }

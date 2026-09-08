@@ -18,6 +18,7 @@
 package br.com.jorge.reis.endeavourneo.ui.chart;
 
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
+import br.com.jorge.reis.endeavourneo.domain.market.Sessions;
 import br.com.jorge.reis.endeavourneo.domain.market.TickLibrary;
 
 import java.time.LocalDate;
@@ -96,8 +97,7 @@ final class RenkoSource {
         //
         // The cached answer was twelve lines below all along: Sessions.of walks
         // the series once and remembers.
-        for (LocalDate day : br.com.jorge.reis.endeavourneo.domain.market.Sessions
-                .of(series, zone)) {
+        for (LocalDate day : Sessions.of(series, zone)) {
 
             if (!exported.contains(day)) {
                 return false;
@@ -117,8 +117,7 @@ final class RenkoSource {
         // The walk itself moved to the domain: the transport greys out the days
         // a feed cannot play using the same answer, and two copies of one walk
         // is where the second one forgets that a holiday is not a weekend.
-        return new ArrayList<>(
-                br.com.jorge.reis.endeavourneo.domain.market.Sessions.of(series));
+        return new ArrayList<>(Sessions.of(series));
     }
 
     /**

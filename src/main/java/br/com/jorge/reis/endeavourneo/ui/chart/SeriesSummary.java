@@ -18,6 +18,7 @@
 package br.com.jorge.reis.endeavourneo.ui.chart;
 
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
+import br.com.jorge.reis.endeavourneo.domain.market.Sessions;
 
 import br.com.jorge.reis.endeavourneo.platform.Messages;
 
@@ -119,7 +120,7 @@ final class SeriesSummary {
      * a crossing.</p>
      */
     static int sessionsIn(PriceSeries series) {
-        return br.com.jorge.reis.endeavourneo.domain.market.Sessions.of(series).size();
+        return Sessions.of(series).size();
     }
 
     /** @return the summary as a tooltip */

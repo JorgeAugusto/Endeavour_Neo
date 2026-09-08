@@ -359,8 +359,8 @@ public final class ChartHolder {
         // The period in the title as well as inside the chart: the title is what
         // is readable when the window is behind two others.
         String scale = "  " + canvas.periodLabel();
-        String change = Sessions.formatChange(
-                Sessions.changeOnDay(canvas.series(), br.com.jorge.reis.endeavourneo.domain.market.Timeframe.defaultZone()));
+        String change = DayChange.formatChange(
+                DayChange.changeOnDay(canvas.series(), br.com.jorge.reis.endeavourneo.domain.market.Timeframe.defaultZone()));
 
         return change.isEmpty() ? label + scale : label + scale + "   " + change;
     }

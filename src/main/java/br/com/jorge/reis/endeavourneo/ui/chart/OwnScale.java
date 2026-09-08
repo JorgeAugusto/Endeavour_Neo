@@ -96,17 +96,42 @@ public final class OwnScale {
             // Walk forward while the NEXT coarse bar has already begun -- which
             // is what makes the one before it closed. A running pointer rather
             // than a search per bar: this walks each series once.
-            while (closed + 1 < coarse.size() - 1
-                    && coarse.timeAt(closed + 2) <= fine.timeAt(i)) {
-                closed++;
-            }
-
-            if (closed < 0 && coarse.size() > 1 && coarse.timeAt(1) <= fine.timeAt(i)) {
-                closed = 0;
-            }
+            closed = advance(fine, coarse, closed, i);
 
             into[i] = closed < 0 ? Double.NaN : slow[closed];
         }
+    }
+
+    /**
+     * @param fine the chart's own bars
+     * @param coarse the same bars folded to the larger scale
+     * @param closed where the pointer stood
+     * @param i the chart bar being answered for
+     * @return the last coarse bar that had CLOSED by that bar's instant
+     *
+     * <p><b>Written once, and it used to be written twice.</b> These eight
+     * lines were identical in {@link #map} and {@link #smooth} -- and they are
+     * the arithmetic this class's own javadoc calls the trap the project has
+     * already paid for once. Two copies of it are two chances to get the next
+     * correction wrong, in the one place that exists so the rule is written
+     * down only once.</p>
+     *
+     * <p>A running pointer and not a search per bar: both series are
+     * chronological, so the answer only ever moves forward. A search asked once
+     * per bar walks the coarse series 825.000 times over -- 183 ms per
+     * indicator, measured.</p>
+     */
+    private static int advance(PriceSeries fine, PriceSeries coarse, int closed, int i) {
+        while (closed + 1 < coarse.size() - 1
+                && coarse.timeAt(closed + 2) <= fine.timeAt(i)) {
+            closed++;
+        }
+
+        if (closed < 0 && coarse.size() > 1 && coarse.timeAt(1) <= fine.timeAt(i)) {
+            closed = 0;
+        }
+
+        return closed;
     }
 
     /**
@@ -127,14 +152,7 @@ public final class OwnScale {
         int closed = -1;
 
         for (int i = 0; i < into.length; i++) {
-            while (closed + 1 < coarse.size() - 1
-                    && coarse.timeAt(closed + 2) <= fine.timeAt(i)) {
-                closed++;
-            }
-
-            if (closed < 0 && coarse.size() > 1 && coarse.timeAt(1) <= fine.timeAt(i)) {
-                closed = 0;
-            }
+            closed = advance(fine, coarse, closed, i);
 
             if (closed < 1 || !Double.isFinite(slow[closed]) || !Double.isFinite(slow[closed - 1])) {
                 continue;

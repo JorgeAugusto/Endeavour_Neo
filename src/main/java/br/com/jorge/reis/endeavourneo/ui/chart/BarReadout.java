@@ -29,13 +29,11 @@ import java.awt.Graphics2D;
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.text.DecimalFormat;
-import java.text.DecimalFormatSymbols;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
 /**
  * The summary box that follows the cursor, describing one bar.
@@ -59,12 +57,13 @@ final class BarReadout {
     private static final DateTimeFormatter STAMP =
             DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
 
-    private static final int PADDING = 10;
+    /** Shared with the ruler's box; see Readouts. */
+    private static final int PADDING = Readouts.PADDING;
 
     /** Gap between the cursor and the corner of the box. */
     private static final int OFFSET = 18;
 
-    private static final float ALPHA = 0.94f;
+    private static final float ALPHA = Readouts.ALPHA;
 
     private BarReadout() {
         throw new AssertionError("Utility class must not be instantiated");
@@ -113,7 +112,7 @@ final class BarReadout {
         // The box has to be readable over candles, so it is nearly opaque. Fully
         // opaque would hide the bar being described, which is the one the reader
         // is looking at.
-        g.setColor(withAlpha(ChartColors.background(), ALPHA));
+        g.setColor(Readouts.withAlpha(ChartColors.background(), ALPHA));
         g.fillRect(box.x, box.y, box.width, box.height);
 
         g.setColor(ChartColors.grid());
@@ -131,14 +130,14 @@ final class BarReadout {
             y += lineHeight;
 
             g.setFont(labelFont);
-            g.setColor(withAlpha(ChartColors.foreground(), 0.7f));
+            g.setColor(Readouts.withAlpha(ChartColors.foreground(), 0.7f));
             g.drawString(row[0], box.x + PADDING, y);
 
             // Values right-aligned and in a fixed-width font: numbers in a
             // column only line up that way, and a column that does not line up
             // is read one row at a time instead of at a glance.
             g.setFont(valueFont);
-            g.setColor(row.length > 2 ? colourOf(row[2]) : ChartColors.foreground());
+            g.setColor(row.length > 2 ? Readouts.colourOf(row[2]) : ChartColors.foreground());
             g.drawString(row[1],
                     box.x + box.width - PADDING - values.stringWidth(row[1]), y);
         }
@@ -151,8 +150,8 @@ final class BarReadout {
         double close = series.closeAt(index);
         double change = close - open;
 
-        DecimalFormat price = format(decimalsFor(high - low));
-        DecimalFormat percent = format(2);
+        DecimalFormat price = Readouts.format(decimalsFor(high - low));
+        DecimalFormat percent = Readouts.format(2);
 
         List<String[]> rows = new ArrayList<>();
 
@@ -198,7 +197,7 @@ final class BarReadout {
         // Absent rather than zero when the series has no volume. A row reading
         // "0" would be a claim, and the wrong one.
         if (Double.isFinite(volume)) {
-            rows.add(new String[]{Messages.get("readout.volume"), format(0).format(volume)});
+            rows.add(new String[]{Messages.get("readout.volume"), Readouts.format(0).format(volume)});
         }
 
         // Counted rather than guessed, and only a source where one bar is one
@@ -208,7 +207,7 @@ final class BarReadout {
 
         if (trades >= 0) {
             rows.add(new String[]{Messages.get("readout.trades"),
-                    format(0).format(trades)});
+                    Readouts.format(0).format(trades)});
         } else if (br.com.jorge.reis.endeavourneo.domain.market.Untraded.at(series, index)) {
             // A renko built from candles cannot count, but it can still say
             // that nothing was traded in this band -- which is worth saying out
@@ -248,29 +247,5 @@ final class BarReadout {
         }
 
         return range >= 0.1 ? 2 : 4;
-    }
-
-    private static DecimalFormat format(int decimals) {
-        StringBuilder pattern = new StringBuilder("#,##0");
-
-        if (decimals > 0) {
-            pattern.append('.').append("0".repeat(decimals));
-        }
-
-        return new DecimalFormat(pattern.toString(),
-                DecimalFormatSymbols.getInstance(Locale.getDefault()));
-    }
-
-    private static Color colourOf(String mood) {
-        return switch (mood) {
-            case "up" -> ChartColors.up();
-            case "down" -> ChartColors.down();
-            default -> ChartColors.foreground();
-        };
-    }
-
-    private static Color withAlpha(Color colour, float alpha) {
-        return new Color(colour.getRed(), colour.getGreen(), colour.getBlue(),
-                Math.round(alpha * 255));
     }
 }

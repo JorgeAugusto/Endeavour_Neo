@@ -38,9 +38,9 @@ import java.time.ZoneId;
  * not keep that schedule — an overnight future, a crypto pair, another
  * exchange. The calendar day is a weaker claim, and a true one.</p>
  */
-public final class Sessions {
+public final class DayChange {
 
-    private Sessions() {
+    private DayChange() {
         throw new AssertionError("Utility class must not be instantiated");
     }
 
