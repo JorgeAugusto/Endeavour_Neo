@@ -20,6 +20,7 @@ package br.com.jorge.reis.endeavourneo.ui.chart;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -515,5 +516,31 @@ class TickRenkoOnChartTest {
                 "the bricks changed on a frame in which nothing printed");
         assertSame(was, canvas.series(),
                 "the whole view was rebuilt for a chart that did not change");
+    }
+    @Test
+    @DisplayName("the search hands over the library it opened, instead of closing it")
+    void theLibraryIsHandedOver(@TempDir Path folder) throws IOException {
+        // The search opens a library per export to ask whether it covers the
+        // sessions on screen. It used to close every one of them and answer
+        // with a name, so rebuildFromTicks opened a THIRD library on the export
+        // just chosen and asked it the same question again -- three libraries
+        // and three directory listings, on the interface thread, on every fold:
+        // every change of period, every setSeries, every page of history.
+        session(folder);
+
+        ChartCanvas canvas = showing(folder);
+        ChartCanvas.Bricks bricks = canvas.libraryForBricks();
+
+        try {
+            assertNotNull(bricks, "no export was found for a day that was written");
+            assertEquals(TickSource.METATRADER, bricks.source());
+            assertFalse(bricks.library().isClosed(),
+                    "the search closed the library it had in its hand, so the caller "
+                            + "has to open a third one and ask the same question again");
+        } finally {
+            if (bricks != null) {
+                bricks.library().close();
+            }
+        }
     }
 }

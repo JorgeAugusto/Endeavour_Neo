@@ -1267,27 +1267,80 @@ public final class ChartCanvas extends JComponent {
             return playing;
         }
 
-        java.nio.file.Path folder = br.com.jorge.reis.endeavourneo.platform.SeriesCatalog
-                .ticksOf(RenkoSource.rootOf(instrument));
+        Bricks bricks = libraryForBricks();
+
+        if (bricks == null) {
+            return null;
+        }
+
+        // Asked and let go: this caller wants only the NAME of the export, so it
+        // closes what the search opened. rebuildFromTicks wants the library
+        // itself, and that is why the search hands it over rather than closing
+        // it on the way out.
+        bricks.library().close();
+
+        return bricks.source();
+    }
+
+    /**
+     * An export that can lay this chart's bricks, and the library open on it.
+     *
+     * @param source which export it is
+     * @param library the library already open on it -- <b>the caller closes it</b>
+     */
+    record Bricks(br.com.jorge.reis.endeavourneo.domain.market.TickSource source,
+                  br.com.jorge.reis.endeavourneo.domain.market.TickLibrary library) { }
+
+    /**
+     * @return the export that has every session on screen, and its open library
+     *
+     * <p><b>The library comes back open, and that is the point.</b> The search
+     * opens one per export to ask whether it covers the sessions on screen, and
+     * it used to close every one of them and answer with a name -- so {@link
+     * #rebuildFromTicks} opened a THIRD library on the export just chosen and
+     * asked it the same question a second time. Three libraries and three
+     * directory listings, on the interface thread, for an answer already in
+     * hand, on every fold: every change of period, every setSeries, every page
+     * of history that arrives.</p>
+     *
+     * <p>The tape first, because it is the trades themselves rather than a quote
+     * stream. A chart half of whose days came from one export and half from
+     * another would change density in the middle, which is the same mistake as
+     * mixing candles with ticks.</p>
+     */
+    Bricks libraryForBricks() {
+        if (replaying) {
+            return playing == null ? null : new Bricks(playing, libraryOn(playing));
+        }
 
         for (br.com.jorge.reis.endeavourneo.domain.market.TickSource each
                 : new br.com.jorge.reis.endeavourneo.domain.market.TickSource[]{
                     br.com.jorge.reis.endeavourneo.domain.market.TickSource.PROFIT,
                     br.com.jorge.reis.endeavourneo.domain.market.TickSource.METATRADER}) {
-            br.com.jorge.reis.endeavourneo.domain.market.TickLibrary library =
-                    new br.com.jorge.reis.endeavourneo.domain.market.TickLibrary(
-                            folder, RenkoSource.rootOf(instrument), each);
+            br.com.jorge.reis.endeavourneo.domain.market.TickLibrary library = libraryOn(each);
 
-            try {
-                if (RenkoSource.allows(source, library, false)) {
-                    return each;
-                }
-            } finally {
-                library.close();
+            if (RenkoSource.allows(source, library, false)) {
+                return new Bricks(each, library);
             }
+
+            library.close();
         }
 
         return null;
+    }
+
+    private br.com.jorge.reis.endeavourneo.domain.market.TickLibrary libraryOn(
+            br.com.jorge.reis.endeavourneo.domain.market.TickSource which) {
+        // ownership: opened here and CLOSED BY THE CALLER -- libraryForBricks
+        // closes the exports it rejects and hands the one it accepts on, and
+        // from there sourceForBricks closes it at once while rebuildFromTicks
+        // gives it to the worker. Said out loud because a factory of a thing
+        // that must be closed is exactly what no try-with-resources here can
+        // express, and because TickLibraryClosingTest reads this line.
+        return new br.com.jorge.reis.endeavourneo.domain.market.TickLibrary(
+                br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.ticksOf(
+                        RenkoSource.rootOf(instrument)),
+                RenkoSource.rootOf(instrument), which);
     }
 
     /**
@@ -1318,9 +1371,9 @@ public final class ChartCanvas extends JComponent {
         }
 
         java.util.List<java.time.LocalDate> onScreen = RenkoSource.sessionsIn(source);
-        br.com.jorge.reis.endeavourneo.domain.market.TickSource which = sourceForBricks();
+        Bricks bricks = libraryForBricks();
 
-        if (which == null) {
+        if (bricks == null) {
             // No export holds every session on screen. "Every" and not "some":
             // bricks laid from ticks and bricks laid from candles differ by 5%
             // to 22% on the tape, so a chart built half one way would change
@@ -1328,17 +1381,14 @@ public final class ChartCanvas extends JComponent {
             return;
         }
 
-        // ownership: handed to the worker below, which either closes it or gives
-        // it to growingFrom -- and stopGrowing closes that, from setTickSource,
-        // from the next rebuild, and now from the holder when the chart closes.
-        // Said out loud because it is the one construction here that no
-        // try-with-resources can express, and because TickLibraryClosingTest
-        // reads these lines looking for exactly this.
-        br.com.jorge.reis.endeavourneo.domain.market.TickLibrary library =
-                new br.com.jorge.reis.endeavourneo.domain.market.TickLibrary(
-                        br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.ticksOf(
-                                RenkoSource.rootOf(instrument)),
-                        RenkoSource.rootOf(instrument), which);
+        // ownership: taken from libraryForBricks OPEN -- it is the library the
+        // search already had in its hand -- and handed to the worker below,
+        // which either closes it or gives it to growingFrom; and stopGrowing
+        // closes that, from setTickSource, from the next rebuild, and from the
+        // holder when the chart closes. Said out loud because it is the one
+        // construction here that no try-with-resources can express, and because
+        // TickLibraryClosingTest reads these lines looking for exactly this.
+        br.com.jorge.reis.endeavourneo.domain.market.TickLibrary library = bricks.library();
 
         if (!RenkoSource.allows(source, library, false)) {
             // "false" and not the setting: this asks whether the ticks are
