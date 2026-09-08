@@ -451,6 +451,8 @@ public final class Renko implements Aggregation {
         // going from four to two because the close had moved eighteen points.
         double anchor = from == null ? gridUnder(source.openAt(0)) : from.anchor();
         int direction = from == null ? 0 : from.direction();
+        // Seeded from the carry and then answered by the tally, which is the
+        // one that counts. See the note where the old accumulation was.
         double pending = from == null ? 0.0 : from.pending();
         boolean anyVolume = false;
 
@@ -469,7 +471,14 @@ public final class Renko implements Aggregation {
             double volume = source.volumeAt(i);
 
             if (Double.isFinite(volume)) {
-                pending += volume;
+                // `pending` is NOT accumulated here, and it used to be. The
+                // line was dead: nothing read the field between here and the end
+                // of the iteration, where `pending = tally.volume()` overwrote
+                // it -- and the two counted different things, this one adding
+                // the current bar's volume BEFORE the bricks and the tally
+                // holding what is still owed AFTER them. Two answers to one
+                // question, with nothing keeping them equal and only one of them
+                // ever read.
                 anyVolume = true;
             }
 

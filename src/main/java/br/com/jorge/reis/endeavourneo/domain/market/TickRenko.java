@@ -46,8 +46,23 @@ import java.util.Set;
  * one more session costs one read and one pass; rebuilding from the start would
  * cost the whole range again, every day, for ever.</p>
  *
- * <p><b>Not thread-safe, and meant to be used off the interface thread.</b>
- * Each {@link #add} reads a file.</p>
+ * <p><b>Not thread-safe.</b> The four lists it builds and the cache in front of
+ * them have no synchronisation at all, so one of these belongs to one thread and
+ * nothing here checks it.</p>
+ *
+ * <p><b>Which thread is not the same answer for every door.</b> {@link #add} and
+ * {@link #addUpTo} read a whole session each and are called from a worker; that
+ * is what "off the interface thread" was written about, and it is still true of
+ * them. {@link #advance} is called by the CHART, on the interface thread, once
+ * per frame -- and it reads a session too when the day it lands on is not
+ * resident. Ninety megabytes, in the middle of a repaint.</p>
+ *
+ * <p>What keeps that from happening is that the caller asks the library for the
+ * day and the one after it BEFORE advancing, so the file is normally already in
+ * memory. Normally, not always. The sentence here used to say the class was
+ * meant to be used off the interface thread, full stop, which would have told
+ * the next person that this had been settled -- and a second caller written on
+ * that belief would have found four unsynchronised lists.</p>
  */
 public final class TickRenko {
 
