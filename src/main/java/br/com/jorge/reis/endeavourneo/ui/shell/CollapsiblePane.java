@@ -75,6 +75,9 @@ public final class CollapsiblePane extends JPanel {
 
     private static final String FOLDED = "▴";
 
+    /** The strip that folds it; kept so the focus can be moved onto it. */
+    private final transient javax.swing.JComponent header;
+
     private final JLabel caption;
 
     private final JLabel arrow = new JLabel(OPEN, SwingConstants.CENTER);
@@ -122,6 +125,27 @@ public final class CollapsiblePane extends JPanel {
 
         header.setToolTipText(title);
 
+        // AND FROM THE KEYBOARD. Folding was a mousePressed on a strip that
+        // could not take focus, so a reader working from the keyboard had no
+        // way to fold anything at all -- and the console is one of the two
+        // panes this wraps.
+        header.setFocusable(true);
+        header.getInputMap(JComponent.WHEN_FOCUSED)
+                .put(javax.swing.KeyStroke.getKeyStroke("SPACE"), "fold");
+        header.getInputMap(JComponent.WHEN_FOCUSED)
+                .put(javax.swing.KeyStroke.getKeyStroke("ENTER"), "fold");
+        header.getActionMap().put("fold", new javax.swing.AbstractAction() {
+
+            private static final long serialVersionUID = 1L;
+
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                setFolded(!folded);
+            }
+        });
+
+        this.header = header;
+
         add(header, BorderLayout.NORTH);
         add(content, BorderLayout.CENTER);
 
@@ -156,6 +180,20 @@ public final class CollapsiblePane extends JPanel {
 
     private void apply() {
         arrow.setText(folded ? FOLDED : OPEN);
+
+        // THE FOCUS FIRST. Hiding a component the focus is inside of
+        // leaves the window with no focus owner at all: folding the
+        // console with the cursor in it made the keyboard do nothing until
+        // something was clicked.
+        java.awt.Component focused = java.awt.KeyboardFocusManager
+                .getCurrentKeyboardFocusManager().getFocusOwner();
+
+        if (folded && content.isVisible() && focused != null
+                && javax.swing.SwingUtilities.isDescendingFrom(focused, content)) {
+
+            header.requestFocusInWindow();
+        }
+
         content.setVisible(!folded);
 
         revalidate();

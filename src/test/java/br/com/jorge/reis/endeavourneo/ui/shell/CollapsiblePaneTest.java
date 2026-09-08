@@ -17,6 +17,7 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.shell;
 
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -149,5 +150,37 @@ class CollapsiblePaneTest {
                         + "somewhere the suite does not own");
         assertTrue(java.nio.file.Files.readString(file).contains("provaDoArquivo"),
                 "the file was written and the folded state is not in it");
+    }
+/**
+     * The pane folds from the keyboard, and the focus does not fall in.
+     *
+     * <p>Folding was a {@code mousePressed} on a strip that could not take
+     * focus, so a reader working from the keyboard had no way to fold anything
+     * at all — and the console is one of the two panes this wraps. And hiding a
+     * component the focus is inside of leaves the window with no focus owner:
+     * folding the console with the cursor in it made the keyboard do nothing
+     * until something was clicked.</p>
+     */
+    @Test
+    @DisplayName("o painel dobra pelo teclado, e o foco nao cai dentro do que sumiu")
+    void itfoldsFromTheKeyboard() {
+        JPanel content = new JPanel();
+        javax.swing.JTextArea inside = new javax.swing.JTextArea();
+
+        content.add(inside);
+
+        CollapsiblePane pane = new CollapsiblePane("Console", content, KEY + "-teclado");
+        java.awt.Component header = pane.getComponent(0);
+
+        assertTrue(header.isFocusable(),
+                "the header cannot take focus, so nothing can be typed at it");
+
+        javax.swing.Action fold = ((javax.swing.JComponent) header).getActionMap().get("fold");
+
+        assertNotNull(fold, "there is no action bound for folding");
+
+        fold.actionPerformed(new java.awt.event.ActionEvent(header, 0, "fold"));
+
+        assertTrue(pane.isFolded(), "the keyboard action did not fold the pane");
     }
 }

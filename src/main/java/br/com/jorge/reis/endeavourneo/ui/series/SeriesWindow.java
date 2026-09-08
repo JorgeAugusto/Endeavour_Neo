@@ -169,7 +169,10 @@ public final class SeriesWindow extends JDialog {
         about.setFont(about.getFont().deriveFont(about.getFont().getSize2D() - 1f));
         warning.setFont(warning.getFont().deriveFont(Font.BOLD,
                 warning.getFont().getSize2D() - 1f));
-        warning.setForeground(new java.awt.Color(0xB0, 0x6A, 0x2E));
+        // FROM THE THEME. It was this orange written into the code, in a
+        // window whose every other colour comes from SeriesColors -- which has
+        // clash() for exactly this, and darkens it under the night theme.
+        warning.setForeground(SeriesColors.clash());
 
         add(header(), BorderLayout.NORTH);
         add(new JScrollPane(table), BorderLayout.CENTER);
@@ -294,8 +297,18 @@ public final class SeriesWindow extends JDialog {
         table.getSelectionModel().addListSelectionListener(e -> {
             boolean picked = table.getSelectedRow() >= 0;
 
-            show.setEnabled(picked);
-            edit.setEnabled(picked);
+            // AND ONLY WHEN THERE IS SOMETHING TO SHOW. Viewing and editing
+            // both open a dialog that places a range inside the sessions, and
+            // openSelected returns in silence when there are none -- which is
+            // the case this window treats explicitly, with series.unreadable on
+            // the label. The comment three lines above says why that matters:
+            // "a button that is always enabled and sometimes does nothing
+            // teaches the reader to distrust every button beside it".
+            //
+            // Remove is not in that list: removing a segment from a series that
+            // will not read is still removing a segment.
+            show.setEnabled(picked && !days.isEmpty());
+            edit.setEnabled(picked && !days.isEmpty());
             remove.setEnabled(picked);
         });
 

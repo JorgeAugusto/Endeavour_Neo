@@ -172,6 +172,24 @@ public final class Icons {
     /** An {@link Icon} that paints a glyph in the look and feel's own colour. */
     private record Painted(int size, Glyph glyph) implements Icon {
 
+        /**
+         * Refuses an icon that cannot be drawn.
+         *
+         * <p>A size of zero gives {@code graphics.create(x, y, 0, 0)} and an
+         * icon nobody can see; a null glyph throws on the first PAINT, far from
+         * the call that asked for it and on the thread that was drawing.</p>
+         */
+        Painted {
+            if (size <= 0) {
+                throw new IllegalArgumentException(size + " is not a size for an icon");
+            }
+
+            if (glyph == null) {
+                throw new IllegalArgumentException("an icon needs something to draw");
+            }
+        }
+
+
         @Override
         public void paintIcon(Component component, Graphics graphics, int x, int y) {
             Graphics2D g = (Graphics2D) graphics.create(x, y, size, size);

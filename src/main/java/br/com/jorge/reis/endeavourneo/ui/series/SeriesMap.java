@@ -204,7 +204,7 @@ final class SeriesMap extends JComponent {
             String name = segment.name();
 
             if (metrics.stringWidth(name) + 10 < width) {
-                g.setColor(Color.WHITE);
+                g.setColor(SeriesColors.ink());
                 g.drawString(name, left + (width - metrics.stringWidth(name)) / 2,
                         2 + BAR / 2 + metrics.getAscent() / 2 - 1);
             }
@@ -291,7 +291,10 @@ final class SeriesMap extends JComponent {
 
     /** @return the sessions this map is showing */
     List<LocalDate> days() {
-        return days;
+        // A copy. The only caller today is a test, and a test that cleared this
+        // list would leave the map drawing a series with no sessions -- which
+        // is the kind of fault that looks like the product's.
+        return List.copyOf(days);
     }
 
     /** @return the colour the look and feel gives a disabled label, for hints */

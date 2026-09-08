@@ -126,6 +126,17 @@ public final class SeriesColors {
         return dark() ? new Color(0xE0A83C) : new Color(0xB8791A);
     }
 
+    /**
+     * @return the ink for a name written INSIDE a taken block
+     *
+     * <p>Pure white was written into the map, and {@link #taken(int)} is
+     * darkened under the night theme -- so the one pairing with the least
+     * contrast in the whole component was the one that never moved.</p>
+     */
+    static Color ink() {
+        return dark() ? new Color(0xF0F0F0) : Color.WHITE;
+    }
+
     /** @return the same mark, for when it lands on a segment that already exists */
     static Color clash() {
         return dark() ? new Color(0xE06A5C) : new Color(0xC0392B);

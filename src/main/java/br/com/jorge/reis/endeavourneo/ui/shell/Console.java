@@ -87,9 +87,19 @@ public final class Console extends JScrollPane {
     /** @param line what to write; gets a timestamp and a line break */
     public void write(String line) {
         onEdt(() -> {
+            // ASKED BEFORE THE LINE GOES IN. A reader who scrolled up to read
+            // an exception was dragged back to the bottom by the next line to
+            // arrive -- and with standard output captured, lines arrive on their
+            // own. Following the end is right only for somebody who was already
+            // there.
+            boolean atTheEnd = text.getCaretPosition() >= text.getDocument().getLength();
+
             text.append(LocalTime.now().format(CLOCK) + "  " + line + System.lineSeparator());
             trim();
-            text.setCaretPosition(text.getDocument().getLength());
+
+            if (atTheEnd) {
+                text.setCaretPosition(text.getDocument().getLength());
+            }
         });
     }
 

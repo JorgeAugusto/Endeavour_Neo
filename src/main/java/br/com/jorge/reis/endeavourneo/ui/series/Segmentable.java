@@ -144,6 +144,15 @@ public final class Segmentable {
 
             return bars == null || bars.size() == 0 ? new TreeSet<>() : Sessions.of(bars);
         } catch (IOException e) {
+            // Empty is the right answer -- a series that will not read has no
+            // sessions to offer -- but the REASON was thrown away with the
+            // exception: permission, a truncated file, a network disk that went
+            // away. The window then says "unreadable" without saying why.
+            //
+            // Standard error, because Console redirects it into the application
+            // console, and this class must not have to know the shell exists.
+            System.err.println(key + ": the sessions could not be read (" + e + ")");
+
             return new TreeSet<>();
         }
     }

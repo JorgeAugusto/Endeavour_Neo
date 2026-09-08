@@ -17,6 +17,7 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.shell;
 
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -269,5 +270,21 @@ class StatusStripTest {
 
             hold.countDown();
         }
+    }
+/**
+     * An icon that cannot be drawn is refused where it is asked for.
+     *
+     * <p>A size of zero gives {@code graphics.create(x, y, 0, 0)} and an icon
+     * nobody can see; a null glyph throws on the first PAINT, far from the call
+     * that asked for it and on the thread that was drawing.</p>
+     */
+    @Test
+    @DisplayName("um icone de tamanho zero e recusado onde e pedido")
+    void aniconOfNoSizeIsRefused() {
+        assertThrows(IllegalArgumentException.class, () -> Icons.candle(0));
+        assertThrows(IllegalArgumentException.class, () -> Icons.line(-3));
+
+        // And an ordinary size still answers, or the guard refuses everything.
+        assertNotNull(Icons.candle(16));
     }
 }

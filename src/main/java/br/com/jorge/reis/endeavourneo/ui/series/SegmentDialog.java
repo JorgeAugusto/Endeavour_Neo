@@ -402,7 +402,7 @@ public final class SegmentDialog extends JDialog {
     }
 
     /**
-     * Five cells of equal width, each a word and a number.
+     * One cell of equal width per entry in SUMMARY, each a word and a number.
      *
      * <p>Divided by a rule between them rather than by a gap: a gap in the
      * panel's own colour is invisible against the panel, which is what the
