@@ -899,3 +899,75 @@ catálogo para a pasta, o que **esvazia o cache que o teste pergunta sobre**. El
 passava com a checagem de carimbo arrancada do produto. Reescrito para trocar só
 os bytes, ele cai. É a mesma lição de sempre, num lugar novo: a prova de dentes
 não pergunta sobre o teste, pergunta sobre a quebra.
+
+---
+
+## Fase 7 — as BAIXA sem identificador
+
+**Ele apontou, e estava certo**: *"ainda restam apontamento de auditoria não
+executados"*. Restavam 48.
+
+### Por que passaram batido
+
+O índice da auditoria I (`00-achados.md`) diz no cabeçalho **115 BAIXA**, e só
+**67** delas trazem `- **ID**`. As outras **48** entraram na lista como
+`- **-**` — sem identificador nenhum. O meu script de varredura casava o padrão
+`- \*\*([A-Za-z0-9]+-\d+)\*\*`, isto é, **só as que têm identificador**. As 48
+nunca chegaram a ser triadas: não foram adiadas nem recusadas, foram invisíveis.
+
+A mesma armadilha existe nas outras severidades e ali é inofensiva: 4 linhas
+`- **-**` em ALTA e 3 em MÉDIA são **corpo** de outros achados (a continuação de
+uma lista dentro do texto), não achados novos. Em BAIXA são achados de verdade.
+Conferido um a um antes de agir.
+
+**A lição**: o número do cabeçalho e o número de identificadores não batiam —
+115 contra 67 — e eu nunca comparei os dois. Uma contagem que não fecha é a
+forma mais barata de achar o que ficou de fora, e custa uma linha de `grep -c`.
+
+### O que foi corrigido
+
+| commit | área | achados | arquivos | suíte |
+|---|---|---|---|---|
+| `f8a68e5` | A1 — `domain/market`, formato e escala | 12 | 10 | 724 |
+| `cf794a2` | A2 — renko, contagem e leitores | 14 | 6 | 724 |
+| `7b46089` | A3 — `ChartCanvas` | 13 | 4 | 724 |
+| `7cbb543` | A4 + A7a — legenda, leitura e bundle | 9 | 8 | 724 |
+
+Os 3 de A7a já estavam fechados por identificador em outra passada; ficam
+registrados como conferidos, não como corrigidos de novo.
+
+### Duas correções que estavam inertes
+
+Dois achados **já corrigidos** por identificador não faziam efeito nenhum, e só
+apareceu ao ler o vizinho sem identificador:
+
+- **`ChartCanvas.setPeriod`** compara o período novo com o de tela por
+  `equals` — e o comentário ao lado explica que faz assim justamente porque
+  `Timeframe` e `Renko` são valores. Só que **nenhuma das duas classes definia
+  `equals`**: o que rodava era o do `Object`, identidade. `PeriodCatalog.byCode`
+  constrói um objeto novo a cada chamada, então a comparação sempre dizia
+  "mudou" e sempre pagava o refold inteiro — a dobra, a reconstrução dos ticks
+  com as listagens de pasta, e um worker. O comentário lia-se como conserto e o
+  comportamento era o defeito que ele descreve. Corrigido com `equals`/`hashCode`
+  nas duas.
+- **`BollingerBands.strokes()`** responde três traços para que a linha do meio
+  possa ter espessura e estilo próprios. O `StudyPane` honra; o gráfico de preço
+  chamava `overlay.stroke()` — um só — para todas as linhas. As bandas são
+  desenhadas no gráfico de preço. Corrigido em `paintOverlays`.
+
+**O padrão**: correção inerte não é achada por auditoria de código isolado, é
+achada quando se lê o chamador e o chamado juntos. Vale procurar as outras.
+
+### Uma prova de dentes
+
+O plural do resumo: `summary.years/months/days` só existiam no plural, então
+uma série de exatamente um ano imprimia **"1 anos, 1 meses, 1 dias"**. Com as
+chaves no singular e o `counted()` escolhendo entre as duas, imprime "1 ano,
+1 mês, 1 dia" — e apagar o `counted` do produto derruba o teste.
+
+### Estado
+
+Com isto, **todos os 115 BAIXA da auditoria I estão processados** — 67 por
+identificador nas passadas anteriores, 48 aqui. Somados aos 56 ALTA e 133 MÉDIA,
+a auditoria I não tem mais nada em aberto além do que está registrado como
+decisão adiada (D2 e D6).
