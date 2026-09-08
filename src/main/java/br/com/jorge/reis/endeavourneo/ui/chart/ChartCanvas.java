@@ -1344,6 +1344,27 @@ public final class ChartCanvas extends JComponent {
     }
 
     /**
+     * How many times a tick rebuild has finished caring, one way or the other.
+     *
+     * <p>Package-visible, and it exists for the tests that assert an ABSENCE:
+     * that the chart did NOT switch to tick bricks. Waiting a fixed 150 or 300
+     * milliseconds and then checking made those pass by arriving early on a
+     * loaded machine, a cold disk or a first run of the JVM -- a guard that is
+     * sometimes there is worse than one that is missing, because the times it
+     * is not get blamed on the machine.</p>
+     *
+     * <p>What they need is a positive thing to wait FOR, and this is it: the
+     * count goes up when the rebuild refuses, when it is dropped as stale, when
+     * it fails, and when it puts bricks on screen. So a test waits until the
+     * attempt has landed and only then asks what it did.</p>
+     */
+    int ticksSettled() {
+        return ticksSettled;
+    }
+
+    private transient int ticksSettled;
+
+    /**
      * Builds the renko from the exchange's own ticks, if it can, off this thread.
      *
      * <p>Only when EVERY session on screen has ticks: a renko built partly from
@@ -1367,6 +1388,8 @@ public final class ChartCanvas extends JComponent {
 
         if (!(period instanceof br.com.jorge.reis.endeavourneo.domain.market.Renko renko)
                 || instrument == null || source == null || source.size() == 0) {
+            ticksSettled++;
+
             return;
         }
 
@@ -1374,6 +1397,8 @@ public final class ChartCanvas extends JComponent {
         Bricks bricks = libraryForBricks();
 
         if (bricks == null) {
+            ticksSettled++;
+
             // No export holds every session on screen. "Every" and not "some":
             // bricks laid from ticks and bricks laid from candles differ by 5%
             // to 22% on the tape, so a chart built half one way would change
@@ -1395,6 +1420,7 @@ public final class ChartCanvas extends JComponent {
             // THERE, which is a fact. What the setting decides is whether a
             // renko may be drawn without them, and that is decided elsewhere.
             library.close();
+            ticksSettled++;
 
             return;
         }
@@ -1454,6 +1480,8 @@ public final class ChartCanvas extends JComponent {
 
             @Override
             protected void done() {
+                ticksSettled++;
+
                 if (asked != period || askedOf != source) {
                     library.close();
 

@@ -20,16 +20,44 @@ package br.com.jorge.reis.endeavourneo.ui.replay;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.IOException;
+import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * What happens to the charts when a replay ends.
  */
 @DisplayName("Replay ending")
 class ReplayEndsTest {
+
+    /**
+     * A base of its own, and this file used not to have one.
+     *
+     * <p>It was the only one of the ten in this package with no fixture and no
+     * catalog of its own, so the session went looking for "WINFUT" in the
+     * reader's real data folder -- and what it found depended on which class had
+     * run before it and whether that class had released its own. {@code
+     * ReplayBase} documents that leak between classes and says it has happened
+     * once already.</p>
+     */
+    @TempDir
+    static Path base;
+
+    @BeforeAll
+    static void writeASeries() throws IOException {
+        ReplayBase.at(base, LocalDate.of(2026, 9, 2));
+    }
+
+    @AfterAll
+    static void putTheCatalogBack() {
+        ReplayBase.release();
+    }
 
     private static ReplaySession session() {
         return new ReplaySession("WINFUT", LocalDate.of(2026, 9, 2), 0);

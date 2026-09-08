@@ -84,6 +84,15 @@ class PeriodCatalogTest {
         // "0" is somebody halfway through typing "10" or "30", so the list
         // searching by name is right. What it must never do is offer a period
         // of no length at all.
+        // The half of the name that says a zero SEARCHES. Without this the
+        // loop below runs zero times over an empty list and passes -- and a
+        // guard in forText that answered List.of() for anything starting with a
+        // zero, which is a plausible wrong way to stop a zero-minute scale
+        // being built, would empty the list on the first keystroke of "10" or
+        // "30" with this test still green.
+        assertFalse(PeriodCatalog.forText("0").isEmpty(),
+                "typing a zero offered nothing at all");
+
         for (PeriodCatalog.Choice choice : PeriodCatalog.forText("0")) {
             assertNotNull(choice.aggregation());
             assertFalse(choice.code().startsWith("0"),

@@ -184,6 +184,35 @@ class TickRenkoOnChartTest {
         }
     }
 
+    /**
+     * Waits for a rebuild to have LANDED, and then lets the caller ask what it did.
+     *
+     * <p>The three tests that assert the chart did NOT switch to tick bricks used
+     * to sleep 150 or 300 milliseconds and check. That is a race with no target:
+     * on a loaded machine, a cold disk or a first run of the JVM, the assertion
+     * passes by arriving early rather than by the product being right -- and the
+     * case they guard is the worst one in this area, a renko dense on one side
+     * and sparse on the other "that would look like the market did it".</p>
+     *
+     * @param canvas the chart
+     * @param before what {@code ticksSettled()} said before the change
+     */
+    private static void settleEitherWay(ChartCanvas canvas, int before) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+
+        while (canvas.ticksSettled() == before && System.nanoTime() < deadline) {
+            Thread.sleep(10);
+
+            SwingUtilities.invokeAndWait(() -> { });
+        }
+
+        assertTrue(canvas.ticksSettled() > before,
+                "no tick rebuild ever finished, so asserting what it did not do "
+                        + "proves nothing");
+
+        SwingUtilities.invokeAndWait(() -> { });
+    }
+
     private static ChartCanvas showing(Path folder) {
         SeriesCatalog.useFolderForTest(folder);
 
@@ -231,11 +260,11 @@ class TickRenkoOnChartTest {
         // No session written: the folder is empty. Most of the source is like
         // this -- one month has ticks and six years do not.
         ChartCanvas canvas = showing(folder);
+        int before = canvas.ticksSettled();
 
         canvas.setPeriod(new Renko(55, 2), "55R", "55R");
 
-        Thread.sleep(150);
-        SwingUtilities.invokeAndWait(() -> { });
+        settleEitherWay(canvas, before);
 
         assertFalse(canvas.isFromTicks(),
                 "the chart claimed the bricks came from ticks that are not on disk");
@@ -260,10 +289,11 @@ class TickRenkoOnChartTest {
         canvas.setInstrument("winfull-1m");
         canvas.setSeries(twoDays());
         canvas.setSize(900, 500);
+        int before = canvas.ticksSettled();
+
         canvas.setPeriod(new Renko(55, 2), "55R", "55R");
 
-        Thread.sleep(300);
-        SwingUtilities.invokeAndWait(() -> { });
+        settleEitherWay(canvas, before);
 
         assertFalse(canvas.isFromTicks(),
                 "the chart built a renko from the one day that has ticks and drew it beside "
@@ -287,11 +317,12 @@ class TickRenkoOnChartTest {
 
         ChartCanvas canvas = showing(folder);
 
+        int before = canvas.ticksSettled();
+
         canvas.setPeriod(new Renko(55, 2), "55R", "55R");
         canvas.setSeries(twoDays());
 
-        Thread.sleep(300);
-        SwingUtilities.invokeAndWait(() -> { });
+        settleEitherWay(canvas, before);
 
         assertFalse(canvas.isFromTicks(),
                 "a renko built for the series that was on screen BEFORE was drawn over "

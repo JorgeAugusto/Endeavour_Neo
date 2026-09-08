@@ -111,7 +111,13 @@ class SeriesSummaryTest {
         List<String[]> rows = SeriesSummary.rowsFor(series, "winfull-1m", "1m", false);
 
         assertEquals("3", valueOf(rows, "summary.sessions"));
-        assertEquals("1.500", valueOf(rows, "summary.bars"));
+
+        // Through the same formatter the product uses. "1.500" is the thousands
+        // separator of pt_BR; under en_US it is "1,500", and the bundle's base
+        // language is English -- so the day the suite runs in the base language
+        // this failed for no reason, pointing at the wrong place.
+        assertEquals(java.text.NumberFormat.getInstance().format(1500),
+                valueOf(rows, "summary.bars"));
     }
 
     @Test
@@ -119,15 +125,27 @@ class SeriesSummaryTest {
     void theSpanSkipsTheEmptyParts() {
         // "6 anos, 0 meses e 0 dias" reads as a form to be filled in rather
         // than as an answer.
-        assertEquals("6 anos", SeriesSummary.spanBetween(
+        // FROM THE BUNDLE, not written out here. These used to be the pt_BR
+        // strings copied by hand -- "6 anos" -- which pins the language the
+        // suite happens to have loaded. The bundle's base language is English
+        // and the project is going open source: on that day these failed for no
+        // reason at all, and said "expected: 6 anos", which points at the wrong
+        // place.
+        String years = br.com.jorge.reis.endeavourneo.platform.Messages.get("summary.years", 6);
+        String months = br.com.jorge.reis.endeavourneo.platform.Messages.get("summary.months", 2);
+        String days = br.com.jorge.reis.endeavourneo.platform.Messages.get("summary.days", 3);
+        String tenDays = br.com.jorge.reis.endeavourneo.platform.Messages.get("summary.days", 10);
+        String noDays = br.com.jorge.reis.endeavourneo.platform.Messages.get("summary.days", 0);
+
+        assertEquals(years, SeriesSummary.spanBetween(
                 LocalDate.of(2020, 9, 1), LocalDate.of(2026, 9, 1)));
-        assertEquals("6 anos, 3 dias", SeriesSummary.spanBetween(
+        assertEquals(years + ", " + days, SeriesSummary.spanBetween(
                 LocalDate.of(2020, 9, 1), LocalDate.of(2026, 9, 4)));
-        assertEquals("2 meses, 10 dias", SeriesSummary.spanBetween(
+        assertEquals(months + ", " + tenDays, SeriesSummary.spanBetween(
                 LocalDate.of(2021, 1, 4), LocalDate.of(2021, 3, 14)));
 
-        // And never nothing at all: one day is "0 dias", not an empty line.
-        assertEquals("0 dias", SeriesSummary.spanBetween(
+        // And never nothing at all: one day is "0 days", not an empty line.
+        assertEquals(noDays, SeriesSummary.spanBetween(
                 LocalDate.of(2021, 1, 4), LocalDate.of(2021, 1, 4)));
     }
 

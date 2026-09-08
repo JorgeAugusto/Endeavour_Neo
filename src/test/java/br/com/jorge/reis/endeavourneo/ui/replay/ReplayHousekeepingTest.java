@@ -144,6 +144,12 @@ class ReplayHousekeepingTest {
         swapped.onChange(thrice::incrementAndGet);
         swapped.field().setText("11/03/2021");
 
+        // Or nought equals nought and this says nothing. The break it is meant
+        // to catch -- onChange keeping the Runnable and never registering the
+        // DocumentListener, so typing a date does nothing at all -- leaves both
+        // counters at zero.
+        assertTrue(once.get() > 0, "the fixture never reported a change at all");
+
         assertEquals(once.get(), thrice.get(),
                 "setting the listener three times reported the change "
                         + thrice.get() + " times against " + once.get());

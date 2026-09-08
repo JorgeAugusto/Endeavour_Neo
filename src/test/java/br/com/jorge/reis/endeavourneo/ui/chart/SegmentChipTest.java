@@ -113,19 +113,27 @@ class SegmentChipTest {
         assertTrue(header.offered().isEmpty());
     }
 
+    /** @return the whole-series line, as the bundle spells it */
+    private static String whole() {
+        return br.com.jorge.reis.endeavourneo.platform.Messages.get("chart.wholeSeries");
+    }
+
     @Test
     @DisplayName("o menu lista a serie toda e os segmentos, com o atual desligado")
     void theMenuListsEverything() {
         ChartHeader header = headerOn(SERIES + Segmentation.MARK + "Estudos");
 
-        assertEquals(List.of("A série toda", "[Estudos]", "Testes"), itemsOf(header.menuFor()),
+        // The whole-series line comes from the bundle. Written out here it
+        // pinned the language the suite happens to have loaded, and the base
+        // language of the bundle is English.
+        assertEquals(List.of(whole(), "[Estudos]", "Testes"), itemsOf(header.menuFor()),
                 "the list did not name all three, or marked the wrong one as current");
     }
 
     @Test
     @DisplayName("na serie toda, e ela que fica desligada")
     void onTheWholeSeries() {
-        assertEquals(List.of("[A série toda]", "Estudos", "Testes"),
+        assertEquals(List.of("[" + whole() + "]", "Estudos", "Testes"),
                 itemsOf(headerOn(SERIES).menuFor()));
     }
 
