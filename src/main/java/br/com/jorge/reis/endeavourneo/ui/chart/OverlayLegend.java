@@ -299,7 +299,7 @@ public final class OverlayLegend extends JComponent {
                 ? ChartColors.foreground()
                 : fade(ChartColors.foreground(), 110);
 
-        String label = overlay.label();
+        String label = overlay.title();
 
         g.setColor(ink);
         g.drawString(label, x, baseline);

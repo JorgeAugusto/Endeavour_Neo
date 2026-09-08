@@ -271,4 +271,111 @@ class ChartCanvasTest {
                 "the price chart never asked for the strokes, so an indicator that dresses "
                         + "its lines apart is drawn with one stroke for all of them");
     }
+
+    /**
+     * The price chart draws an indicator's horizontal lines.
+     *
+     * <p>{@code Overlay.levels()} is honoured by {@code StudyPane} and was
+     * honoured by nothing else -- the mirror of {@code paintUnder}, which the
+     * price chart asked for and the pane did not. No indicator that fits on the
+     * price declares a level today, so this was the half of the contract that
+     * could be dropped without anybody noticing; it is also the half a level on
+     * a PRICE would land in, and the levels' own javadoc says they are "part of
+     * what it MEANS".</p>
+     */
+    @Test
+    @DisplayName("o grafico de preco desenha os niveis do indicador")
+    void thePriceChartDrawsTheIndicatorsLevels() {
+        java.awt.Color ink = new java.awt.Color(0x11, 0x99, 0x44);
+
+        PriceSeries walk = new br.com.jorge.reis.endeavourneo.domain.market
+                .RandomWalkSeries(60, 100.0);
+
+        // A price the chart is SHOWING. A walk of sixty steps drifts, and a
+        // level outside the visible range is drawn off the top of the image --
+        // which would fail this test for a reason that is not the one it asks
+        // about.
+        double at = walk.closeAt(30);
+
+        Overlay levelled = new Overlay() {
+
+            @Override
+            public String nameKey() {
+                return "overlay.movingAverage";
+            }
+
+            @Override
+            public boolean fitsOnPrice() {
+                return true;
+            }
+
+            @Override
+            public java.util.List<Integer> parameters() {
+                return java.util.List.of(1);
+            }
+
+            @Override
+            public java.util.List<java.awt.Color> colours() {
+                return java.util.List.of(java.awt.Color.RED);
+            }
+
+            @Override
+            public java.util.List<Overlay.Level> levels() {
+                return java.util.List.of(new Overlay.Level(at, ink,
+                        new java.awt.BasicStroke(1f)));
+            }
+
+            @Override
+            public double[] valueAt(int bar) {
+                return new double[]{Double.NaN};
+            }
+
+            @Override
+            public void calculate(PriceSeries series) {
+                // Nothing to compute: the level is the point.
+            }
+
+            @Override
+            public boolean isVisible() {
+                return true;
+            }
+
+            @Override
+            public void setVisible(boolean visible) {
+                // Always on.
+            }
+        };
+
+        ChartCanvas canvas = new ChartCanvas();
+
+        canvas.setSeries(walk);
+        canvas.setSize(400, 300);
+        canvas.setFont(new java.awt.Font("SansSerif", java.awt.Font.PLAIN, 11));
+        canvas.setOverlays(java.util.List.of(levelled));
+
+        java.awt.image.BufferedImage image = new java.awt.image.BufferedImage(400, 300,
+                java.awt.image.BufferedImage.TYPE_INT_ARGB);
+        java.awt.Graphics2D g = image.createGraphics();
+
+        try {
+            canvas.paint(g);
+        } finally {
+            g.dispose();
+        }
+
+        int found = 0;
+
+        for (int y = 0; y < image.getHeight(); y++) {
+            for (int x = 0; x < image.getWidth(); x++) {
+                if ((image.getRGB(x, y) & 0xFFFFFF) == (ink.getRGB() & 0xFFFFFF)) {
+                    found++;
+                }
+            }
+        }
+
+        assertTrue(found > 100,
+                "the level was drawn in " + found + " pixels: the price chart never asked "
+                        + "for levels(), so a line that is part of what the indicator MEANS "
+                        + "is not on the chart it was put on");
+    }
 }

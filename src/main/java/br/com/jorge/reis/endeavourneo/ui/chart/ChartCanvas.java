@@ -457,7 +457,14 @@ public final class ChartCanvas extends JComponent {
         });
     }
 
-    private javax.swing.JPopupMenu buildContextMenu() {
+    /**
+     * @return the menu the right button opens
+     *
+     * <p>Package-private so the test can read what it says. The entries are
+     * built from the indicators on the chart, and what they are CALLED is the
+     * whole of what there is to get wrong.</p>
+     */
+    javax.swing.JPopupMenu buildContextMenu() {
         javax.swing.JPopupMenu menu = new javax.swing.JPopupMenu();
 
         // ONE item. Which indicators exist and where each may go are two
@@ -479,7 +486,7 @@ public final class ChartCanvas extends JComponent {
 
         for (Overlay overlay : overlays) {
             javax.swing.JMenuItem entry = new javax.swing.JMenuItem(
-                    overlay.label());
+                    overlay.title());
 
             entry.addActionListener(e -> removeOverlay(overlay));
             remove.add(entry);
@@ -2446,6 +2453,34 @@ public final class ChartCanvas extends JComponent {
      * bottom of the chart to the first real value reads as a move that never
      * happened.</p>
      */
+    private void paintOverlayLevels(Graphics2D g, Viewport viewport) {
+        java.util.List<Integer> drawn = new java.util.ArrayList<>();
+
+
+        for (Overlay overlay : overlays) {
+            if (!overlay.isVisible()) {
+                continue;
+            }
+
+            for (Overlay.Level level : overlay.levels()) {
+                int at = (int) Math.round(viewport.y(level.at()));
+
+                // Two indicators asking for the same line draw one line. The
+                // study pane says the same thing and for the same reason.
+                if (drawn.contains(at)) {
+                    continue;
+                }
+
+                drawn.add(at);
+
+                g.setColor(level.colour());
+                g.setStroke(level.stroke());
+                g.drawLine(viewport.bounds().x, at,
+                        viewport.bounds().x + viewport.bounds().width, at);
+            }
+        }
+    }
+
     private void paintOverlays(Graphics2D g, Viewport viewport) {
         int from = viewport.firstBar();
         int to = Math.min(viewport.lastBar(), series.size());
@@ -2453,6 +2488,8 @@ public final class ChartCanvas extends JComponent {
         Object previous = g.getRenderingHint(RenderingHints.KEY_ANTIALIASING);
 
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+        paintOverlayLevels(g, viewport);
 
         for (Overlay overlay : overlays) {
             if (!overlay.isVisible()) {

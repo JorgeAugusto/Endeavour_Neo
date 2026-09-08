@@ -83,6 +83,31 @@ public interface Overlay {
         return text.append(']').toString();
     }
 
+    /**
+     * @return the label, and the indicator's own scale when it has one
+     *
+     * <p><b>The scale was written down and only one of the three readers asked
+     * for it.</b> {@link #ownPeriod()} says in its own javadoc why it exists --
+     * "two stochastics in one pane are the same word and the same numbers, and
+     * without this they are two identical rows over two different lines" -- and
+     * the study pane was the only place that ever put it on screen. The price
+     * chart's legend and its remove menu asked for {@link #label()} alone, so
+     * two averages of period twenty, one on the chart's bars and one on five
+     * minutes, were two identical rows and two identical menu entries. The
+     * setting was offered, stored, honoured in the arithmetic, and invisible.</p>
+     *
+     * <p>Here and not in {@code label()} because a dialog title wants the name
+     * of the indicator and not the name of this instance of it, and because
+     * {@code label()} is what a layout file compares.</p>
+     */
+    default String title() {
+        String scale = ownPeriod();
+
+        return scale == null || scale.isBlank() ? label()
+                : br.com.jorge.reis.endeavourneo.platform.Messages.get(
+                        "study.withScale", label(), scale);
+    }
+
     /** @return one colour per line this overlay draws, in the same order as the values */
     List<Color> colours();
 

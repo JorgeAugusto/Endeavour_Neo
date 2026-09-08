@@ -638,15 +638,16 @@ public final class StudyPane extends JComponent {
 
     /** @return the indicator's name as the header says it */
     private static String labelOf(Overlay study) {
-        String name = study.label();
-        String scale = study.ownPeriod();
-
         // The scale only when there IS one. Two stochastics of the same shape,
         // one on the chart's bars and one on five minutes, are otherwise the
         // same word over two different lines -- and that pairing is a large
         // part of why a pane holds more than one.
-        return scale == null || scale.isBlank()
-                ? name : Messages.get("study.withScale", name, scale);
+        //
+        // Overlay.title() and not the composition written out here: it was
+        // written out HERE, so the price chart's legend and its remove menu --
+        // which ask an Overlay for its name just as this does -- went on
+        // showing two identical rows.
+        return study.title();
     }
 
     /**
@@ -768,6 +769,7 @@ public final class StudyPane extends JComponent {
             return;
         }
 
+        paintUnders(g, viewport, top, bottom, range[0], range[1]);
         paintLevels(g, top, bottom, range[0], range[1]);
         paintLines(g, viewport, top, bottom, range[0], range[1]);
         paintScale(g, top, bottom, range[0], range[1]);
@@ -841,6 +843,34 @@ public final class StudyPane extends JComponent {
         }
 
         return found;
+    }
+
+    /**
+     * What each indicator draws BEHIND its lines: a band's shading, say.
+     *
+     * <p><b>The pane did not draw it at all.</b> {@code Overlay.paintUnder} was
+     * asked for by the price chart and by nothing else, so a Bollinger placed
+     * in its own pane -- which the insert dialog allows for any indicator, the
+     * "new pane" choice is never disabled -- lost its fill and nothing said so.
+     * The mirror of the same omission on the other side: the price chart never
+     * asked for {@code levels()}.</p>
+     *
+     * <p>A viewport of the pane's OWN making, because {@code paintUnder} maps
+     * values to pixels through one and the chart's maps PRICES. Handing over
+     * the chart's would have drawn the band where those numbers sit on the
+     * price axis, which for a stochastic is under the floor of the window.</p>
+     */
+    private void paintUnders(Graphics2D g, Viewport viewport,
+                             int top, int bottom, double low, double high) {
+
+        Viewport mine = Viewport.over(
+                new java.awt.Rectangle(viewport.bounds().x, top,
+                        viewport.bounds().width, bottom - top),
+                viewport.firstBar(), viewport.barCount(), low, high);
+
+        for (Overlay study : showing()) {
+            study.paintUnder(g, mine, mine.firstBar(), mine.lastBar());
+        }
     }
 
     private void paintLevels(Graphics2D g, int top, int bottom, double low, double high) {

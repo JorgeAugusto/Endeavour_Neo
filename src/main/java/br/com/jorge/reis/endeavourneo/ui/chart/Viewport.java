@@ -165,6 +165,25 @@ public final class Viewport {
         return new Viewport(bounds, first, count, lowest, highest);
     }
 
+    /**
+     * @param bounds the rectangle the plot is drawn in
+     * @param firstBar the leftmost visible bar
+     * @param barCount how many are visible
+     * @param lowest the value at the bottom edge
+     * @param highest the value at the top edge
+     * @return a viewport over a range GIVEN rather than measured from a series
+     *
+     * <p>For a panel that has already decided its own vertical range and needs
+     * to hand something that maps values to pixels to code written against this
+     * class. {@code Overlay.paintUnder} takes a viewport, and a study pane's
+     * range is not the price range.</p>
+     */
+    public static Viewport over(Rectangle bounds, int firstBar, int barCount,
+            double lowest, double highest) {
+
+        return new Viewport(bounds, firstBar, Math.max(1, barCount), lowest, highest);
+    }
+
     /** @return the leftmost visible bar */
     public int firstBar() {
         return firstBar;
