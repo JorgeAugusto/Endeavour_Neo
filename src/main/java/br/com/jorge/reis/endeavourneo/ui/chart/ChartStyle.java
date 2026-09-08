@@ -49,6 +49,28 @@ public interface ChartStyle {
     String nameKey();
 
     /**
+     * @return the word this style is written as in a workspace file
+     *
+     * <p><b>The style says it, and the file used to guess.</b> Storing was
+     * {@code style instanceof LineStyle ? "line" : "candle"} and reading was the
+     * mirror of it, so the two existing styles were named in a file that the
+     * class javadoc promises does not change when a style is added -- "a new
+     * style is a new class and this file does not change". A third style would
+     * have needed that file edited, and until it was, would have come back as
+     * candles with nothing said.</p>
+     *
+     * <p>Derived from {@link #nameKey} by default, which is already unique per
+     * style and already the thing a style has to declare. A style with no
+     * opinion therefore needs no line anywhere.</p>
+     */
+    default String code() {
+        String key = nameKey();
+        int dot = key.lastIndexOf('.');
+
+        return dot < 0 ? key : key.substring(dot + 1);
+    }
+
+    /**
      * Draws the price.
      *
      * @param g where to draw; already clipped to the viewport's bounds

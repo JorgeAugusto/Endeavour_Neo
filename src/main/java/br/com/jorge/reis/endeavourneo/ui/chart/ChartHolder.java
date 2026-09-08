@@ -156,8 +156,20 @@ public final class ChartHolder {
      */
     private transient PriceSeries beforeReplay;
 
-    /** Which drawing style the buttons should show as chosen. */
-    private String styleChoice = "candle";
+    /**
+     * The style buttons, so they can be asked to agree with the chart again.
+     *
+     * <p>There used to be a {@code styleChoice} field here instead -- the
+     * holder's own note of which button it had pressed -- and the toolbar was
+     * drawn from it. Nothing told it when the style changed anywhere else, and
+     * restoring a workspace changes it: a chart that came back drawing a line
+     * showed the candle button pressed. Two answers to "what style is this
+     * chart", and the one on screen was the wrong one.</p>
+     *
+     * <p>The canvas holds the answer now and says when it moves.</p>
+     */
+    private final java.util.Map<String, JToggleButton> styleButtons =
+            new java.util.LinkedHashMap<>();
 
     /** The layout tabs, below the time axis. Built on first use. */
     private LayoutBar layoutBar;
@@ -720,6 +732,10 @@ public final class ChartHolder {
 
         canvas.onScaleChanged(() -> automatic.setSelected(canvas.isAutomaticScale()));
 
+        // The toolbar follows the chart, and not the other way round. Restoring
+        // a workspace changes the style without any button being pressed.
+        canvas.onStyleChanged(this::followStyle);
+
         bar.add(automatic);
         bar.addSeparator();
 
@@ -754,16 +770,24 @@ public final class ChartHolder {
 
         entry.setToolTipText(Messages.get(key));
         entry.setFocusable(false);
-        entry.setSelected(key.equals(styleChoice) || key.endsWith(styleChoice));
-        entry.addActionListener(e -> {
-            styleChoice = key;
-
-            canvas.setStyle(style.get());
-        });
+        entry.addActionListener(e -> canvas.setStyle(style.get()));
 
         group.add(entry);
 
+        styleButtons.put(style.get().code(), entry);
+
+        followStyle();
+
         return entry;
+    }
+
+    /** Presses whichever button matches the style the chart is actually drawing. */
+    private void followStyle() {
+        JToggleButton mine = styleButtons.get(canvas.getStyle().code());
+
+        if (mine != null) {
+            mine.setSelected(true);
+        }
     }
 
     private JMenuItem item(String messageKey, Runnable action) {

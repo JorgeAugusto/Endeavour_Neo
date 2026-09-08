@@ -1751,8 +1751,24 @@ public final class ChartCanvas extends JComponent {
             this.style = newStyle;
 
             repaint();
+            onStyleChanged.run();
         }
     }
+
+    /**
+     * @param listener told whenever the drawing style changes
+     *
+     * <p><b>There was no such listener, and the toolbar kept its own answer.</b>
+     * The holder wrote down which button it had pressed and drew the toolbar
+     * from that, so after a workspace restored a line chart the button still
+     * showed candles: two answers to "what style is this chart", and the one on
+     * screen was the wrong one.</p>
+     */
+    public void onStyleChanged(Runnable listener) {
+        this.onStyleChanged = listener == null ? () -> { } : listener;
+    }
+
+    private transient Runnable onStyleChanged = () -> { };
 
     public ChartStyle getStyle() {
         return style;
@@ -2129,7 +2145,7 @@ public final class ChartCanvas extends JComponent {
         into.put(prefix + "stretch", String.valueOf(stretch));
         into.put(prefix + "priceOffset", String.valueOf(priceOffset));
         into.put(prefix + "period", periodCode);
-        into.put(prefix + "style", style instanceof LineStyle ? "line" : "candle");
+        into.put(prefix + "style", style.code());
 
         // HOW FAR ALONG, which the javadoc above promises and this did not
         // write: a chart left in March 2021 came back on the last bar, and
@@ -2149,9 +2165,10 @@ public final class ChartCanvas extends JComponent {
             setPeriod(period.aggregation(), period.title(), period.code());
         }
 
-        if ("line".equals(from.get(prefix + "style", "candle"))) {
-            setStyle(new LineStyle());
-        }
+        // BOTH SIDES. Only "line" used to call anything, so a canvas already
+        // drawing a line -- one that is being docked after floating, which goes
+        // through this again -- kept the line however "candle" was stored.
+        setStyle(ChartStyles.byCode(from.get(prefix + "style", null)));
 
         stretch = readDouble(from, prefix + "stretch", 1.0, MINIMUM_STRETCH, MAXIMUM_STRETCH);
         priceOffset = clampOffset(readDouble(from, prefix + "priceOffset", 0.0,

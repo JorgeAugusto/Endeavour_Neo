@@ -467,4 +467,71 @@ class ChartViewTest {
             br.com.jorge.reis.endeavourneo.ui.chart.ChartPreferences.setSyntheticTicks(was);
         }
     }
+
+    @Test
+    @DisplayName("o estilo volta como estava, nos DOIS sentidos, e se anuncia")
+    void thestyleComesBackBothWays() {
+        // Storing was `style instanceof LineStyle ? "line" : "candle"` and
+        // reading was the mirror of it: two literals naming the two styles that
+        // happen to exist, in a file whose own javadoc promises that "a new
+        // style is a new class and this file does not change".
+        //
+        // And the restore was one-sided: only "line" called anything, so a
+        // canvas already drawing a line -- one being docked after floating,
+        // which comes through here again -- kept the line however "candle" had
+        // been stored.
+        br.com.jorge.reis.endeavourneo.platform.Settings into =
+                br.com.jorge.reis.endeavourneo.platform.Settings.workspace();
+
+        ChartCanvas left = new ChartCanvas();
+
+        left.setSeries(bars(100));
+        left.setStyle(new br.com.jorge.reis.endeavourneo.ui.chart.style.LineStyle());
+        left.storeView(into, "chartViewTest.style.");
+
+        ChartCanvas reopened = new ChartCanvas();
+
+        reopened.setSeries(bars(100));
+        reopened.restoreView(into, "chartViewTest.style.");
+
+        assertEquals("line", reopened.getStyle().code(),
+                "the line chart came back as candles");
+
+        // The other direction, which used to be the silent one.
+        left.setStyle(new br.com.jorge.reis.endeavourneo.ui.chart.style.CandleStyle());
+        left.storeView(into, "chartViewTest.style.");
+
+        reopened.restoreView(into, "chartViewTest.style.");
+
+        assertEquals("candle", reopened.getStyle().code(),
+                "a chart already drawing a line kept the line when candles were stored");
+
+        // AND IT SAYS SO. There was no listener for the style at all, so the
+        // toolbar kept its own note of which button it had pressed and drew
+        // itself from that: after a restore to a line chart the candle button
+        // was still the one pressed. Two answers to "what style is this chart",
+        // and the one on screen was the wrong one.
+        int[] told = new int[1];
+
+        reopened.onStyleChanged(() -> told[0]++);
+        reopened.setStyle(new br.com.jorge.reis.endeavourneo.ui.chart.style.LineStyle());
+
+        assertEquals(1, told[0], "changing the style told nobody");
+    }
+
+    @Test
+    @DisplayName("o catalogo de estilos resolve pelo codigo, e cai no padrao")
+    void thestyleCatalogueResolvesByCode() {
+        assertEquals("candle", ChartStyles.byCode("candle").code());
+        assertEquals("line", ChartStyles.byCode("line").code());
+
+        // A word this version does not know is a workspace written by a later
+        // one. Candles are the honest fallback: they show every number the bar
+        // has.
+        assertEquals("candle", ChartStyles.byCode("heikin-ashi").code());
+        assertEquals("candle", ChartStyles.byCode(null).code());
+
+        assertEquals(2, ChartStyles.all().size(),
+                "a style was added and the catalogue was not told");
+    }
 }
