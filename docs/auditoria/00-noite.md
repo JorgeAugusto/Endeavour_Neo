@@ -528,8 +528,14 @@ Duas coisas que a tarde ensinou:
 | **B5-4** | O recálculo de todos os estudos sai da thread da interface | `a417c42` |
 | **B6-8** | A janela do replay passa a ser medida em pregões | `67fc626` |
 | **B6-4, B6-5** | A segunda varredura de disco sai, e o calendário volta a ser aquecido | `f5083f8` |
+| **B8a-9, B8a-12, B8a-13** | Três testes que ficavam verdes sobre o vazio | `6e7bfc7` |
+| **B8a-11** | O bundle passa a ser conferido contra o código | `cb4c480` |
+| **B8a-10** | A costura das configurações alcança quem já as guardou | `56758cc` |
+| **B8a-5..8** | Quatro fixtures que não viam o defeito que nomeavam | `9ba648f` |
+| **B8b-9, B8b-10** | Os testes param de gravar os arquivos e o registro do leitor | `945b295` |
+| **B8b-6,7,8,11,12,13** | As últimas seis | `5b76998` |
 
-**80 MÉDIA fechadas.** Suíte em **636**. As áreas **B1**, **B2**, **B3**, **B4**, **B5**, **B6**, **B7a**
+**As 99 MÉDIA da auditoria II estão FECHADAS.** Suíte em **641**. Todas as áreas — **B1** a **B8b** e as quatro lentes
 estão fechadas. **B4-11** já estava fechada pela correção de B5-5 — o
 `study.setVisible(entry.visible())` do `ChartLayout.Pane.build()`.
 
@@ -544,7 +550,7 @@ qualquer correção individual — e vale mais ainda contra quem a escreveu.
 - **B6-9 sem teste, dito de propósito.** Exercitar aquele caminho exige soltar o
   painel DURANTE os quatro segundos da construção da sessão, o que é dirigir um
   `SwingWorker` pelo meio — um teste sobre o escalonador, não sobre isto.
-- **As 19 MÉDIA e 90 BAIXA restantes** da auditoria II, e as **93 MÉDIA e 115
+- **As 90 BAIXA** da auditoria II, e as **93 MÉDIA e 115
   BAIXA** da auditoria I que a decisão D5 mandou para cá.
 
 ### Mais duas lições da fase 4
@@ -621,3 +627,17 @@ No B5-8, comparar o CENTRO da banda com a média passou verde na quebra: o
 centro vem de uma `MovingAverage` própria e nunca passou pelo `switch`
 duplicado. Quem passava era a LARGURA. **Uma prova verde é uma pergunta sobre
 a quebra, não sobre o teste** — é a segunda vez esta noite.
+
+### Onde a auditoria II termina
+
+**26 ALTA e 99 MÉDIA fechadas**, cada uma com o teste que faltava e cada teste
+provado quebrando o produto. Suíte de 537 para 641.
+
+Três achados foram **refutados** e a refutação ficou escrita no código
+(B8b-5, B8b-4, B2-5); dois chegaram meio mortos e o commit diz isso
+(B1-11, B8a-13); e quatro estavam **já fechados** por correções anteriores
+desta mesma noite (B4-11, B6-7, B7a-13, B7a-15).
+
+**Sem teste, de propósito:** B6-1, B6-3, B6-5, B6-9, B2-7, B7b-4, B8a-9. Em
+todos, exercitar o caminho seria um teste sobre o escalonador — do JUnit, do
+Swing ou do JobService — e não sobre o produto.
