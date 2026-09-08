@@ -153,13 +153,20 @@ public final class Settings {
      *
      * @param folder somewhere temporary
      */
-    static void useForTest(Path folder) {
+    public static void useForTest(Path folder) {
         SETTINGS.moveTo(folder.resolve("settings.properties"));
         WORKSPACE.moveTo(folder.resolve("workspace.properties"));
     }
 
-    /** Puts both files back under the home directory. */
-    static void stopUsingTestStore() {
+    /**
+     * Puts both files back under the home directory.
+     *
+     * <p>Public for the same reason {@link #at} is: the tests that need this
+     * most are not in this package. A window test opens a chart, and opening a
+     * chart writes the workspace -- so without a seam it can reach, the suite
+     * rewrites the reader's own list of open charts on every run.</p>
+     */
+    public static void stopUsingTestStore() {
         SETTINGS.moveTo(HOME.resolve("settings.properties"));
         WORKSPACE.moveTo(HOME.resolve("workspace.properties"));
     }

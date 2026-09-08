@@ -32,6 +32,33 @@ import org.junit.jupiter.api.Test;
 @DisplayName("Collapsible pane")
 class CollapsiblePaneTest {
 
+    /**
+     * A settings and workspace pair of this file's own.
+     *
+     * <p>Opening a chart or a window WRITES: the workspace remembers which
+     * charts were open, where they were and what they were showing. The home
+     * those files live under is redirected by a property set in one place only,
+     * the surefire plugin -- and the house runs the suite with javac and a
+     * runner instead, where that property is absent and these tests rewrote the
+     * reader's own list of open charts on every run.</p>
+     *
+     * <p>Per test, and put back afterwards, so nothing here can be read by the
+     * next file either: MainWindowTest counts the charts it remembers, and a
+     * count is a property any other test could change.</p>
+     */
+    @org.junit.jupiter.api.io.TempDir
+    java.nio.file.Path store;
+
+    @org.junit.jupiter.api.BeforeEach
+    void useAStoreOfOurOwn() {
+        br.com.jorge.reis.endeavourneo.platform.Settings.useForTest(store);
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void putTheStoreBack() {
+        br.com.jorge.reis.endeavourneo.platform.Settings.stopUsingTestStore();
+    }
+
     private static final String KEY = "test-pane-" + System.nanoTime();
 
     @Test
@@ -92,5 +119,26 @@ class CollapsiblePaneTest {
 
         assertTrue(new CollapsiblePane("Console", new JPanel(), key).isFolded(),
                 "reabriu desdobrado depois de ter sido dobrado");
+    }
+    @Test
+    @DisplayName("o estado dobrado vai para o arquivo do teste, e nao para o registro")
+    void theFoldedStateGoesToTheTestStore() throws java.io.IOException {
+        // This class used to keep its state in java.util.prefs -- the registry,
+        // on Windows -- which the suite's seam does not reach, so it wrote the
+        // reader's registry even under Maven. And its keys carry a nanoTime, so
+        // every run of the suite left one more entry behind, for ever.
+        //
+        // The argument against java.util.prefs was already written out in the
+        // javadoc of Settings, under "Why files and not java.util.prefs". This
+        // was the last place in the application still doing it.
+        new CollapsiblePane("Console", new JPanel(), "provaDoArquivo").setFolded(true);
+
+        java.nio.file.Path file = store.resolve("settings.properties");
+
+        assertTrue(java.nio.file.Files.exists(file),
+                "nothing was written where this test can see it, so the state went "
+                        + "somewhere the suite does not own");
+        assertTrue(java.nio.file.Files.readString(file).contains("provaDoArquivo"),
+                "the file was written and the folded state is not in it");
     }
 }

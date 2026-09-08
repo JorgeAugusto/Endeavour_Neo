@@ -22,7 +22,6 @@ import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.util.prefs.Preferences;
 import javax.swing.BorderFactory;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
@@ -53,8 +52,23 @@ public final class CollapsiblePane extends JPanel {
 
     private static final long serialVersionUID = 1L;
 
-    private static final Preferences PREFS =
-            Preferences.userNodeForPackage(CollapsiblePane.class);
+    /**
+     * Where the folded state is kept.
+     *
+     * <p><b>The settings file, and it used to be {@code java.util.prefs}</b> --
+     * which on Windows is the registry. The argument against that is written out
+     * in {@link br.com.jorge.reis.endeavourneo.platform.Settings}'s own javadoc,
+     * under "Why files and not java.util.prefs", and this was the one place in
+     * the application still doing it.</p>
+     *
+     * <p>It also put this class outside every seam the suite has. The property
+     * that redirects the settings home does not reach {@code java.util.prefs},
+     * so its test wrote the reader's registry even under Maven -- and its keys
+     * carry a {@code System.nanoTime()}, so every run of the suite left a new
+     * entry behind, for ever.</p>
+     */
+    private static final br.com.jorge.reis.endeavourneo.platform.Settings PREFS =
+            br.com.jorge.reis.endeavourneo.platform.Settings.settings();
 
     /** Pointing at the content when open, at the caption when folded. */
     private static final String OPEN = "▾";
@@ -84,7 +98,7 @@ public final class CollapsiblePane extends JPanel {
         this.content = content;
         this.key = key;
         this.caption = new JLabel(title);
-        this.folded = PREFS.getBoolean(key + ".folded", false);
+        this.folded = PREFS.getBoolean("pane." + key + ".folded", false);
 
         caption.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 8));
         arrow.setPreferredSize(new Dimension(20, 20));
@@ -130,7 +144,7 @@ public final class CollapsiblePane extends JPanel {
 
         folded = value;
 
-        PREFS.putBoolean(key + ".folded", value);
+        PREFS.putBoolean("pane." + key + ".folded", value);
         apply();
         onToggle.run();
     }

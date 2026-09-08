@@ -41,6 +41,33 @@ import org.junit.jupiter.api.Test;
 @DisplayName("A vista do grafico")
 class ChartViewTest {
 
+    /**
+     * A settings and workspace pair of this file's own.
+     *
+     * <p>Opening a chart or a window WRITES: the workspace remembers which
+     * charts were open, where they were and what they were showing. The home
+     * those files live under is redirected by a property set in one place only,
+     * the surefire plugin -- and the house runs the suite with javac and a
+     * runner instead, where that property is absent and these tests rewrote the
+     * reader's own list of open charts on every run.</p>
+     *
+     * <p>Per test, and put back afterwards, so nothing here can be read by the
+     * next file either: MainWindowTest counts the charts it remembers, and a
+     * count is a property any other test could change.</p>
+     */
+    @org.junit.jupiter.api.io.TempDir
+    Path store;
+
+    @org.junit.jupiter.api.BeforeEach
+    void useAStoreOfOurOwn() {
+        br.com.jorge.reis.endeavourneo.platform.Settings.useForTest(store);
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void putTheStoreBack() {
+        br.com.jorge.reis.endeavourneo.platform.Settings.stopUsingTestStore();
+    }
+
     @Test
     @DisplayName("a barra sob o cursor fica sob o cursor, e a fracao e a do GRAFICO")
     void theBarUnderTheCursorStays() {
