@@ -147,4 +147,97 @@ class OverlayTest {
             }
         };
     }
+    @Test
+    @DisplayName("a three-line indicator is asked for a bar once, not once per line")
+    void aBarIsAskedForOnce() {
+        // valueAt ALLOCATES in every implementation there is -- MovingAverage
+        // returns `new double[]{...}`, BollingerBands a `new double[3]` -- and
+        // the bar loop used to sit inside the line loop, so a three-line
+        // indicator over N visible bars built 3xN arrays every frame where N
+        // would do. Every chart opens with three averages on it, so this was
+        // the ordinary case and not the awkward one.
+        //
+        // Counted as "which bars, how many times" rather than as a total: the
+        // total depends on how many bars the canvas decided to show, and the
+        // defect does not.
+        java.util.List<Integer> asked = new java.util.ArrayList<>();
+
+        ChartCanvas canvas = new ChartCanvas();
+
+        canvas.setSeries(flat(60, 100));
+        canvas.setSize(400, 300);
+
+        // A font, because nothing added this canvas to a window to inherit one
+        // from, and the axes ask for it while painting.
+        canvas.setFont(new java.awt.Font(java.awt.Font.SANS_SERIF, java.awt.Font.PLAIN, 11));
+
+        assertTrue(canvas.addOverlay(threeLines(asked)), "the indicator was refused");
+
+        java.awt.image.BufferedImage image = new java.awt.image.BufferedImage(
+                400, 300, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+
+        java.awt.Graphics2D g = image.createGraphics();
+
+        try {
+            canvas.paint(g);
+        } finally {
+            g.dispose();
+        }
+
+        assertFalse(asked.isEmpty(), "the indicator was never drawn, so this proves nothing");
+
+        assertEquals(new java.util.HashSet<>(asked).size(), asked.size(),
+                "a bar was asked for more than once -- " + asked.size() + " calls for "
+                        + new java.util.HashSet<>(asked).size() + " bars, which is the "
+                        + "line count doing the multiplying");
+    }
+
+    /** An indicator of three lines that records which bars it is asked about. */
+    private static Overlay threeLines(java.util.List<Integer> asked) {
+        return new Overlay() {
+
+            @Override
+            public String nameKey() {
+                return "overlay.ema";
+            }
+
+            @Override
+            public java.util.List<Integer> parameters() {
+                return java.util.List.of(3);
+            }
+
+            @Override
+            public java.util.List<java.awt.Color> colours() {
+                return java.util.List.of(java.awt.Color.RED, java.awt.Color.GREEN,
+                        java.awt.Color.BLUE);
+            }
+
+            @Override
+            public double[] valueAt(int bar) {
+                asked.add(bar);
+
+                return new double[]{100, 101, 102};
+            }
+
+            @Override
+            public void calculate(PriceSeries series) {
+                // Nothing: the values are fixed, and what is counted is the asking.
+            }
+
+            @Override
+            public boolean isVisible() {
+                return true;
+            }
+
+            @Override
+            public void setVisible(boolean visible) {
+                // Nothing: it is always drawn.
+            }
+
+            @Override
+            public boolean fitsOnPrice() {
+                return true;
+            }
+        };
+    }
 }

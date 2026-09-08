@@ -2393,32 +2393,53 @@ public final class ChartCanvas extends JComponent {
             java.util.List<java.awt.Color> colours = overlay.colours();
             int lines = colours.size();
 
-            for (int line = 0; line < lines; line++) {
-                g.setColor(colours.get(line));
+            // ONE valueAt PER BAR, and it used to be one per bar PER LINE. The
+            // bar loop sat inside the line loop, and every implementation of
+            // valueAt builds its answer -- MovingAverage returns `new
+            // double[]{...}`, BollingerBands a `new double[3]` -- so a
+            // three-line indicator over N visible bars allocated 3xN arrays
+            // every frame where N would do. Allocating per element inside a
+            // painting loop is the thing this file says in writing not to do,
+            // and every chart opens with three averages on it.
+            //
+            // The line's own continuity is what forced the order: each line
+            // remembers where its last point was, so with the bars outside they
+            // have to be remembered side by side rather than one at a time.
+            int[] lastX = new int[lines];
+            int[] lastY = new int[lines];
 
-                int lastX = Integer.MIN_VALUE;
-                int lastY = 0;
+            java.util.Arrays.fill(lastX, Integer.MIN_VALUE);
 
-                for (int i = from; i < to; i++) {
-                    double[] row = overlay.valueAt(i);
+            for (int i = from; i < to; i++) {
+                double[] row = overlay.valueAt(i);
+                int x = (int) Math.round(viewport.x(i));
 
+                for (int line = 0; line < lines; line++) {
                     if (line >= row.length || !Double.isFinite(row[line])) {
-                        lastX = Integer.MIN_VALUE;
+                        lastX[line] = Integer.MIN_VALUE;
 
                         continue;
                     }
 
-                    int x = (int) Math.round(viewport.x(i));
                     int y = (int) Math.round(viewport.y(row[line]));
 
-                    if (lastX != Integer.MIN_VALUE) {
-                        g.drawLine(lastX, lastY, x, y);
+                    if (lastX[line] != Integer.MIN_VALUE) {
+                        g.setColor(colours.get(line));
+                        g.drawLine(lastX[line], lastY[line], x, y);
                     }
 
-                    lastX = x;
-                    lastY = y;
+                    lastX[line] = x;
+                    lastY[line] = y;
                 }
             }
+
+            // NOT stepped by barsPerColumn, unlike the candle loops below, and
+            // that is a decision rather than an oversight. Those step because
+            // they AGGREGATE: a column keeps the high and the low of every bar
+            // that fell in it. A line has nothing to aggregate with, so sampling
+            // one bar per column would quietly drop the range the indicator
+            // covered inside that column -- and at the zoom where the saving
+            // would matter, that range is most of what the line is showing.
         }
 
         if (previous != null) {
