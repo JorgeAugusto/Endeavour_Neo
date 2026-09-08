@@ -501,8 +501,13 @@ Duas coisas que a tarde ensinou:
 | **B3-4, B3-5** | O dígito age no gráfico da frente, e o Control alterna uma vez só | `5201974` |
 | **B4-2** | A vista volta ao ABRIR, e o gráfico flutuante para de perdê-la | `ce15513` |
 | **B4-3, B4-5** | A lista de escalas passa a falar o idioma escolhido | `269db07` |
+| **B1-9, B1-10** | Uma biblioteca fechada não volta a segurar 113 MB nem a avisar | `c9c92a7` |
+| **B1-11** | A limpeza do caminho de falha não pode mais apagar a causa | `b1cc939` |
+| **B1-14** | Uma resposta só para "em que balde essa barra cai" | `5d81bfc` |
+| **B1-15** | Um número com lixo no meio passa a ser recusado | `96a059e` |
+| **B1-5, B1-6** | O código do agressor deixa de ser a ordem de declaração | `21f8b45` |
 
-**29 MÉDIA fechadas.** Suíte em **603**.
+**36 MÉDIA fechadas.** Suíte em **607**.
 
 Uma terceira lição, e é a mesma três vezes: **o `OrphanJavadocTest` pegou o autor
 dele em três commits diferentes desta fase**, sempre por um membro novo inserido
@@ -515,7 +520,7 @@ qualquer correção individual — e vale mais ainda contra quem a escreveu.
 - **B6-9 sem teste, dito de propósito.** Exercitar aquele caminho exige soltar o
   painel DURANTE os quatro segundos da construção da sessão, o que é dirigir um
   `SwingWorker` pelo meio — um teste sobre o escalonador, não sobre isto.
-- **As 92 MÉDIA e 107 BAIXA restantes** da auditoria II, e as **93 MÉDIA e 115
+- **As 85 MÉDIA e 107 BAIXA restantes** da auditoria II, e as **93 MÉDIA e 115
   BAIXA** da auditoria I que a decisão D5 mandou para cá.
 
 ### Mais duas lições da fase 4
@@ -530,3 +535,12 @@ qualquer correção individual — e vale mais ainda contra quem a escreveu.
   código da hora é `1h` e não `H1`, a hora usa o singular, e o tijolo do 11R é de
   50 pontos e não de 10. Números escritos de cabeça; o produto estava certo nas
   três. Um teste que falha é sempre uma pergunta sobre qual dos dois lados errou.
+
+### E mais uma
+
+**Um achado pode chegar meio morto, e vale dizer.** O `B1-11` descrevia um
+`finally` que fechava duas vezes e trocava a exceção — e a correção de `L3-1`,
+horas antes, já tinha trocado aquele `close()` por um `discard()` idempotente.
+O mecanismo não reproduzia mais. A FORMA continuava: uma limpeza dentro de um
+`finally` pode substituir a causa. Foi corrigida por isso, e o commit diz que o
+achado chegou pela metade em vez de fingir que fechou inteiro.
