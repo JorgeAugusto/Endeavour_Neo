@@ -95,6 +95,21 @@ public interface PriceSeries {
             public double closeAt(int index) {
                 throw new IndexOutOfBoundsException("empty series");
             }
+
+            /**
+             * @return never; there is no bar to have a volume
+             *
+             * <p>Six accessors, and this one used to be the only one that
+             * ANSWERED. It inherited the default above, which reads NaN as
+             * "this series has no volume" -- a statement about the series, not
+             * about an index that does not exist. Somebody walking an empty
+             * series by mistake found out from the first exception, unless what
+             * they read first happened to be the volume.</p>
+             */
+            @Override
+            public double volumeAt(int index) {
+                throw new IndexOutOfBoundsException("empty series");
+            }
         };
     }
 }

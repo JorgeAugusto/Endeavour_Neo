@@ -271,4 +271,30 @@ class TickFileTest {
         assertEquals(0, TickFile.read(file).size());
         assertEquals(LocalDate.of(2021, 1, 25), TickFile.dateOf(file));
     }
+    @Test
+    @DisplayName("uma linha maior que o buffer e RECUSADA, nao lida pela metade")
+    void arowLongerThanTheBufferIsRefused(@TempDir Path folder) throws IOException {
+        // The buffer is 512 bytes and it is never cleared between rows, while
+        // dateOf reads positions 0 to 23 without asking how long the row is. So
+        // a row that ran past the buffer was read using bytes left over from the
+        // row BEFORE: a plausible, wrong date, which opened a writer for a
+        // session that never happened.
+        //
+        // The column guard catches most truncations, because cutting a row cuts
+        // its tabs. It does not catch a cut inside the last column -- which is
+        // what this row is.
+        List<String> tooLong = new ArrayList<>(ROWS);
+
+        tooLong.add("2021.01.04\t10:06:00.000\t\t\t118450\t1.00000000\t"
+                + "8".repeat(600));
+
+        Path csv = exportOf(folder, "WINFUT.csv", tooLong);
+
+        IOException thrown = assertThrows(IOException.class,
+                () -> MetaTraderTicks.convert(csv, folder.resolve("ticks"), "winfut", null),
+                "a row longer than the buffer was read as if it were whole, using bytes "
+                        + "left over from the row before it");
+
+        assertTrue(thrown.getMessage().contains("longer than"), thrown.getMessage());
+    }
 }

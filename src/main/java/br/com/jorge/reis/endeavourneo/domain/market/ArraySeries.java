@@ -70,6 +70,33 @@ final class ArraySeries implements PriceSeries, Untraded, Counted {
     ArraySeries(long[] times, double[] opens, double[] highs,
                 double[] lows, double[] closes, double[] volumes,
                 boolean[] untraded, long[] trades) {
+        // CHECKED ONCE, on the way in. size() answers times.length and every
+        // accessor indexes its own array, so a set of arrays of different
+        // lengths is a series that answers some questions and throws on others,
+        // at a bar number that depends on which array is short. The three
+        // callers today build them all the same size -- and that is the only
+        // thing stopping it, which is a rule nobody wrote down.
+        //
+        // The javadoc above explains why the arrays are not COPIED, which is a
+        // different decision and still holds: this costs one comparison per
+        // series, not per bar.
+        sameLength(times.length, opens.length, "opens");
+        sameLength(times.length, highs.length, "highs");
+        sameLength(times.length, lows.length, "lows");
+        sameLength(times.length, closes.length, "closes");
+
+        if (volumes != null) {
+            sameLength(times.length, volumes.length, "volumes");
+        }
+
+        if (untraded != null) {
+            sameLength(times.length, untraded.length, "untraded");
+        }
+
+        if (trades != null) {
+            sameLength(times.length, trades.length, "trades");
+        }
+
         this.times = times;
         this.opens = opens;
         this.highs = highs;
@@ -78,6 +105,13 @@ final class ArraySeries implements PriceSeries, Untraded, Counted {
         this.volumes = volumes;
         this.untraded = untraded;
         this.trades = trades;
+    }
+
+    private static void sameLength(int bars, int found, String what) {
+        if (found != bars) {
+            throw new IllegalArgumentException(
+                    what + " has " + found + " values for " + bars + " bars");
+        }
     }
 
     @Override

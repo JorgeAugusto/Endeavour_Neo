@@ -183,7 +183,8 @@ public final class ProfitTrades {
     /**
      * The whole export in primitive arrays.
      *
-     * <p>Fifteen bytes a trade, so a session is around eighty megabytes and the
+     * <p>Nineteen bytes a trade -- three {@code int}, three {@code short} and a
+     * {@code byte} -- so a session is around eighty megabytes and the
      * largest file measured is ninety-four. Objects would be five times that
      * and the reversal needs all of it at once.</p>
      */

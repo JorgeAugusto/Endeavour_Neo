@@ -88,6 +88,19 @@ public final class MetaTraderTicks {
         // for every row -- see the note at the call below.
         int[] starts = new int[8];
 
+        // Whether the row being read ran past the buffer. A truncated row used
+        // to be read as if it were whole: the buffer is never cleared between
+        // rows, and dateOf reads positions 0 to 23 without asking how long the
+        // row is -- so a short or cut row read bytes left over from the row
+        // BEFORE and produced a plausible, wrong date, which then opened a
+        // writer for a session that never happened.
+        //
+        // The column guard catches most truncations, because cutting a row cuts
+        // its tabs. It does not catch a cut inside the last column. The sister
+        // reader, ProfitTrades, refuses loudly on the same case; this is the
+        // same answer.
+        boolean overflowed = false;
+
         try (InputStream in = new BufferedInputStream(Files.newInputStream(csv), BUFFER)) {
             int read;
 
@@ -96,14 +109,25 @@ public final class MetaTraderTicks {
                     byte b = chunk[i];
 
                     if (b != '\n') {
-                        if (b != '\r' && inRow < row.length) {
+                        if (b == '\r') {
+                            continue;
+                        }
+
+                        if (inRow < row.length) {
                             row[inRow++] = b;
+                        } else {
+                            overflowed = true;
                         }
 
                         continue;
                     }
 
                     // The first line names the columns.
+                    if (overflowed) {
+                        throw new IOException(csv + ": row " + rows + " is longer than "
+                                + row.length + " bytes, so it cannot be read whole");
+                    }
+
                     if (rows++ > 0 && inRow > 0) {
                         LocalDate date = dateOf(row);
 

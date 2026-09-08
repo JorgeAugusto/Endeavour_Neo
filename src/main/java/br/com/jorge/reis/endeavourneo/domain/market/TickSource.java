@@ -59,7 +59,7 @@ import java.time.LocalDate;
 public enum TickSource {
 
     /** MetaTrader's tick export: bid, ask, last, volume, to the millisecond. */
-    METATRADER("ENDVTICK", "bin"),
+    METATRADER("ENDVTICK", "bin", 1),
 
     /**
      * Profit's Times &amp; Trades: every print, with both brokers and the
@@ -69,15 +69,33 @@ public enum TickSource {
      * exists on disk this source simply lists nothing, which is the truth: no
      * tape has been exported.</p>
      */
-    PROFIT("ENDVTAPE", "tape");
+    PROFIT("ENDVTAPE", "tape", 1);
 
     private final String tag;
 
     private final String suffix;
 
-    TickSource(String tag, String suffix) {
+    /**
+     * The version THIS source writes into its header.
+     *
+     * <p>Carried per source, and it used not to be: the shared header reader
+     * compared against the version of the MetaTrader file, and the two happen
+     * to be 1 today. The day the tape goes to 2, every valid tape would be read
+     * as "not one of ours" and the Profit source would vanish from the list
+     * with no error anywhere. The header LAYOUT is shared; the version in it is
+     * each source's own.</p>
+     */
+    private final int version;
+
+    TickSource(String tag, String suffix, int version) {
         this.tag = tag;
         this.suffix = suffix;
+        this.version = version;
+    }
+
+    /** @return the version this source stamps its sessions with */
+    public int version() {
+        return version;
     }
 
     /** @return the eight ASCII bytes at the head of this source's sessions */
@@ -139,6 +157,6 @@ public enum TickSource {
      */
     public LocalDate sessionIn(Path file) {
         return file.getFileName().toString().endsWith("." + suffix)
-                ? TickFile.sessionOf(file, tag) : null;
+                ? TickFile.sessionOf(file, tag, version) : null;
     }
 }

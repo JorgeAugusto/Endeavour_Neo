@@ -118,6 +118,7 @@ public final class TickFile {
     /**
      * @param file any file
      * @param tag the eight ASCII bytes a source stamps its sessions with
+     * @param version the version THAT source writes, which is not this one's
      * @return the session's date if the file is one of that source's, else null
      *
      * <p>Here rather than in each source because the first twenty-four bytes
@@ -126,7 +127,7 @@ public final class TickFile {
      * its own header would be a source whose files could not be listed by the
      * one piece of code that lists sessions.</p>
      */
-    public static LocalDate sessionOf(Path file, String tag) {
+    public static LocalDate sessionOf(Path file, String tag, int version) {
         if (!Files.isRegularFile(file)) {
             return null;
         }
@@ -134,7 +135,7 @@ public final class TickFile {
         try (FileChannel channel = FileChannel.open(file, StandardOpenOption.READ)) {
             byte[] wanted = tag.getBytes(StandardCharsets.US_ASCII);
 
-            return LocalDate.ofEpochDay(header(channel, file, wanted).epochDay);
+            return LocalDate.ofEpochDay(header(channel, file, wanted, version).epochDay);
         } catch (IOException e) {
             return null;
         }
@@ -381,10 +382,11 @@ public final class TickFile {
     private record Header(int epochDay, int count) { }
 
     private static Header header(FileChannel channel, Path file) throws IOException {
-        return header(channel, file, MAGIC);
+        return header(channel, file, MAGIC, VERSION);
     }
 
-    private static Header header(FileChannel channel, Path file, byte[] tag) throws IOException {
+    private static Header header(FileChannel channel, Path file, byte[] tag,
+            int wantedVersion) throws IOException {
         ByteBuffer head = ByteBuffer.allocate(HEADER_BYTES).order(ByteOrder.BIG_ENDIAN);
 
         fill(channel, head, file);
@@ -401,7 +403,14 @@ public final class TickFile {
 
         int version = head.getInt();
 
-        if (version != VERSION) {
+        // The version the CALLER writes, which used to be this file's own
+        // constant. The two happen to be 1 today, so it worked by coincidence:
+        // the day the tape goes to version 2, isTape would answer false for
+        // every valid tape and the Profit source would vanish from the list
+        // with no error anywhere. The javadoc of sessionOf justifies the shared
+        // header by "the first twenty-four bytes are the same" -- which is true
+        // of the LAYOUT, and says nothing about the value of the version.
+        if (version != wantedVersion) {
             throw new IOException(file + ": version " + version + " is not one this reads");
         }
 

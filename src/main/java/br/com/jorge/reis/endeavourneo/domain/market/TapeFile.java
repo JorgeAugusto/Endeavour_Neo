@@ -123,7 +123,11 @@ public final class TapeFile {
 
     /** @return whether the file is a tape of ours, without reading the trades */
     public static boolean isTape(Path file) {
-        return TickFile.sessionOf(file, "ENDVTAPE") != null;
+        // THIS file's version, not TickFile's. The two are 1 today, so the
+        // old call worked by coincidence -- and the day the tape goes to 2,
+        // every valid tape would answer false here and the Profit source
+        // would vanish from the list with no error anywhere.
+        return TickFile.sessionOf(file, "ENDVTAPE", VERSION) != null;
     }
 
     /**
