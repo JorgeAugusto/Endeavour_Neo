@@ -19,6 +19,7 @@ package br.com.jorge.reis.endeavourneo.ui.shell;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.Component;
@@ -201,5 +202,72 @@ class StatusStripTest {
         settle();
 
         assertEquals(1, onScreen(2000).size());
+    }
+/**
+     * The cancel button stays on the bar, however narrow the window gets.
+     *
+     * <p>The class header calls the job area the one part of this bar that never
+     * drops -- "it is the only part of this bar that can be the reason the
+     * program is slow, and hiding it in a small window would hide the cancel
+     * button with it". Two things broke that at the same pixel:
+     * {@code minimumLayoutSize} declared only the message's floor, so the window
+     * could be narrowed past the job area's own width; and the job area was then
+     * given less than it needs, whereupon its flow layout wrapped its LAST
+     * component -- the cancel button -- onto a line the bar is not tall enough
+     * to show.</p>
+     *
+     * <p>A real service and a real job, held on a latch: what makes the area
+     * appear is a job actually running, and a fixture that set the flag by hand
+     * would be asking about the fixture.</p>
+     */
+    @Test
+    @DisplayName("apertando ate o osso, o botao de cancelar continua na barra")
+    void thecancelButtonSurvivesANarrowWindow() throws Exception {
+        java.util.concurrent.CountDownLatch hold = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch started =
+                new java.util.concurrent.CountDownLatch(1);
+
+        try (br.com.jorge.reis.endeavourneo.platform.JobService jobs =
+                new br.com.jorge.reis.endeavourneo.platform.JobService()) {
+
+            jobs.submit("dobrando seis anos de minutos", progress -> {
+                started.countDown();
+                hold.await();
+
+                return null;
+            });
+
+            assertTrue(started.await(5, java.util.concurrent.TimeUnit.SECONDS),
+                    "the job never started");
+
+            SwingUtilities.invokeAndWait(() -> bar.bind(jobs));
+            settle();
+
+            java.awt.Container area = null;
+
+            for (Component each : bar.getComponents()) {
+                if (each instanceof java.awt.Container held && !(each instanceof JLabel)
+                        && held.getComponentCount() == 3) {
+                    area = held;
+                }
+            }
+
+            assertNotNull(area, "the job area is not on the bar while a job is running");
+
+            int wanted = area.getPreferredSize().width;
+
+            // Narrower than the job area needs all by itself.
+            bar.setSize(wanted / 2, 24);
+            bar.doLayout();
+
+            assertTrue(area.getWidth() >= wanted,
+                    "the job area was squeezed to " + area.getWidth() + " of the "
+                            + wanted + " it needs, and the cancel button wraps out of sight");
+
+            assertTrue(bar.getMinimumSize().width >= wanted,
+                    "the bar tells the window it may be narrower than the job area");
+
+            hold.countDown();
+        }
     }
 }

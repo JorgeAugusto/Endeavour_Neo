@@ -722,6 +722,7 @@ public final class MainWindow extends JFrame {
         ChartHolder holder = new ChartHolder(title, shown, desktop, this, () -> {
             charts.remove(title);
             rememberCharts();
+            forgetChartInFooter();
         });
 
         // The canvas needs the instrument to find its tick sessions: they are
@@ -866,6 +867,27 @@ public final class MainWindow extends JFrame {
         }
 
         charts.clear();
+        forgetChartInFooter();
+    }
+
+    /**
+     * Clears the footer's chart fields once the last chart is gone.
+     *
+     * <p>{@code report} keeps the name when the pointer merely LEAVES a
+     * chart, on purpose -- it is still the one being looked at, and
+     * blanking it would make the bar flicker at every crossing of the axis.
+     * Closing is the other case, and nothing said so: with every chart shut,
+     * the footer went on reading WINFUT-FULL, a price and a mode, naming a
+     * window that no longer exists. In a tool whose footer IS the reading
+     * under the cursor, that is a number that looks current and is not.</p>
+     *
+     * <p>{@code StatusBar.noChart} existed for this from the start and had
+     * no caller but a test.</p>
+     */
+    private void forgetChartInFooter() {
+        if (charts.isEmpty()) {
+            status.noChart();
+        }
     }
 
     /**

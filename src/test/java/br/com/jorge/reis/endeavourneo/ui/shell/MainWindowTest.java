@@ -547,4 +547,54 @@ class MainWindowTest {
                     br.com.jorge.reis.endeavourneo.domain.market.Aggressor.BUYER);
         }
     }
+/**
+     * @param bar the footer
+     * @return every non-blank label text in it, at any depth
+     */
+    private static java.util.List<String> saidIn(java.awt.Container bar) {
+        java.util.List<String> found = new java.util.ArrayList<>();
+
+        for (java.awt.Component each : bar.getComponents()) {
+            if (each instanceof javax.swing.JLabel label && !label.getText().isBlank()) {
+                found.add(label.getText());
+            } else if (each instanceof java.awt.Container inner) {
+                found.addAll(saidIn(inner));
+            }
+        }
+
+        return found;
+    }
+
+    /**
+     * The footer stops naming a chart once there is no chart.
+     *
+     * <p>{@code report} keeps the name when the pointer merely LEAVES a chart,
+     * and says why: it is still the one being looked at, and blanking it would
+     * make the bar flicker at every crossing of the axis. Closing is the other
+     * case, and nothing said so -- with every chart shut the footer went on
+     * reading a name, a price and a mode, describing a window that no longer
+     * exists. {@code StatusBar.noChart} was written for this and had no caller
+     * but a test.</p>
+     */
+    @Test
+    @DisplayName("fechado o ultimo grafico, o rodape para de nomear um que nao existe")
+    void thefooterStopsNamingAchartThatIsGone() throws Exception {
+        onEdt(window -> {
+            window.open("One");
+
+            // What report() writes when the pointer is over a chart. Driving a
+            // real pointer would be testing Swing's event queue; the state under
+            // test is the footer's, and this is the state it would be left in.
+            window.getStatus().chart("WINFUT-FULL  ·  5m", "05/09 03:47   100,42", "Medindo");
+
+            assertTrue(saidIn(window.getStatus()).contains("WINFUT-FULL  ·  5m"),
+                    "the fixture did not put the chart's name on the bar at all");
+
+            window.closeCharts();
+
+            assertFalse(saidIn(window.getStatus()).contains("WINFUT-FULL  ·  5m"),
+                    "the footer is still naming a chart that was closed: "
+                            + saidIn(window.getStatus()));
+        });
+    }
 }

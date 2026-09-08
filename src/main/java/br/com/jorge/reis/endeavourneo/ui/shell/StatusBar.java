@@ -294,9 +294,31 @@ public final class StatusBar extends JPanel {
             return new Dimension(wide + edge.left + edge.right, tall + edge.top + edge.bottom);
         }
 
+        /**
+         * @return the narrowest this bar may be made
+         *
+         * <p><b>The job area is part of the floor.</b> This answered the
+         * message's floor alone, ignoring the one component the class header
+         * declares untouchable -- "the job area never drops: it is the only part
+         * of this bar that can be the reason the program is slow, and hiding it
+         * in a small window would hide the cancel button with it". A window
+         * narrowed below the job area's own width zeroed the message, so the
+         * promised floor went; and the job area, a flow layout, wrapped its last
+         * component -- the cancel button -- onto a second line, outside the
+         * bar's height. Both promises broke at the same pixel, and only while a
+         * long job was running, which is the one moment that area exists.</p>
+         *
+         * <p>The window is free to be narrower than what a layout asks for, so
+         * this is not a guarantee on its own; it is the number
+         * {@code BorderLayout} works from, and it was a lie.</p>
+         */
         @Override
         public Dimension minimumLayoutSize(Container parent) {
-            return new Dimension(MESSAGE_FLOOR, preferredLayoutSize(parent).height);
+            int forJob = jobArea.isVisible() ? jobArea.getPreferredSize().width + GAP : 0;
+            java.awt.Insets edge = parent.getInsets();
+
+            return new Dimension(MESSAGE_FLOOR + forJob + edge.left + edge.right,
+                    preferredLayoutSize(parent).height);
         }
 
         @Override
@@ -350,8 +372,15 @@ public final class StatusBar extends JPanel {
             }
 
             if (jobArea.isVisible()) {
+                // AT LEAST ITS PREFERRED WIDTH, even when that runs off the
+                // right edge. Given less, the flow layout inside wraps, and what
+                // wraps is the last component: the cancel button, onto a line
+                // the bar is not tall enough to show. Overflowing is visible and
+                // recoverable by widening the window; a button that is simply
+                // not there is neither.
                 jobArea.setBounds(at + GAP, top,
-                        Math.max(0, parent.getWidth() - edge.right - at - GAP), height);
+                        Math.max(jobArea.getPreferredSize().width,
+                                parent.getWidth() - edge.right - at - GAP), height);
             }
         }
     }

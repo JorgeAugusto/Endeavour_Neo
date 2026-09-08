@@ -97,6 +97,13 @@ public final class SeriesWindow extends JDialog {
     private transient String editing;
 
     /**
+     * Whether anything was actually changed since this series was loaded.
+     *
+     * <p>See {@link #save()}: without it, looking was a write.</p>
+     */
+    private transient boolean edited;
+
+    /**
      * The days it holds, read once.
      *
      * <p><b>Days and not bars.</b> Everything this window asks -- where the
@@ -314,6 +321,7 @@ public final class SeriesWindow extends JDialog {
                             List.copyOf(model.segments), suggested())
                     .ifPresent(segment -> {
                         model.add(segment);
+                        edited = true;
                         save();
                     });
         });
@@ -364,6 +372,7 @@ public final class SeriesWindow extends JDialog {
         SegmentDialog.revise(this, editing, days, others, chosen)
                 .ifPresent(segment -> {
                     model.replace(row, segment);
+                    edited = true;
                     save();
                 });
     }
@@ -393,6 +402,7 @@ public final class SeriesWindow extends JDialog {
 
         if (answer == javax.swing.JOptionPane.YES_OPTION) {
             model.remove(row);
+            edited = true;
             save();
         }
     }
@@ -444,6 +454,7 @@ public final class SeriesWindow extends JDialog {
         String key = String.valueOf(series.getSelectedItem());
 
         editing = key;
+        edited = false;
 
         model.replaceAll(Segmentation.of(key));
         segmentsOnly.setSelected(Segmentation.segmentsOnly(key));
@@ -510,9 +521,26 @@ public final class SeriesWindow extends JDialog {
         return about.getText();
     }
 
+    /**
+     * Writes the segments back, IF any were edited.
+     *
+     * <p><b>The guard is not an optimisation.</b> This runs when the window is
+     * closed and on every change of the series combo, whether or not anything
+     * was touched -- and what it writes is what {@code Segmentation.of} handed
+     * over, which quietly drops any entry with a date it cannot read. Since
+     * {@code set} clears the series's keys before writing, the cycle read ->
+     * drop -> write back made a loss that was only a reading into a loss on
+     * disk. Opening Tools -> Series, looking, and closing was enough.</p>
+     *
+     * <p>And the workspace is meant to be edited by hand -- that is the stated
+     * reason it is plain text -- so a badly typed date is the ordinary case,
+     * not a strange one.</p>
+     */
     private void save() {
-        if (editing != null) {
+        if (editing != null && edited) {
             Segmentation.set(editing, model.segments);
+
+            edited = false;
 
             onChanged.run();
         }
