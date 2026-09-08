@@ -86,7 +86,13 @@ class MeasurementTest {
         Measurement m = Measurement.between(withGap, 0, 100.0, 5, 100.0);
 
         assertEquals(6, m.bars(), "six candles were spanned");
-        assertTrue(m.elapsed() / 60_000L > 900L,
+        // THE NUMBER, not a floor. Three bars of fifteen minutes, a break of
+        // nine hundred, and two more of fifteen: 45 + 900 + 30. Written as
+        // "more than 900" it was satisfied by anything that added a positive
+        // constant, or read the stamps in the wrong unit upwards -- and its
+        // sibling only asserts that both directions agree, not what either is.
+        // Any projection drawn from the ruler is wrong by exactly this much.
+        assertEquals(975L, m.elapsed() / 60_000L,
                 "the elapsed time must include the break, not just the bars");
     }
 

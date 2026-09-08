@@ -80,6 +80,15 @@ class CollapsiblePaneTest {
 
         assertTrue(pane.isFolded());
         assertFalse(content.isVisible(), "o conteudo continua visivel");
+        // THE HEADER'S VISIBILITY, which is what "there is still something to
+        // click" means. foldedHeight is the header's preferred height, and the
+        // arrow inside it was given a fixed 20 by 20 in the constructor -- so it
+        // is at least twenty from the moment the panel is built, folded or not,
+        // visible or not, and nothing setFolded can do makes it fall to zero.
+        // Folding the header as well passed all three assertions, and the panel
+        // would have been shut for good with no way back but a menu.
+        assertTrue(pane.getComponent(0).isVisible(),
+                "the header went with the content, so there is nothing left to click");
         assertTrue(pane.foldedHeight() > 0,
                 "dobrado ele nao mede nada, entao nao sobra legenda pra clicar");
 
