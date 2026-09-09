@@ -111,6 +111,18 @@ public final class OverlayCatalog {
             new Kind("overlay.bollinger", List.of(20), 1, 2_000,
                     br.com.jorge.reis.endeavourneo.ui.chart.overlay.BollingerBands::new),
 
+            // The ceiling is this indicator's own and not the two thousand the
+            // others carry: the fit is redone from the viewport on every frame,
+            // and the indicator it was brought over from stops at four hundred
+            // bars for the same reason. Ninety is what the reference chart is
+            // set to.
+            new Kind("overlay.regression",
+                    List.of(br.com.jorge.reis.endeavourneo.ui.chart.overlay
+                            .RegressionChannel.PERIOD),
+                    2, br.com.jorge.reis.endeavourneo.ui.chart.overlay
+                            .RegressionChannel.MOST_BARS,
+                    br.com.jorge.reis.endeavourneo.ui.chart.overlay.RegressionChannel::new),
+
             // The ones that live in a panel are in the SAME list. Which of
             // them can go on the price is not decided by which list they are
             // in -- each says so itself, in fitsOnPrice, and the insert dialog
