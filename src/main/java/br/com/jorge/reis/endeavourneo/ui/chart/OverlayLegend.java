@@ -704,6 +704,22 @@ public final class OverlayLegend extends JComponent {
                 return;
             }
 
+            // And the trendlines have a ladder of three numbers plus three
+            // things drawn beside the lines to explain the fit; none of that
+            // fits in a dialog of bare spinners either.
+            if (overlay instanceof br.com.jorge.reis.endeavourneo.ui.chart.overlay
+                    .TouchTrendlines trendlines) {
+
+                if (TouchTrendlinesDialog.edit(owner, trendlines) != null) {
+                    trendlines.calculate(canvas.series());
+
+                    canvas.repaint();
+                    canvas.overlaysChanged();
+                }
+
+                return;
+            }
+
             Overlay replacement = InsertOverlayDialog.edit(owner, overlay);
 
             if (replacement != null) {

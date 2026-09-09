@@ -149,6 +149,19 @@ public final class OverlayCatalog {
                             .TouchChannel.MOST_BARS,
                     br.com.jorge.reis.endeavourneo.ui.chart.overlay.TouchChannel::new),
 
+            // The SAME two numbers as the channel, and on purpose: the two
+            // indicators read the same turns and differ only in what they draw
+            // over them, so a reader comparing the pair has to be able to give
+            // them the same window and the same wing without translating.
+            new Kind("overlay.trendlines",
+                    List.of(br.com.jorge.reis.endeavourneo.ui.chart.overlay
+                            .TouchTrendlines.PERIOD,
+                            br.com.jorge.reis.endeavourneo.ui.chart.overlay
+                                    .TopsAndBottoms.WING),
+                    1, br.com.jorge.reis.endeavourneo.ui.chart.overlay
+                            .TouchTrendlines.MOST_BARS,
+                    br.com.jorge.reis.endeavourneo.ui.chart.overlay.TouchTrendlines::new),
+
             // The ones that live in a panel are in the SAME list. Which of
             // them can go on the price is not decided by which list they are
             // in -- each says so itself, in fitsOnPrice, and the insert dialog
