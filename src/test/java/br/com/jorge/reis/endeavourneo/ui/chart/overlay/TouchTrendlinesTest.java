@@ -587,4 +587,100 @@ class TouchTrendlinesTest {
         assertNotNull(resistance, "a LTB sumiu");
         assertEquals(50, resistance.anchor(), "a LTB mudou de lugar");
     }
+
+    // -------------------------------------- os giros do ultimo cruzamento
+
+    /**
+     * Sete giros e três cruzamentos do preço, dois deles aproveitáveis.
+     *
+     * <pre>
+     *   barra   10   20   30   40   50   60   70
+     *   tipo     T    F    T    F    T    F    T
+     *   preço  106   92  104   90  108   96  110
+     *
+     *   cruzou em 25, 45 e 65
+     * </pre>
+     *
+     * <p>O de 65 é o mais novo e <b>não serve</b>: não há fundo nenhum depois
+     * dele -- é o que aconteceu no fim do pregão de 01/09, onde o último
+     * cruzamento foi às 18:19 e nenhum fundo se formou desde então.</p>
+     */
+    private static List<TopsAndBottoms.Pivot> sevenTurns() {
+        return List.of(top(10, 106), bottom(20, 92), top(30, 104), bottom(40, 90),
+                top(50, 108), bottom(60, 96), top(70, 110));
+    }
+
+    private static final int[] THREE_CROSSINGS = {25, 45, 65};
+
+    @Test
+    @DisplayName("as duas retas ligam os giros que cercam o mesmo cruzamento")
+    void bothLinesBracketTheSameCrossing() {
+        TouchTrendlines lines = new TouchTrendlines(90);
+
+        lines.setAnchoring(TouchTrendlines.Anchoring.LAST_CROSSING);
+
+        TouchTrendlines.Trend resistance =
+                lines.fitTo(sevenTurns(), true, 0, average(), THREE_CROSSINGS);
+        TouchTrendlines.Trend support =
+                lines.fitTo(sevenTurns(), false, 0, average(), THREE_CROSSINGS);
+
+        assertNotNull(resistance, "nao achou a LTB");
+        assertNotNull(support, "nao achou a LTA");
+
+        // O cruzamento aproveitavel mais novo e o da barra 45.
+        assertEquals(30, resistance.anchor(), "a LTB nao pegou o topo de antes");
+        assertEquals(50, resistance.destination(), "a LTB nao pegou o topo de depois");
+        assertEquals(40, support.anchor(), "a LTA nao pegou o fundo de antes");
+        assertEquals(60, support.destination(), "a LTA nao pegou o fundo de depois");
+
+        // Sao duas pontas e mais nada: a contagem de toques nao mede nada aqui,
+        // e a escada nao roda.
+        assertEquals(2, resistance.touches(), "contou toque que nao existe");
+        assertEquals(2, resistance.percent(), "a escada subiu num modo sem busca");
+    }
+
+    @Test
+    @DisplayName("o cruzamento novo demais e pulado: ainda nao tem giro dos dois lados")
+    void anUnusableCrossingIsSteppedOver() {
+        TouchTrendlines lines = new TouchTrendlines(90);
+
+        lines.setAnchoring(TouchTrendlines.Anchoring.LAST_CROSSING);
+
+        TouchTrendlines.Trend resistance =
+                lines.fitTo(sevenTurns(), true, 0, average(), THREE_CROSSINGS);
+
+        // O cruzamento de 65 tem topo dos dois lados (50 e 70) e serviria para a
+        // LTB sozinha. Nao serve para o par, porque nao ha fundo depois dele --
+        // e as duas retas tem de responder pelo MESMO cruzamento.
+        assertEquals(30, resistance.anchor(), "a LTB usou um cruzamento que a LTA nao pode usar");
+        assertEquals(50, resistance.destination(), "a LTB usou um cruzamento so dela");
+    }
+
+    @Test
+    @DisplayName("a memoria recua um cruzamento inteiro")
+    void theMemoryStepsBackOneCrossing() {
+        TouchTrendlines lines = new TouchTrendlines(90);
+
+        lines.setAnchoring(TouchTrendlines.Anchoring.LAST_CROSSING);
+
+        TouchTrendlines.Trend before =
+                lines.fitTo(sevenTurns(), true, 1, average(), THREE_CROSSINGS);
+
+        assertNotNull(before, "nao achou o cruzamento anterior");
+        assertEquals(10, before.anchor(), "a memoria nao recuou ate o cruzamento de 25");
+        assertEquals(30, before.destination(), "a memoria nao recuou ate o cruzamento de 25");
+    }
+
+    @Test
+    @DisplayName("sem cruzamento aproveitavel nao se desenha nada")
+    void noUsableCrossingDrawsNothing() {
+        TouchTrendlines lines = new TouchTrendlines(90);
+
+        lines.setAnchoring(TouchTrendlines.Anchoring.LAST_CROSSING);
+
+        assertNull(lines.fitTo(sevenTurns(), true, 0, average(), new int[0]),
+                "desenhou sem cruzamento nenhum");
+        assertNull(lines.fitTo(sevenTurns(), true, 0, average(), new int[]{65}),
+                "desenhou em cima do cruzamento que nao serve");
+    }
 }

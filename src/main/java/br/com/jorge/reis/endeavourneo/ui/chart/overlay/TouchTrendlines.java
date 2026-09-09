@@ -134,11 +134,42 @@ public final class TouchTrendlines implements Overlay {
          * back and the line spans the whole move rather than its last stretch.
          * That is the entire difference between the two modes.</p>
          */
-        SLOW_AVERAGE;
+        SLOW_AVERAGE,
+
+        /**
+         * The two turns that BRACKET the last crossing of the price.
+         *
+         * <p>The odd one out, and the difference is worth stating plainly:
+         * everywhere else the far end of the line is the last turn of its kind
+         * and only the anchor is chosen. <b>Here both ends come from the
+         * crossing</b> -- the resistance joins the last top before it to the
+         * first top after, the support does the same with the bottoms -- so the
+         * line can end far from the price of the moment, and is then projected
+         * to the edge like the others.</p>
+         *
+         * <p>The crossing is the PRICE through the average, not the turns
+         * through it. That makes it a much more frequent event: measured on one
+         * session of the real series, <b>thirteen crossings in eighty-five
+         * minutes</b>, seven of them in the last twenty-five. So the lines are
+         * short and change often. That is the mode, not a defect of it.</p>
+         *
+         * <p><b>The newest crossing is often unusable</b>, because no turn of
+         * one kind has formed on the far side of it yet -- at the end of that
+         * same session the support had no bottom after the crossing at all. The
+         * search therefore steps back to the last crossing that has a top AND a
+         * bottom on BOTH sides, so the two lines always answer for the same
+         * crossing and always appear together.</p>
+         */
+        LAST_CROSSING;
 
         /** @return whether this mode needs an average computed at all */
         public boolean usesAverage() {
-            return this == FAST_AVERAGE || this == SLOW_AVERAGE;
+            return this != SEARCH && this != EXTREME;
+        }
+
+        /** @return whether the average is the fast one, on the chart's scale */
+        public boolean usesFastAverage() {
+            return this == FAST_AVERAGE || this == LAST_CROSSING;
         }
 
         /** @return whether the tolerance ladder still chooses something */
@@ -281,6 +312,15 @@ public final class TouchTrendlines implements Overlay {
      * mistake the pivot scan already made once.</p>
      */
     private volatile double[] average;
+
+    /**
+     * The bars at which the price crosses that average.
+     *
+     * <p>Only {@link Anchoring#LAST_CROSSING} reads it, and like the average it
+     * is worked out in {@link #calculate}: it depends on the series and on
+     * nothing the viewport does.</p>
+     */
+    private volatile int[] crossings;
 
     /**
      * One trendline, as the numbers it takes to draw it.
@@ -540,12 +580,30 @@ public final class TouchTrendlines implements Overlay {
      * without a series and without a chart.</p>
      */
     Trend fitTo(List<TopsAndBottoms.Pivot> pivots, boolean top, int back, double[] average) {
+        return fitTo(pivots, top, back, average, crossings);
+    }
+
+    /**
+     * @param crossings the bars where the price crosses the average
+     *
+     * <p>Handed in for the same reason the average is: a test can put the
+     * crossings exactly where it wants them and check the two ends on paper.</p>
+     */
+    Trend fitTo(List<TopsAndBottoms.Pivot> pivots, boolean top, int back, double[] average,
+            int[] crossings) {
+
         List<TopsAndBottoms.Pivot> same = new ArrayList<>();
 
         for (TopsAndBottoms.Pivot each : pivots) {
             if (each.top() == top) {
                 same.add(each);
             }
+        }
+
+        if (anchoring == Anchoring.LAST_CROSSING) {
+            // BOTH ENDS FROM THE CROSSING, so this one never looks at the last
+            // turn and cannot go through the code below.
+            return bracketing(pivots, same, top, back, crossings);
         }
 
         int last = same.size() - 1 - back;
@@ -618,6 +676,112 @@ public final class TouchTrendlines implements Overlay {
         }
 
         return acrossTheAverage(pivots, older, average);
+    }
+
+    /**
+     * The two turns around the last usable crossing of the price.
+     *
+     * @param pivots the whole zigzag, for deciding which crossing is usable
+     * @param same the pivots of this line's kind
+     * @param back zero for the newest usable crossing, one for the one before
+     * @return the line between the two turns that bracket it, or null
+     *
+     * <p><b>Usable means a top AND a bottom on both sides.</b> Without that the
+     * two lines would answer for different crossings -- the resistance for the
+     * newest, the support for an older one, because the newest often has no
+     * bottom after it yet -- and a pair of lines drawn from two different
+     * moments is not the reading being asked for.</p>
+     */
+    private Trend bracketing(List<TopsAndBottoms.Pivot> pivots,
+            List<TopsAndBottoms.Pivot> same, boolean top, int back, int[] crossings) {
+
+        if (crossings == null) {
+            return null;
+        }
+
+        int stepped = 0;
+
+        for (int i = crossings.length - 1; i >= 0; i--) {
+            int at = crossings[i];
+
+            if (!bracketed(pivots, at)) {
+                continue;
+            }
+
+            if (stepped++ < back) {
+                // The memory line: one whole crossing older, which is what
+                // "where it stood before" means in this mode.
+                continue;
+            }
+
+            TopsAndBottoms.Pivot before = lastBefore(same, at, top);
+            TopsAndBottoms.Pivot after = firstAfter(same, at, top);
+
+            return lineFrom(before, after, List.of(before, after), top);
+        }
+
+        return null;
+    }
+
+    /** @return whether that bar has a top and a bottom on each side of it */
+    private static boolean bracketed(List<TopsAndBottoms.Pivot> pivots, int at) {
+        return lastBefore(pivots, at, true) != null && firstAfter(pivots, at, true) != null
+                && lastBefore(pivots, at, false) != null
+                && firstAfter(pivots, at, false) != null;
+    }
+
+    private static TopsAndBottoms.Pivot lastBefore(List<TopsAndBottoms.Pivot> pivots,
+            int at, boolean top) {
+
+        TopsAndBottoms.Pivot found = null;
+
+        for (TopsAndBottoms.Pivot each : pivots) {
+            if (each.top() == top && each.bar() < at) {
+                found = each;
+            }
+        }
+
+        return found;
+    }
+
+    private static TopsAndBottoms.Pivot firstAfter(List<TopsAndBottoms.Pivot> pivots,
+            int at, boolean top) {
+
+        for (TopsAndBottoms.Pivot each : pivots) {
+            if (each.top() == top && each.bar() > at) {
+                return each;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return the bars at which the closes cross the average
+     *
+     * <p>A crossing is between two bars, and the newer of the two is the one
+     * reported: it is the first bar that closed on the new side, which is the
+     * first bar a reader could have known about it.</p>
+     */
+    private static int[] crossingsOf(PriceSeries series, double[] average) {
+        List<Integer> found = new ArrayList<>();
+
+        for (int i = 1; i < series.size() && i < average.length; i++) {
+            double was = series.closeAt(i - 1) - average[i - 1];
+            double now = series.closeAt(i) - average[i];
+
+            if (Double.isFinite(was) && Double.isFinite(now) && (was > 0) != (now > 0)) {
+                found.add(i);
+            }
+        }
+
+        int[] bars = new int[found.size()];
+
+        for (int i = 0; i < bars.length; i++) {
+            bars[i] = found.get(i);
+        }
+
+        return bars;
     }
 
     /** @return the highest top, or the lowest bottom, inside the window */
@@ -844,7 +1008,7 @@ public final class TouchTrendlines implements Overlay {
             return null;
         }
 
-        if (anchoring == Anchoring.FAST_AVERAGE) {
+        if (anchoring.usesFastAverage()) {
             return exponential(series, fastPeriod);
         }
 
@@ -1027,6 +1191,8 @@ public final class TouchTrendlines implements Overlay {
     public void calculate(PriceSeries series) {
         this.source = series == null ? PriceSeries.empty() : series;
         this.average = averageFor(source);
+        this.crossings = average == null || anchoring != Anchoring.LAST_CROSSING
+                ? null : crossingsOf(source, average);
 
         // The lines belong to bars that have just been replaced.
         this.drawn = null;
@@ -1092,10 +1258,12 @@ public final class TouchTrendlines implements Overlay {
         List<TopsAndBottoms.Pivot> pivots = pivotsFor(series, anchor);
 
         double[] read = average;
+        int[] crossed = crossings;
 
-        Drawn made = new Drawn(fitTo(pivots, false, 0, read), fitTo(pivots, true, 0, read),
-                memory ? fitTo(pivots, false, 1, read) : null,
-                memory ? fitTo(pivots, true, 1, read) : null, anchor);
+        Drawn made = new Drawn(fitTo(pivots, false, 0, read, crossed),
+                fitTo(pivots, true, 0, read, crossed),
+                memory ? fitTo(pivots, false, 1, read, crossed) : null,
+                memory ? fitTo(pivots, true, 1, read, crossed) : null, anchor);
 
         drawn = made;
 

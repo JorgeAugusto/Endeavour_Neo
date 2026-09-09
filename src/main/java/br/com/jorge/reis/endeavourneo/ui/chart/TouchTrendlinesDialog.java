@@ -257,12 +257,15 @@ public final class TouchTrendlinesDialog extends JDialog {
         TouchTrendlines.Anchoring how =
                 (TouchTrendlines.Anchoring) anchoring.getSelectedItem();
         boolean average = how != null && how.usesAverage();
-        boolean fast = how == TouchTrendlines.Anchoring.FAST_AVERAGE;
+        boolean fast = how != null && how.usesFastAverage();
+        boolean sides = average && how != TouchTrendlines.Anchoring.LAST_CROSSING;
 
         anchoring.setToolTipText(how == null ? null
                 : Messages.get("overlay.lt.anchoring." + how.name() + ".hint"));
 
-        crossing.setEnabled(average);
+        // O modo dos giros do cruzamento usa as DUAS pontas dele, entao nao ha
+        // lado a escolher: o combo fica em cinza em vez de decidir nada.
+        crossing.setEnabled(sides);
         fastPeriod.setEnabled(fast);
         slowPeriod.setEnabled(average && !fast);
         slowScale.setEnabled(average && !fast);
