@@ -43,13 +43,19 @@ import javax.swing.SwingConstants;
 /**
  * The settings for {@link TouchTrendlines}.
  *
- * <p>Two tabs. The parameters tab carries what decides the two lines: how far
+ * <p>Three tabs. The parameters tab carries what decides the two lines: how far
  * back to look, what counts as a turn, and the three numbers of the tolerance
- * ladder. The appearance tab dresses each line and offers the three things
- * drawn beside them -- the rails, the markers and the memory -- as switches,
- * because each of them is an explanation of the fit rather than the fit, and a
- * chart with four indicators on it can do without three extra dotted lines
- * per indicator.</p>
+ * ladder. The anchoring tab chooses where each line STARTS, which is the one
+ * decision that changes the drawing more than any appearance ever will. The
+ * appearance tab dresses each line and offers the three things drawn beside
+ * them -- the rails, the markers and the memory -- as switches, because each of
+ * them is an explanation of the fit rather than the fit, and a chart with four
+ * indicators on it can do without three extra dotted lines per indicator.</p>
+ *
+ * <p><b>Controls that do nothing in the chosen mode are disabled, not
+ * hidden.</b> Three of the four modes fix the anchor, and with it fixed the
+ * ladder's ceiling and step stop choosing anything -- a spinner that still
+ * turns while deciding nothing is how a setting comes to be believed in.</p>
  */
 public final class TouchTrendlinesDialog extends JDialog {
 
@@ -72,6 +78,20 @@ public final class TouchTrendlinesDialog extends JDialog {
 
     private final JComboBox<MovingAverage.Line> line =
             new JComboBox<>(MovingAverage.Line.values());
+
+    private final JComboBox<TouchTrendlines.Anchoring> anchoring =
+            new JComboBox<>(TouchTrendlines.Anchoring.values());
+
+    private final JComboBox<TouchTrendlines.Crossing> crossing =
+            new JComboBox<>(TouchTrendlines.Crossing.values());
+
+    private final JSpinner fastPeriod;
+
+    private final JSpinner slowPeriod;
+
+    private final JButton slowScale = new JButton();
+
+    private transient String scaleCode;
 
     private final JSpinner thickness;
 
@@ -109,6 +129,12 @@ public final class TouchTrendlinesDialog extends JDialog {
         this.from = new JSpinner(new SpinnerNumberModel(trendlines.toleranceFrom(), 1, 50, 1));
         this.until = new JSpinner(new SpinnerNumberModel(trendlines.toleranceTo(), 1, 50, 1));
         this.step = new JSpinner(new SpinnerNumberModel(trendlines.toleranceStep(), 1, 25, 1));
+        this.fastPeriod = new JSpinner(
+                new SpinnerNumberModel(trendlines.fastPeriod(), 2, 2_000, 1));
+        this.slowPeriod = new JSpinner(
+                new SpinnerNumberModel(trendlines.slowPeriod(), 2, 2_000, 1));
+        this.scaleCode = trendlines.slowScale();
+
         this.thickness = new JSpinner(new SpinnerNumberModel(trendlines.thickness(), 1, 8, 1));
 
         this.supportSample = new Forms.Sample(
@@ -125,12 +151,19 @@ public final class TouchTrendlinesDialog extends JDialog {
 
         ties.setSelectedItem(trendlines.ties());
         line.setSelectedItem(trendlines.line());
+        anchoring.setSelectedItem(trendlines.anchoring());
+        crossing.setSelectedItem(trendlines.crossing());
         rails.setSelected(trendlines.hasRails());
         touches.setSelected(trendlines.marksTouches());
         memory.setSelected(trendlines.hasMemory());
 
         ties.setRenderer(Forms.named("overlay.pivots.ties."));
         line.setRenderer(Forms.lineStyles());
+        anchoring.setRenderer(Forms.named("overlay.lt.anchoring."));
+        crossing.setRenderer(Forms.named("overlay.lt.crossing."));
+
+        anchoring.addActionListener(e -> refreshAnchoring());
+        slowScale.addActionListener(e -> askForTheScale());
 
         supportColour.addActionListener(e -> pick(true));
         resistanceColour.addActionListener(e -> pick(false));
@@ -143,7 +176,10 @@ public final class TouchTrendlinesDialog extends JDialog {
         JTabbedPane tabs = new JTabbedPane();
 
         tabs.addTab(Messages.get("overlay.tab.parameters"), parameters());
+        tabs.addTab(Messages.get("overlay.lt.tab.anchoring"), anchorage());
         tabs.addTab(Messages.get("overlay.tab.appearance"), appearance());
+
+        refreshAnchoring();
 
         add(tabs, BorderLayout.CENTER);
         add(buttons(), BorderLayout.SOUTH);
@@ -191,6 +227,61 @@ public final class TouchTrendlinesDialog extends JDialog {
         step.setToolTipText(hint);
 
         return panel;
+    }
+
+    /**
+     * Where each line starts.
+     *
+     * <p>The mode on top, and under it only what that mode reads. The two
+     * averages sit in the same group as the crossing rule because they are not
+     * indicators here -- nothing of them is drawn; they exist to say where the
+     * move began.</p>
+     */
+    private JComponent anchorage() {
+        JPanel panel = Forms.form();
+
+        Forms.group(panel, 0, Messages.get("overlay.lt.anchoring"));
+        Forms.field(panel, 1, Messages.get("overlay.lt.mode"), anchoring);
+
+        Forms.group(panel, 2, Messages.get("overlay.lt.crossing"));
+        Forms.field(panel, 3, Messages.get("overlay.lt.crossing.side"), crossing);
+        Forms.field(panel, 4, Messages.get("overlay.lt.fast"), fastPeriod);
+        Forms.field(panel, 5, Messages.get("overlay.lt.slow"), slowPeriod);
+        Forms.field(panel, 6, Messages.get("overlay.ma.scale"), slowScale);
+
+        return panel;
+    }
+
+    /** Leaves turnable only what the chosen mode actually reads. */
+    private void refreshAnchoring() {
+        TouchTrendlines.Anchoring how =
+                (TouchTrendlines.Anchoring) anchoring.getSelectedItem();
+        boolean average = how != null && how.usesAverage();
+        boolean fast = how == TouchTrendlines.Anchoring.FAST_AVERAGE;
+
+        anchoring.setToolTipText(how == null ? null
+                : Messages.get("overlay.lt.anchoring." + how.name() + ".hint"));
+
+        crossing.setEnabled(average);
+        fastPeriod.setEnabled(fast);
+        slowPeriod.setEnabled(average && !fast);
+        slowScale.setEnabled(average && !fast);
+        slowScale.setText(scaleCode);
+
+        // The ladder only picks something where there is a search. See the
+        // class javadoc on why these are disabled rather than hidden.
+        until.setEnabled(how != null && how.searches());
+        step.setEnabled(how != null && how.searches());
+    }
+
+    private void askForTheScale() {
+        PeriodCatalog.Choice choice = PeriodDialog.ask(this, null);
+
+        if (choice != null) {
+            scaleCode = choice.code();
+
+            slowScale.setText(scaleCode);
+        }
     }
 
     private JComponent appearance() {
@@ -250,6 +341,11 @@ public final class TouchTrendlinesDialog extends JDialog {
         trendlines.setToleranceFrom((Integer) from.getValue());
         trendlines.setToleranceTo((Integer) until.getValue());
         trendlines.setToleranceStep((Integer) step.getValue());
+        trendlines.setAnchoring((TouchTrendlines.Anchoring) anchoring.getSelectedItem());
+        trendlines.setCrossing((TouchTrendlines.Crossing) crossing.getSelectedItem());
+        trendlines.setFastPeriod((Integer) fastPeriod.getValue());
+        trendlines.setSlowPeriod((Integer) slowPeriod.getValue());
+        trendlines.setSlowScale(scaleCode);
         trendlines.setLine((MovingAverage.Line) line.getSelectedItem());
         trendlines.setThickness((Integer) thickness.getValue());
         trendlines.setSupportColour(chosenSupport);

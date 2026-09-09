@@ -312,4 +312,146 @@ class TouchTrendlinesTest {
         assertEquals(2, found.percent(), "subiu a escada porque o piso nao valeu");
         assertEquals(3, found.touches(), "o terceiro toque sumiu");
     }
+
+    // ------------------------------------------------------ os modos de ancora
+
+    /**
+     * Cinco topos e uma média em que eles trocam de lado uma vez.
+     *
+     * <pre>
+     *   barra   10    20    30    40    50
+     *   topo   100   110    96    92    88
+     *   média   95   105   100    98    94
+     *   lado  ACIMA ACIMA ABAIXO ABAIXO ABAIXO
+     *                  \____/
+     *                 a troca
+     * </pre>
+     */
+    private static List<TopsAndBottoms.Pivot> crossing() {
+        return List.of(top(10, 100), top(20, 110), top(30, 96), top(40, 92), top(50, 88));
+    }
+
+    /** @return uma média que só precisa responder nas barras dos pivôs */
+    private static double[] average(double... byBar) {
+        double[] made = new double[60];
+
+        java.util.Arrays.fill(made, 100.0);
+
+        for (int i = 0; i + 1 < byBar.length; i += 2) {
+            made[(int) byBar[i]] = byBar[i + 1];
+        }
+
+        return made;
+    }
+
+    private static double[] oneTurn() {
+        return average(10, 95, 20, 105, 30, 100, 40, 98, 50, 94);
+    }
+
+    @Test
+    @DisplayName("no extremo a ancora e o topo mais alto, e a reta pode nao tocar em nada")
+    void theExtremeAnchorsOnTheHigh() {
+        TouchTrendlines lines = new TouchTrendlines(90);
+
+        lines.setAnchoring(TouchTrendlines.Anchoring.EXTREME);
+
+        TouchTrendlines.Trend found = lines.fitTo(pivotsOf(lines, saw(9, -30)), true, 0);
+
+        assertNotNull(found, "nao achou a reta do extremo");
+        assertEquals(9, found.anchor(), "nao ancorou no topo mais alto da janela");
+        assertEquals(-5.0, found.slope(), EXACT, "a inclinacao do pico ate a ponta");
+
+        // A SERRA CAI DOIS POR BARRA e a reta do pico cai cinco: ela passa por
+        // cima de todos os topos do meio. Dois toques sao as duas pontas dela
+        // mesma -- e no modo 1 esse mesmo desenho da dez.
+        assertEquals(2, found.touches(), "a reta do pico encostou em algum topo do meio");
+        assertEquals(2, found.percent(), "a escada subiu num modo que nao busca nada");
+    }
+
+    @Test
+    @DisplayName("DEPOIS: a ancora e o primeiro giro do lado novo da media")
+    void theAnchorAfterTheCrossing() {
+        TouchTrendlines lines = new TouchTrendlines(90);
+
+        lines.setAnchoring(TouchTrendlines.Anchoring.FAST_AVERAGE);
+        lines.setCrossing(TouchTrendlines.Crossing.AFTER);
+
+        TouchTrendlines.Trend found = lines.fitTo(crossing(), true, 0, oneTurn());
+
+        assertNotNull(found, "nao achou o cruzamento");
+        assertEquals(30, found.anchor(), "nao ancorou no primeiro topo abaixo da media");
+        assertEquals(50, found.destination(), "a ponta mudou");
+    }
+
+    @Test
+    @DisplayName("ANTES: a ancora e o ultimo giro do lado velho")
+    void theAnchorBeforeTheCrossing() {
+        TouchTrendlines lines = new TouchTrendlines(90);
+
+        lines.setAnchoring(TouchTrendlines.Anchoring.FAST_AVERAGE);
+        lines.setCrossing(TouchTrendlines.Crossing.BEFORE);
+
+        TouchTrendlines.Trend found = lines.fitTo(crossing(), true, 0, oneTurn());
+
+        assertNotNull(found, "nao achou o cruzamento");
+        assertEquals(20, found.anchor(), "nao ancorou no topo de antes do cruzamento");
+
+        // O PICO DE ONDE O MERCADO CAIU: a reta nasce mais alta e mais
+        // inclinada que a do DEPOIS, que e a diferenca inteira entre as duas
+        // leituras.
+        assertEquals(110.0, found.anchorPrice(), EXACT, "o preco da ancora");
+    }
+
+    @Test
+    @DisplayName("sem troca de lado nao ha ancora, e nao se desenha reta")
+    void noCrossingDrawsNothing() {
+        TouchTrendlines lines = new TouchTrendlines(90);
+
+        lines.setAnchoring(TouchTrendlines.Anchoring.FAST_AVERAGE);
+
+        // Todos os topos acima da media: eles nunca trocaram de lado dentro do
+        // alcance, entao a regra nao tem o que responder.
+        assertNull(lines.fitTo(crossing(), true, 0, average(10, 90, 20, 90, 30, 90,
+                40, 90, 50, 80)), "inventou uma ancora sem cruzamento");
+    }
+
+    @Test
+    @DisplayName("se a troca foi no ultimo giro, o DEPOIS cai na propria ponta e nao ha reta")
+    void theCrossingOnTheLastTurnIsNotALineYet() {
+        TouchTrendlines lines = new TouchTrendlines(90);
+
+        lines.setAnchoring(TouchTrendlines.Anchoring.FAST_AVERAGE);
+
+        // Trocam de lado so entre a barra 40 e a 50: o DEPOIS aponta para a
+        // ponta, e uma ponta sozinha nao e reta. O ANTES ainda desenha.
+        double[] late = average(10, 90, 20, 90, 30, 90, 40, 90, 50, 95);
+
+        lines.setCrossing(TouchTrendlines.Crossing.AFTER);
+        assertNull(lines.fitTo(crossing(), true, 0, late), "desenhou uma reta de um ponto");
+
+        lines.setCrossing(TouchTrendlines.Crossing.BEFORE);
+
+        TouchTrendlines.Trend found = lines.fitTo(crossing(), true, 0, late);
+
+        assertNotNull(found, "o ANTES tambem devia ter ancora aqui");
+        assertEquals(40, found.anchor(), "o ANTES nao pegou o ultimo do lado velho");
+    }
+
+    @Test
+    @DisplayName("media que nao responde tao atras para a busca em vez de fingir um lado")
+    void anUnknownAverageStopsTheWalk() {
+        TouchTrendlines lines = new TouchTrendlines(90);
+
+        lines.setAnchoring(TouchTrendlines.Anchoring.SLOW_AVERAGE);
+
+        // Na escala maior a media e NaN ate o primeiro candle grosso fechar.
+        // Nao saber de que lado o giro estava nao e o mesmo que estar do
+        // mesmo lado.
+        double[] blind = oneTurn();
+
+        blind[20] = Double.NaN;
+
+        assertNull(lines.fitTo(crossing(), true, 0, blind),
+                "tratou o desconhecido como um lado");
+    }
 }

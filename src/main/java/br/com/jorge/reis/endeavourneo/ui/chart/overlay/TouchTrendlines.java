@@ -17,8 +17,11 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.chart.overlay;
 
+import br.com.jorge.reis.endeavourneo.domain.market.Aggregation;
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
+import br.com.jorge.reis.endeavourneo.ui.chart.ChartPreferences;
 import br.com.jorge.reis.endeavourneo.ui.chart.Overlay;
+import br.com.jorge.reis.endeavourneo.ui.chart.OwnScale;
 import br.com.jorge.reis.endeavourneo.ui.chart.Viewport;
 
 import java.awt.BasicStroke;
@@ -83,6 +86,99 @@ import java.util.List;
  */
 public final class TouchTrendlines implements Overlay {
 
+    /**
+     * Where the older end of the line comes from.
+     *
+     * <p><b>The newer end is never chosen.</b> It is the last pivot of the
+     * kind, in every mode. What changes here is only where the line STARTS,
+     * and with it the slope -- so these four are four readings of the same
+     * question: which old turn is the one the current move is still measured
+     * against?</p>
+     */
+    public enum Anchoring {
+
+        /**
+         * Every turn of the window is tried; most touches wins.
+         *
+         * <p>The only mode that SEARCHES, and therefore the only one where the
+         * tolerance ladder decides anything.</p>
+         */
+        SEARCH,
+
+        /**
+         * The highest top, or the lowest bottom, of the window.
+         *
+         * <p>The classic reading: the resistance comes off the high of the
+         * period, whatever it costs in touches. The line may well pass above
+         * every later top -- that is the rule doing what it says, not a bad
+         * fit.</p>
+         */
+        EXTREME,
+
+        /**
+         * The turn at which the swings last changed sides of a fast average.
+         *
+         * <p>The window stops deciding the anchor: what decides it is where the
+         * move began. Walking back over the turns OF ONE KIND, the anchor is
+         * the pair of tops (or bottoms) that sit on opposite sides of the
+         * average -- the last top that was still above it, and the first that
+         * failed below. {@link Crossing} says which of the two is taken.</p>
+         *
+         * <p>It has to be the turns of one kind and not the zigzag's legs: in
+         * any zigzag every leg crosses its own average, since the tops are
+         * above it and the bottoms below. A rule written on the legs would
+         * answer "the last leg" always, on every chart.</p>
+         */
+        FAST_AVERAGE,
+
+        /**
+         * The same rule, against a slow average on a larger scale.
+         *
+         * <p>Same mechanism as {@link #FAST_AVERAGE}, longer memory: the turns
+         * change sides of it far less often, so the anchor lands much further
+         * back and the line spans the whole move rather than its last stretch.
+         * That is the entire difference between the two modes.</p>
+         */
+        SLOW_AVERAGE;
+
+        /** @return whether this mode needs an average computed at all */
+        public boolean usesAverage() {
+            return this == FAST_AVERAGE || this == SLOW_AVERAGE;
+        }
+
+        /** @return whether the tolerance ladder still chooses something */
+        public boolean searches() {
+            return this == SEARCH;
+        }
+    }
+
+    /**
+     * Which side of the crossing the anchor is taken from.
+     *
+     * <p>The crossing is between two turns, so there are two candidates and no
+     * third answer.</p>
+     */
+    public enum Crossing {
+
+        /**
+         * The first turn on the new side of the average.
+         *
+         * <p>The first top that failed below it, which is where the move being
+         * drawn actually starts. <b>The default</b>, and what the line a reader
+         * draws by hand usually rests on.</p>
+         */
+        AFTER,
+
+        /**
+         * The last turn on the old side.
+         *
+         * <p>The peak the market fell away from. The line is born higher and
+         * steeper, and often passes above every later top without touching
+         * one.</p>
+         */
+        BEFORE
+    }
+
     /** Bars in the window, as the reference app opens. */
     public static final int PERIOD = 90;
 
@@ -130,7 +226,26 @@ public final class TouchTrendlines implements Overlay {
     /** And the resistance line's. */
     private static final Color RESISTANCE_INK = new Color(0xD9, 0x46, 0xEF);
 
+    /** The fast average's period, on the chart's own scale. */
+    public static final int FAST_PERIOD = 17;
+
+    /** The slow average's period, on its own scale. */
+    public static final int SLOW_PERIOD = 21;
+
+    /** And that scale. */
+    public static final String SLOW_SCALE = "5m";
+
     private int period;
+
+    private Anchoring anchoring = Anchoring.SEARCH;
+
+    private Crossing crossing = Crossing.AFTER;
+
+    private int fastPeriod = FAST_PERIOD;
+
+    private int slowPeriod = SLOW_PERIOD;
+
+    private String slowScale = SLOW_SCALE;
 
     private int wing = TopsAndBottoms.WING;
 
@@ -161,6 +276,16 @@ public final class TouchTrendlines implements Overlay {
     private volatile PriceSeries source = PriceSeries.empty();
 
     private volatile Drawn drawn;
+
+    /**
+     * The average the anchoring mode reads, one value per bar of the series.
+     *
+     * <p>Computed in {@link #calculate}, not in the paint: it does not depend
+     * on the viewport at all -- only the fit does -- and folding a hundred
+     * thousand bars to a coarser scale on every frame would be the same
+     * mistake the pivot scan already made once.</p>
+     */
+    private volatile double[] average;
 
     /**
      * One trendline, as the numbers it takes to draw it.
@@ -217,6 +342,46 @@ public final class TouchTrendlines implements Overlay {
 
     public void setPeriod(int value) {
         this.period = Math.max(3, Math.min(value, MOST_BARS));
+    }
+
+    public Anchoring anchoring() {
+        return anchoring;
+    }
+
+    public void setAnchoring(Anchoring value) {
+        this.anchoring = value == null ? Anchoring.SEARCH : value;
+    }
+
+    public Crossing crossing() {
+        return crossing;
+    }
+
+    public void setCrossing(Crossing value) {
+        this.crossing = value == null ? Crossing.AFTER : value;
+    }
+
+    public int fastPeriod() {
+        return fastPeriod;
+    }
+
+    public void setFastPeriod(int value) {
+        this.fastPeriod = Math.max(2, Math.min(value, 2_000));
+    }
+
+    public int slowPeriod() {
+        return slowPeriod;
+    }
+
+    public void setSlowPeriod(int value) {
+        this.slowPeriod = Math.max(2, Math.min(value, 2_000));
+    }
+
+    public String slowScale() {
+        return slowScale;
+    }
+
+    public void setSlowScale(String code) {
+        this.slowScale = code == null || code.isBlank() ? SLOW_SCALE : code;
     }
 
     public int wing() {
@@ -368,6 +533,18 @@ public final class TouchTrendlines implements Overlay {
      * the answer against one worked out on paper, with no chart involved.</p>
      */
     Trend fitTo(List<TopsAndBottoms.Pivot> pivots, boolean top, int back) {
+        return fitTo(pivots, top, back, null);
+    }
+
+    /**
+     * @param average one value per bar of the series, or null when the mode
+     *        does not read one
+     *
+     * <p>Handed in rather than read from the field so a test can put an average
+     * of its own beside pivots of its own and check the crossing rule on paper,
+     * without a series and without a chart.</p>
+     */
+    Trend fitTo(List<TopsAndBottoms.Pivot> pivots, boolean top, int back, double[] average) {
         List<TopsAndBottoms.Pivot> same = new ArrayList<>();
 
         for (TopsAndBottoms.Pivot each : pivots) {
@@ -385,6 +562,20 @@ public final class TouchTrendlines implements Overlay {
         }
 
         TopsAndBottoms.Pivot destination = same.get(last);
+        List<TopsAndBottoms.Pivot> older = same.subList(0, last + 1);
+
+        if (!anchoring.searches()) {
+            TopsAndBottoms.Pivot chosen = anchorFor(older, top, average);
+
+            // THE LADDER DOES NOT RUN HERE, and that is what the modes are.
+            // With the anchor fixed the line is already decided by its two
+            // ends, so a tolerance that climbs until it finds a third touch
+            // would be climbing to change a number that no longer chooses
+            // anything. It stays on the first rung, and the count becomes a
+            // measure OF the line instead of the reason for it.
+            return chosen == null ? null : lineFrom(chosen, destination, older, top);
+        }
+
         int windowStart = destination.bar() - period + 1;
 
         List<TopsAndBottoms.Pivot> points = new ArrayList<>();
@@ -417,6 +608,200 @@ public final class TouchTrendlines implements Overlay {
         }
 
         return null;
+    }
+
+    /**
+     * @param older the pivots of the kind, oldest first, the destination last
+     * @param average one value per bar, or null
+     * @return the anchor the mode picks, or null when it finds none
+     */
+    private TopsAndBottoms.Pivot anchorFor(List<TopsAndBottoms.Pivot> older, boolean top,
+            double[] average) {
+
+        if (anchoring == Anchoring.EXTREME) {
+            return extremeOf(older, top);
+        }
+
+        return acrossTheAverage(older, average);
+    }
+
+    /** @return the highest top, or the lowest bottom, inside the window */
+    private TopsAndBottoms.Pivot extremeOf(List<TopsAndBottoms.Pivot> older, boolean top) {
+        TopsAndBottoms.Pivot destination = older.get(older.size() - 1);
+        int windowStart = destination.bar() - period + 1;
+        TopsAndBottoms.Pivot best = null;
+
+        // THE DESTINATION IS LEFT OUT, and it has to be: it is the other end of
+        // the line. When the last turn is itself the extreme of the window
+        // there is no line yet, and answering nothing beats drawing a point.
+        for (int i = 0; i < older.size() - 1; i++) {
+            TopsAndBottoms.Pivot each = older.get(i);
+
+            if (each.bar() >= windowStart
+                    && (best == null || (top ? each.price() > best.price()
+                            : each.price() < best.price()))) {
+                best = each;
+            }
+        }
+
+        return best;
+    }
+
+    /**
+     * Walks back to the last time the turns changed sides of the average.
+     *
+     * @return the pivot on the side {@link Crossing} asks for, or null when the
+     *         turns never changed sides inside the search
+     *
+     * <p><b>Over the turns of ONE KIND.</b> Written on the zigzag's legs the
+     * rule would be useless: the tops of a zigzag are above its average and the
+     * bottoms below, so every leg crosses and the answer would be "the last
+     * leg" on every chart ever drawn. Over the tops alone the question has
+     * meaning -- when did the tops stop making it past the average -- and that
+     * is the turn a reader anchors on.</p>
+     */
+    private TopsAndBottoms.Pivot acrossTheAverage(List<TopsAndBottoms.Pivot> older,
+            double[] average) {
+
+        if (average == null) {
+            return null;
+        }
+
+        for (int i = older.size() - 1; i > 0; i--) {
+            Boolean now = sideOf(older.get(i), average);
+            Boolean before = sideOf(older.get(i - 1), average);
+
+            if (now == null || before == null) {
+                // The average does not answer that far back: on a larger scale
+                // it is NaN until the first coarse bar has closed. Unknown is
+                // not "the same side", so the walk stops rather than inventing
+                // a crossing at the edge of what was computed.
+                return null;
+            }
+
+            if (!now.equals(before)) {
+                // AFTER can land on the DESTINATION itself, when the crossing
+                // is the newest turn there is. Nothing is done about it here:
+                // lineFrom refuses a run of zero bars, which is the same rule
+                // written once instead of twice. A guard here as well looked
+                // careful and was untestable -- breaking it changed nothing,
+                // because the other one caught it.
+                return crossing == Crossing.AFTER ? older.get(i) : older.get(i - 1);
+            }
+        }
+
+        return null;
+    }
+
+    /** @return whether the pivot is above the average there, or null if unknown */
+    private static Boolean sideOf(TopsAndBottoms.Pivot pivot, double[] average) {
+        if (pivot.bar() < 0 || pivot.bar() >= average.length
+                || !Double.isFinite(average[pivot.bar()])) {
+            return null;
+        }
+
+        return pivot.price() > average[pivot.bar()];
+    }
+
+    /**
+     * @return the line between two ends already chosen, with its touches counted
+     *
+     * <p>The modes that do not search still report a touch count, and it is the
+     * same count the search would have made -- at the first rung of the ladder,
+     * because here it grades the line instead of picking it.</p>
+     */
+    private Trend lineFrom(TopsAndBottoms.Pivot anchor, TopsAndBottoms.Pivot destination,
+            List<TopsAndBottoms.Pivot> older, boolean top) {
+
+        int run = destination.bar() - anchor.bar();
+
+        if (run <= 0) {
+            return null;
+        }
+
+        double slope = (destination.price() - anchor.price()) / run;
+
+        List<TopsAndBottoms.Pivot> points = new ArrayList<>();
+
+        for (TopsAndBottoms.Pivot each : older) {
+            if (each.bar() >= anchor.bar()) {
+                points.add(each);
+            }
+        }
+
+        double band = Math.max(LEAST_TOLERANCE, amplitudeOf(points) * toleranceFrom / 100.0);
+        List<TopsAndBottoms.Pivot> resting = new ArrayList<>();
+        double error = 0.0;
+
+        for (TopsAndBottoms.Pivot each : points) {
+            double off = Math.abs(each.price()
+                    - (anchor.price() + slope * (each.bar() - anchor.bar())));
+
+            if (off <= band) {
+                resting.add(each);
+                error += off;
+            }
+        }
+
+        return new Trend(top, anchor.bar(), anchor.price(), destination.bar(), slope,
+                resting.size(), error, band, toleranceFrom, List.copyOf(resting));
+    }
+
+    /**
+     * @return the average the anchoring mode reads, or null when it reads none
+     *
+     * <p>The slow one is folded by {@link OwnScale}, which owns the rule that
+     * an indicator on a larger scale reads the last CLOSED coarse bar. Written
+     * a second time here it would be a second chance to write it wrong.</p>
+     */
+    private double[] averageFor(PriceSeries series) {
+        if (!anchoring.usesAverage() || series.size() == 0) {
+            return null;
+        }
+
+        if (anchoring == Anchoring.FAST_AVERAGE) {
+            return exponential(series, fastPeriod);
+        }
+
+        Aggregation scale = OwnScale.of(slowScale);
+
+        if (scale == null) {
+            // A layout naming a scale this version does not build. The chart's
+            // own scale is a smaller wrong than an anchoring mode that answers
+            // nothing and looks broken.
+            return exponential(series, slowPeriod);
+        }
+
+        PriceSeries coarse = scale.apply(series);
+
+        if (coarse.size() == 0) {
+            return null;
+        }
+
+        double[] slow = exponential(coarse, slowPeriod);
+        double[] into = new double[series.size()];
+
+        if (ChartPreferences.interpolateOwnScale()) {
+            OwnScale.smooth(series, coarse, slow, into);
+        } else {
+            OwnScale.map(series, coarse, slow, into);
+        }
+
+        return into;
+    }
+
+    /** @return an exponential average of the closes, one value per bar */
+    private static double[] exponential(PriceSeries series, int period) {
+        double[] made = new double[series.size()];
+        double weight = 2.0 / (period + 1);
+        double now = series.closeAt(0);
+
+        for (int i = 0; i < made.length; i++) {
+            now = i == 0 ? now : now + weight * (series.closeAt(i) - now);
+            made[i] = now;
+        }
+
+        return made;
     }
 
     private static double amplitudeOf(List<TopsAndBottoms.Pivot> points) {
@@ -556,6 +941,7 @@ public final class TouchTrendlines implements Overlay {
     @Override
     public void calculate(PriceSeries series) {
         this.source = series == null ? PriceSeries.empty() : series;
+        this.average = averageFor(source);
 
         // The lines belong to bars that have just been replaced.
         this.drawn = null;
@@ -620,9 +1006,11 @@ public final class TouchTrendlines implements Overlay {
 
         List<TopsAndBottoms.Pivot> pivots = pivotsFor(series, anchor);
 
-        Drawn made = new Drawn(fitTo(pivots, false, 0), fitTo(pivots, true, 0),
-                memory ? fitTo(pivots, false, 1) : null,
-                memory ? fitTo(pivots, true, 1) : null, anchor);
+        double[] read = average;
+
+        Drawn made = new Drawn(fitTo(pivots, false, 0, read), fitTo(pivots, true, 0, read),
+                memory ? fitTo(pivots, false, 1, read) : null,
+                memory ? fitTo(pivots, true, 1, read) : null, anchor);
 
         drawn = made;
 
@@ -728,7 +1116,9 @@ public final class TouchTrendlines implements Overlay {
         return ties + ";" + toleranceFrom + ";" + toleranceTo + ";" + toleranceStep
                 + ";" + line + ";" + thickness
                 + ";" + hex(supportColour) + ";" + hex(resistanceColour)
-                + ";" + rails + ";" + markTouches + ";" + memory;
+                + ";" + rails + ";" + markTouches + ";" + memory
+                + ";" + anchoring + ";" + crossing
+                + ";" + fastPeriod + ";" + slowPeriod + ";" + slowScale;
     }
 
     private static String hex(Color colour) {
@@ -769,6 +1159,28 @@ public final class TouchTrendlines implements Overlay {
             setMarkTouches(Boolean.parseBoolean(parts[9]));
             setMemory(Boolean.parseBoolean(parts[10]));
         }
+
+        // APPENDED, so a layout written before the anchoring mode existed still
+        // reads: it stops at eleven fields and keeps the search, which is what
+        // it was drawn with.
+        if (parts.length > 15) {
+            setAnchoring(readAnchoring(parts[11]));
+            setCrossing(Crossing.BEFORE.name().equals(parts[12])
+                    ? Crossing.BEFORE : Crossing.AFTER);
+            setFastPeriod(number(parts[13], FAST_PERIOD));
+            setSlowPeriod(number(parts[14], SLOW_PERIOD));
+            setSlowScale(parts[15]);
+        }
+    }
+
+    private static Anchoring readAnchoring(String text) {
+        for (Anchoring each : Anchoring.values()) {
+            if (each.name().equals(text)) {
+                return each;
+            }
+        }
+
+        return Anchoring.SEARCH;
     }
 
     private static MovingAverage.Line readLine(String text) {
