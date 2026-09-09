@@ -316,6 +316,11 @@ class RegressionChannelTest {
         first.setColour(new java.awt.Color(0x11, 0x22, 0x33));
         first.setFilled(true);
         first.setOpacity(40);
+        first.setFilledByDirection(true);
+        first.setRisingFill(java.awt.Color.GREEN);
+        first.setRisingOpacity(35);
+        first.setFallingFill(java.awt.Color.RED);
+        first.setFallingOpacity(15);
         first.setOwnPeriod("5m");
         first.setInterpolated(false);
         first.setDeviationLevels(java.util.List.of(
@@ -339,6 +344,12 @@ class RegressionChannelTest {
         assertEquals("5m", second.ownPeriod(), "the scale of its own");
         assertFalse(second.isInterpolated(), "the interpolation");
         assertFalse(second.isCentreShown(), "the hidden centre");
+
+        assertTrue(second.isFilledByDirection(), "the directional shading");
+        assertEquals(java.awt.Color.GREEN, second.risingFill(), "the rising colour");
+        assertEquals(35, second.risingOpacity(), "its transparency");
+        assertEquals(java.awt.Color.RED, second.fallingFill(), "the falling colour");
+        assertEquals(15, second.fallingOpacity(), "and its own");
     }
 
     @Test
@@ -356,6 +367,129 @@ class RegressionChannelTest {
                         + channel.appearance());
         assertFalse(channel.appearance().contains(","),
                 "the appearance carries the parameter separator: " + channel.appearance());
+    }
+
+    // --------------------------------------- o preenchimento por direcao
+
+    /** @return a channel shaded green when it rises and red when it falls */
+    private static RegressionChannel painted() {
+        RegressionChannel channel = new RegressionChannel(4);
+
+        channel.setFilledByDirection(true);
+        channel.setRisingFill(java.awt.Color.GREEN);
+        channel.setRisingOpacity(40);
+        channel.setFallingFill(java.awt.Color.RED);
+        channel.setFallingOpacity(20);
+
+        return channel;
+    }
+
+    @Test
+    @DisplayName("apontando para cima o canal fica da cor de alta")
+    void pointingUpItTakesTheRisingColour() {
+        RegressionChannel channel = painted();
+
+        channel.calculate(closing(100, 105, 110, 115));
+
+        paint(channel, viewportOver(0, 4));
+
+        assertTrue(channel.slope() > 0, "the fixture does not rise, so this proves nothing");
+
+        java.awt.Color wash = channel.shading();
+
+        assertEquals(java.awt.Color.GREEN.getRGB() & 0xFFFFFF, wash.getRGB() & 0xFFFFFF,
+                "a channel pointing up was not shaded with the rising colour");
+        assertEquals(Math.round(255 * 40 / 100f), wash.getAlpha(),
+                "the rising side has a transparency of its own and it was not used");
+    }
+
+    @Test
+    @DisplayName("apontando para baixo ele fica da cor de baixa, com a transparencia dela")
+    void pointingDownItTakesTheFallingColour() {
+        RegressionChannel channel = painted();
+
+        channel.calculate(closing(115, 110, 105, 100));
+
+        paint(channel, viewportOver(0, 4));
+
+        assertTrue(channel.slope() < 0, "the fixture does not fall, so this proves nothing");
+
+        java.awt.Color wash = channel.shading();
+
+        assertEquals(java.awt.Color.RED.getRGB() & 0xFFFFFF, wash.getRGB() & 0xFFFFFF,
+                "a channel pointing down was not shaded with the falling colour");
+        assertEquals(Math.round(255 * 20 / 100f), wash.getAlpha(),
+                "the two sides were shaded with the same transparency, so one of the two "
+                        + "sliders does nothing");
+    }
+
+    @Test
+    @DisplayName("por direcao substitui o preenchimento de uma cor so")
+    void bydirectionReplacesThePlainFill() {
+        RegressionChannel channel = painted();
+
+        // O de uma cor só, ligado e com outra cor: se os dois valessem, o
+        // reader veria um deles e não saberia qual.
+        channel.setFilled(true);
+        channel.setFillColour(java.awt.Color.BLUE);
+        channel.setOpacity(90);
+
+        channel.calculate(closing(100, 105, 110, 115));
+
+        paint(channel, viewportOver(0, 4));
+
+        assertEquals(java.awt.Color.GREEN.getRGB() & 0xFFFFFF,
+                channel.shading().getRGB() & 0xFFFFFF,
+                "the plain fill won over the directional one");
+    }
+
+    @Test
+    @DisplayName("desligado, volta a ser o de uma cor so")
+    void offitGoesBackToOneColour() {
+        RegressionChannel channel = painted();
+
+        channel.setFilledByDirection(false);
+        channel.setFilled(true);
+        channel.setFillColour(java.awt.Color.BLUE);
+        channel.setOpacity(90);
+
+        channel.calculate(closing(100, 105, 110, 115));
+
+        paint(channel, viewportOver(0, 4));
+
+        assertEquals(java.awt.Color.BLUE.getRGB() & 0xFFFFFF,
+                channel.shading().getRGB() & 0xFFFFFF, "the plain fill did not come back");
+    }
+
+    @Test
+    @DisplayName("por direcao dispensa a outra caixa")
+    void bydirectionNeedsNoOtherBox() {
+        RegressionChannel channel = painted();
+
+        // setFilled continua FALSO. Pedir a cor por direcao e depois ter de
+        // marcar uma segunda caixa noutra aba para algo aparecer e uma
+        // armadilha, e das que so o leitor que cai nela encontra.
+        channel.calculate(closing(100, 105, 110, 115));
+
+        paint(channel, viewportOver(0, 4));
+
+        assertNotNull(channel.shading(),
+                "nothing was shaded: asking for a colour by direction and getting no shading "
+                        + "until a second box is ticked somewhere else is a trap");
+    }
+
+    @Test
+    @DisplayName("sem nivel nenhum nao ha o que preencher")
+    void withoutALevelThereIsNothingToFill() {
+        RegressionChannel channel = painted();
+
+        channel.setDeviationLevels(java.util.List.of());
+        channel.calculate(closing(100, 105, 110, 115));
+
+        paint(channel, viewportOver(0, 4));
+
+        assertNull(channel.shading(),
+                "it shaded between edges that are not drawn, which is a band with no sides");
     }
 
     // ------------------------------------------------- a escala propria

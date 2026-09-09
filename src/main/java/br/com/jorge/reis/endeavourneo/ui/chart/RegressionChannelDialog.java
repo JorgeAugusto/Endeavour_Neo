@@ -108,6 +108,17 @@ public final class RegressionChannelDialog extends JDialog {
 
     private final JSlider opacity;
 
+    private final JCheckBox byDirection =
+            new JCheckBox(Messages.get("overlay.lrc.byDirection"));
+
+    private final JButton risingColour = new JButton();
+
+    private final JSlider risingOpacity;
+
+    private final JButton fallingColour = new JButton();
+
+    private final JSlider fallingOpacity;
+
     private final JCheckBox ownPeriod = new JCheckBox(Messages.get("overlay.ma.ownPeriod"));
 
     private final JButton periodButton = new JButton();
@@ -119,6 +130,10 @@ public final class RegressionChannelDialog extends JDialog {
     private transient Color chosenCentre;
 
     private transient Color chosenFill;
+
+    private transient Color chosenRising;
+
+    private transient Color chosenFalling;
 
     private final transient Forms.Sample centreSample;
 
@@ -137,6 +152,11 @@ public final class RegressionChannelDialog extends JDialog {
         this.centreThickness =
                 new JSpinner(new SpinnerNumberModel(channel.centreThickness(), 1, 8, 1));
         this.opacity = new JSlider(0, 100, channel.opacity());
+        this.risingOpacity = new JSlider(0, 100, channel.risingOpacity());
+        this.fallingOpacity = new JSlider(0, 100, channel.fallingOpacity());
+
+        this.chosenRising = channel.risingFill();
+        this.chosenFalling = channel.fallingFill();
 
         this.centreSample = new Forms.Sample(
                 () -> chosenCentre == null ? channel.colours().get(0) : chosenCentre,
@@ -162,6 +182,19 @@ public final class RegressionChannelDialog extends JDialog {
         fill.addActionListener(e -> refreshFill());
         showCentre.addActionListener(e -> refreshCentre());
 
+        risingColour.addActionListener(e -> pickDirection(true));
+        fallingColour.addActionListener(e -> pickDirection(false));
+
+        // The two tabs have to agree the moment either of them changes: the
+        // plain fill's controls mean nothing while the directional one is on,
+        // and a reader who ticked this and then went back to find those still
+        // live would reasonably conclude both were being drawn.
+        byDirection.setSelected(channel.isFilledByDirection());
+        byDirection.addActionListener(e -> {
+            refreshFill();
+            refreshDirection();
+        });
+
         model.load(channel.deviationLevels());
         paintButtons();
 
@@ -170,6 +203,7 @@ public final class RegressionChannelDialog extends JDialog {
         tabs.addTab(Messages.get("overlay.tab.parameters"), parameters());
         tabs.addTab(Messages.get("overlay.lrc.tab.levels"), levels());
         tabs.addTab(Messages.get("overlay.tab.appearance"), appearance());
+        tabs.addTab(Messages.get("overlay.lrc.tab.direction"), direction());
         tabs.addTab(Messages.get("overlay.tab.period"), period());
 
         add(tabs, BorderLayout.CENTER);
@@ -271,6 +305,45 @@ public final class RegressionChannelDialog extends JDialog {
 
         refreshFill();
         refreshCentre();
+
+        return panel;
+    }
+
+    /**
+     * The shading that says which way the channel points.
+     *
+     * <p>Green while the trend rises and red while it falls, or whichever two
+     * colours the reader picks -- each with a transparency of its own, because
+     * the two are not read the same: a shading that works over a green candle
+     * can disappear over a red one.</p>
+     *
+     * <p>Its own tab rather than two more rows under the plain fill, because it
+     * REPLACES that fill rather than adding to it. Two shadings under one
+     * heading would read as two things drawn at once.</p>
+     */
+    private JComponent direction() {
+        JPanel panel = Forms.form();
+
+        Forms.group(panel, 0, Messages.get("overlay.lrc.tab.direction"));
+        Forms.across(panel, 1, byDirection);
+
+        Forms.group(panel, 2, Messages.get("overlay.lrc.rising"));
+        Forms.field(panel, 3, Messages.get("overlay.ma.colour"), risingColour);
+
+        risingOpacity.setMajorTickSpacing(25);
+        risingOpacity.setPaintTicks(true);
+        risingOpacity.setPaintLabels(true);
+        Forms.field(panel, 4, Messages.get("overlay.bb.opacity"), risingOpacity);
+
+        Forms.group(panel, 5, Messages.get("overlay.lrc.falling"));
+        Forms.field(panel, 6, Messages.get("overlay.ma.colour"), fallingColour);
+
+        fallingOpacity.setMajorTickSpacing(25);
+        fallingOpacity.setPaintTicks(true);
+        fallingOpacity.setPaintLabels(true);
+        Forms.field(panel, 7, Messages.get("overlay.bb.opacity"), fallingOpacity);
+
+        refreshDirection();
 
         return panel;
     }
@@ -545,12 +618,29 @@ public final class RegressionChannelDialog extends JDialog {
                 ? Messages.get("overlay.ma.chooseScale") : periodCode);
     }
 
-    /** The shading's colour and its transparency mean nothing while it is off. */
+    /**
+     * The shading's colour and its transparency mean nothing while it is off --
+     * nor while the directional shading has taken it over.
+     */
     private void refreshFill() {
-        boolean on = fill.isSelected();
+        boolean on = fill.isSelected() && !byDirection.isSelected();
 
+        fill.setEnabled(!byDirection.isSelected());
         fillColour.setEnabled(on);
         opacity.setEnabled(on);
+
+        fill.setToolTipText(byDirection.isSelected()
+                ? Messages.get("overlay.lrc.byDirection.wins") : null);
+    }
+
+    /** And the two directional colours mean nothing while that is off. */
+    private void refreshDirection() {
+        boolean on = byDirection.isSelected();
+
+        risingColour.setEnabled(on);
+        risingOpacity.setEnabled(on);
+        fallingColour.setEnabled(on);
+        fallingOpacity.setEnabled(on);
     }
 
     /** Nor does the centre's pen while the centre is hidden. */
@@ -603,6 +693,11 @@ public final class RegressionChannelDialog extends JDialog {
         channel.setFilled(fill.isSelected());
         channel.setFillColour(chosenFill);
         channel.setOpacity(opacity.getValue());
+        channel.setFilledByDirection(byDirection.isSelected());
+        channel.setRisingFill(chosenRising);
+        channel.setRisingOpacity(risingOpacity.getValue());
+        channel.setFallingFill(chosenFalling);
+        channel.setFallingOpacity(fallingOpacity.getValue());
         channel.setOwnPeriod(ownPeriod.isSelected() ? periodCode : null);
         channel.setInterpolated(interpolate.isSelected());
     }
@@ -627,9 +722,39 @@ public final class RegressionChannelDialog extends JDialog {
         centreSample.repaint();
     }
 
+    /** Opens the chooser for one of the two directional colours. */
+    private void pickDirection(boolean up) {
+        Color current = up ? chosenRising : chosenFalling;
+        Color picked = JColorChooser.showDialog(this,
+                Messages.get(up ? "overlay.lrc.rising" : "overlay.lrc.falling"), current);
+
+        if (picked == null) {
+            return;
+        }
+
+        if (up) {
+            chosenRising = picked;
+        } else {
+            chosenFalling = picked;
+        }
+
+        paintButtons();
+    }
+
     private void paintButtons() {
         paintButton(centreColour, chosenCentre, channel.colours().get(0));
         paintButton(fillColour, chosenFill, edgeColour());
+
+        // Never "automatic": these two have no colour to fall back to. What
+        // they are is what was picked, so the swatch is the whole answer and
+        // the word beside it would be the same on both for ever.
+        risingColour.setIcon(new Forms.Swatch(chosenRising));
+        risingColour.setText(Messages.get("overlay.ma.chosen"));
+        risingColour.setHorizontalAlignment(SwingConstants.LEFT);
+
+        fallingColour.setIcon(new Forms.Swatch(chosenFalling));
+        fallingColour.setText(Messages.get("overlay.ma.chosen"));
+        fallingColour.setHorizontalAlignment(SwingConstants.LEFT);
     }
 
     private static void paintButton(JButton button, Color chosen, Color fallback) {

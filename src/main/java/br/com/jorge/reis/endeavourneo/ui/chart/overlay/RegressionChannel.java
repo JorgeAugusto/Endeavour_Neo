@@ -177,6 +177,30 @@ public final class RegressionChannel implements Overlay {
     private Color fillColour;
 
     /**
+     * Whether the shading takes its colour from where the channel POINTS.
+     *
+     * <p>Its own switch and not a colour that happens to be two: with it on,
+     * the channel is shaded green while the trend rises and red while it falls,
+     * so the direction is legible without reading the slope off the line. Off,
+     * the shading is one colour and says nothing about direction.</p>
+     *
+     * <p><b>It implies the shading.</b> Asking for a colour by direction and
+     * then having to tick a second box somewhere else for anything to appear is
+     * a trap, and the kind that is only found by the reader who falls into
+     * it -- so this alone is enough, and the plain fill's controls say they are
+     * being overruled.</p>
+     */
+    private boolean fillByDirection;
+
+    private Color risingFill = new Color(0x2E, 0xA0, 0x43);
+
+    private int risingOpacity = 12;
+
+    private Color fallingFill = new Color(0xD1, 0x3A, 0x3A);
+
+    private int fallingOpacity = 12;
+
+    /**
      * The scale it is fitted on, or null to follow the chart.
      *
      * <p>A period code as {@code PeriodCatalog} spells it. {@link OwnScale} is
@@ -393,6 +417,91 @@ public final class RegressionChannel implements Overlay {
 
     public void setFillColour(Color value) {
         this.fillColour = value;
+    }
+
+    /** @return whether the shading is chosen by the direction of the trend */
+    public boolean isFilledByDirection() {
+        return fillByDirection;
+    }
+
+    public void setFilledByDirection(boolean value) {
+        this.fillByDirection = value;
+    }
+
+    public Color risingFill() {
+        return risingFill;
+    }
+
+    public void setRisingFill(Color value) {
+        this.risingFill = value == null ? new Color(0x2E, 0xA0, 0x43) : value;
+    }
+
+    public int risingOpacity() {
+        return risingOpacity;
+    }
+
+    public void setRisingOpacity(int value) {
+        this.risingOpacity = Math.max(0, Math.min(value, 100));
+    }
+
+    public Color fallingFill() {
+        return fallingFill;
+    }
+
+    public void setFallingFill(Color value) {
+        this.fallingFill = value == null ? new Color(0xD1, 0x3A, 0x3A) : value;
+    }
+
+    public int fallingOpacity() {
+        return fallingOpacity;
+    }
+
+    public void setFallingOpacity(int value) {
+        this.fallingOpacity = Math.max(0, Math.min(value, 100));
+    }
+
+    /**
+     * @return the colour the channel is shaded with as it stands, or null when
+     *         it is not shaded at all
+     *
+     * <p>Alpha included, so what comes back is what is painted. Package-visible
+     * so a test can ask what the reader sees without counting pixels -- the
+     * question here is WHICH colour, and a pixel would answer that through two
+     * more things that can go wrong.</p>
+     */
+    Color shading() {
+        Fit now = fit;
+
+        if (levels.isEmpty()) {
+            return null;
+        }
+
+        if (fillByDirection) {
+            // A flat channel takes the rising colour. Something has to be
+            // chosen, drawing nothing would make the shading blink as the slope
+            // crossed zero, and a third colour for "flat" is a setting nobody
+            // asked for to describe a case that lasts one frame.
+            boolean up = now == null || now.slope() >= 0.0;
+
+            return alpha(up ? risingFill : fallingFill,
+                    up ? risingOpacity : fallingOpacity);
+        }
+
+        if (!fill) {
+            return null;
+        }
+
+        int outer = levels.size() - 1;
+
+        return alpha(fillColour != null ? fillColour
+                : levels.get(outer).colour() != null ? levels.get(outer).colour()
+                        : colour == null ? EDGE : colour, opacity);
+    }
+
+    private static Color alpha(Color of, int percent) {
+        return percent <= 0 ? null
+                : new Color(of.getRed(), of.getGreen(), of.getBlue(),
+                        Math.round(255 * percent / 100f));
     }
 
     @Override
@@ -727,11 +836,13 @@ public final class RegressionChannel implements Overlay {
                 ? fitOnChart(fine, to)
                 : fitOnScale(fine, slow, Math.max(0, from), to);
 
-        if (made == null || !fill || opacity <= 0 || levels.isEmpty()) {
+        Color wash = made == null ? null : shading();
+
+        if (wash == null) {
             return;
         }
 
-        shade(g, viewport, Math.max(0, from), Math.min(to, fine.size()));
+        shade(g, viewport, wash, Math.max(0, from), Math.min(to, fine.size()));
     }
 
     /** Fits on the chart's own bars, anchored on the last one in view. */
@@ -832,16 +943,10 @@ public final class RegressionChannel implements Overlay {
      * drawn from, so the shading cannot disagree with its own boundary --
      * whichever of the two ways the fit was made.</p>
      */
-    private void shade(Graphics2D g, Viewport viewport, int from, int to) {
-        List<Level> pairs = levels;
-        int outer = pairs.size() - 1;
+    private void shade(Graphics2D g, Viewport viewport, Color wash, int from, int to) {
+        int outer = levels.size() - 1;
 
-        Color base = fillColour != null ? fillColour
-                : pairs.get(outer).colour() != null ? pairs.get(outer).colour()
-                        : colour == null ? EDGE : colour;
-
-        g.setColor(new Color(base.getRed(), base.getGreen(), base.getBlue(),
-                Math.round(255 * opacity / 100f)));
+        g.setColor(wash);
 
         int upper = 1 + 2 * outer;
         int lower = 2 + 2 * outer;
@@ -916,6 +1021,14 @@ public final class RegressionChannel implements Overlay {
                     .append(':').append(hex(level.colour()));
         }
 
+        // AFTER the levels, which is the field that carries its own separators.
+        // A field appended here cannot be confused with one of theirs, and a
+        // layout written before this existed simply stops short -- which is the
+        // case applyAppearance already handles field by field.
+        text.append(';').append(fillByDirection)
+                .append(';').append(hex(risingFill)).append(';').append(risingOpacity)
+                .append(';').append(hex(fallingFill)).append(';').append(fallingOpacity);
+
         return text.toString();
     }
 
@@ -970,6 +1083,20 @@ public final class RegressionChannel implements Overlay {
 
         if (parts.length > 11) {
             setDeviationLevels(readLevels(parts[11]));
+        }
+
+        if (parts.length > 12) {
+            setFilledByDirection(Boolean.parseBoolean(parts[12]));
+        }
+
+        if (parts.length > 14) {
+            setRisingFill(readColour(parts[13]));
+            setRisingOpacity((int) readNumber(parts[14], 12));
+        }
+
+        if (parts.length > 16) {
+            setFallingFill(readColour(parts[15]));
+            setFallingOpacity((int) readNumber(parts[16], 12));
         }
     }
 
