@@ -119,15 +119,10 @@ public final class TouchTrendlines implements Overlay {
          * The turn at which the swings last changed sides of a fast average.
          *
          * <p>The window stops deciding the anchor: what decides it is where the
-         * move began. Walking back over the turns OF ONE KIND, the anchor is
-         * the pair of tops (or bottoms) that sit on opposite sides of the
-         * average -- the last top that was still above it, and the first that
-         * failed below. {@link Crossing} says which of the two is taken.</p>
-         *
-         * <p>It has to be the turns of one kind and not the zigzag's legs: in
-         * any zigzag every leg crosses its own average, since the tops are
-         * above it and the bottoms below. A rule written on the legs would
-         * answer "the last leg" always, on every chart.</p>
+         * move began. That place is ONE event on the chart, and both lines take
+         * their own end of it -- the resistance the top there, the support the
+         * bottom there. {@link Crossing} says which side of it is taken, and
+         * {@code acrossTheAverage} carries the rule and the reason.</p>
          */
         FAST_AVERAGE,
 
@@ -565,7 +560,7 @@ public final class TouchTrendlines implements Overlay {
         List<TopsAndBottoms.Pivot> older = same.subList(0, last + 1);
 
         if (!anchoring.searches()) {
-            TopsAndBottoms.Pivot chosen = anchorFor(older, top, average);
+            TopsAndBottoms.Pivot chosen = anchorFor(pivots, older, top, average);
 
             // THE LADDER DOES NOT RUN HERE, and that is what the modes are.
             // With the anchor fixed the line is already decided by its two
@@ -615,14 +610,14 @@ public final class TouchTrendlines implements Overlay {
      * @param average one value per bar, or null
      * @return the anchor the mode picks, or null when it finds none
      */
-    private TopsAndBottoms.Pivot anchorFor(List<TopsAndBottoms.Pivot> older, boolean top,
-            double[] average) {
+    private TopsAndBottoms.Pivot anchorFor(List<TopsAndBottoms.Pivot> pivots,
+            List<TopsAndBottoms.Pivot> older, boolean top, double[] average) {
 
         if (anchoring == Anchoring.EXTREME) {
             return extremeOf(older, top);
         }
 
-        return acrossTheAverage(older, average);
+        return acrossTheAverage(pivots, older, average);
     }
 
     /** @return the highest top, or the lowest bottom, inside the window */
@@ -648,49 +643,116 @@ public final class TouchTrendlines implements Overlay {
     }
 
     /**
-     * Walks back to the last time the turns changed sides of the average.
+     * Finds where the move began, and takes this line's end of it.
      *
-     * @return the pivot on the side {@link Crossing} asks for, or null when the
-     *         turns never changed sides inside the search
+     * @param pivots the whole zigzag, both kinds, in time order
+     * @param older the pivots of this line's kind, up to its destination
+     * @return the anchor, or null when the move's start is not in the search
      *
-     * <p><b>Over the turns of ONE KIND.</b> Written on the zigzag's legs the
-     * rule would be useless: the tops of a zigzag are above its average and the
-     * bottoms below, so every leg crosses and the answer would be "the last
-     * leg" on every chart ever drawn. Over the tops alone the question has
-     * meaning -- when did the tops stop making it past the average -- and that
-     * is the turn a reader anchors on.</p>
+     * <h2>ONE crossing, read on the whole zigzag, serving BOTH lines</h2>
+     *
+     * <p>The crossing is a single event on the chart -- the market changed
+     * sides of the average -- and the two trendlines take their own end of it:
+     * the LTB the top there, the LTA the bottom there. Anything else and a
+     * rising market draws only the resistance, because the pullback bottoms
+     * dip through a fast average on every leg and their "last change of side"
+     * is always a couple of turns old. That is not a hypothetical: it is what
+     * the chart did, and it is why this rule was rewritten.</p>
+     *
+     * <h2>A whole swing on the other side, not one pivot</h2>
+     *
+     * <p>The move began at the most recent place where <b>two neighbouring
+     * pivots -- a top AND its bottom -- both sat on the far side</b> of the
+     * average. The pair is what makes the rule mean anything: asking for one
+     * pivot on the far side answers "the previous turn" on every chart ever
+     * drawn, since in any zigzag the tops sit above their own average and the
+     * bottoms below it. A top and a bottom together on one side is the market
+     * actually having been there, not a wick poking through.</p>
      */
-    private TopsAndBottoms.Pivot acrossTheAverage(List<TopsAndBottoms.Pivot> older,
-            double[] average) {
+    private TopsAndBottoms.Pivot acrossTheAverage(List<TopsAndBottoms.Pivot> pivots,
+            List<TopsAndBottoms.Pivot> older, double[] average) {
 
         if (average == null) {
             return null;
         }
 
-        for (int i = older.size() - 1; i > 0; i--) {
-            Boolean now = sideOf(older.get(i), average);
-            Boolean before = sideOf(older.get(i - 1), average);
+        TopsAndBottoms.Pivot destination = older.get(older.size() - 1);
+        Boolean here = sideOf(destination, average);
+
+        if (here == null) {
+            return null;
+        }
+
+        int crossed = crossingBefore(pivots, destination.bar(), here, average);
+
+        if (crossed < 0) {
+            return null;
+        }
+
+        if (crossing == Crossing.AFTER) {
+            for (TopsAndBottoms.Pivot each : older) {
+                if (each.bar() > crossed) {
+                    // AFTER can land on the DESTINATION itself, when the
+                    // crossing is the newest turn there is. Nothing is done
+                    // about it here: lineFrom refuses a run of zero bars, and
+                    // the same rule written twice is a second chance to write
+                    // it wrong.
+                    return each;
+                }
+            }
+
+            return null;
+        }
+
+        TopsAndBottoms.Pivot last = null;
+
+        for (TopsAndBottoms.Pivot each : older) {
+            if (each.bar() <= crossed) {
+                last = each;
+            }
+        }
+
+        return last;
+    }
+
+    /**
+     * @param until the destination's bar; nothing after it is read
+     * @param here which side the destination is on
+     * @return the bar of the newest pivot still on the FAR side, or -1
+     *
+     * <p>Bounded at the destination so the memory line answers what the rule
+     * said one turn ago, rather than what it says now with one end moved
+     * back.</p>
+     */
+    private static int crossingBefore(List<TopsAndBottoms.Pivot> pivots, int until,
+            boolean here, double[] average) {
+
+        List<TopsAndBottoms.Pivot> upTo = new ArrayList<>();
+
+        for (TopsAndBottoms.Pivot each : pivots) {
+            if (each.bar() <= until) {
+                upTo.add(each);
+            }
+        }
+
+        for (int i = upTo.size() - 1; i > 0; i--) {
+            Boolean now = sideOf(upTo.get(i), average);
+            Boolean before = sideOf(upTo.get(i - 1), average);
 
             if (now == null || before == null) {
                 // The average does not answer that far back: on a larger scale
                 // it is NaN until the first coarse bar has closed. Unknown is
                 // not "the same side", so the walk stops rather than inventing
                 // a crossing at the edge of what was computed.
-                return null;
+                return -1;
             }
 
-            if (!now.equals(before)) {
-                // AFTER can land on the DESTINATION itself, when the crossing
-                // is the newest turn there is. Nothing is done about it here:
-                // lineFrom refuses a run of zero bars, which is the same rule
-                // written once instead of twice. A guard here as well looked
-                // careful and was untestable -- breaking it changed nothing,
-                // because the other one caught it.
-                return crossing == Crossing.AFTER ? older.get(i) : older.get(i - 1);
+            if (now != here && before != here) {
+                return upTo.get(i).bar();
             }
         }
 
-        return null;
+        return -1;
     }
 
     /** @return whether the pivot is above the average there, or null if unknown */

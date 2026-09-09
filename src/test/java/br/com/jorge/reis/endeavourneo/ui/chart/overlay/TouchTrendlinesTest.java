@@ -331,9 +331,15 @@ class TouchTrendlinesTest {
         return List.of(top(10, 100), top(20, 110), top(30, 96), top(40, 92), top(50, 88));
     }
 
-    /** @return uma média que só precisa responder nas barras dos pivôs */
+    /**
+     * @return uma média que só precisa responder nas barras dos pivôs
+     *
+     * <p>Longa o bastante para a última barra usada aqui. Curta ela responde
+     * NaN nos pivôs de fora, a regra para a busca por não saber o lado, e o
+     * teste falha por culpa da armação -- que foi o que aconteceu.</p>
+     */
     private static double[] average(double... byBar) {
-        double[] made = new double[60];
+        double[] made = new double[120];
 
         java.util.Arrays.fill(made, 100.0);
 
@@ -453,5 +459,84 @@ class TouchTrendlinesTest {
 
         assertNull(lines.fitTo(crossing(), true, 0, blind),
                 "tratou o desconhecido como um lado");
+    }
+
+    /**
+     * Uma queda, a virada, e uma alta com um repique furando a média.
+     *
+     * <pre>
+     *   barra    10   20   30   40 | 50   60   70   80   90  100
+     *   tipo      T    F    T    F |  T    F    T    F    T    F
+     *   preço    97   90   99   95 |106   98  112  108  118  114
+     *   média          100 em toda parte
+     *   lado      -    -    -    - |  +    -    +    +    +    +
+     *                        \____/
+     *                    o giro inteiro do lado de baixo
+     * </pre>
+     *
+     * <p>O fundo da barra 60 fura a média no meio da alta. É ele que quebrava a
+     * LTA: lendo a troca de lado só entre fundos, o cruzamento dos fundos passa
+     * a ser entre 60 e 80, e a LTA nascia lá na frente -- ou não nascia.</p>
+     */
+    private static List<TopsAndBottoms.Pivot> theTurn() {
+        return List.of(top(10, 97), bottom(20, 90), top(30, 99), bottom(40, 95),
+                top(50, 106), bottom(60, 98), top(70, 112), bottom(80, 108),
+                top(90, 118), bottom(100, 114));
+    }
+
+    @Test
+    @DisplayName("o cruzamento e um so: numa alta saem as DUAS retas, do mesmo lugar")
+    void oneCrossingDrawsBothLines() {
+        TouchTrendlines lines = new TouchTrendlines(90);
+
+        lines.setAnchoring(TouchTrendlines.Anchoring.FAST_AVERAGE);
+        lines.setCrossing(TouchTrendlines.Crossing.AFTER);
+
+        double[] flat = average();
+        TouchTrendlines.Trend resistance = lines.fitTo(theTurn(), true, 0, flat);
+        TouchTrendlines.Trend support = lines.fitTo(theTurn(), false, 0, flat);
+
+        // O DEFEITO ERA ESTE: em alta so saia a LTB.
+        assertNotNull(resistance, "nao achou a LTB");
+        assertNotNull(support, "em alta a LTA sumiu -- e o defeito que ele viu no grafico");
+
+        // As duas partem do MESMO cruzamento, na barra 40: a LTB do primeiro
+        // topo depois dele, a LTA do primeiro fundo depois dele.
+        assertEquals(50, resistance.anchor(), "a LTB nao saiu do topo do cruzamento");
+        assertEquals(60, support.anchor(), "a LTA nao saiu do fundo do cruzamento");
+    }
+
+    @Test
+    @DisplayName("um repique furando a media nao empurra a LTA para frente")
+    void aPullbackThroughTheAverageDoesNotMoveTheAnchor() {
+        TouchTrendlines lines = new TouchTrendlines(90);
+
+        lines.setAnchoring(TouchTrendlines.Anchoring.FAST_AVERAGE);
+        lines.setCrossing(TouchTrendlines.Crossing.AFTER);
+
+        TouchTrendlines.Trend support = lines.fitTo(theTurn(), false, 0, average());
+
+        // O fundo da barra 60 esta ABAIXO da media no meio de uma alta. Lendo
+        // so os fundos, a ultima troca de lado deles seria entre 60 e 80 e a
+        // ancora iria para 80. O cruzamento e do zigzag inteiro, entao ela
+        // fica em 60 -- o primeiro fundo do movimento.
+        assertNotNull(support, "a LTA sumiu por causa do repique");
+        assertEquals(60, support.anchor(), "o repique empurrou a ancora para frente");
+    }
+
+    @Test
+    @DisplayName("ANTES da virada as duas retas pegam o giro do lado velho")
+    void beforeTheTurnTakesTheOldSide() {
+        TouchTrendlines lines = new TouchTrendlines(90);
+
+        lines.setAnchoring(TouchTrendlines.Anchoring.FAST_AVERAGE);
+        lines.setCrossing(TouchTrendlines.Crossing.BEFORE);
+
+        double[] flat = average();
+
+        assertEquals(30, lines.fitTo(theTurn(), true, 0, flat).anchor(),
+                "a LTB nao pegou o ultimo topo do lado velho");
+        assertEquals(40, lines.fitTo(theTurn(), false, 0, flat).anchor(),
+                "a LTA nao pegou o ultimo fundo do lado velho");
     }
 }
