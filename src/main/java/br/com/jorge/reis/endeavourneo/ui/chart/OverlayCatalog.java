@@ -135,6 +135,20 @@ public final class OverlayCatalog {
                             .TopsAndBottoms.MOST_WING,
                     br.com.jorge.reis.endeavourneo.ui.chart.overlay.TopsAndBottoms::new),
 
+            // TWO numbers: the window and the zigzag's wing. The wing is a
+            // parameter and not a setting because it changes which turns exist
+            // at all -- two channels on one chart, one over the coarse swings
+            // and one over the fine, is a pairing worth being able to make, and
+            // the legend has to be able to tell them apart.
+            new Kind("overlay.touchChannel",
+                    List.of(br.com.jorge.reis.endeavourneo.ui.chart.overlay
+                            .TouchChannel.PERIOD,
+                            br.com.jorge.reis.endeavourneo.ui.chart.overlay
+                                    .TopsAndBottoms.WING),
+                    1, br.com.jorge.reis.endeavourneo.ui.chart.overlay
+                            .TouchChannel.MOST_BARS,
+                    br.com.jorge.reis.endeavourneo.ui.chart.overlay.TouchChannel::new),
+
             // The ones that live in a panel are in the SAME list. Which of
             // them can go on the price is not decided by which list they are
             // in -- each says so itself, in fitsOnPrice, and the insert dialog

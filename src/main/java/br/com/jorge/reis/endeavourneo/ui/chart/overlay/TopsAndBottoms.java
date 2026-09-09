@@ -267,6 +267,28 @@ public final class TopsAndBottoms implements Overlay {
      * The bound stops the reading, which is the only thing that stops it.</p>
      */
     static List<Pivot> candidates(PriceSeries series, int wing, Ties ties, int until) {
+        return candidates(series, wing, ties, 0, until);
+    }
+
+    /**
+     * @param from the first bar that may be a candidate
+     *
+     * <p><b>So a caller interested in a window does not pay for the series.</b>
+     * The scan is one pass over what it is given, and a channel fitted to the
+     * last ninety bars of a chart holding a hundred thousand was scanning all
+     * hundred thousand on every repaint. The bars from {@code from - wing} are
+     * still READ -- the fractal at {@code from} needs its left wing -- but
+     * nothing before that is looked at.</p>
+     *
+     * <p>What this costs: the alternation in {@link #alternating} starts from
+     * whatever pivot comes first in the window rather than from the one the
+     * whole history would have left it on, so the oldest pivot of a window can
+     * differ from the same pivot seen in a full scan. One pivot, at the edge
+     * furthest from what the caller is looking at.</p>
+     */
+    static List<Pivot> candidates(PriceSeries series, int wing, Ties ties,
+            int from, int until) {
+
         List<Pivot> found = new ArrayList<>();
 
         if (series == null) {
@@ -275,7 +297,7 @@ public final class TopsAndBottoms implements Overlay {
 
         // Stops `wing` short of the end, which is the lag: the bar at n-wing has
         // no full right-hand window yet, so nothing about it can be said.
-        for (int i = wing; i < Math.min(until, series.size()) - wing; i++) {
+        for (int i = Math.max(wing, from); i < Math.min(until, series.size()) - wing; i++) {
             if (isTop(series, i, wing, ties)) {
                 found.add(new Pivot(i, true, series.highAt(i)));
             }

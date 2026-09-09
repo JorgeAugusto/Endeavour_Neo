@@ -689,6 +689,21 @@ public final class OverlayLegend extends JComponent {
                 return;
             }
 
+            // The channel has four numbers that decide the fit and two edges
+            // to dress; the plain dialog offers the first two and nothing else.
+            if (overlay instanceof br.com.jorge.reis.endeavourneo.ui.chart.overlay
+                    .TouchChannel channel) {
+
+                if (TouchChannelDialog.edit(owner, channel) != null) {
+                    channel.calculate(canvas.series());
+
+                    canvas.repaint();
+                    canvas.overlaysChanged();
+                }
+
+                return;
+            }
+
             Overlay replacement = InsertOverlayDialog.edit(owner, overlay);
 
             if (replacement != null) {
