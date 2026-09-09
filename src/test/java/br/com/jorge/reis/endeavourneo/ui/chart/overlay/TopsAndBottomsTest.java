@@ -494,6 +494,33 @@ class TopsAndBottomsTest {
                         + chart.pivots().size());
     }
 
+
+    /**
+     * O padrão é a regra do Profit, e isso é uma decisão e não um detalhe.
+     *
+     * <p>As duas regras discordam num décimo dos pivôs — 1.093 contra 1.220
+     * candidatos a topo nos 5.074 minutos do tape — e o propósito do indicador
+     * aqui é ser lido ao lado do do Profit. Uma diferença desse tamanho o olho
+     * acha na hora, e achá-la toda vez não é conferir nada.</p>
+     */
+    @Test
+    @DisplayName("o padrao e a regra do plato, que e a do Profit")
+    void thedefaultIsTheReferenceProductsRule() {
+        assertEquals(TopsAndBottoms.Ties.LAST, new TopsAndBottoms(1).ties(),
+                "the default tie rule is not the one the reference product uses, so the "
+                        + "two zigzags cannot be read side by side");
+
+        // E o padrao vale tambem para um valor que esta versao nao conhece --
+        // um layout escrito por outra versao nao pode cair na regra que ela
+        // nao escolheu.
+        TopsAndBottoms read = new TopsAndBottoms(1);
+
+        read.applyAppearance("REGRA-QUE-NAO-EXISTE;SOLID;2;auto;chart");
+
+        assertEquals(TopsAndBottoms.Ties.LAST, read.ties(),
+                "an unknown rule fell back to the one that is not the default");
+    }
+
     @Test
     @DisplayName("a aparencia da a volta inteira")
     void theappearanceSurvivesTheRoundTrip() {

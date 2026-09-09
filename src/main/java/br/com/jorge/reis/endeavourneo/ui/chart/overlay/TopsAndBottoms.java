@@ -82,6 +82,8 @@ public final class TopsAndBottoms implements Overlay {
          * <p>What the definition reads as, taken strictly, and what the Python
          * side of the project does. A plateau of equal highs produces no top at
          * all: no single bar of it is the highest.</p>
+         *
+         * <p>Not the default: see {@link #LAST}.</p>
          */
         STRICT,
 
@@ -104,6 +106,14 @@ public final class TopsAndBottoms implements Overlay {
          * <p>It is also the answer that survives the reduction better. The
          * plateau's last bar is where the price stopped being flat, which is
          * where the leg turns.</p>
+         *
+         * <p><b>And it is the default.</b> The purpose of the indicators on
+         * this chart is reading them beside the reference product's, so where
+         * the two rules disagree the one that agrees with the product wins --
+         * a difference of a tenth of the pivots is a difference the eye finds
+         * immediately, and finding it every time is not conferring anything.
+         * The strict rule stays one click away for whoever wants the literal
+         * reading of the definition.</p>
          */
         LAST
     }
@@ -128,7 +138,7 @@ public final class TopsAndBottoms implements Overlay {
 
     private int wing;
 
-    private Ties ties = Ties.STRICT;
+    private Ties ties = Ties.LAST;
 
     private Color colour;
 
@@ -190,7 +200,7 @@ public final class TopsAndBottoms implements Overlay {
     }
 
     public void setTies(Ties value) {
-        this.ties = value == null ? Ties.STRICT : value;
+        this.ties = value == null ? Ties.LAST : value;
     }
 
     public Color chosenColour() {
@@ -541,7 +551,7 @@ public final class TopsAndBottoms implements Overlay {
         // version has more of them and one by an earlier version fewer, and
         // neither is a reason to lose the rest of the appearance.
         if (parts.length > 0) {
-            setTies(Ties.LAST.name().equals(parts[0]) ? Ties.LAST : Ties.STRICT);
+            setTies(Ties.STRICT.name().equals(parts[0]) ? Ties.STRICT : Ties.LAST);
         }
 
         if (parts.length > 2) {
