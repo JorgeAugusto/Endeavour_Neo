@@ -107,7 +107,14 @@ public final class RelativeStrength implements Overlay {
     /** The scale it is computed on, or null for the chart's own. */
     private String ownPeriod;
 
-    private boolean interpolate = true;
+    // The per-indicator switch is gone, and with it three copies of one
+    // question. Whether a coarser scale is drawn in steps or sloped between
+    // them is a property of the CHART, not of the average that happens to be on
+    // it -- two indicators on the same chart answering it differently is not a
+    // thing anybody wants, and it was three dialogs to change one mind.
+    //
+    // ChartPreferences.interpolateOwnScale, and it is off by default: the
+    // reference product draws these as a staircase.
 
     private boolean visible = true;
 
@@ -148,13 +155,6 @@ public final class RelativeStrength implements Overlay {
         ownPeriod = code;
     }
 
-    public boolean isInterpolated() {
-        return interpolate;
-    }
-
-    public void setInterpolated(boolean value) {
-        interpolate = value;
-    }
 
     // ---------------------------------------------------------- how it looks
 
@@ -254,7 +254,7 @@ public final class RelativeStrength implements Overlay {
     @Override
     public String appearance() {
         return smoothing + ";" + line + ";" + hex(colour) + ";" + width
-                + ";" + interpolate + ";" + (ownPeriod == null ? "chart" : ownPeriod);
+                + ";" + (ownPeriod == null ? "chart" : ownPeriod);
     }
 
     @Override
@@ -272,9 +272,15 @@ public final class RelativeStrength implements Overlay {
         setLine(readEnum(MovingAverage.Line.class, at(fields, 1), MovingAverage.Line.SOLID));
         setColour(readColour(at(fields, 2), colour));
         setWidth(readFloat(at(fields, 3), width));
-        setInterpolated(readBoolean(at(fields, 4), interpolate));
+        // AN OLDER LAYOUT put this indicator's own "interpolate" here, between
+        // the line and the scale, and the setting has moved to the chart's
+        // preferences. A stored line still has it, so the scale is one field
+        // further along -- and the two shapes tell themselves apart: only the
+        // old one has "true" or "false" in this slot, because a scale code
+        // never reads like that.
+        boolean older = "true".equals(at(fields, 4)) || "false".equals(at(fields, 4));
 
-        String scale = at(fields, 5);
+        String scale = at(fields, older ? 5 : 4);
 
         setOwnPeriod(scale == null || "chart".equals(scale) ? null : scale);
     }
@@ -369,7 +375,7 @@ public final class RelativeStrength implements Overlay {
         // OwnScale, where the rule and the reason live.
         OwnScale.map(series, coarse, over, values);
 
-        if (interpolate) {
+        if (br.com.jorge.reis.endeavourneo.ui.chart.ChartPreferences.interpolateOwnScale()) {
             OwnScale.smooth(series, coarse, over, values);
         }
     }

@@ -49,9 +49,9 @@ import javax.swing.SwingConstants;
  * looked for in.</p>
  *
  * <p>What is NOT here is a source: a pivot IS a
- * bar's high or low, so there is nothing to choose from. Nor is there the
- * "interpolate" box the other indicators carry — between two pivots the line is
- * already straight, and there is nothing for smoothing to do.</p>
+ * bar's high or low, so there is nothing to choose from. And smoothing between the
+ * steps of a coarser scale, which is a chart setting now, does nothing here:
+ * between two pivots the line is already straight.</p>
  */
 public final class TopsAndBottomsDialog extends JDialog {
 

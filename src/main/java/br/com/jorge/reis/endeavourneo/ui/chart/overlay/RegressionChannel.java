@@ -209,7 +209,14 @@ public final class RegressionChannel implements Overlay {
      */
     private String ownPeriod;
 
-    private boolean interpolate = true;
+    // The per-indicator switch is gone, and with it three copies of one
+    // question. Whether a coarser scale is drawn in steps or sloped between
+    // them is a property of the CHART, not of the average that happens to be on
+    // it -- two indicators on the same chart answering it differently is not a
+    // thing anybody wants, and it was three dialogs to change one mind.
+    //
+    // ChartPreferences.interpolateOwnScale, and it is off by default: the
+    // reference product draws these as a staircase.
 
     private boolean visible = true;
 
@@ -525,13 +532,6 @@ public final class RegressionChannel implements Overlay {
         this.mapped = null;
     }
 
-    public boolean isInterpolated() {
-        return interpolate;
-    }
-
-    public void setInterpolated(boolean value) {
-        this.interpolate = value;
-    }
 
     // ------------------------------------------------------------ the numbers
 
@@ -922,7 +922,7 @@ public final class RegressionChannel implements Overlay {
         double[][] down = new double[lines][width];
 
         for (int n = 0; n < lines; n++) {
-            if (interpolate) {
+            if (br.com.jorge.reis.endeavourneo.ui.chart.ChartPreferences.interpolateOwnScale()) {
                 Arrays.fill(down[n], Double.NaN);
 
                 OwnScale.smooth(fine, slow, onScale[n], down[n], from);
@@ -1004,7 +1004,6 @@ public final class RegressionChannel implements Overlay {
                 .append(';').append(fill).append(';').append(opacity)
                 .append(';').append(hex(fillColour))
                 .append(';').append(ownPeriod == null ? "chart" : ownPeriod)
-                .append(';').append(interpolate)
                 .append(';');
 
         List<Level> now = levels;
@@ -1077,26 +1076,27 @@ public final class RegressionChannel implements Overlay {
             setOwnPeriod("chart".equals(parts[9]) ? null : parts[9]);
         }
 
+        // The slot that held this indicator's own "interpolate" is gone, and
+        // everything after it moved down one. No layout in the wild carries the
+        // old shape -- this indicator and its levels are a day old -- so there
+        // is no migration here, and saying that is cheaper than a guess about
+        // which of two shapes a string is.
         if (parts.length > 10) {
-            setInterpolated(Boolean.parseBoolean(parts[10]));
+            setDeviationLevels(readLevels(parts[10]));
         }
 
         if (parts.length > 11) {
-            setDeviationLevels(readLevels(parts[11]));
+            setFilledByDirection(Boolean.parseBoolean(parts[11]));
         }
 
-        if (parts.length > 12) {
-            setFilledByDirection(Boolean.parseBoolean(parts[12]));
+        if (parts.length > 13) {
+            setRisingFill(readColour(parts[12]));
+            setRisingOpacity((int) readNumber(parts[13], 12));
         }
 
-        if (parts.length > 14) {
-            setRisingFill(readColour(parts[13]));
-            setRisingOpacity((int) readNumber(parts[14], 12));
-        }
-
-        if (parts.length > 16) {
-            setFallingFill(readColour(parts[15]));
-            setFallingOpacity((int) readNumber(parts[16], 12));
+        if (parts.length > 15) {
+            setFallingFill(readColour(parts[14]));
+            setFallingOpacity((int) readNumber(parts[15], 12));
         }
     }
 

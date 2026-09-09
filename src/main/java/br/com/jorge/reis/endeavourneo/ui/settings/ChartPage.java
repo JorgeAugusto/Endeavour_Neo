@@ -50,6 +50,9 @@ public final class ChartPage implements SettingsPage {
 
     private final JCheckBox hollow = new JCheckBox(Messages.get("settings.chart.hollow"));
 
+    private final JCheckBox interpolate =
+            new JCheckBox(Messages.get("settings.chart.interpolate"));
+
     /**
      * How many of the most recent bars a chart loads.
      *
@@ -104,6 +107,18 @@ public final class ChartPage implements SettingsPage {
         panel.add(hollow);
         panel.add(hollowHint);
 
+        interpolate.setAlignmentX(Component.LEFT_ALIGNMENT);
+        interpolate.setMnemonic(Messages.mnemonic("settings.chart.interpolate"));
+
+        JLabel interpolateHint = new JLabel(Messages.get("settings.chart.interpolate.hint"));
+
+        interpolateHint.setAlignmentX(Component.LEFT_ALIGNMENT);
+        interpolateHint.setBorder(BorderFactory.createEmptyBorder(0, 24, 8, 0));
+        interpolateHint.setEnabled(false);
+
+        panel.add(interpolate);
+        panel.add(interpolateHint);
+
         JPanel row = new JPanel();
 
         row.setLayout(new BoxLayout(row, BoxLayout.X_AXIS));
@@ -151,6 +166,7 @@ public final class ChartPage implements SettingsPage {
         horizontalGrid.setSelected(ChartPreferences.horizontalGrid());
         verticalGrid.setSelected(ChartPreferences.verticalGrid());
         hollow.setSelected(ChartPreferences.hollowCandles());
+        interpolate.setSelected(ChartPreferences.interpolateOwnScale());
         window.setValue(ChartPreferences.window());
     }
 
@@ -160,6 +176,7 @@ public final class ChartPage implements SettingsPage {
         ChartPreferences.setHorizontalGrid(horizontalGrid.isSelected());
         ChartPreferences.setVerticalGrid(verticalGrid.isSelected());
         ChartPreferences.setHollowCandles(hollow.isSelected());
+        ChartPreferences.setInterpolateOwnScale(interpolate.isSelected());
         ChartPreferences.setWindow(((Number) window.getValue()).intValue());
     }
 }

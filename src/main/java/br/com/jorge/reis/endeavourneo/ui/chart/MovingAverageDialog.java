@@ -92,8 +92,6 @@ public final class MovingAverageDialog extends JDialog {
 
     private final JButton periodButton = new JButton();
 
-    private final javax.swing.JCheckBox interpolate =
-            new javax.swing.JCheckBox(Messages.get("overlay.ma.interpolate"));
 
     private transient String periodCode;
 
@@ -247,7 +245,6 @@ public final class MovingAverageDialog extends JDialog {
         // almost nothing, so the control came out a flat sliver with its label
         // spilling out of it.
         ownPeriod.setSelected(periodCode != null);
-        interpolate.setSelected(average.isInterpolated());
         refreshPeriod();
 
         Forms.field(panel, 2, Messages.get("overlay.ma.scale"), periodButton);
@@ -262,7 +259,6 @@ public final class MovingAverageDialog extends JDialog {
         last.anchor = GridBagConstraints.WEST;
         last.insets = new Insets(3, 8, 3, 0);
 
-        panel.add(interpolate, last);
 
         // TICKING IT ASKS. Ticked with no scale chosen, `periodCode` stayed null
         // and apply() wrote null -- so the indicator went back to following the
@@ -307,7 +303,6 @@ public final class MovingAverageDialog extends JDialog {
         boolean own = ownPeriod.isSelected();
 
         periodButton.setEnabled(own);
-        interpolate.setEnabled(own);
         periodButton.setText(periodCode == null
                 ? Messages.get("overlay.ma.chooseScale") : periodCode);
     }
@@ -367,7 +362,6 @@ public final class MovingAverageDialog extends JDialog {
         average.setLine((MovingAverage.Line) line.getSelectedItem());
         average.setColour(chosen);
         average.setOwnPeriod(ownPeriod.isSelected() ? periodCode : null);
-        average.setInterpolated(interpolate.isSelected());
     }
 
     private void pickColour() {

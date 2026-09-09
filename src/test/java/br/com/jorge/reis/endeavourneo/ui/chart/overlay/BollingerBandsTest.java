@@ -196,7 +196,7 @@ class BollingerBandsTest {
         BollingerBands bands = new BollingerBands(3);
 
         bands.setOwnPeriod("5m");
-        bands.setInterpolated(false);
+br.com.jorge.reis.endeavourneo.ui.chart.ChartPreferences.setInterpolateOwnScale(false);
         bands.calculate(series);
 
         for (int bar = 0; bar < series.size(); bar++) {
@@ -255,7 +255,7 @@ class BollingerBandsTest {
         set.setFillColour(new Color(0xABCDEF));
         set.setOpacity(35);
         set.setOwnPeriod("15m");
-        set.setInterpolated(false);
+
 
         BollingerBands read = new BollingerBands(20);
 
@@ -276,7 +276,7 @@ class BollingerBandsTest {
         assertEquals(new Color(0xABCDEF), read.chosenFillColour());
         assertEquals(35, read.opacity());
         assertEquals("15m", read.ownPeriod());
-        assertFalse(read.isInterpolated());
+
     }
 
     @Test
@@ -446,5 +446,17 @@ class BollingerBandsTest {
                 "the middle is drawn with the bands' stroke, so its own settings do nothing");
         assertEquals(strokes.get(0), strokes.get(2),
                 "the two bands stopped sharing a stroke");
+    }
+
+    /**
+     * Devolve o ajuste ao padrão.
+     *
+     * <p>É um ajuste do gráfico, e portanto estático: um teste que o liga e não
+     * o desliga muda o resultado do teste seguinte, e de uma classe que nem
+     * sabe que ele existe. A suíte inteira roda numa JVM só.</p>
+     */
+    @org.junit.jupiter.api.AfterEach
+    void putTheSettingBack() {
+        br.com.jorge.reis.endeavourneo.ui.chart.ChartPreferences.setInterpolateOwnScale(false);
     }
 }

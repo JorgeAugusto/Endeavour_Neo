@@ -47,6 +47,8 @@ public final class ChartPreferences {
 
     private static final String HOLLOW = "hollowCandles";
 
+    private static final String INTERPOLATE = "interpolateOwnScale";
+
     /**
      * Copy-on-write because charts add and drop listeners as windows open and
      * close, on the same thread that is walking the list to tell them.
@@ -77,6 +79,9 @@ public final class ChartPreferences {
     private static boolean syntheticTicks = PREFS.getBoolean(SYNTHETIC, true);
 
     private static boolean hollowCandles = PREFS.getBoolean(HOLLOW, true);
+
+    private static boolean interpolateOwnScale =
+            PREFS.getBoolean(INTERPOLATE, false);
 
     private ChartPreferences() {
         throw new AssertionError("Utility class must not be instantiated");
@@ -209,6 +214,41 @@ public final class ChartPreferences {
 
         PREFS.putInt(WINDOW, wanted);
         announce();
+    }
+
+    /**
+     * @return whether an indicator on a LARGER scale slopes between its steps
+     *
+     * <p><b>Off, and it used to be on.</b> An indicator on its own scale can
+     * only answer with the last CLOSED bar of that scale -- the obvious
+     * alternative reads the future, which is what {@code OwnScale} exists to
+     * prevent -- so a five-minute average on a chart of minutes changes once
+     * every five bars, in steps.</p>
+     *
+     * <p>Sloping between two steps removes the staircase and costs a second
+     * lag: the line leaves the previous value at the instant the new one
+     * becomes knowable and only ARRIVES at it a whole coarse bar later.
+     * Measured on a rising minute series with a five-minute average: without
+     * this, minute 20 already shows the value that closed there; with it, that
+     * value is only reached at minute 25. Two coarse bars between what the
+     * chart draws and what a platform showing the forming bar draws, and the
+     * second one bought nothing but smoothness.</p>
+     *
+     * <p>A setting of the chart and not of each indicator, because it is one
+     * question -- how a coarser scale is drawn on a finer one -- and it had
+     * three answers, one per indicator, each in its own dialog.</p>
+     */
+    public static boolean interpolateOwnScale() {
+        return interpolateOwnScale;
+    }
+
+    public static void setInterpolateOwnScale(boolean slope) {
+        if (interpolateOwnScale != slope) {
+            interpolateOwnScale = slope;
+
+            PREFS.putBoolean(INTERPOLATE, slope);
+            announce();
+        }
     }
 
     /**

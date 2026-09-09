@@ -322,7 +322,7 @@ class RegressionChannelTest {
         first.setFallingFill(java.awt.Color.RED);
         first.setFallingOpacity(15);
         first.setOwnPeriod("5m");
-        first.setInterpolated(false);
+
         first.setDeviationLevels(java.util.List.of(
                 new RegressionChannel.Level(1.0, java.awt.Color.RED,
                         MovingAverage.Line.DASHED, 2),
@@ -342,7 +342,7 @@ class RegressionChannelTest {
         assertNull(second.deviationLevels().get(1).colour(), "its colour is still automatic");
 
         assertEquals("5m", second.ownPeriod(), "the scale of its own");
-        assertFalse(second.isInterpolated(), "the interpolation");
+
         assertFalse(second.isCentreShown(), "the hidden centre");
 
         assertTrue(second.isFilledByDirection(), "the directional shading");
@@ -549,7 +549,7 @@ class RegressionChannelTest {
         RegressionChannel channel = new RegressionChannel(3);
 
         channel.setOwnPeriod("5m");
-        channel.setInterpolated(sloped);
+br.com.jorge.reis.endeavourneo.ui.chart.ChartPreferences.setInterpolateOwnScale(sloped);
         channel.calculate(minutes());
 
         paint(channel, viewportOver(0, 30));
@@ -630,5 +630,17 @@ class RegressionChannelTest {
         assertEquals(25.0, channel.slope(), EXACT,
                 "the scale was chosen with the chart already open and nothing changed until "
                         + "the next series arrived");
+    }
+
+    /**
+     * Devolve o ajuste ao padrão.
+     *
+     * <p>É um ajuste do gráfico, e portanto estático: um teste que o liga e não
+     * o desliga muda o resultado do teste seguinte, e de uma classe que nem
+     * sabe que ele existe. A suíte inteira roda numa JVM só.</p>
+     */
+    @org.junit.jupiter.api.AfterEach
+    void putTheSettingBack() {
+        br.com.jorge.reis.endeavourneo.ui.chart.ChartPreferences.setInterpolateOwnScale(false);
     }
 }

@@ -175,7 +175,14 @@ public final class MovingAverage implements Overlay {
      * five-minute bars is a staircase, and the steps are an artefact of the
      * drawing rather than anything the market did.</p>
      */
-    private boolean interpolate = true;
+    // The per-indicator switch is gone, and with it three copies of one
+    // question. Whether a coarser scale is drawn in steps or sloped between
+    // them is a property of the CHART, not of the average that happens to be on
+    // it -- two indicators on the same chart answering it differently is not a
+    // thing anybody wants, and it was three dialogs to change one mind.
+    //
+    // ChartPreferences.interpolateOwnScale, and it is off by default: the
+    // reference product draws these as a staircase.
 
     /**
      * The line, one value per bar.
@@ -285,13 +292,6 @@ public final class MovingAverage implements Overlay {
         this.ownPeriod = code == null || code.isBlank() ? null : code.trim();
     }
 
-    public boolean isInterpolated() {
-        return interpolate;
-    }
-
-    public void setInterpolated(boolean value) {
-        this.interpolate = value;
-    }
 
     public int thickness() {
         return thickness;
@@ -436,7 +436,7 @@ public final class MovingAverage implements Overlay {
         // version that reads the future.
         OwnScale.map(series, coarse, slow, into);
 
-        if (interpolate) {
+        if (br.com.jorge.reis.endeavourneo.ui.chart.ChartPreferences.interpolateOwnScale()) {
             OwnScale.smooth(series, coarse, slow, into);
         }
     }
@@ -516,7 +516,7 @@ public final class MovingAverage implements Overlay {
         return kind + ";" + source + ";" + line + ";" + thickness + ";"
                 + (colour == null ? "auto" : Integer.toHexString(colour.getRGB() & 0xFFFFFF))
                 + ";" + (ownPeriod == null ? "chart" : ownPeriod)
-                + ";" + interpolate;
+;
     }
 
     @Override
@@ -559,7 +559,6 @@ public final class MovingAverage implements Overlay {
         }
 
         if (fields.length > 6) {
-            setInterpolated(Boolean.parseBoolean(fields[6]));
         }
     }
 

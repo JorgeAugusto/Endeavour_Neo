@@ -71,8 +71,6 @@ public final class RsiDialog extends JDialog {
 
     private final JButton periodButton = new JButton();
 
-    private final JCheckBox interpolate =
-            new JCheckBox(Messages.get("overlay.ma.interpolate"));
 
     private transient String periodCode;
 
@@ -99,7 +97,6 @@ public final class RsiDialog extends JDialog {
 
         periodCode = study.ownPeriod();
         ownPeriod.setSelected(periodCode != null);
-        interpolate.setSelected(study.isInterpolated());
 
         pen = new LinePen(this, study.line(), study.colour(), study.width());
 
@@ -170,7 +167,6 @@ public final class RsiDialog extends JDialog {
         Forms.field(panel, row++, Messages.get("overlay.ma.scale"), periodButton);
 
         Forms.group(panel, row++, Messages.get("overlay.ma.painting"));
-        Forms.across(panel, row++, interpolate);
 
         ownPeriod.addActionListener(e -> refreshEnabled());
         periodButton.addActionListener(e -> pickScale());
@@ -195,7 +191,6 @@ public final class RsiDialog extends JDialog {
 
         // Sloping between closed points only means anything when there ARE
         // points of another scale to slope between.
-        interpolate.setEnabled(ownPeriod.isSelected());
     }
 
     // ---------------------------------------------------------------- the end
@@ -226,7 +221,6 @@ public final class RsiDialog extends JDialog {
         study.setPeriod((Integer) period.getValue());
         study.setSmoothing((RelativeStrength.Smoothing) smoothing.getSelectedItem());
         study.setOwnPeriod(ownPeriod.isSelected() ? periodCode : null);
-        study.setInterpolated(interpolate.isSelected());
 
         study.setLine(pen.line());
         study.setColour(pen.colour());

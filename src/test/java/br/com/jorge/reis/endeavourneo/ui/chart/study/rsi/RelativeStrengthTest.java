@@ -84,7 +84,7 @@ class RelativeStrengthTest {
         RelativeStrength rsi = new RelativeStrength(2);
 
         rsi.setOwnPeriod("5m");
-        rsi.setInterpolated(false);
+br.com.jorge.reis.endeavourneo.ui.chart.ChartPreferences.setInterpolateOwnScale(false);
         rsi.calculate(minutes);
 
         // Nothing before the first five-minute bar has closed.
@@ -316,7 +316,7 @@ class RelativeStrengthTest {
         written.setSmoothing(RelativeStrength.Smoothing.SIMPLE);
         written.setColour(new java.awt.Color(0x123456));
         written.setWidth(2.5f);
-        written.setInterpolated(false);
+
         written.setOwnPeriod("5m");
 
         RelativeStrength read = new RelativeStrength(21);
@@ -326,7 +326,7 @@ class RelativeStrengthTest {
         assertEquals(RelativeStrength.Smoothing.SIMPLE, read.smoothing());
         assertEquals(new java.awt.Color(0x123456), read.colour());
         assertEquals(2.5f, read.width());
-        assertFalse(read.isInterpolated(), "the interpolation flag came back on");
+
         assertEquals("5m", read.ownPeriod(), "the scale is what tells two of them apart");
     }
 
@@ -349,5 +349,17 @@ class RelativeStrengthTest {
         assertNotEquals(at(over(series, 5, RelativeStrength.Smoothing.CLASSIC), 11),
                 at(over(series, 5, RelativeStrength.Smoothing.SIMPLE), 11),
                 "the two kinds produced the same line, so one of them is not implemented");
+    }
+
+    /**
+     * Devolve o ajuste ao padrão.
+     *
+     * <p>É um ajuste do gráfico, e portanto estático: um teste que o liga e não
+     * o desliga muda o resultado do teste seguinte, e de uma classe que nem
+     * sabe que ele existe. A suíte inteira roda numa JVM só.</p>
+     */
+    @org.junit.jupiter.api.AfterEach
+    void putTheSettingBack() {
+        br.com.jorge.reis.endeavourneo.ui.chart.ChartPreferences.setInterpolateOwnScale(false);
     }
 }

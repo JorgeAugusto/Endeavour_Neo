@@ -451,6 +451,32 @@ public final class StudyStack extends JPanel {
     }
 
     /**
+     * Told when a drawing setting changes, so the studies follow it.
+     *
+     * <p>The price chart has the same listener, and for the same reason: {@code
+     * interpolateOwnScale} decides what {@code calculate} produces, so a
+     * repaint of the old numbers is not an answer. A study on its own scale
+     * lives here and not there, and a setting that reached one of the two would
+     * be a chart where the average obeys and the oscillator under it does
+     * not.</p>
+     */
+    private final transient Runnable followDrawing = this::recalculate;
+
+    @Override
+    public void addNotify() {
+        super.addNotify();
+
+        br.com.jorge.reis.endeavourneo.ui.chart.ChartPreferences.listen(followDrawing);
+    }
+
+    @Override
+    public void removeNotify() {
+        br.com.jorge.reis.endeavourneo.ui.chart.ChartPreferences.forget(followDrawing);
+
+        super.removeNotify();
+    }
+
+    /**
      * Recomputes every study against the chart's current bars.
      *
      * <p>Called when the series is replaced -- a different segment, a replay

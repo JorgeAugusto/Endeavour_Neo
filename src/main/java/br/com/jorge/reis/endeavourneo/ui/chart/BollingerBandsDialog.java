@@ -94,7 +94,6 @@ public final class BollingerBandsDialog extends JDialog {
 
     private final JButton periodButton = new JButton();
 
-    private final JCheckBox interpolate = new JCheckBox(Messages.get("overlay.ma.interpolate"));
 
     private transient String periodCode;
 
@@ -272,13 +271,11 @@ public final class BollingerBandsDialog extends JDialog {
         // Set before the field is laid out: field() freezes the height it
         // measures, and an empty button measures almost nothing.
         ownPeriod.setSelected(periodCode != null);
-        interpolate.setSelected(bands.isInterpolated());
         refreshPeriod();
 
         Forms.field(panel, 2, Messages.get("overlay.ma.scale"), periodButton);
 
         Forms.group(panel, 3, Messages.get("overlay.ma.painting"));
-        Forms.across(panel, 4, interpolate);
 
         // TICKING IT ASKS. Ticked with no scale chosen, `periodCode` stayed null
         // and apply() wrote null -- so the indicator went back to following the
@@ -325,7 +322,6 @@ public final class BollingerBandsDialog extends JDialog {
         boolean own = ownPeriod.isSelected();
 
         periodButton.setEnabled(own);
-        interpolate.setEnabled(own);
         periodButton.setText(periodCode == null
                 ? Messages.get("overlay.ma.chooseScale") : periodCode);
     }
@@ -377,7 +373,6 @@ public final class BollingerBandsDialog extends JDialog {
         bands.setFillColour(chosenFill);
         bands.setOpacity(opacity.getValue());
         bands.setOwnPeriod(ownPeriod.isSelected() ? periodCode : null);
-        bands.setInterpolated(interpolate.isSelected());
     }
 
     private void pick(boolean band, boolean shading) {

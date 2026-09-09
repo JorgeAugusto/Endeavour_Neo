@@ -178,13 +178,6 @@ public final class BollingerBands implements Overlay {
         basis.setOwnPeriod(code);
     }
 
-    public boolean isInterpolated() {
-        return basis.isInterpolated();
-    }
-
-    public void setInterpolated(boolean value) {
-        basis.setInterpolated(value);
-    }
 
     public double upperDeviations() {
         return upperDeviations;
@@ -445,7 +438,7 @@ public final class BollingerBands implements Overlay {
         OwnScale.map(series, coarse, slowMiddle, middle);
         OwnScale.map(series, coarse, slowLower, lower);
 
-        if (isInterpolated()) {
+        if (br.com.jorge.reis.endeavourneo.ui.chart.ChartPreferences.interpolateOwnScale()) {
             OwnScale.smooth(series, coarse, slowUpper, upper);
             OwnScale.smooth(series, coarse, slowMiddle, middle);
             OwnScale.smooth(series, coarse, slowLower, lower);
@@ -602,7 +595,6 @@ public final class BollingerBands implements Overlay {
         pairs.put("fillColour", hex(fillColour));
         pairs.put("opacity", String.valueOf(opacity));
         pairs.put("scale", ownPeriod() == null ? "chart" : ownPeriod());
-        pairs.put("interpolate", String.valueOf(isInterpolated()));
 
         List<String> written = new ArrayList<>(pairs.size());
 
@@ -645,7 +637,6 @@ public final class BollingerBands implements Overlay {
         String scale = pairs.get("scale");
 
         setOwnPeriod(scale == null || "chart".equals(scale) ? null : scale);
-        setInterpolated(flagOf(pairs.get("interpolate"), isInterpolated()));
     }
 
     private static String hex(Color value) {

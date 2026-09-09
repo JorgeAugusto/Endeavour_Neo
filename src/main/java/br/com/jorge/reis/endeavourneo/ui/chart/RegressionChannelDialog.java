@@ -123,7 +123,6 @@ public final class RegressionChannelDialog extends JDialog {
 
     private final JButton periodButton = new JButton();
 
-    private final JCheckBox interpolate = new JCheckBox(Messages.get("overlay.ma.interpolate"));
 
     private transient String periodCode;
 
@@ -357,13 +356,11 @@ public final class RegressionChannelDialog extends JDialog {
         // Set before the field is laid out: field() freezes the height it
         // measures, and an empty button measures almost nothing.
         ownPeriod.setSelected(periodCode != null);
-        interpolate.setSelected(channel.isInterpolated());
         refreshPeriod();
 
         Forms.field(panel, 2, Messages.get("overlay.ma.scale"), periodButton);
 
         Forms.group(panel, 3, Messages.get("overlay.ma.painting"));
-        Forms.across(panel, 4, interpolate);
 
         // TICKING IT ASKS, the way the other two dialogs do. Ticked with no
         // scale chosen, the code stayed null and the indicator went back to
@@ -613,7 +610,6 @@ public final class RegressionChannelDialog extends JDialog {
         boolean own = ownPeriod.isSelected();
 
         periodButton.setEnabled(own);
-        interpolate.setEnabled(own);
         periodButton.setText(periodCode == null
                 ? Messages.get("overlay.ma.chooseScale") : periodCode);
     }
@@ -699,7 +695,6 @@ public final class RegressionChannelDialog extends JDialog {
         channel.setFallingFill(chosenFalling);
         channel.setFallingOpacity(fallingOpacity.getValue());
         channel.setOwnPeriod(ownPeriod.isSelected() ? periodCode : null);
-        channel.setInterpolated(interpolate.isSelected());
     }
 
     private void pick(boolean shading) {

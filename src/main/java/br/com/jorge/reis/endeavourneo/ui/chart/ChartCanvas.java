@@ -463,8 +463,28 @@ public final class ChartCanvas extends JComponent {
     /** Kept so it can be removed again: see addNotify and removeNotify. */
     private final transient Runnable followRuler = this::followGlobalMode;
 
-    /** Kept so it can be removed again: see addNotify and removeNotify. */
-    private final transient Runnable followDrawing = this::repaint;
+    /**
+     * What to do when a drawing setting changes.
+     *
+     * <p>Kept in a field so it can be removed again: see addNotify and
+     * removeNotify.</p>
+     *
+     * <p><b>Recalculate, not just repaint</b>, and it used to be just repaint.
+     * Every setting it was written for -- the grid, the day line, hollow
+     * candles -- is read while painting, so a repaint was the whole of the
+     * answer. {@code interpolateOwnScale} is not: it decides how an indicator
+     * on a larger scale is turned into one value per bar, which happens in
+     * {@code calculate}. Ticking it and getting a repaint of the same numbers
+     * is a setting that appears to do nothing until something else forces a
+     * recalculation -- and then works, which is worse.</p>
+     */
+    private final transient Runnable followDrawing = () -> {
+        for (Overlay each : overlays) {
+            each.calculate(series);
+        }
+
+        repaint();
+    };
 
     /** Told when the mode changes, so a menu can tick the right entry. */
     private transient Runnable onModeChanged = () -> { };
