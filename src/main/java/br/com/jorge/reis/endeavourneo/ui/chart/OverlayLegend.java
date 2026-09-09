@@ -673,6 +673,22 @@ public final class OverlayLegend extends JComponent {
                 return;
             }
 
+            // The zigzag has a tie rule, which is a real choice and not a
+            // detail -- the two answers differ on a tenth of the pivots -- and
+            // a dialog of bare spinners has nowhere to put it.
+            if (overlay instanceof br.com.jorge.reis.endeavourneo.ui.chart.overlay
+                    .TopsAndBottoms pivots) {
+
+                if (TopsAndBottomsDialog.edit(owner, pivots) != null) {
+                    pivots.calculate(canvas.series());
+
+                    canvas.repaint();
+                    canvas.overlaysChanged();
+                }
+
+                return;
+            }
+
             Overlay replacement = InsertOverlayDialog.edit(owner, overlay);
 
             if (replacement != null) {

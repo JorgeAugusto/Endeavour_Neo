@@ -123,6 +123,18 @@ public final class OverlayCatalog {
                             .RegressionChannel.MOST_BARS,
                     br.com.jorge.reis.endeavourneo.ui.chart.overlay.RegressionChannel::new),
 
+            // The wing, and its ceiling is the one the app this came from
+            // offers. One is the most sensitive -- a fractal of three candles,
+            // the same shape as the 1-2-3 and the PFR -- and is what that app
+            // opens with; a longer wing filters noise and delays the
+            // confirmation by exactly as much.
+            new Kind("overlay.pivots",
+                    List.of(br.com.jorge.reis.endeavourneo.ui.chart.overlay
+                            .TopsAndBottoms.WING),
+                    1, br.com.jorge.reis.endeavourneo.ui.chart.overlay
+                            .TopsAndBottoms.MOST_WING,
+                    br.com.jorge.reis.endeavourneo.ui.chart.overlay.TopsAndBottoms::new),
+
             // The ones that live in a panel are in the SAME list. Which of
             // them can go on the price is not decided by which list they are
             // in -- each says so itself, in fitsOnPrice, and the insert dialog
