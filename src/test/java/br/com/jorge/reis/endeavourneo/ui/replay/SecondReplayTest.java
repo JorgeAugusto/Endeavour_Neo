@@ -236,6 +236,68 @@ class SecondReplayTest {
         }
     }
 
+    /**
+     * Enquanto lê, o transporte inteiro está congelado.
+     *
+     * <p><b>Isto é o que fecha a corrida, e é por isso que está aqui.</b>
+     * Depois do conserto acima eu escrevi uma guarda para o caso de o leitor
+     * parar — ou pedir outro dia — no meio de uma leitura, e a sessão chegar
+     * depois e tomar o painel de volta. O teste dela falhava, e falhava por um
+     * motivo melhor que a guarda: <b>os botões estão desabilitados</b>, então
+     * o clique não acontece e o estado é inalcançável. A guarda foi retirada —
+     * código defensivo que não pode ser exercitado é a mesma coisa que uma
+     * correção inerte, e eu passei a semana caçando essas.</p>
+     *
+     * <p>O que segura de verdade é o congelamento, e é ele que este teste
+     * tranca. Se um dia alguém liberar os controles durante a leitura, este
+     * teste cai — e aí a guarda passa a ser necessária, com um caso que a
+     * alcança.</p>
+     */
+    @Test
+    @DisplayName("enquanto le, o transporte inteiro fica congelado")
+    void whileItReadsEverythingIsFrozen(@TempDir Path folder) throws Exception {
+        assumeFalse(GraphicsEnvironment.isHeadless(), "no graphics environment");
+
+        ReplayBase.at(folder.resolve("data"), DAY);
+
+        Settings.workspace().put("replay.from", DAY.toString());
+        Settings.workspace().put("replay.to", DAY.toString());
+
+        AtomicReference<ReplayPanel> made = new AtomicReference<>();
+
+        try {
+            onEdt(() -> {
+                ReplayPanel panel = new ReplayPanel();
+
+                panel.setSize(460, 280);
+                panel.doLayout();
+
+                made.set(panel);
+            });
+
+            ReplayPanel panel = made.get();
+
+            onEdt(() -> {
+                button(panel, "replay.request").doClick();
+
+                // No mesmo turno da fila: o worker já foi disparado e o done()
+                // dele não pode ter rodado, porque roda aqui.
+                assertFalse(button(panel, "replay.stop").isEnabled(),
+                        "stop was live while the session was being read, so the reader can "
+                                + "end a build in flight -- and the session it built arrives "
+                                + "afterwards to a transport that was stopped");
+                assertFalse(button(panel, "replay.request").isEnabled(),
+                        "another day could be asked for while one was being read");
+            });
+
+            assertTrue(settled(panel), "the session never finished loading");
+        } finally {
+            onEdt(() -> made.get().release());
+
+            ReplayBase.release();
+        }
+    }
+
     /** @return the menu item with that label, anywhere in the bar */
     private static javax.swing.JMenuItem menuItem(javax.swing.JMenuBar bar, String key) {
         String label = br.com.jorge.reis.endeavourneo.platform.Messages.get(key);
