@@ -31,16 +31,23 @@ import javax.swing.JFrame;
  * inside the main window would make that drag cross a boundary the window
  * manager does not let it cross.</p>
  *
- * <p><b>Hidden rather than disposed, and the session ends anyway.</b> The
- * window object survives so reopening the transport is instant and keeps
- * where it was on screen; what does NOT survive is the replay. Closing it
- * releases the session and gives every chart back its own data -- the
- * listener below says why, and this paragraph used to say the opposite: that
- * the session survived a close.</p>
+ * <p><b>Disposed on close, and it used to be hidden.</b> Closing has to end
+ * the replay -- charts left frozen on a day that stopped playing, under a title
+ * still claiming a replay, would each need closing too -- and the release was
+ * hung on {@code windowClosed}, which {@code HIDE_ON_CLOSE} never fires. So
+ * pressing the X hid the transport and left everything running: the session's
+ * 40 ms Timer still walking the market, the tick files still open, the charts
+ * still frozen, and no way back to any of it.</p>
  *
- * <p>Which is the right behaviour, and worth stating rather than leaving to
- * be discovered: charts left frozen on a day that stopped playing, under a
- * title still claiming a replay, would each need closing too.</p>
+ * <p>Reported as "ao fechar a janela não está parando, é pra interromper tudo".
+ * The same trap {@code SeriesWindow} was caught in, and for the same reason:
+ * {@code HIDE_ON_CLOSE} is what a window does by default and it reads like
+ * closing.</p>
+ *
+ * <p>Nothing is lost by disposing. Reopening builds the transport again <b>in
+ * its initial state -- a day to choose and a play to press</b>, which is what
+ * closing it should mean, and it lands in the same place because the position
+ * is worked out from the owner rather than remembered.</p>
  *
  * <p><b>Above everything, and not resizable.</b> It is a transport, not a view:
  * there is nothing inside it that more room would show more of, and a maximised
@@ -55,7 +62,7 @@ public final class ReplayWindow extends JFrame {
     public ReplayWindow(Window owner) {
         super(Messages.get("replay.title"));
 
-        setDefaultCloseOperation(HIDE_ON_CLOSE);
+        setDefaultCloseOperation(DISPOSE_ON_CLOSE);
 
         ReplayPanel panel = new ReplayPanel();
 
@@ -65,13 +72,12 @@ public final class ReplayWindow extends JFrame {
         // own data. Leaving them frozen on a day that stopped playing, with a
         // title still claiming a replay, would make the charts need closing too.
         //
-        // On windowCLOSED, not windowClosing. Closing fires only when the reader
-        // presses the X; dispose() -- which MainWindow.relaunch calls on every
-        // language change -- fires only closed. Hanging the release on closing
-        // alone left a language switch with the session's 40 ms Timer still
-        // walking the market, the tick files still open, and no reference left
-        // to stop either, because relaunch nulls the field straight after.
-        // windowClosed covers both paths: pressing the X disposes as well.
+        // On windowCLOSED, which now fires on both paths BECAUSE of the line
+        // above. dispose() -- which MainWindow.relaunch calls on every language
+        // change -- has always fired it; pressing the X only started to when
+        // the close operation stopped being HIDE_ON_CLOSE. The comment here
+        // used to claim "pressing the X disposes as well", which was the
+        // assumption the defect lived in.
         addWindowListener(new java.awt.event.WindowAdapter() {
 
             @Override

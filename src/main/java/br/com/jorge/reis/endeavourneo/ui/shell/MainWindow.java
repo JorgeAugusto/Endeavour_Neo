@@ -1156,7 +1156,25 @@ public final class MainWindow extends JFrame {
      */
     private void openReplay() {
         if (replay == null) {
-            replay = new br.com.jorge.reis.endeavourneo.ui.replay.ReplayWindow(this);
+            br.com.jorge.reis.endeavourneo.ui.replay.ReplayWindow window =
+                    new br.com.jorge.reis.endeavourneo.ui.replay.ReplayWindow(this);
+
+            // THE REFERENCE GOES WHEN THE WINDOW DOES. The transport disposes
+            // itself on close, so holding on to it here would mean the next
+            // "Replay" reopened a disposed frame -- and a disposed frame that
+            // is shown again comes back with its components, its listeners and
+            // whatever the reader had typed, which is the opposite of what
+            // closing it is supposed to mean. Dropped here, the next open
+            // builds a new one in its initial state.
+            window.addWindowListener(new java.awt.event.WindowAdapter() {
+
+                @Override
+                public void windowClosed(java.awt.event.WindowEvent e) {
+                    replay = null;
+                }
+            });
+
+            replay = window;
         }
 
         replay.setVisible(true);

@@ -183,7 +183,7 @@ public final class ReplayPanel extends JPanel {
         add(transport(), BorderLayout.CENTER);
 
         request.addActionListener(e -> requestDay());
-        stop.addActionListener(e -> release());
+        stop.addActionListener(e -> endSession());
         play.addActionListener(e -> withSession(ReplaySession::toggle));
         back.addActionListener(e -> withSession(s -> {
             s.pause();
@@ -320,25 +320,49 @@ public final class ReplayPanel extends JPanel {
     /**
      * Ends whatever is playing and gives every chart following it back.
      *
-     * <p>Exactly what closing does, minus the closing. Which is the point: the
-     * reader who has watched a day and wants another one used to have to close
-     * the transport and open it again, throwing away everything typed into
-     * it.</p>
+     * <p>The panel stays usable, which is the whole difference from {@link
+     * #release()} and is why the two are no longer one method. <b>The stop
+     * button called {@code release}</b>, and {@code release} sets a flag that
+     * says "this panel is gone and is never coming back" -- so pressing stop
+     * once poisoned the transport for the rest of its life: the next session
+     * built would be stopped the instant it arrived, by the guard in the
+     * worker's {@code done} that exists for a window that closed mid-build.
+     * The transport sat on the loading bar for ever, and only the FIRST replay
+     * of a session of the application ever worked.</p>
      *
-     * <p>The stop button called this through a private wrapper of one line that
-     * carried its own copy of this paragraph. Two names for the same step, and
-     * the same text in two places to fall out of date apart.</p>
+     * <p>Reported exactly like that: "ao parar o replay e mudar a série ele
+     * fica carregando indefinidamente... só funciona no primeiro replay".</p>
+     *
+     * <p>Which is the point of having it at all: the reader who has watched a
+     * day and wants another one should not have to close the transport and open
+     * it again, throwing away everything typed into it.</p>
      */
-    public void release() {
-        released = true;
-
+    public void endSession() {
         if (session != null) {
             session.forget(refresh);
             session.stop();
             session = null;
-
-            refresh();
         }
+
+        // OUTSIDE the null check. With no session there was nothing to redraw,
+        // which is true of the session and not of the panel: stopping while a
+        // build is in flight leaves the loading bar up, and this is what takes
+        // it down.
+        refresh();
+    }
+
+    /**
+     * The panel is going away for good: end the session and stay ended.
+     *
+     * <p>What a window being disposed does, and what a change of language does
+     * -- it rebuilds the whole shell. The flag is the difference: a session
+     * still being built has nobody to arrive to, and the worker below reads it
+     * to stop what it built instead of adopting it.</p>
+     */
+    public void release() {
+        released = true;
+
+        endSession();
     }
 
     // ------------------------------------------------------------- the pieces
@@ -720,14 +744,18 @@ public final class ReplayPanel extends JPanel {
                         // takes to build -- and it is the one path in this area
                         // where something AutoCloseable is opened and not closed
                         // by whoever opened it.
+                        // Stopped and not adopted -- but the refresh at the
+                        // bottom still runs. It used to `return` from here, and
+                        // that was the second half of the "loads for ever" bug:
+                        // even once the flag stopped being set by the stop
+                        // button, any path that reached this branch left the
+                        // loading bar on screen with nothing coming.
                         built.stop();
+                    } else {
+                        session = built;
 
-                        return;
+                        adopt(session);
                     }
-
-                    session = built;
-
-                    adopt(session);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 } catch (java.util.concurrent.ExecutionException e) {
@@ -862,6 +890,19 @@ public final class ReplayPanel extends JPanel {
         Object selected = speed.getSelectedItem();
 
         return selected instanceof Integer chosen ? chosen : 1;
+    }
+
+    /**
+     * @return what the drag handle is calling itself
+     *
+     * <p>Package-private beside {@code clockShows} and {@code chosenSpeed}, and
+     * for the same reason: it is the one thing on the transport that says
+     * whether there IS a session. A test can find the progress bar by its type;
+     * the handle is a {@code JLabel} among several, and picking it by position
+     * would be a test of the layout.</p>
+     */
+    String handleSays() {
+        return chip.getText();
     }
 
     private void withSession(java.util.function.Consumer<ReplaySession> what) {
