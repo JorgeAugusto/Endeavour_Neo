@@ -84,6 +84,27 @@ public final class OwnScale {
      * @param into one value per chart bar; filled with NaN before the first close
      */
     public static void map(PriceSeries fine, PriceSeries coarse, double[] slow, double[] into) {
+        map(fine, coarse, slow, into, 0);
+    }
+
+    /**
+     * The same, over a window of the chart's bars rather than all of them.
+     *
+     * @param from the chart bar {@code into[0]} answers for
+     *
+     * <p>For an indicator that only ever draws what is on screen. Filling an
+     * array the length of the whole series -- 825.000 bars, one per line, per
+     * frame -- to read a couple of thousand of them is the shape of waste that
+     * this class's own comments keep finding.</p>
+     *
+     * <p><b>The pointer still starts at the beginning.</b> It has to: which
+     * coarse bar had closed at bar {@code from} is a question about everything
+     * before it, and starting the walk at {@code from} would answer "none". It
+     * is one pass over the coarse series, which is the small one.</p>
+     */
+    public static void map(PriceSeries fine, PriceSeries coarse, double[] slow,
+            double[] into, int from) {
+
         if (coarse.size() == 0) {
             java.util.Arrays.fill(into, Double.NaN);
 
@@ -92,13 +113,15 @@ public final class OwnScale {
 
         int closed = -1;
 
-        for (int i = 0; i < into.length; i++) {
+        for (int i = 0; i < from + into.length; i++) {
             // Walk forward while the NEXT coarse bar has already begun -- which
             // is what makes the one before it closed. A running pointer rather
             // than a search per bar: this walks each series once.
             closed = advance(fine, coarse, closed, i);
 
-            into[i] = closed < 0 ? Double.NaN : slow[closed];
+            if (i >= from) {
+                into[i - from] = closed < 0 ? Double.NaN : slow[closed];
+            }
         }
     }
 
@@ -145,6 +168,17 @@ public final class OwnScale {
      * and still says nothing the market had not already said.</p>
      */
     public static void smooth(PriceSeries fine, PriceSeries coarse, double[] slow, double[] into) {
+        smooth(fine, coarse, slow, into, 0);
+    }
+
+    /**
+     * The same, over a window of the chart's bars. See {@link #map(PriceSeries,
+     * PriceSeries, double[], double[], int)}.
+     *
+     * @param from the chart bar {@code into[0]} answers for
+     */
+    public static void smooth(PriceSeries fine, PriceSeries coarse, double[] slow,
+            double[] into, int from) {
         // A RUNNING POINTER, the way map does it, and not a binary search per
         // bar. A search is the right answer to "which bar was closed at this
         // instant" asked once; asked once per bar it walks the coarse series
@@ -154,10 +188,12 @@ public final class OwnScale {
         // moves forward.
         int closed = -1;
 
-        for (int i = 0; i < into.length; i++) {
+        for (int i = 0; i < from + into.length; i++) {
             closed = advance(fine, coarse, closed, i);
 
-            if (closed < 1 || !Double.isFinite(slow[closed]) || !Double.isFinite(slow[closed - 1])) {
+            if (i < from || closed < 1
+                    || !Double.isFinite(slow[closed]) || !Double.isFinite(slow[closed - 1])) {
+
                 continue;
             }
 
@@ -187,7 +223,7 @@ public final class OwnScale {
 
             double along = Math.max(0.0, Math.min(1.0, (fine.timeAt(i) - shut) / (double) span));
 
-            into[i] = slow[closed - 1] + (slow[closed] - slow[closed - 1]) * along;
+            into[i - from] = slow[closed - 1] + (slow[closed] - slow[closed - 1]) * along;
         }
     }
 }

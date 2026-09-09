@@ -658,6 +658,21 @@ public final class OverlayLegend extends JComponent {
                 return;
             }
 
+            // And the channel has more again: a pen per pair of edges, as many
+            // pairs as the reader asks for, and a scale of its own.
+            if (overlay instanceof br.com.jorge.reis.endeavourneo.ui.chart.overlay
+                    .RegressionChannel channel) {
+
+                if (RegressionChannelDialog.edit(owner, channel) != null) {
+                    channel.calculate(canvas.series());
+
+                    canvas.repaint();
+                    canvas.overlaysChanged();
+                }
+
+                return;
+            }
+
             Overlay replacement = InsertOverlayDialog.edit(owner, overlay);
 
             if (replacement != null) {

@@ -18,6 +18,8 @@
 package br.com.jorge.reis.endeavourneo.ui.chart.overlay;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -99,8 +101,6 @@ class RegressionChannelTest {
     void thearithmeticMatchesTheHandComputation() {
         RegressionChannel channel = new RegressionChannel(5);
 
-        channel.setDeviations(1.0);
-
         RegressionChannel.Fit fit = channel.fitAt(closing(10, 12, 13, 15, 20), 4);
 
         assertNotNull(fit, "there were five bars and it asked for five");
@@ -123,7 +123,6 @@ class RegressionChannelTest {
     void theExtremeIsWiderAndLopsided() {
         RegressionChannel channel = new RegressionChannel(5);
 
-        channel.setDeviations(1.0);
         channel.setWidth(RegressionChannel.Width.EXTREME);
 
         RegressionChannel.Fit fit = channel.fitAt(closing(10, 12, 13, 15, 20), 4);
@@ -139,16 +138,74 @@ class RegressionChannelTest {
     }
 
     @Test
-    @DisplayName("os desvios multiplicam a largura, e nao a reta")
-    void theDeviationsWidenOnlyTheEdges() {
+    @DisplayName("um nivel vale para os dois lados, e nao mexe na reta")
+    void alevelMirrorsItselfAndLeavesTheCentreAlone() {
         RegressionChannel channel = new RegressionChannel(5);
 
-        channel.setDeviations(2.0);
+        channel.setDeviationLevels(java.util.List.of(new RegressionChannel.Level(2.0)));
+        channel.calculate(closing(10, 12, 13, 15, 20));
 
-        RegressionChannel.Fit fit = channel.fitAt(closing(10, 12, 13, 15, 20), 4);
+        paint(channel, viewportOver(0, 5));
 
-        assertEquals(2.0 * Math.sqrt(1.02), fit.above(), EXACT, "two sigmas");
-        assertEquals(18.6, fit.newest(), EXACT, "the centre moved with the deviations");
+        double[] here = channel.valueAt(4);
+
+        // [centro, superior, inferior], que e a ordem que colours() promete.
+        assertEquals(3, here.length, "a centre and one pair is three lines");
+        assertEquals(18.6, here[0], EXACT, "the centre moved with the level");
+        assertEquals(18.6 + 2.0 * Math.sqrt(1.02), here[1], EXACT, "two sigmas above");
+        assertEquals(18.6 - 2.0 * Math.sqrt(1.02), here[2], EXACT, "two sigmas below");
+
+        // O NUMERO E UM SO: a distancia acima e a de abaixo saem do mesmo 2,
+        // que e o que foi pedido -- "sempre colocando apenas um valor tipo 2,
+        // e ele replica para -2 tbm".
+        assertEquals(here[1] - here[0], here[0] - here[2], EXACT,
+                "one number gave two different distances");
+    }
+
+    @Test
+    @DisplayName("varios niveis saem ordenados, e cada um com o seu traco")
+    void severalLevelsComeOutInOrder() {
+        RegressionChannel channel = new RegressionChannel(5);
+
+        // Fora de ordem de proposito: quem desenha conta com o mais largo por
+        // ultimo, porque e entre ele que o preenchimento vai.
+        channel.setDeviationLevels(java.util.List.of(
+                new RegressionChannel.Level(3.0, java.awt.Color.RED,
+                        MovingAverage.Line.DASHED, 2),
+                new RegressionChannel.Level(1.0, java.awt.Color.BLUE,
+                        MovingAverage.Line.SOLID, 1)));
+
+        assertEquals(1.0, channel.deviationLevels().get(0).factor(), EXACT, "the narrow one");
+        assertEquals(3.0, channel.deviationLevels().get(1).factor(), EXACT, "the wide one");
+
+        assertEquals(5, channel.colours().size(), "a centre and two pairs is five lines");
+        assertEquals(5, channel.strokes().size(), "and five pens");
+
+        assertEquals(java.awt.Color.BLUE, channel.colours().get(1), "the narrow pair, above");
+        assertEquals(java.awt.Color.BLUE, channel.colours().get(2), "the narrow pair, below");
+        assertEquals(java.awt.Color.RED, channel.colours().get(3), "the wide pair, above");
+        assertEquals(java.awt.Color.RED, channel.colours().get(4), "the wide pair, below");
+
+        assertNotEquals(channel.strokes().get(1), channel.strokes().get(3),
+                "both pairs are drawn with the same pen, so the per-level style does nothing");
+    }
+
+    @Test
+    @DisplayName("a reta escondida some sem encurtar a lista")
+    void thehiddenCentreKeepsItsPlace() {
+        RegressionChannel channel = new RegressionChannel(5);
+
+        channel.calculate(closing(10, 12, 13, 15, 20));
+        channel.setCentreShown(false);
+
+        paint(channel, viewportOver(0, 5));
+
+        double[] here = channel.valueAt(4);
+
+        assertEquals(3, here.length,
+                "the list got shorter, so the legend pairs every colour with the wrong line");
+        assertTrue(Double.isNaN(here[0]), "the centre was drawn while hidden");
+        assertTrue(Double.isFinite(here[1]), "the edges went with it");
     }
 
     @Test
@@ -206,16 +263,16 @@ class RegressionChannelTest {
 
         // Antes de pintar não há ajuste nenhum, e o indicador diz isso em vez
         // de inventar uma reta.
-        assertTrue(Double.isNaN(channel.valueAt(4)[1]),
+        assertTrue(Double.isNaN(channel.valueAt(4)[0]),
                 "it answered before anything had been fitted");
 
         paint(channel, viewportOver(0, 5));
 
         // A janela é 0..4, e é exatamente o caso da conta à mão.
-        assertEquals(18.6, channel.valueAt(4)[1], EXACT, "the centre at the anchor");
-        assertEquals(9.4, channel.valueAt(0)[1], EXACT, "the centre at the oldest bar");
+        assertEquals(18.6, channel.valueAt(4)[0], EXACT, "the centre at the anchor");
+        assertEquals(9.4, channel.valueAt(0)[0], EXACT, "the centre at the oldest bar");
 
-        assertTrue(Double.isNaN(channel.valueAt(5)[1]),
+        assertTrue(Double.isNaN(channel.valueAt(5)[0]),
                 "the line was carried past the bars it was fitted to, which is a forecast "
                         + "and not what this indicator does");
 
@@ -223,9 +280,9 @@ class RegressionChannelTest {
         paint(channel, viewportOver(5, 5));
 
         assertEquals(5, channel.fitAt(series, 9).first(), "the window moved with the view");
-        assertTrue(Double.isNaN(channel.valueAt(4)[1]),
+        assertTrue(Double.isNaN(channel.valueAt(4)[0]),
                 "the old window survived the scroll");
-        assertTrue(Double.isFinite(channel.valueAt(9)[1]),
+        assertTrue(Double.isFinite(channel.valueAt(9)[0]),
                 "the new anchor has no value");
     }
 
@@ -248,18 +305,23 @@ class RegressionChannelTest {
     }
 
     @Test
-    @DisplayName("a aparencia da a volta inteira")
+    @DisplayName("a aparencia da a volta inteira, niveis inclusive")
     void theappearanceSurvivesTheRoundTrip() {
         RegressionChannel first = new RegressionChannel(120);
 
         first.setWidth(RegressionChannel.Width.EXTREME);
-        first.setDeviations(1.75);
-        first.setLine(MovingAverage.Line.DASHED);
-        first.setThickness(3);
+        first.setCentreShown(false);
+        first.setCentreLine(MovingAverage.Line.DASHED);
+        first.setCentreThickness(3);
         first.setColour(new java.awt.Color(0x11, 0x22, 0x33));
-        first.setCentreThickness(2);
         first.setFilled(true);
         first.setOpacity(40);
+        first.setOwnPeriod("5m");
+        first.setInterpolated(false);
+        first.setDeviationLevels(java.util.List.of(
+                new RegressionChannel.Level(1.0, java.awt.Color.RED,
+                        MovingAverage.Line.DASHED, 2),
+                new RegressionChannel.Level(2.5, null, MovingAverage.Line.SOLID, 4)));
 
         RegressionChannel second = new RegressionChannel(120);
 
@@ -267,8 +329,172 @@ class RegressionChannelTest {
 
         assertEquals(first.appearance(), second.appearance(),
                 "an indicator restored from a layout is not the one that was stored");
-        assertEquals(RegressionChannel.Width.EXTREME, second.width(), "the width criterion");
-        assertEquals(1.75, second.deviations(), EXACT, "the deviations");
-        assertTrue(second.isFilled(), "the shading");
+
+        assertEquals(2, second.deviationLevels().size(), "the levels did not survive");
+        assertEquals(1.0, second.deviationLevels().get(0).factor(), EXACT, "the first level");
+        assertEquals(java.awt.Color.RED, second.deviationLevels().get(0).colour(), "its colour");
+        assertEquals(4, second.deviationLevels().get(1).thickness(), "the second's thickness");
+        assertNull(second.deviationLevels().get(1).colour(), "its colour is still automatic");
+
+        assertEquals("5m", second.ownPeriod(), "the scale of its own");
+        assertFalse(second.isInterpolated(), "the interpolation");
+        assertFalse(second.isCentreShown(), "the hidden centre");
+    }
+
+    @Test
+    @DisplayName("a aparencia nao carrega os separadores do arquivo de layout")
+    void theappearanceCannotBreakTheLayoutFile() {
+        RegressionChannel channel = new RegressionChannel(90);
+
+        channel.setDeviationLevels(java.util.List.of(new RegressionChannel.Level(1.5),
+                new RegressionChannel.Level(2.0), new RegressionChannel.Level(3.0)));
+
+        // A barra vertical separa os campos de uma linha do layout e a virgula
+        // separa os parametros. Qualquer um dos dois aqui dentro parte a linha.
+        assertFalse(channel.appearance().contains("|"),
+                "the appearance carries the layout's own field separator: "
+                        + channel.appearance());
+        assertFalse(channel.appearance().contains(","),
+                "the appearance carries the parameter separator: " + channel.appearance());
+    }
+
+    // ------------------------------------------------- a escala propria
+
+    /**
+     * Trinta barras de um minuto, e as de cinco NAO ficam numa reta.
+     *
+     * <p><b>É esta a parte que importa, e a primeira versão errou.</b> A série
+     * subia um por minuto, então qualquer janela de três barras grandes dava a
+     * mesma reta — e a prova de dentes saiu verde: ancorar na barra que ainda
+     * estava se formando, que é exatamente o defeito que estes testes existem
+     * para pegar, não mudava número nenhum. Uma fixture que é uma reta não
+     * consegue ver uma janela deslocada.</p>
+     *
+     * <p>Com o degrau, os fechamentos de cinco minutos são
+     * {@code 10, 20, 30, 70, 80, 90} — e cada janela de três dá uma reta
+     * diferente.</p>
+     */
+    private static PriceSeries minutes() {
+        return new PriceSeries() {
+
+            @Override
+            public int size() {
+                return 30;
+            }
+
+            @Override
+            public long timeAt(int index) {
+                return java.time.LocalDateTime.of(2026, 9, 2, 9, 0).plusMinutes(index)
+                        .atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+            }
+
+            @Override
+            public double openAt(int index) {
+                return closeAt(index);
+            }
+
+            @Override
+            public double highAt(int index) {
+                return closeAt(index);
+            }
+
+            @Override
+            public double lowAt(int index) {
+                return closeAt(index);
+            }
+
+            @Override
+            public double closeAt(int index) {
+                return (index + 1) * 2.0 + (index < 15 ? 0.0 : 30.0);
+            }
+        };
+    }
+
+    /** @return a channel of three five-minute bars, painted over the whole series */
+    private static RegressionChannel onFiveMinutes(boolean sloped) {
+        RegressionChannel channel = new RegressionChannel(3);
+
+        channel.setOwnPeriod("5m");
+        channel.setInterpolated(sloped);
+        channel.calculate(minutes());
+
+        paint(channel, viewportOver(0, 30));
+
+        return channel;
+    }
+
+    /**
+     * Nada é desenhado antes de a primeira barra grande ter FECHADO.
+     *
+     * <p>É a armadilha que o {@code OwnScale} existe para escrever uma vez só:
+     * a barra de cinco minutos que contém 09:03 só fecha às 09:05, e usá-la
+     * antes disso é ler o futuro.</p>
+     */
+    @Test
+    @DisplayName("na escala propria, nada aparece antes de a barra grande fechar")
+    void onitsOwnScaleNothingComesBeforeTheClose() {
+        RegressionChannel channel = onFiveMinutes(false);
+
+        for (int bar = 0; bar < 10; bar++) {
+            assertTrue(Double.isNaN(channel.valueAt(bar)[0]),
+                    "bar " + bar + " drew a channel fitted over five-minute bars that had "
+                            + "not all closed yet, which is reading the future");
+        }
+    }
+
+    /**
+     * O ajuste é o das barras grandes, e ancorado na última FECHADA.
+     *
+     * <p>Conta à mão. Os fechamentos de cinco minutos são
+     * {@code 10, 20, 30, 70, 80, 90}, e às 09:29 a última barra grande fechada
+     * é a quinta — a sexta só fecha às 09:30. A janela de três termina nela:
+     * {@code 30, 70, 80} em x de 0 a 2.</p>
+     *
+     * <pre>
+     *   Sx=3  Sy=180  Sxy=230  Sxx=5
+     *   inclinação = (3·230 − 3·180) / (3·5 − 3²) = 150/6 = 25
+     *   intercepto = (180 − 25·3)/3 = 35
+     *   reta       = 35 (barra 2)  60 (barra 3)  85 (barra 4)
+     * </pre>
+     *
+     * <p>Ancorando na barra que ainda se forma — o defeito — a janela vira
+     * {@code 70, 80, 90}, a inclinação vira 10 e a reta na barra 3 vira 70.</p>
+     */
+    @Test
+    @DisplayName("o ajuste e o das barras grandes, ancorado na ultima FECHADA")
+    void onitsOwnScaleTheFitIsTheCoarseOne() {
+        RegressionChannel channel = onFiveMinutes(false);
+
+        assertEquals(25.0, channel.slope(), EXACT,
+                "not the slope of the window that ends at the last CLOSED five-minute bar: "
+                        + "either the fold did not happen, or the anchor is the bar still "
+                        + "forming");
+
+        assertEquals(60.0, channel.valueAt(24)[0], EXACT,
+                "bar 24 is 09:24, and the last five-minute bar closed by then is the fourth, "
+                        + "where the fitted line reads 60");
+    }
+
+    @Test
+    @DisplayName("trocar a escala com o grafico aberto vale no quadro seguinte")
+    void changingTheScaleTakesEffectAtOnce() {
+        RegressionChannel channel = new RegressionChannel(3);
+
+        channel.calculate(minutes());
+
+        paint(channel, viewportOver(0, 30));
+
+        // Nas barras do gráfico: os três últimos fechamentos são 86, 88, 90.
+        assertEquals(2.0, channel.slope(), EXACT, "two points a minute");
+
+        // Sem outro calculate: é o caso real -- o diálogo troca a escala e o
+        // gráfico repinta.
+        channel.setOwnPeriod("5m");
+
+        paint(channel, viewportOver(0, 30));
+
+        assertEquals(25.0, channel.slope(), EXACT,
+                "the scale was chosen with the chart already open and nothing changed until "
+                        + "the next series arrived");
     }
 }

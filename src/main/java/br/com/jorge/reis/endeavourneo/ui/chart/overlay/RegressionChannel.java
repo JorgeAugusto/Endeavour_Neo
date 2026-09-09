@@ -17,24 +17,29 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.chart.overlay;
 
+import br.com.jorge.reis.endeavourneo.domain.market.Aggregation;
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
 import br.com.jorge.reis.endeavourneo.ui.chart.Overlay;
+import br.com.jorge.reis.endeavourneo.ui.chart.OwnScale;
 import br.com.jorge.reis.endeavourneo.ui.chart.Viewport;
 
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.Polygon;
 import java.awt.Stroke;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
  * The linear regression channel: a straight line through the last window, and
- * two edges opened from the residuals around it.
+ * as many mirrored pairs of edges around it as the reader asks for.
  *
  * <h2>What it is, and what it is not</h2>
  *
  * <p>Least squares over the {@code period} closes that end at one bar. The line
- * is the trend; the edges say how far the price usually strays from it.</p>
+ * is the trend; each level opens a pair of edges that many deviations either
+ * side of it.</p>
  *
  * <p><b>The difference from Bollinger is the centre.</b> Bollinger is centred on
  * an average, which is horizontal by nature: in a strong trend the price sits on
@@ -48,6 +53,18 @@ import java.util.List;
  * backwards from its anchor. Which is the standing rule for everything brought
  * over from the reference product: where it ships a drawing tool and an
  * indicator, the indicator is what gets ported.</p>
+ *
+ * <h2>Levels come in pairs, and one number makes both</h2>
+ *
+ * <p>A level is a single number. Two means the pair at two deviations above and
+ * two below, and there is no way to ask for a channel wider on one side than
+ * the other -- because there is no reading in which that means anything: the
+ * residuals are measured around a line that already carries the trend, so the
+ * lopsidedness such a channel would show is the trend, counted twice.</p>
+ *
+ * <p>The one exception is the {@link Width#EXTREME} criterion, where each side
+ * is its own furthest residual. That asymmetry is measured rather than asked
+ * for, which is the whole difference.</p>
  *
  * <h2>Where it is anchored, and why that is not a setting</h2>
  *
@@ -88,29 +105,62 @@ public final class RegressionChannel implements Overlay {
         EXTREME
     }
 
+    /**
+     * One pair of edges, and how it is drawn.
+     *
+     * @param factor how many deviations -- or how many times the furthest
+     *        residual -- this pair sits from the line
+     * @param colour its own, or null to take the indicator's
+     * @param line solid or dashed
+     * @param thickness in pixels, one to eight
+     *
+     * <p>A record, and the list of them is replaced whole rather than edited:
+     * the painting reads it while the dialog is writing.</p>
+     */
+    public record Level(double factor, Color colour, MovingAverage.Line line, int thickness) {
+
+        /** Holds what it is given inside the range the dialog offers. */
+        public Level {
+            factor = Double.isFinite(factor) ? Math.max(0.1, Math.min(factor, 10.0)) : 2.0;
+            line = line == null ? MovingAverage.Line.SOLID : line;
+            thickness = Math.max(1, Math.min(thickness, 8));
+        }
+
+        /** @param factor how far out, in the criterion's units */
+        public Level(double factor) {
+            this(factor, null, MovingAverage.Line.SOLID, 1);
+        }
+    }
+
     /** The window's ceiling, as in the indicator this came from. */
     public static final int MOST_BARS = 400;
 
     /** What it is fitted over when nobody says. */
     public static final int PERIOD = 90;
 
+    /** How many pairs of edges may be asked for. */
+    public static final int MOST_LEVELS = 8;
+
     /** The centre line, in the colour the source draws it. */
     private static final Color CENTRE = new Color(0x00, 0xC8, 0xFF);
 
-    /** The edges, in the source's colour for the main pair. */
+    /** The edges, in the source's colour for its main pair. */
     private static final Color EDGE = new Color(0xFF, 0xFF, 0x00);
 
     private int period;
 
-    private double deviations = 2.0;
-
     private Width width = Width.DEVIATION;
 
-    private Color colour;
+    /**
+     * The pairs, widest last.
+     *
+     * <p>Replaced whole, never edited in place: the painting reads it and the
+     * dialog writes it. Kept sorted so "the outermost pair" -- which is what
+     * the shading fills between -- is simply the last one.</p>
+     */
+    private volatile List<Level> levels = List.of(new Level(2.0));
 
-    private MovingAverage.Line line = MovingAverage.Line.SOLID;
-
-    private int thickness = 1;
+    private boolean showCentre = true;
 
     private Color centreColour;
 
@@ -118,9 +168,24 @@ public final class RegressionChannel implements Overlay {
 
     private int centreThickness = 1;
 
+    private Color colour;
+
     private boolean fill;
 
     private int opacity = 12;
+
+    private Color fillColour;
+
+    /**
+     * The scale it is fitted on, or null to follow the chart.
+     *
+     * <p>A period code as {@code PeriodCatalog} spells it. {@link OwnScale} is
+     * where the rule that makes this honest lives: the fit reads the last
+     * CLOSED bar of the larger scale and never the one still forming.</p>
+     */
+    private String ownPeriod;
+
+    private boolean interpolate = true;
 
     private boolean visible = true;
 
@@ -136,14 +201,20 @@ public final class RegressionChannel implements Overlay {
     private volatile PriceSeries source = PriceSeries.empty();
 
     /**
-     * The last fit, as five numbers: first bar, anchor bar, the line's value at
-     * each end, and the two half-widths.
+     * The same bars folded to {@link #ownPeriod}, or null when it follows the
+     * chart.
      *
-     * <p>Replaced whole, never edited in place, for the reason the arrays in
-     * {@link BollingerBands} are: the painting reads it and a recalculation can
-     * arrive between two reads. Null until the first frame.</p>
+     * <p>Folded in {@code calculate} and not per frame: the fold does not
+     * depend on where the chart is -- only the anchor does -- and folding
+     * 825.000 bars on every movement of the mouse is not a thing to do.</p>
      */
+    private volatile PriceSeries coarse;
+
+    /** The last fit. Replaced whole, never edited. Null until the first frame. */
     private volatile Fit fit;
+
+    /** What the last frame brought down from the larger scale, or null. */
+    private volatile Mapped mapped;
 
     /**
      * One fit of the line over one window.
@@ -152,15 +223,19 @@ public final class RegressionChannel implements Overlay {
      * @param anchor the newest, the one it was fitted to
      * @param oldest the line's value at {@code first}
      * @param newest its value at {@code anchor}
-     * @param above how far the upper edge sits over the line
-     * @param below how far the lower edge sits under it
+     * @param above ONE deviation's worth above the line
+     * @param below one deviation's worth below it
      * @param slope price per bar, positive when it rises
      * @param rSquared how much of the movement the line explains, nought to one
+     *
+     * <p>{@code above} and {@code below} are one unit and not a level's worth:
+     * a level multiplies them. The fit does not know how many pairs are
+     * drawn.</p>
      */
     record Fit(int first, int anchor, double oldest, double newest,
                double above, double below, double slope, double rSquared) {
 
-        /** @return the line's value at that bar, extended beyond the window */
+        /** @return the line's value at that bar */
         double centreAt(int bar) {
             int span = anchor - first;
 
@@ -172,6 +247,14 @@ public final class RegressionChannel implements Overlay {
         }
     }
 
+    /**
+     * What a frame worked out for the chart's bars, from a larger scale.
+     *
+     * @param from the first chart bar {@code lines[n][0]} answers for
+     * @param lines one row per drawn line, in the order {@link #valueAt} returns
+     */
+    private record Mapped(int from, double[][] lines) { }
+
     public RegressionChannel(int period) {
         setPeriod(period);
     }
@@ -179,13 +262,15 @@ public final class RegressionChannel implements Overlay {
     /**
      * @param settings what the catalogue hands over: the period, if anything
      *
-     * <p>The varargs constructor the catalogue's factory needs. One number,
-     * like the bands: the deviations are a setting and not a parameter, because
-     * 1,75 does not survive a list of integers.</p>
+     * <p>The varargs constructor the catalogue's factory needs. One number: the
+     * levels are settings and not parameters, because 1,75 does not survive a
+     * list of integers and because there can be eight of them.</p>
      */
     public RegressionChannel(int... settings) {
         this(settings.length > 0 ? settings[0] : PERIOD);
     }
+
+    // ---------------------------------------------------------- the settings
 
     public int period() {
         return period;
@@ -203,20 +288,54 @@ public final class RegressionChannel implements Overlay {
         this.period = Math.max(2, Math.min(value, MOST_BARS));
     }
 
-    public double deviations() {
-        return deviations;
-    }
-
-    public void setDeviations(double value) {
-        this.deviations = Double.isFinite(value) ? Math.max(0.1, Math.min(value, 10.0)) : 2.0;
-    }
-
     public Width width() {
         return width;
     }
 
     public void setWidth(Width value) {
         this.width = value == null ? Width.DEVIATION : value;
+    }
+
+    /**
+     * @return the pairs of edges, widest last
+     *
+     * <p>Not {@code levels()}: {@link Overlay#levels()} is already a method,
+     * and it means a different thing -- a horizontal line at a fixed VALUE,
+     * which is what a stochastic's twenty and eighty are. These move with the
+     * fit. Two names for two things, rather than one name that has to be read
+     * twice.</p>
+     */
+    public List<Level> deviationLevels() {
+        return levels;
+    }
+
+    /**
+     * @param wanted the pairs to draw; empty leaves the centre on its own
+     *
+     * <p>Sorted and capped here rather than at every call site, and copied: the
+     * list the dialog builds goes on being the dialog's.</p>
+     */
+    public void setDeviationLevels(List<Level> wanted) {
+        if (wanted == null || wanted.isEmpty()) {
+            this.levels = List.of();
+
+            return;
+        }
+
+        List<Level> sorted = new ArrayList<>(
+                wanted.subList(0, Math.min(wanted.size(), MOST_LEVELS)));
+
+        sorted.sort((one, other) -> Double.compare(one.factor(), other.factor()));
+
+        this.levels = List.copyOf(sorted);
+    }
+
+    public boolean isCentreShown() {
+        return showCentre;
+    }
+
+    public void setCentreShown(boolean value) {
+        this.showCentre = value;
     }
 
     public Color chosenColour() {
@@ -235,28 +354,12 @@ public final class RegressionChannel implements Overlay {
         this.centreColour = value;
     }
 
-    public MovingAverage.Line line() {
-        return line;
-    }
-
-    public void setLine(MovingAverage.Line value) {
-        this.line = value == null ? MovingAverage.Line.SOLID : value;
-    }
-
     public MovingAverage.Line centreLine() {
         return centreLine;
     }
 
     public void setCentreLine(MovingAverage.Line value) {
         this.centreLine = value == null ? MovingAverage.Line.SOLID : value;
-    }
-
-    public int thickness() {
-        return thickness;
-    }
-
-    public void setThickness(int value) {
-        this.thickness = Math.max(1, Math.min(value, 8));
     }
 
     public int centreThickness() {
@@ -283,13 +386,47 @@ public final class RegressionChannel implements Overlay {
         this.opacity = Math.max(0, Math.min(value, 100));
     }
 
-    // ------------------------------------------------------------ the numbers
+    /** @return the shading's chosen colour, or null when it follows the edges */
+    public Color chosenFillColour() {
+        return fillColour;
+    }
+
+    public void setFillColour(Color value) {
+        this.fillColour = value;
+    }
+
+    @Override
+    public String ownPeriod() {
+        return ownPeriod;
+    }
 
     /**
-     * @return the slope in price per bar, positive when it rises, or NaN
+     * @param code a period code, or null to follow the chart
      *
-     * <p>Of the fit that is on screen, like everything else this answers.</p>
+     * <p>The fold is redone here and not left to the next {@code calculate}: a
+     * scale chosen with the chart already open has to take effect on the next
+     * frame, not on the next series.</p>
      */
+    public void setOwnPeriod(String code) {
+        this.ownPeriod = code == null || code.isBlank() ? null : code;
+
+        refold(source);
+
+        this.fit = null;
+        this.mapped = null;
+    }
+
+    public boolean isInterpolated() {
+        return interpolate;
+    }
+
+    public void setInterpolated(boolean value) {
+        this.interpolate = value;
+    }
+
+    // ------------------------------------------------------------ the numbers
+
+    /** @return the slope in price per bar, positive when it rises, or NaN */
     public double slope() {
         Fit now = fit;
 
@@ -330,13 +467,13 @@ public final class RegressionChannel implements Overlay {
     /**
      * Fits the line over the window that ends at {@code anchor}.
      *
-     * @param series what to fit over
+     * @param series what to fit over -- the chart's bars, or the folded ones
      * @param anchor the newest bar of the window
      * @return the fit, or null when there is not that much history
      *
-     * <p>Package-private and static: it takes everything it needs and keeps
-     * nothing, so a test can check the arithmetic against a hand computation
-     * without a chart, and two threads fitting at once cannot meet.</p>
+     * <p>Package-private and taking everything it needs: a test can check the
+     * arithmetic against a hand computation without a chart, and two threads
+     * fitting at once cannot meet.</p>
      */
     Fit fitAt(PriceSeries series, int anchor) {
         if (series == null || anchor < period - 1 || anchor >= series.size()) {
@@ -396,7 +533,7 @@ public final class RegressionChannel implements Overlay {
         }
 
         return new Fit(first, anchor, intercept, intercept + gradient * (period - 1),
-                over * deviations, under * deviations, gradient,
+                over, under, gradient,
                 totalSum <= 0.0 ? 0.0 : 1.0 - residualSum / totalSum);
     }
 
@@ -414,30 +551,62 @@ public final class RegressionChannel implements Overlay {
 
     @Override
     public boolean fitsOnPrice() {
-        // Three straight lines in points of the index. There is nowhere else
-        // they could go.
+        // Straight lines in points of the index. There is nowhere else they
+        // could go.
         return true;
+    }
+
+    /**
+     * @return how many lines are drawn: the centre, then a pair per level
+     *
+     * <p>The centre counts even when it is hidden. It is hidden by having no
+     * VALUE, so the list stays the same length and the legend keeps its
+     * swatch -- the same rule the bands beside this follow.</p>
+     */
+    private int lineCount() {
+        return 1 + 2 * levels.size();
     }
 
     @Override
     public List<Color> colours() {
-        Color edge = colour == null ? EDGE : colour;
+        List<Level> now = levels;
+        List<Color> found = new ArrayList<>(1 + 2 * now.size());
 
-        // In the order valueAt returns them, which colours() everywhere here
-        // promises: upper, centre, lower.
-        return List.of(edge, centreColour == null ? CENTRE : centreColour, edge);
+        found.add(centreColour == null ? CENTRE : centreColour);
+
+        for (Level level : now) {
+            Color ink = level.colour() != null ? level.colour()
+                    : colour == null ? EDGE : colour;
+
+            // Twice, because a pair is two lines and the caller pairs this list
+            // with valueAt by index.
+            found.add(ink);
+            found.add(ink);
+        }
+
+        return List.copyOf(found);
     }
 
     @Override
     public Stroke stroke() {
-        return line.stroke(thickness);
+        return centreLine.stroke(centreThickness);
     }
 
     @Override
     public List<Stroke> strokes() {
-        return List.of(line.stroke(thickness),
-                centreLine.stroke(centreThickness),
-                line.stroke(thickness));
+        List<Level> now = levels;
+        List<Stroke> found = new ArrayList<>(1 + 2 * now.size());
+
+        found.add(centreLine.stroke(centreThickness));
+
+        for (Level level : now) {
+            Stroke pen = level.line().stroke(level.thickness());
+
+            found.add(pen);
+            found.add(pen);
+        }
+
+        return List.copyOf(found);
     }
 
     @Override
@@ -452,17 +621,29 @@ public final class RegressionChannel implements Overlay {
 
     @Override
     public void calculate(PriceSeries series) {
-        this.source = series == null ? PriceSeries.empty() : series;
+        PriceSeries bars = series == null ? PriceSeries.empty() : series;
+
+        this.source = bars;
+
+        refold(bars);
 
         // AND THE FIT IS DROPPED. It belongs to bars that have just been
         // replaced; keeping it would draw the old channel over the new series
         // for exactly one frame, which is the kind of thing nobody reproduces.
         this.fit = null;
+        this.mapped = null;
+    }
+
+    /** Folds the chart's bars to the chosen scale, or forgets the fold. */
+    private void refold(PriceSeries bars) {
+        Aggregation scale = ownPeriod == null ? null : OwnScale.of(ownPeriod);
+
+        this.coarse = scale == null || bars.size() == 0 ? null : scale.apply(bars);
     }
 
     /**
-     * @param bar an index into the series
-     * @return upper, centre and lower there, or three NaN outside the window
+     * @param bar an index into the chart's series
+     * @return the centre and each pair there, or NaN where nothing is drawn
      *
      * <p>From the fit the last {@link #paintUnder} made, which is the fit that
      * is on screen. Outside the window it answers NaN rather than extending the
@@ -471,15 +652,56 @@ public final class RegressionChannel implements Overlay {
      */
     @Override
     public double[] valueAt(int bar) {
+        Mapped down = mapped;
+
+        if (down != null) {
+            int at = bar - down.from();
+
+            if (down.lines().length == 0 || at < 0 || at >= down.lines()[0].length) {
+                return empty();
+            }
+
+            double[] found = new double[down.lines().length];
+
+            for (int n = 0; n < found.length; n++) {
+                found[n] = down.lines()[n][at];
+            }
+
+            return found;
+        }
+
         Fit now = fit;
 
         if (now == null || bar < now.first() || bar > now.anchor()) {
-            return new double[]{Double.NaN, Double.NaN, Double.NaN};
+            return empty();
         }
 
-        double centre = now.centreAt(bar);
+        return spread(now.centreAt(bar), now);
+    }
 
-        return new double[]{centre + now.above(), centre, centre - now.below()};
+    /** @return every line's value where the centre sits at that price */
+    private double[] spread(double centre, Fit now) {
+        List<Level> pairs = levels;
+        double[] found = new double[1 + 2 * pairs.size()];
+
+        found[0] = showCentre ? centre : Double.NaN;
+
+        for (int n = 0; n < pairs.size(); n++) {
+            double factor = pairs.get(n).factor();
+
+            found[1 + 2 * n] = centre + now.above() * factor;
+            found[2 + 2 * n] = centre - now.below() * factor;
+        }
+
+        return found;
+    }
+
+    private double[] empty() {
+        double[] found = new double[lineCount()];
+
+        Arrays.fill(found, Double.NaN);
+
+        return found;
     }
 
     /**
@@ -498,34 +720,155 @@ public final class RegressionChannel implements Overlay {
      */
     @Override
     public void paintUnder(Graphics2D g, Viewport viewport, int from, int to) {
-        PriceSeries series = source;
+        PriceSeries fine = source;
+        PriceSeries slow = coarse;
 
-        // The last bar in VIEW, held inside the series: `to` is one past the
-        // last visible bar and the view can run past the end of the data, which
-        // is what the right margin IS.
-        int anchor = Math.min(to, series.size()) - 1;
+        Fit made = slow == null
+                ? fitOnChart(fine, to)
+                : fitOnScale(fine, slow, Math.max(0, from), to);
 
-        Fit made = fitAt(series, anchor);
-
-        fit = made;
-
-        if (made == null || !fill || opacity <= 0) {
+        if (made == null || !fill || opacity <= 0 || levels.isEmpty()) {
             return;
         }
 
-        Color base = colour == null ? EDGE : colour;
+        shade(g, viewport, Math.max(0, from), Math.min(to, fine.size()));
+    }
+
+    /** Fits on the chart's own bars, anchored on the last one in view. */
+    private Fit fitOnChart(PriceSeries fine, int to) {
+        // `to` is one past the last visible bar, and the view can run past the
+        // end of the data -- which is what the right margin IS.
+        Fit made = fitAt(fine, Math.min(to, fine.size()) - 1);
+
+        this.mapped = null;
+        this.fit = made;
+
+        return made;
+    }
+
+    /**
+     * Fits on the larger scale, then brings the lines down to the chart's bars.
+     *
+     * <p>The anchor is the last coarse bar that had CLOSED by the last bar in
+     * view. {@link OwnScale} is where that rule lives and this asks it -- by
+     * mapping the coarse bars' own indices down -- rather than working it out
+     * again. A second place where that rule is written is a second chance to
+     * write it wrong, and that class says so itself.</p>
+     *
+     * <p>Only the VISIBLE bars are brought down. Filling an array the length of
+     * the whole series, once per line, per frame, to read the two thousand that
+     * are on screen is the shape of waste this file keeps away from.</p>
+     */
+    private Fit fitOnScale(PriceSeries fine, PriceSeries slow, int from, int to) {
+        int width = Math.min(to, fine.size()) - from;
+
+        if (width <= 0 || slow.size() == 0) {
+            this.mapped = null;
+            this.fit = null;
+
+            return null;
+        }
+
+        double[] ordinals = new double[slow.size()];
+
+        for (int n = 0; n < ordinals.length; n++) {
+            ordinals[n] = n;
+        }
+
+        double[] whichBar = new double[width];
+
+        OwnScale.map(fine, slow, ordinals, whichBar, from);
+
+        double last = whichBar[width - 1];
+        Fit made = Double.isNaN(last) ? null : fitAt(slow, (int) Math.round(last));
+
+        this.fit = made;
+
+        if (made == null) {
+            this.mapped = null;
+
+            return null;
+        }
+
+        int lines = lineCount();
+        double[][] onScale = new double[lines][slow.size()];
+
+        for (double[] each : onScale) {
+            Arrays.fill(each, Double.NaN);
+        }
+
+        // ONE pass over the coarse bars, filling every line: spread() answers
+        // for all of them at once, and calling it per line would walk the
+        // window as many times as there are edges.
+        for (int bar = made.first(); bar <= made.anchor(); bar++) {
+            double[] here = spread(made.centreAt(bar), made);
+
+            for (int n = 0; n < lines; n++) {
+                onScale[n][bar] = here[n];
+            }
+        }
+
+        double[][] down = new double[lines][width];
+
+        for (int n = 0; n < lines; n++) {
+            if (interpolate) {
+                Arrays.fill(down[n], Double.NaN);
+
+                OwnScale.smooth(fine, slow, onScale[n], down[n], from);
+            } else {
+                OwnScale.map(fine, slow, onScale[n], down[n], from);
+            }
+        }
+
+        this.mapped = new Mapped(from, down);
+
+        return made;
+    }
+
+    /**
+     * Fills between the OUTERMOST pair, which is what a channel encloses.
+     *
+     * <p>Read back through {@link #valueAt}, the same values the lines are
+     * drawn from, so the shading cannot disagree with its own boundary --
+     * whichever of the two ways the fit was made.</p>
+     */
+    private void shade(Graphics2D g, Viewport viewport, int from, int to) {
+        List<Level> pairs = levels;
+        int outer = pairs.size() - 1;
+
+        Color base = fillColour != null ? fillColour
+                : pairs.get(outer).colour() != null ? pairs.get(outer).colour()
+                        : colour == null ? EDGE : colour;
 
         g.setColor(new Color(base.getRed(), base.getGreen(), base.getBlue(),
                 Math.round(255 * opacity / 100f)));
 
+        int upper = 1 + 2 * outer;
+        int lower = 2 + 2 * outer;
+
         Polygon shape = new Polygon();
+        int drawn = 0;
 
-        shape.addPoint(x(viewport, made.first()), y(viewport, made.oldest() + made.above()));
-        shape.addPoint(x(viewport, made.anchor()), y(viewport, made.newest() + made.above()));
-        shape.addPoint(x(viewport, made.anchor()), y(viewport, made.newest() - made.below()));
-        shape.addPoint(x(viewport, made.first()), y(viewport, made.oldest() - made.below()));
+        for (int bar = from; bar < to; bar++) {
+            double[] here = valueAt(bar);
 
-        g.fillPolygon(shape);
+            if (upper < here.length && Double.isFinite(here[upper])) {
+                shape.addPoint(x(viewport, bar), y(viewport, here[upper]));
+                drawn++;
+            }
+        }
+
+        for (int bar = to - 1; bar >= from; bar--) {
+            double[] here = valueAt(bar);
+
+            if (lower < here.length && Double.isFinite(here[lower])) {
+                shape.addPoint(x(viewport, bar), y(viewport, here[lower]));
+            }
+        }
+
+        if (drawn >= 2) {
+            g.fillPolygon(shape);
+        }
     }
 
     private static int x(Viewport viewport, int bar) {
@@ -536,14 +879,44 @@ public final class RegressionChannel implements Overlay {
         return (int) Math.round(viewport.y(price));
     }
 
+    // ------------------------------------------------------------- the layout
+
+    /**
+     * @return every setting as one line, levels included
+     *
+     * <p>Two separators the layout file does not use: {@code ~} between levels
+     * and {@code :} inside one. The pipe is the layout's own field separator
+     * and the comma separates the parameters, so neither can appear here.</p>
+     */
     @Override
     public String appearance() {
-        return width + ";" + deviations + ";" + line + ";" + thickness + ";"
-                + (colour == null ? "auto" : Integer.toHexString(colour.getRGB() & 0xFFFFFF))
-                + ";" + centreLine + ";" + centreThickness
-                + ";" + (centreColour == null ? "auto"
-                        : Integer.toHexString(centreColour.getRGB() & 0xFFFFFF))
-                + ";" + fill + ";" + opacity;
+        StringBuilder text = new StringBuilder();
+
+        text.append(width).append(';').append(showCentre)
+                .append(';').append(centreLine).append(';').append(centreThickness)
+                .append(';').append(hex(centreColour))
+                .append(';').append(hex(colour))
+                .append(';').append(fill).append(';').append(opacity)
+                .append(';').append(hex(fillColour))
+                .append(';').append(ownPeriod == null ? "chart" : ownPeriod)
+                .append(';').append(interpolate)
+                .append(';');
+
+        List<Level> now = levels;
+
+        for (int n = 0; n < now.size(); n++) {
+            Level level = now.get(n);
+
+            if (n > 0) {
+                text.append('~');
+            }
+
+            text.append(level.factor()).append(':').append(level.line())
+                    .append(':').append(level.thickness())
+                    .append(':').append(hex(level.colour()));
+        }
+
+        return text.toString();
     }
 
     @Override
@@ -562,31 +935,69 @@ public final class RegressionChannel implements Overlay {
         }
 
         if (parts.length > 1) {
-            setDeviations(readNumber(parts[1], 2.0));
+            setCentreShown(Boolean.parseBoolean(parts[1]));
         }
 
         if (parts.length > 3) {
-            setLine(readLine(parts[2]));
-            setThickness((int) readNumber(parts[3], 1));
+            setCentreLine(readLine(parts[2]));
+            setCentreThickness((int) readNumber(parts[3], 1));
         }
 
         if (parts.length > 4) {
-            setColour(readColour(parts[4]));
+            setCentreColour(readColour(parts[4]));
         }
 
-        if (parts.length > 6) {
-            setCentreLine(readLine(parts[5]));
-            setCentreThickness((int) readNumber(parts[6], 1));
+        if (parts.length > 5) {
+            setColour(readColour(parts[5]));
         }
 
         if (parts.length > 7) {
-            setCentreColour(readColour(parts[7]));
+            setFilled(Boolean.parseBoolean(parts[6]));
+            setOpacity((int) readNumber(parts[7], 12));
+        }
+
+        if (parts.length > 8) {
+            setFillColour(readColour(parts[8]));
         }
 
         if (parts.length > 9) {
-            setFilled(Boolean.parseBoolean(parts[8]));
-            setOpacity((int) readNumber(parts[9], 12));
+            setOwnPeriod("chart".equals(parts[9]) ? null : parts[9]);
         }
+
+        if (parts.length > 10) {
+            setInterpolated(Boolean.parseBoolean(parts[10]));
+        }
+
+        if (parts.length > 11) {
+            setDeviationLevels(readLevels(parts[11]));
+        }
+    }
+
+    private static List<Level> readLevels(String text) {
+        List<Level> found = new ArrayList<>();
+
+        if (text == null || text.isBlank()) {
+            return found;
+        }
+
+        for (String each : text.split("~", -1)) {
+            String[] fields = each.split(":", -1);
+
+            if (fields.length == 0 || fields[0].isBlank()) {
+                continue;
+            }
+
+            found.add(new Level(readNumber(fields[0], 2.0),
+                    fields.length > 3 ? readColour(fields[3]) : null,
+                    fields.length > 1 ? readLine(fields[1]) : MovingAverage.Line.SOLID,
+                    fields.length > 2 ? (int) readNumber(fields[2], 1) : 1));
+        }
+
+        return found;
+    }
+
+    private static String hex(Color of) {
+        return of == null ? "auto" : Integer.toHexString(of.getRGB() & 0xFFFFFF);
     }
 
     private static Width readWidth(String text) {
