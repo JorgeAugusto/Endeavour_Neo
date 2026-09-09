@@ -42,16 +42,16 @@ import javax.swing.SwingConstants;
  * The settings for {@link TopsAndBottoms}, in the tabs the other indicators
  * use.
  *
- * <p>Two tabs, because there are two things to say. The wing decides how much
- * of a turn counts as one, and the tie rule decides what happens on a flat
- * stretch — that one is a real choice and not a detail, which is why it is on
- * the parameters tab beside the wing rather than hidden anywhere.</p>
+ * <p>Three tabs. The wing decides how much of a turn counts as one; the tie
+ * rule decides what happens on a flat stretch — that one is a real choice and
+ * not a detail, which is why it sits on the parameters tab beside the wing
+ * rather than hidden anywhere; and the scale decides which bars the turns are
+ * looked for in.</p>
  *
- * <p>No scale of its own and no source. A pivot IS a bar's high or low, so
- * there is nothing to choose a source from; and a zigzag drawn from a coarser
- * scale would need its legs mapped back bar by bar, which is not the mapping
- * {@code OwnScale} does — it spreads one value per coarse bar, and a leg is two
- * points and the straight line between them.</p>
+ * <p>What is NOT here is a source: a pivot IS a
+ * bar's high or low, so there is nothing to choose from. Nor is there the
+ * "interpolate" box the other indicators carry — between two pivots the line is
+ * already straight, and there is nothing for smoothing to do.</p>
  */
 public final class TopsAndBottomsDialog extends JDialog {
 
@@ -71,6 +71,13 @@ public final class TopsAndBottomsDialog extends JDialog {
 
     private final JButton colour = new JButton();
 
+    private final javax.swing.JCheckBox ownPeriod =
+            new javax.swing.JCheckBox(Messages.get("overlay.ma.ownPeriod"));
+
+    private final JButton periodButton = new JButton();
+
+    private transient String periodCode;
+
     private transient Color chosen;
 
     private final transient Forms.Sample sample;
@@ -82,6 +89,7 @@ public final class TopsAndBottomsDialog extends JDialog {
 
         this.pivots = pivots;
         this.chosen = pivots.chosenColour();
+        this.periodCode = pivots.ownPeriod();
 
         this.wing = new JSpinner(new SpinnerNumberModel(pivots.wing(), 1,
                 TopsAndBottoms.MOST_WING, 1));
@@ -112,6 +120,7 @@ public final class TopsAndBottomsDialog extends JDialog {
 
         tabs.addTab(Messages.get("overlay.tab.parameters"), parameters());
         tabs.addTab(Messages.get("overlay.tab.appearance"), appearance());
+        tabs.addTab(Messages.get("overlay.tab.period"), period());
 
         add(tabs, BorderLayout.CENTER);
         add(buttons(), BorderLayout.SOUTH);
@@ -163,6 +172,57 @@ public final class TopsAndBottomsDialog extends JDialog {
         return panel;
     }
 
+    /**
+     * The scale the turns are found on.
+     *
+     * <p>The same control the average and the bands carry, and the same
+     * behaviour: ticking it asks for the scale rather than leaving the box
+     * ticked over one that was never picked.</p>
+     */
+    private JComponent period() {
+        JPanel panel = Forms.form();
+
+        Forms.group(panel, 0, Messages.get("overlay.tab.period"));
+        Forms.across(panel, 1, ownPeriod);
+
+        ownPeriod.setSelected(periodCode != null);
+        refreshPeriod();
+
+        Forms.field(panel, 2, Messages.get("overlay.ma.scale"), periodButton);
+
+        ownPeriod.addActionListener(e -> {
+            if (ownPeriod.isSelected() && periodCode == null) {
+                askForTheScale();
+
+                if (periodCode == null) {
+                    ownPeriod.setSelected(false);
+                }
+            }
+
+            refreshPeriod();
+        });
+
+        periodButton.addActionListener(e -> askForTheScale());
+
+        return panel;
+    }
+
+    private void askForTheScale() {
+        PeriodCatalog.Choice choice = PeriodDialog.ask(this, null);
+
+        if (choice != null) {
+            periodCode = choice.code();
+
+            refreshPeriod();
+        }
+    }
+
+    private void refreshPeriod() {
+        periodButton.setEnabled(ownPeriod.isSelected());
+        periodButton.setText(periodCode == null
+                ? Messages.get("overlay.ma.chooseScale") : periodCode);
+    }
+
     /** Says what the chosen rule does, because the names cannot say it alone. */
     private void refreshTies() {
         ties.setToolTipText(ties.getSelectedItem() == TopsAndBottoms.Ties.LAST
@@ -198,6 +258,7 @@ public final class TopsAndBottomsDialog extends JDialog {
         pivots.setLine((MovingAverage.Line) line.getSelectedItem());
         pivots.setThickness((Integer) thickness.getValue());
         pivots.setColour(chosen);
+        pivots.setOwnPeriod(ownPeriod.isSelected() ? periodCode : null);
     }
 
     private void pick() {

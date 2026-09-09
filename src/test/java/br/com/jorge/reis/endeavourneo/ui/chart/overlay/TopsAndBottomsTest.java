@@ -18,6 +18,8 @@
 package br.com.jorge.reis.endeavourneo.ui.chart.overlay;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
@@ -299,6 +301,197 @@ class TopsAndBottomsTest {
 
         assertTrue(Double.isNaN(pivots.valueAt(-1)[0]), "before the series");
         assertTrue(Double.isNaN(pivots.valueAt(9_999)[0]), "past the end of it");
+    }
+
+    // ------------------------------------------------------- a escala propria
+
+    /**
+     * @param count quantas barras de um minuto
+     * @return uma serie de minutos com um extremo plantado em cada hora
+     *
+     * <p>A máxima sobe cinco a cada minuto, e o minuto 30 de cada hora leva um
+     * pico de mais 500 — então a máxima da hora é sempre a do minuto 30 dela, e
+     * o teste sabe onde o vértice tem de cair.</p>
+     */
+    private static PriceSeries minutesWithHourlyPeaks(int count) {
+        return minutesWithHourlyPeaks(count, 0.0);
+    }
+
+    /**
+     * @param tail quanto somar às máximas da ÚLTIMA hora, que está em formação
+     *
+     * <p>É com isto que se pergunta se a hora incompleta foi lida: mexer nela
+     * não pode mudar nada do que já está desenhado.</p>
+     */
+    private static PriceSeries minutesWithHourlyPeaks(int count, double tail) {
+        double[] highs = new double[count];
+        double[] lows = new double[count];
+
+        for (int i = 0; i < count; i++) {
+            // TRES ESCALAS DE PROPOSITO, e cada uma responde por um teste:
+            //
+            //  - a hora sobe e desce alternada (+300 nas impares), senao a
+            //    serie dobrada sobe sempre e nao tem giro NENHUM para achar;
+            //  - o minuto oscila (+-3), senao a escala do minuto acha
+            //    exatamente os mesmos pivos da hora e compara-los nao compara
+            //    nada;
+            //  - e o extremo de cada hora fica plantado no minuto 30 (maxima)
+            //    e no 45 (minima), com folga de uma ordem sobre os dois
+            //    anteriores, para o teste saber em que barra o vertice tem de
+            //    cair.
+            double base = 100 + ((i / 60) % 2 == 0 ? 0 : 300) + i * 0.05;
+
+            boolean lastHour = i / 60 == (count - 1) / 60;
+
+            highs[i] = base + (i % 2 == 0 ? 3 : 0) + (i % 60 == 30 ? 60 : 0)
+                    + (lastHour ? tail : 0.0);
+            lows[i] = base - (i % 2 == 0 ? 3 : 0) - (i % 60 == 45 ? 60 : 0);
+        }
+
+        return new PriceSeries() {
+
+            @Override
+            public int size() {
+                return count;
+            }
+
+            @Override
+            public long timeAt(int index) {
+                // Comeca numa hora cheia, para as horas dobradas caírem certas.
+                return 1_600_000_000_000L / 3_600_000L * 3_600_000L + index * 60_000L;
+            }
+
+            @Override
+            public double openAt(int index) {
+                return lows[index];
+            }
+
+            @Override
+            public double highAt(int index) {
+                return highs[index];
+            }
+
+            @Override
+            public double lowAt(int index) {
+                return lows[index];
+            }
+
+            @Override
+            public double closeAt(int index) {
+                return highs[index];
+            }
+        };
+    }
+
+    /**
+     * O vértice cai na barra que FEZ o extremo.
+     *
+     * <p>Pôr o vértice no começo ou no fim da barra dobrada desenharia um giro
+     * num preço que nenhuma barra dali negociou. A máxima da hora aconteceu num
+     * minuto específico, e é nele que o olho do leitor vai.</p>
+     */
+    @Test
+    @DisplayName("na escala propria o vertice cai na barra que fez o extremo")
+    void onitsOwnScaleTheVertexLandsOnTheBarThatMadeIt() {
+        TopsAndBottoms pivots = new TopsAndBottoms(1);
+
+        pivots.setOwnPeriod("1h");
+
+        PriceSeries minutes = minutesWithHourlyPeaks(60 * 6);
+
+        pivots.calculate(minutes);
+
+        assertFalse(pivots.pivots().isEmpty(),
+                "the hourly zigzag found no turn at all in six hours");
+
+        for (TopsAndBottoms.Pivot each : pivots.pivots()) {
+            int minute = each.bar() % 60;
+
+            assertTrue(minute == 30 || minute == 45,
+                    "a vertex landed on minute " + minute + " of its hour, where no extreme "
+                            + "of that hour happened: the pivot was put at the folded bar's "
+                            + "edge instead of at the bar that made it");
+
+            double made = each.top() ? minutes.highAt(each.bar()) : minutes.lowAt(each.bar());
+
+            assertEquals(made, each.price(), EXACT,
+                    "the pivot's price is not the price of the bar it was put on");
+        }
+    }
+
+    /**
+     * A última barra dobrada fica de fora, e é para isso que este cuidado
+     * existe.
+     *
+     * <p>Uma barra de uma hora lida aos três minutos tem a máxima de três
+     * minutos. Se ela entrar na conta, um giro aparece na tela antes de o
+     * mercado o ter feito — e não basta descartar pivôs achados nela, porque a
+     * JANELA da barra anterior também a lê.</p>
+     */
+    @Test
+    @DisplayName("mexer na hora em formacao nao muda nada do que ja esta desenhado")
+    void thestillFormingHourSaysNothing() {
+        TopsAndBottoms quiet = new TopsAndBottoms(1);
+        TopsAndBottoms spiked = new TopsAndBottoms(1);
+
+        quiet.setOwnPeriod("1h");
+        spiked.setOwnPeriod("1h");
+
+        // Seis horas cheias mais quarenta minutos da setima. Nos dois casos a
+        // setima esta em formacao; num deles ela dispara mil pontos.
+        //
+        // NADA pode mudar. Tudo o que esta na tela foi decidido antes dela, e
+        // a maxima que ela tem ate agora nao e a maxima dela -- o preco ainda
+        // pode subir mais dentro da hora. Se um pivo depende dessa barra, ele
+        // apareceu antes de o mercado o ter feito.
+        //
+        // E nao basta descartar pivos ACHADOS nela: a janela da hora anterior
+        // tambem a le, e e por ai que o futuro entra.
+        quiet.calculate(minutesWithHourlyPeaks(60 * 6 + 40));
+        spiked.calculate(minutesWithHourlyPeaks(60 * 6 + 40, 1_000));
+
+        assertEquals(shape(quiet.pivots()), shape(spiked.pivots()),
+                "a thousand points inside the hour that has not closed changed the pivots, "
+                        + "so that hour is being read");
+    }
+
+    @Test
+    @DisplayName("uma escala que esta versao nao conhece cai na do grafico")
+    void anunknownScaleFallsBackToTheChartsOwn() {
+        TopsAndBottoms chart = new TopsAndBottoms(1);
+        TopsAndBottoms unknown = new TopsAndBottoms(1);
+
+        unknown.setOwnPeriod("nao-existe-esta-escala");
+
+        chart.calculate(bars(HIGHS, LOWS));
+        unknown.calculate(bars(HIGHS, LOWS));
+
+        assertEquals(shape(chart.pivots()), shape(unknown.pivots()),
+                "a scale this version cannot build left the indicator drawing nothing, "
+                        + "which is worse than drawing it on the chart's own bars");
+    }
+
+    @Test
+    @DisplayName("a escala propria muda o que se ve")
+    void theownScaleChangesWhatIsDrawn() {
+        TopsAndBottoms chart = new TopsAndBottoms(1);
+        TopsAndBottoms hourly = new TopsAndBottoms(1);
+
+        hourly.setOwnPeriod("1h");
+
+        PriceSeries minutes = minutesWithHourlyPeaks(60 * 6);
+
+        chart.calculate(minutes);
+        hourly.calculate(minutes);
+
+        assertNotEquals(shape(chart.pivots()), shape(hourly.pivots()),
+                "the hourly zigzag came out the same as the minute one, so the scale was "
+                        + "asked for and not used");
+
+        assertTrue(hourly.pivots().size() < chart.pivots().size(),
+                "an hourly zigzag over six hours has more turns than a minute one, which "
+                        + "cannot be: " + hourly.pivots().size() + " against "
+                        + chart.pivots().size());
     }
 
     @Test

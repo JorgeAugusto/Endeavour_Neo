@@ -17,8 +17,10 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.chart.overlay;
 
+import br.com.jorge.reis.endeavourneo.domain.market.Aggregation;
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
 import br.com.jorge.reis.endeavourneo.ui.chart.Overlay;
+import br.com.jorge.reis.endeavourneo.ui.chart.OwnScale;
 
 import java.awt.Color;
 import java.awt.Stroke;
@@ -137,6 +139,15 @@ public final class TopsAndBottoms implements Overlay {
     private boolean visible = true;
 
     /**
+     * The scale the pivots are found on, or null to use the chart's.
+     *
+     * <p>A zigzag of the hour drawn over a chart of minutes: the turns are the
+     * hour's, and they land on the minute that actually made each extreme. See
+     * {@link #onOwnScale}.</p>
+     */
+    private String ownPeriod;
+
+    /**
      * The zigzag as one value per bar, interpolated along each leg.
      *
      * <p>A line and not a list of points, because that is what the chart draws:
@@ -206,9 +217,18 @@ public final class TopsAndBottoms implements Overlay {
         this.thickness = Math.max(1, Math.min(value, 8));
     }
 
-    /** @return the pivots as they stand, oldest first */
+    /** @return the pivots as they stand, oldest first, in the CHART's bars */
     public List<Pivot> pivots() {
         return pivots;
+    }
+
+    @Override
+    public String ownPeriod() {
+        return ownPeriod;
+    }
+
+    public void setOwnPeriod(String code) {
+        this.ownPeriod = code == null || code.isBlank() ? null : code;
     }
 
     // ------------------------------------------------------------ the working
@@ -224,6 +244,19 @@ public final class TopsAndBottoms implements Overlay {
      * the thing that does NOT alternate.</p>
      */
     static List<Pivot> candidates(PriceSeries series, int wing, Ties ties) {
+        return candidates(series, wing, ties, series == null ? 0 : series.size());
+    }
+
+    /**
+     * @param until how many bars of the series may be looked at
+     *
+     * <p><b>A bound and not a filter.</b> On its own scale the last folded bar
+     * may still be forming -- a fifteen-minute bar read three minutes in has
+     * the high of three minutes, not fifteen -- and it is not enough to drop
+     * pivots found there: the WINDOW of the bar before it reads that bar too.
+     * The bound stops the reading, which is the only thing that stops it.</p>
+     */
+    static List<Pivot> candidates(PriceSeries series, int wing, Ties ties, int until) {
         List<Pivot> found = new ArrayList<>();
 
         if (series == null) {
@@ -232,7 +265,7 @@ public final class TopsAndBottoms implements Overlay {
 
         // Stops `wing` short of the end, which is the lag: the bar at n-wing has
         // no full right-hand window yet, so nothing about it can be said.
-        for (int i = wing; i < series.size() - wing; i++) {
+        for (int i = wing; i < Math.min(until, series.size()) - wing; i++) {
             if (isTop(series, i, wing, ties)) {
                 found.add(new Pivot(i, true, series.highAt(i)));
             }
@@ -380,7 +413,14 @@ public final class TopsAndBottoms implements Overlay {
 
         Arrays.fill(built, Double.NaN);
 
-        List<Pivot> found = alternating(candidates(series, wing, ties));
+        Aggregation scale = ownPeriod == null ? null : OwnScale.of(ownPeriod);
+
+        // Null when the code names a scale this version does not build, and the
+        // answer to that is the chart's own -- a smaller wrong than an
+        // indicator that is listed and invisible. OwnScale.of says so.
+        List<Pivot> found = scale == null
+                ? alternating(candidates(series, wing, ties))
+                : onOwnScale(series, scale);
 
         for (int i = 1; i < found.size(); i++) {
             Pivot from = found.get(i - 1);
@@ -399,6 +439,78 @@ public final class TopsAndBottoms implements Overlay {
         this.zigzag = built;
     }
 
+    /**
+     * Finds the turns of a LARGER scale and puts them on this chart's bars.
+     *
+     * <p><b>The vertex lands on the bar that actually made the extreme.</b> A
+     * folded bar's high happened at one particular minute inside it, and that
+     * minute is where the reader's eye goes -- putting the vertex at the start
+     * or the end of the folded bar instead would draw a turn at a price no bar
+     * there traded at. So the fine bars of each folded bar are walked and the
+     * first one carrying that exact high (or low) takes it.</p>
+     *
+     * <p><b>The last folded bar is left out</b>, and that is the rule this
+     * whole area exists for: it may still be forming, and a fifteen-minute bar
+     * read three minutes in has the high of three minutes. Reading it would let
+     * a turn appear on the chart before the market had made it. The cost is one
+     * folded bar of lag at the right edge, which is the same cost {@code
+     * OwnScale} pays everywhere else and for the same reason.</p>
+     *
+     * <p>{@code OwnScale.map} is not used here, and could not be: it spreads
+     * ONE value per folded bar across the fine bars, and a leg is two points
+     * and the straight line between them. What is shared is the rule, not the
+     * arithmetic -- and the rule is written down in that class.</p>
+     */
+    private List<Pivot> onOwnScale(PriceSeries fine, Aggregation scale) {
+        PriceSeries coarse = scale.apply(fine);
+
+        List<Pivot> turns = alternating(
+                candidates(coarse, wing, ties, coarse.size() - 1));
+
+        List<Pivot> placed = new ArrayList<>(turns.size());
+
+        // A running pointer over the fine bars, not a search per pivot: both
+        // series are chronological, so the answer only ever moves forward.
+        int at = 0;
+
+        for (Pivot each : turns) {
+            long starts = coarse.timeAt(each.bar());
+            long ends = each.bar() + 1 < coarse.size()
+                    ? coarse.timeAt(each.bar() + 1) : Long.MAX_VALUE;
+
+            while (at < fine.size() && fine.timeAt(at) < starts) {
+                at++;
+            }
+
+            int landed = -1;
+
+            for (int i = at; i < fine.size() && fine.timeAt(i) < ends; i++) {
+                double mine = each.top() ? fine.highAt(i) : fine.lowAt(i);
+
+                if (mine == each.price()) {
+                    landed = i;
+
+                    break;
+                }
+            }
+
+            if (landed < 0) {
+                // The fold made that extreme out of something this series does
+                // not show bar for bar. The opening bar is where the folded bar
+                // begins, and is the only honest answer left.
+                landed = Math.min(at, fine.size() - 1);
+            }
+
+            if (landed >= 0 && (placed.isEmpty()
+                    || placed.get(placed.size() - 1).bar() < landed)) {
+
+                placed.add(new Pivot(landed, each.top(), each.price()));
+            }
+        }
+
+        return placed;
+    }
+
     @Override
     public double[] valueAt(int bar) {
         // Read ONCE into a local: a background recalculation replaces the array
@@ -413,7 +525,8 @@ public final class TopsAndBottoms implements Overlay {
     @Override
     public String appearance() {
         return ties + ";" + line + ";" + thickness + ";"
-                + (colour == null ? "auto" : Integer.toHexString(colour.getRGB() & 0xFFFFFF));
+                + (colour == null ? "auto" : Integer.toHexString(colour.getRGB() & 0xFFFFFF))
+                + ";" + (ownPeriod == null ? "chart" : ownPeriod);
     }
 
     @Override
@@ -438,6 +551,10 @@ public final class TopsAndBottoms implements Overlay {
 
         if (parts.length > 3) {
             setColour(readColour(parts[3]));
+        }
+
+        if (parts.length > 4) {
+            setOwnPeriod("chart".equals(parts[4]) ? null : parts[4]);
         }
     }
 
