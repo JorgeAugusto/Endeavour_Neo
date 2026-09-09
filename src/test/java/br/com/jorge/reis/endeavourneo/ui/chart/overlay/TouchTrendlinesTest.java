@@ -400,12 +400,12 @@ class TouchTrendlinesTest {
         TouchTrendlines.Trend found = lines.fitTo(crossing(), true, 0, oneTurn());
 
         assertNotNull(found, "nao achou o cruzamento");
-        assertEquals(20, found.anchor(), "nao ancorou no topo de antes do cruzamento");
-
-        // O PICO DE ONDE O MERCADO CAIU: a reta nasce mais alta e mais
-        // inclinada que a do DEPOIS, que e a diferenca inteira entre as duas
-        // leituras.
-        assertEquals(110.0, found.anchorPrice(), EXACT, "o preco da ancora");
+        // O par de vizinhos do lado de la e (10, 20). O ANTES pega a ponta
+        // VELHA dele -- o ultimo giro que ainda pertence ao que veio antes do
+        // movimento -- e o DEPOIS pega a nova. Tirar os dois da mesma ponta
+        // faria um deles cair DENTRO da excursao e nao querer dizer nada.
+        assertEquals(10, found.anchor(), "nao ancorou na ponta velha do par");
+        assertEquals(100.0, found.anchorPrice(), EXACT, "o preco da ancora");
     }
 
     @Test
@@ -440,7 +440,7 @@ class TouchTrendlinesTest {
         TouchTrendlines.Trend found = lines.fitTo(crossing(), true, 0, late);
 
         assertNotNull(found, "o ANTES tambem devia ter ancora aqui");
-        assertEquals(40, found.anchor(), "o ANTES nao pegou o ultimo do lado velho");
+        assertEquals(30, found.anchor(), "o ANTES nao pegou a ponta velha do par");
     }
 
     @Test
@@ -536,7 +536,55 @@ class TouchTrendlinesTest {
 
         assertEquals(30, lines.fitTo(theTurn(), true, 0, flat).anchor(),
                 "a LTB nao pegou o ultimo topo do lado velho");
-        assertEquals(40, lines.fitTo(theTurn(), false, 0, flat).anchor(),
+        assertEquals(20, lines.fitTo(theTurn(), false, 0, flat).anchor(),
                 "a LTA nao pegou o ultimo fundo do lado velho");
+    }
+
+    /**
+     * O mercado picotado do pregão de 01/09, com a média no meio dele.
+     *
+     * <pre>
+     *   barra   10   20   30   40   50   60   70   80   90  100  110
+     *   tipo     T    F    T    F    T    F    T    F    T    F    T
+     *   preço  104   96  106   88   97   94  103   97  105   98  106
+     *   lado     +    -    +    -    -    -    +    -    +    -    +
+     *                            \____/
+     *                       o par do lado de lá
+     * </pre>
+     *
+     * <p>Todo topo acima da média e todo fundo abaixo, que é o que um mercado
+     * andando de lado faz. A ÚNICA exceção é o topo da barra 50, que falhou
+     * abaixo -- e é ele que, junto do fundo da 60, marca a passagem.</p>
+     *
+     * <p>Medido na base dele: com o lado vindo do destino de cada reta, a LTA
+     * não achava âncora nenhuma no pregão inteiro.</p>
+     */
+    private static List<TopsAndBottoms.Pivot> straddling() {
+        return List.of(top(10, 104), bottom(20, 96), top(30, 106), bottom(40, 88),
+                top(50, 97), bottom(60, 94), top(70, 103), bottom(80, 97),
+                top(90, 105), bottom(100, 98), top(110, 106));
+    }
+
+    @Test
+    @DisplayName("de lado, com topos acima e fundos abaixo, a LTA continua nascendo")
+    void theSupportSurvivesAStraddlingMarket() {
+        TouchTrendlines lines = new TouchTrendlines(90);
+
+        lines.setAnchoring(TouchTrendlines.Anchoring.FAST_AVERAGE);
+        lines.setCrossing(TouchTrendlines.Crossing.BEFORE);
+
+        double[] flat = average();
+        TouchTrendlines.Trend resistance = lines.fitTo(straddling(), true, 0, flat);
+        TouchTrendlines.Trend support = lines.fitTo(straddling(), false, 0, flat);
+
+        // O DEFEITO DO PRINT: a LTA sumia porque, terminando num fundo ABAIXO
+        // da media, ela ia procurar dois vizinhos os dois ACIMA -- e um fundo
+        // acima da media so acontece em tendencia forte.
+        assertNotNull(support, "a LTA sumiu no mercado de lado");
+        assertEquals(40, support.anchor(), "a LTA nao saiu do fundo da passagem");
+
+        // E a LTB nao se mexe: ela ja achava o mesmo par.
+        assertNotNull(resistance, "a LTB sumiu");
+        assertEquals(50, resistance.anchor(), "a LTB mudou de lugar");
     }
 }

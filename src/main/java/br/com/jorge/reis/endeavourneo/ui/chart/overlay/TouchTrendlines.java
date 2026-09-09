@@ -677,7 +677,19 @@ public final class TouchTrendlines implements Overlay {
         }
 
         TopsAndBottoms.Pivot destination = older.get(older.size() - 1);
-        Boolean here = sideOf(destination, average);
+
+        // THE SIDE COMES FROM THE NEWEST TURN OF THE WHOLE ZIGZAG, not from
+        // this line's own destination, and that is the difference between the
+        // two lines finding the same crossing and one of them finding none.
+        //
+        // Measured on a real session: in a market straddling the average every
+        // top sits above it and every bottom below. Read per line, the
+        // resistance ends on a top and goes looking for two neighbours both
+        // BELOW -- and finds them; the support ends on a bottom and goes
+        // looking for two both ABOVE, which only happens in a strong trend and
+        // did not happen once in the whole session. The support drew nothing at
+        // all, which is exactly what the chart showed.
+        Boolean here = sideOf(pivots.get(pivots.size() - 1), average);
 
         if (here == null) {
             return null;
@@ -717,14 +729,24 @@ public final class TouchTrendlines implements Overlay {
 
     /**
      * @param until the destination's bar; nothing after it is read
-     * @param here which side the destination is on
-     * @return the bar of the newest pivot still on the FAR side, or -1
+     * @param here which side the market is on now
+     * @return the bar this line's {@link Crossing} reading points at, or -1
+     *
+     * <h2>The pair has two ends, and the two readings take one each</h2>
+     *
+     * <p>The two neighbouring pivots on the far side BRACKET the excursion: the
+     * older one is where the market had already gone over, the newer one is the
+     * last turn it made before coming back. So {@code BEFORE} answers at the
+     * old end -- the last turn of the kind that still belongs to what came
+     * before the move -- and {@code AFTER} at the new end, the first turn of
+     * the move that followed. Taking both readings off the same end would make
+     * one of them land inside the excursion and mean nothing.</p>
      *
      * <p>Bounded at the destination so the memory line answers what the rule
      * said one turn ago, rather than what it says now with one end moved
      * back.</p>
      */
-    private static int crossingBefore(List<TopsAndBottoms.Pivot> pivots, int until,
+    private int crossingBefore(List<TopsAndBottoms.Pivot> pivots, int until,
             boolean here, double[] average) {
 
         List<TopsAndBottoms.Pivot> upTo = new ArrayList<>();
@@ -748,7 +770,8 @@ public final class TouchTrendlines implements Overlay {
             }
 
             if (now != here && before != here) {
-                return upTo.get(i).bar();
+                return crossing == Crossing.BEFORE
+                        ? upTo.get(i - 1).bar() : upTo.get(i).bar();
             }
         }
 
