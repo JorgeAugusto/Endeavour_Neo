@@ -79,6 +79,8 @@ public final class Backtest {
         Desk desk = new Desk(lot);
         Market market = new Market(series, broker.position(), broker.book());
 
+        strategy.start();
+
         for (int bar = 0; bar < series.size(); bar++) {
             broker.executeDuring(bar, series.openAt(bar), series.highAt(bar), series.lowAt(bar));
 

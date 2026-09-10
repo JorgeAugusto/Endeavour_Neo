@@ -49,6 +49,21 @@ import br.com.jorge.reis.endeavourneo.domain.trading.order.Desk;
 public interface Strategy {
 
     /**
+     * Called once, before the first bar of a run.
+     *
+     * <p>NTSL has the same thing and calls it {@code Initialization}. It exists
+     * here for the same reason it exists there: a strategy that carries an
+     * average carries state, and state that survives a run makes the second run
+     * over the same series produce different trades. Anything a strategy
+     * remembers is reset here.</p>
+     *
+     * <p>A strategy that remembers nothing — most of them, and every lambda —
+     * ignores this.</p>
+     */
+    default void start() {
+    }
+
+    /**
      * Decides, on the close of one bar.
      *
      * @param market what may be read; only backwards
