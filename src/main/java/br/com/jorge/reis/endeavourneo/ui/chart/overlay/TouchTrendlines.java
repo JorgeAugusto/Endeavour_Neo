@@ -17,11 +17,8 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.chart.overlay;
 
-import br.com.jorge.reis.endeavourneo.domain.market.Aggregation;
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
-import br.com.jorge.reis.endeavourneo.ui.chart.ChartPreferences;
 import br.com.jorge.reis.endeavourneo.ui.chart.Overlay;
-import br.com.jorge.reis.endeavourneo.ui.chart.OwnScale;
 import br.com.jorge.reis.endeavourneo.ui.chart.Viewport;
 
 import java.awt.BasicStroke;
@@ -818,34 +815,6 @@ public final class TouchTrendlines implements Overlay {
         return null;
     }
 
-    /**
-     * @return the bars at which the closes cross the average
-     *
-     * <p>A crossing is between two bars, and the newer of the two is the one
-     * reported: it is the first bar that closed on the new side, which is the
-     * first bar a reader could have known about it.</p>
-     */
-    private static int[] crossingsOf(PriceSeries series, double[] average) {
-        List<Integer> found = new ArrayList<>();
-
-        for (int i = 1; i < series.size() && i < average.length; i++) {
-            double was = series.closeAt(i - 1) - average[i - 1];
-            double now = series.closeAt(i) - average[i];
-
-            if (Double.isFinite(was) && Double.isFinite(now) && (was > 0) != (now > 0)) {
-                found.add(i);
-            }
-        }
-
-        int[] bars = new int[found.size()];
-
-        for (int i = 0; i < bars.length; i++) {
-            bars[i] = found.get(i);
-        }
-
-        return bars;
-    }
-
     /** @return the highest top, or the lowest bottom, inside the window */
     private TopsAndBottoms.Pivot extremeOf(List<TopsAndBottoms.Pivot> older, boolean top) {
         TopsAndBottoms.Pivot destination = older.get(older.size() - 1);
@@ -924,49 +893,9 @@ public final class TouchTrendlines implements Overlay {
             return null;
         }
 
-        if (anchoring.usesFastAverage()) {
-            return exponential(series, fastPeriod);
-        }
-
-        Aggregation scale = OwnScale.of(slowScale);
-
-        if (scale == null) {
-            // A layout naming a scale this version does not build. The chart's
-            // own scale is a smaller wrong than an anchoring mode that answers
-            // nothing and looks broken.
-            return exponential(series, slowPeriod);
-        }
-
-        PriceSeries coarse = scale.apply(series);
-
-        if (coarse.size() == 0) {
-            return null;
-        }
-
-        double[] slow = exponential(coarse, slowPeriod);
-        double[] into = new double[series.size()];
-
-        if (ChartPreferences.interpolateOwnScale()) {
-            OwnScale.smooth(series, coarse, slow, into);
-        } else {
-            OwnScale.map(series, coarse, slow, into);
-        }
-
-        return into;
-    }
-
-    /** @return an exponential average of the closes, one value per bar */
-    private static double[] exponential(PriceSeries series, int period) {
-        double[] made = new double[series.size()];
-        double weight = 2.0 / (period + 1);
-        double now = series.closeAt(0);
-
-        for (int i = 0; i < made.length; i++) {
-            now = i == 0 ? now : now + weight * (series.closeAt(i) - now);
-            made[i] = now;
-        }
-
-        return made;
+        return anchoring.usesFastAverage()
+                ? Averages.over(series, fastPeriod, null)
+                : Averages.over(series, slowPeriod, slowScale);
     }
 
     private static double amplitudeOf(List<TopsAndBottoms.Pivot> points) {
@@ -1107,7 +1036,7 @@ public final class TouchTrendlines implements Overlay {
     public void calculate(PriceSeries series) {
         this.source = series == null ? PriceSeries.empty() : series;
         this.average = averageFor(source);
-        this.crossings = average == null ? null : crossingsOf(source, average);
+        this.crossings = average == null ? null : Averages.crossings(source, average);
 
         // The lines belong to bars that have just been replaced.
         this.drawn = null;

@@ -720,6 +720,21 @@ public final class OverlayLegend extends JComponent {
                 return;
             }
 
+            // A projecao tem media, escala, zigzag e a leitura da escada -- e
+            // nada disso cabe numa lista de spinners.
+            if (overlay instanceof br.com.jorge.reis.endeavourneo.ui.chart.overlay
+                    .ZigzagProjection projection) {
+
+                if (ZigzagProjectionDialog.edit(owner, projection) != null) {
+                    projection.calculate(canvas.series());
+
+                    canvas.repaint();
+                    canvas.overlaysChanged();
+                }
+
+                return;
+            }
+
             Overlay replacement = InsertOverlayDialog.edit(owner, overlay);
 
             if (replacement != null) {

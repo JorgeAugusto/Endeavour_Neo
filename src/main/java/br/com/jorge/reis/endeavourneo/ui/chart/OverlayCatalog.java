@@ -162,6 +162,17 @@ public final class OverlayCatalog {
                             .TouchTrendlines.MOST_BARS,
                     br.com.jorge.reis.endeavourneo.ui.chart.overlay.TouchTrendlines::new),
 
+            // O periodo da media e a perna do zigzag, nessa ordem: sao os dois
+            // numeros que decidem QUAL perna vira as quatro linhas, e a legenda
+            // precisa deles para distinguir duas projecoes na mesma tela.
+            new Kind("overlay.projection",
+                    List.of(br.com.jorge.reis.endeavourneo.ui.chart.overlay
+                            .ZigzagProjection.PERIOD,
+                            br.com.jorge.reis.endeavourneo.ui.chart.overlay
+                                    .ZigzagProjection.WING),
+                    1, 2_000,
+                    br.com.jorge.reis.endeavourneo.ui.chart.overlay.ZigzagProjection::new),
+
             // The ones that live in a panel are in the SAME list. Which of
             // them can go on the price is not decided by which list they are
             // in -- each says so itself, in fitsOnPrice, and the insert dialog
