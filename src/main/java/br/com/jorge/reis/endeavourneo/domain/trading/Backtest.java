@@ -1,0 +1,98 @@
+/*
+ * Endeavour Neo -- a desktop application shell in Swing.
+ * Copyright (C) 2026  Jorge Reis
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, see <https://www.gnu.org/licenses/>.
+ */
+package br.com.jorge.reis.endeavourneo.domain.trading;
+
+import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
+import br.com.jorge.reis.endeavourneo.domain.trading.order.Desk;
+
+/**
+ * The loop: one strategy over one series.
+ *
+ * <p>Four lines of it matter, and they are in this order for a reason:</p>
+ *
+ * <pre>
+ *   for each bar:
+ *       1. execute what was resting from the last close
+ *       2. show the strategy this bar, now closed
+ *       3. let it ask for what it wants
+ *       4. rebuild the book from what it asked
+ * </pre>
+ *
+ * <p><b>Step 1 comes before step 2.</b> The strategy never sees the bar its own
+ * orders executed on before they execute — it decides at a close, and the
+ * earliest anything can happen is the next open. Swapping these two lines is the
+ * whole of look-ahead: it lets a strategy place an order knowing the bar it will
+ * fill on, and every strategy becomes profitable.</p>
+ *
+ * <h2>The run is a function of the data</h2>
+ *
+ * <p>Nothing survives between runs. Two runs over the same series with the same
+ * strategy produce the same fills, in the same order, at the same prices —
+ * which is what lets the chart's marks, the replay and the report all agree
+ * about what happened. It is also why the same series sliced in two and run
+ * separately gives exactly the two halves of the whole, which is what the
+ * walk-forward test is going to depend on.</p>
+ */
+public final class Backtest {
+
+    private final Costs costs;
+
+    private final int lot;
+
+    /**
+     * @param costs what a round trip is charged
+     * @param lot   the default quantity: NTSL's "Quantity per Order"
+     */
+    public Backtest(Costs costs, int lot) {
+        if (costs == null) {
+            throw new IllegalArgumentException("a backtest without a cost is not a measurement");
+        }
+
+        this.costs = costs;
+        this.lot = lot;
+    }
+
+    /**
+     * Runs the strategy over every bar of the series.
+     *
+     * @param series what to run over
+     * @param strategy what to run
+     * @return the trades, the fills and what they cost
+     */
+    public Result run(PriceSeries series, Strategy strategy) {
+        Broker broker = new Broker(costs);
+        Desk desk = new Desk(lot);
+        Market market = new Market(series, broker.position(), broker.book());
+
+        for (int bar = 0; bar < series.size(); bar++) {
+            broker.executeDuring(bar, series.openAt(bar), series.highAt(bar), series.lowAt(bar));
+
+            market.at(bar);
+            desk.clear();
+            strategy.onBar(market, desk);
+
+            broker.book().reconcile(desk.instructions());
+        }
+
+        double last = series.size() == 0 ? Double.NaN : series.closeAt(series.size() - 1);
+
+        return new Result(broker.trades(), broker.fills(), broker.ambiguousBars(), costs,
+                broker.position().net(),
+                broker.position().flat() ? 0 : broker.position().openResult(last));
+    }
+}
