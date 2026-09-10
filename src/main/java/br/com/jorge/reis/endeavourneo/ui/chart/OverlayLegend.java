@@ -735,6 +735,21 @@ public final class OverlayLegend extends JComponent {
                 return;
             }
 
+            // A projecao por rompimento tem gatilho, perna minima, entrada e
+            // seis chaves de nivel -- e a maior lista de ajustes das duas.
+            if (overlay instanceof br.com.jorge.reis.endeavourneo.ui.chart.overlay
+                    .BreakoutProjection breakout) {
+
+                if (BreakoutProjectionDialog.edit(owner, breakout) != null) {
+                    breakout.calculate(canvas.series());
+
+                    canvas.repaint();
+                    canvas.overlaysChanged();
+                }
+
+                return;
+            }
+
             Overlay replacement = InsertOverlayDialog.edit(owner, overlay);
 
             if (replacement != null) {

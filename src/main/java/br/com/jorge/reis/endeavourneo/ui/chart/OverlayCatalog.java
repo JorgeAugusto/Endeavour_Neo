@@ -173,6 +173,16 @@ public final class OverlayCatalog {
                     1, 2_000,
                     br.com.jorge.reis.endeavourneo.ui.chart.overlay.ZigzagProjection::new),
 
+            // So a perna do zigzag: o resto -- proximidade, perna minima, pontos
+            // da entrada -- e ajuste do dialogo, e nenhum deles distingue duas
+            // projecoes na mesma tela do jeito que a perna distingue.
+            new Kind("overlay.breakout",
+                    List.of(br.com.jorge.reis.endeavourneo.ui.chart.overlay
+                            .BreakoutProjection.WING),
+                    1, br.com.jorge.reis.endeavourneo.ui.chart.overlay
+                            .TopsAndBottoms.MOST_WING,
+                    br.com.jorge.reis.endeavourneo.ui.chart.overlay.BreakoutProjection::new),
+
             // The ones that live in a panel are in the SAME list. Which of
             // them can go on the price is not decided by which list they are
             // in -- each says so itself, in fitsOnPrice, and the insert dialog
