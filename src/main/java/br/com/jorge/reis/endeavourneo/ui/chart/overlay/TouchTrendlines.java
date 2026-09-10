@@ -116,23 +116,37 @@ public final class TouchTrendlines implements Overlay {
         EXTREME,
 
         /**
-         * The turn at which the swings last changed sides of a fast average.
+         * The anchor comes from the last crossing of a fast average; the far
+         * end is the newest turn there is.
          *
          * <p>The window stops deciding the anchor: what decides it is where the
-         * move began. That place is ONE event on the chart, and both lines take
-         * their own end of it -- the resistance the top there, the support the
-         * bottom there. {@link Crossing} says which side of it is taken, and
-         * {@code acrossTheAverage} carries the rule and the reason.</p>
+         * move began, and that is the last time the PRICE crossed the average.
+         * {@link Crossing} says which turn of the crossing is taken -- the
+         * first one after it, which is where the new move starts, or the last
+         * one before, which is what the market fell away from.</p>
+         *
+         * <p><b>And then the far end keeps moving.</b> It is the most recent
+         * turn of the kind, so every new top drags the resistance forward and
+         * turns it; every new bottom does the same to the support. Measured on
+         * one session of the real series: after the crossing at 17:38 the
+         * support held its anchor for twenty-three minutes while its far end
+         * walked 17:46, 17:52, 18:00 and its slope fell from +14 points a
+         * minute to +2. That rotation is the mode.</p>
+         *
+         * <p>A new crossing replaces the anchor and the old line disappears at
+         * once. That is the rule and not a wart of it: the line describes the
+         * move under way, and the crossing is what says which move that is.</p>
          */
         FAST_AVERAGE,
 
         /**
          * The same rule, against a slow average on a larger scale.
          *
-         * <p>Same mechanism as {@link #FAST_AVERAGE}, longer memory: the turns
-         * change sides of it far less often, so the anchor lands much further
-         * back and the line spans the whole move rather than its last stretch.
-         * That is the entire difference between the two modes.</p>
+         * <p>Same mechanism as {@link #FAST_AVERAGE} in every detail, longer
+         * memory: the price crosses a twenty-one period average of five-minute
+         * bars far less often than a seventeen of one-minute ones, so the anchor
+         * survives much longer and the line spans the whole move instead of its
+         * last stretch. That is the entire difference between the two.</p>
          */
         SLOW_AVERAGE,
 
@@ -316,8 +330,8 @@ public final class TouchTrendlines implements Overlay {
     /**
      * The bars at which the price crosses that average.
      *
-     * <p>Only {@link Anchoring#LAST_CROSSING} reads it, and like the average it
-     * is worked out in {@link #calculate}: it depends on the series and on
+     * <p>The three modes that read a crossing read this, and like the average
+     * it is worked out in {@link #calculate}: it depends on the series and on
      * nothing the viewport does.</p>
      */
     private volatile int[] crossings;
@@ -568,30 +582,17 @@ public final class TouchTrendlines implements Overlay {
      * the answer against one worked out on paper, with no chart involved.</p>
      */
     Trend fitTo(List<TopsAndBottoms.Pivot> pivots, boolean top, int back) {
-        return fitTo(pivots, top, back, null);
+        return fitTo(pivots, top, back, crossings);
     }
 
     /**
-     * @param average one value per bar of the series, or null when the mode
-     *        does not read one
+     * @param crossings the bars at which the price crosses the average
      *
-     * <p>Handed in rather than read from the field so a test can put an average
-     * of its own beside pivots of its own and check the crossing rule on paper,
-     * without a series and without a chart.</p>
+     * <p>Handed in rather than read from the field so a test can put the
+     * crossings exactly where it wants them and check both ends of the line on
+     * paper, with no series and no chart anywhere in it.</p>
      */
-    Trend fitTo(List<TopsAndBottoms.Pivot> pivots, boolean top, int back, double[] average) {
-        return fitTo(pivots, top, back, average, crossings);
-    }
-
-    /**
-     * @param crossings the bars where the price crosses the average
-     *
-     * <p>Handed in for the same reason the average is: a test can put the
-     * crossings exactly where it wants them and check the two ends on paper.</p>
-     */
-    Trend fitTo(List<TopsAndBottoms.Pivot> pivots, boolean top, int back, double[] average,
-            int[] crossings) {
-
+    Trend fitTo(List<TopsAndBottoms.Pivot> pivots, boolean top, int back, int[] crossings) {
         List<TopsAndBottoms.Pivot> same = new ArrayList<>();
 
         for (TopsAndBottoms.Pivot each : pivots) {
@@ -618,7 +619,7 @@ public final class TouchTrendlines implements Overlay {
         List<TopsAndBottoms.Pivot> older = same.subList(0, last + 1);
 
         if (!anchoring.searches()) {
-            TopsAndBottoms.Pivot chosen = anchorFor(pivots, older, top, average);
+            TopsAndBottoms.Pivot chosen = anchorFor(pivots, older, top, crossings);
 
             // THE LADDER DOES NOT RUN HERE, and that is what the modes are.
             // With the anchor fixed the line is already decided by its two
@@ -669,13 +670,74 @@ public final class TouchTrendlines implements Overlay {
      * @return the anchor the mode picks, or null when it finds none
      */
     private TopsAndBottoms.Pivot anchorFor(List<TopsAndBottoms.Pivot> pivots,
-            List<TopsAndBottoms.Pivot> older, boolean top, double[] average) {
+            List<TopsAndBottoms.Pivot> older, boolean top, int[] crossings) {
 
         if (anchoring == Anchoring.EXTREME) {
             return extremeOf(older, top);
         }
 
-        return acrossTheAverage(pivots, older, average);
+        return atTheCrossing(pivots, top, crossings);
+    }
+
+    /**
+     * @return the turn of this kind at the last usable crossing, or null
+     *
+     * <p>Usable is decided over the WHOLE zigzag and not per line, so the two
+     * lines always answer for the same crossing: a turn of each kind before it,
+     * and the newest turn of each kind after it. The second half is what the
+     * live far end needs -- a crossing whose newest bottom is older than itself
+     * would have the support running backwards.</p>
+     */
+    private TopsAndBottoms.Pivot atTheCrossing(List<TopsAndBottoms.Pivot> pivots,
+            boolean top, int[] crossings) {
+
+        if (crossings == null) {
+            return null;
+        }
+
+        for (int i = crossings.length - 1; i >= 0; i--) {
+            int at = crossings[i];
+
+            if (!alive(pivots, at)) {
+                continue;
+            }
+
+            // THE FIRST TURN AFTER IT can be the newest turn there is, and then
+            // the line has one point and is not drawn. Nothing is done about
+            // that here: lineFrom refuses a run of zero bars. It is the price
+            // of anchoring on the first turn of the move -- right after a
+            // crossing there IS only one.
+            return crossing == Crossing.AFTER
+                    ? firstAfter(pivots, at, top) : lastBefore(pivots, at, top);
+        }
+
+        return null;
+    }
+
+    /**
+     * @return whether a crossing can carry a pair of lines with a live far end
+     *
+     * <p>Stronger than {@link #bracketed}, which is what
+     * {@link Anchoring#LAST_CROSSING} needs: there the far end is the turn
+     * right after the crossing, so it is enough that one exists. Here the far
+     * end is the newest turn of all, and it has to be on the far side of the
+     * crossing or the line would point backwards.</p>
+     */
+    private static boolean alive(List<TopsAndBottoms.Pivot> pivots, int at) {
+        return lastBefore(pivots, at, true) != null && lastBefore(pivots, at, false) != null
+                && newestAfter(pivots, at, true) && newestAfter(pivots, at, false);
+    }
+
+    private static boolean newestAfter(List<TopsAndBottoms.Pivot> pivots, int at, boolean top) {
+        TopsAndBottoms.Pivot newest = null;
+
+        for (TopsAndBottoms.Pivot each : pivots) {
+            if (each.top() == top) {
+                newest = each;
+            }
+        }
+
+        return newest != null && newest.bar() > at;
     }
 
     /**
@@ -804,152 +866,6 @@ public final class TouchTrendlines implements Overlay {
         }
 
         return best;
-    }
-
-    /**
-     * Finds where the move began, and takes this line's end of it.
-     *
-     * @param pivots the whole zigzag, both kinds, in time order
-     * @param older the pivots of this line's kind, up to its destination
-     * @return the anchor, or null when the move's start is not in the search
-     *
-     * <h2>ONE crossing, read on the whole zigzag, serving BOTH lines</h2>
-     *
-     * <p>The crossing is a single event on the chart -- the market changed
-     * sides of the average -- and the two trendlines take their own end of it:
-     * the LTB the top there, the LTA the bottom there. Anything else and a
-     * rising market draws only the resistance, because the pullback bottoms
-     * dip through a fast average on every leg and their "last change of side"
-     * is always a couple of turns old. That is not a hypothetical: it is what
-     * the chart did, and it is why this rule was rewritten.</p>
-     *
-     * <h2>A whole swing on the other side, not one pivot</h2>
-     *
-     * <p>The move began at the most recent place where <b>two neighbouring
-     * pivots -- a top AND its bottom -- both sat on the far side</b> of the
-     * average. The pair is what makes the rule mean anything: asking for one
-     * pivot on the far side answers "the previous turn" on every chart ever
-     * drawn, since in any zigzag the tops sit above their own average and the
-     * bottoms below it. A top and a bottom together on one side is the market
-     * actually having been there, not a wick poking through.</p>
-     */
-    private TopsAndBottoms.Pivot acrossTheAverage(List<TopsAndBottoms.Pivot> pivots,
-            List<TopsAndBottoms.Pivot> older, double[] average) {
-
-        if (average == null) {
-            return null;
-        }
-
-        TopsAndBottoms.Pivot destination = older.get(older.size() - 1);
-
-        // THE SIDE COMES FROM THE NEWEST TURN OF THE WHOLE ZIGZAG, not from
-        // this line's own destination, and that is the difference between the
-        // two lines finding the same crossing and one of them finding none.
-        //
-        // Measured on a real session: in a market straddling the average every
-        // top sits above it and every bottom below. Read per line, the
-        // resistance ends on a top and goes looking for two neighbours both
-        // BELOW -- and finds them; the support ends on a bottom and goes
-        // looking for two both ABOVE, which only happens in a strong trend and
-        // did not happen once in the whole session. The support drew nothing at
-        // all, which is exactly what the chart showed.
-        Boolean here = sideOf(pivots.get(pivots.size() - 1), average);
-
-        if (here == null) {
-            return null;
-        }
-
-        int crossed = crossingBefore(pivots, destination.bar(), here, average);
-
-        if (crossed < 0) {
-            return null;
-        }
-
-        if (crossing == Crossing.AFTER) {
-            for (TopsAndBottoms.Pivot each : older) {
-                if (each.bar() > crossed) {
-                    // AFTER can land on the DESTINATION itself, when the
-                    // crossing is the newest turn there is. Nothing is done
-                    // about it here: lineFrom refuses a run of zero bars, and
-                    // the same rule written twice is a second chance to write
-                    // it wrong.
-                    return each;
-                }
-            }
-
-            return null;
-        }
-
-        TopsAndBottoms.Pivot last = null;
-
-        for (TopsAndBottoms.Pivot each : older) {
-            if (each.bar() <= crossed) {
-                last = each;
-            }
-        }
-
-        return last;
-    }
-
-    /**
-     * @param until the destination's bar; nothing after it is read
-     * @param here which side the market is on now
-     * @return the bar this line's {@link Crossing} reading points at, or -1
-     *
-     * <h2>The pair has two ends, and the two readings take one each</h2>
-     *
-     * <p>The two neighbouring pivots on the far side BRACKET the excursion: the
-     * older one is where the market had already gone over, the newer one is the
-     * last turn it made before coming back. So {@code BEFORE} answers at the
-     * old end -- the last turn of the kind that still belongs to what came
-     * before the move -- and {@code AFTER} at the new end, the first turn of
-     * the move that followed. Taking both readings off the same end would make
-     * one of them land inside the excursion and mean nothing.</p>
-     *
-     * <p>Bounded at the destination so the memory line answers what the rule
-     * said one turn ago, rather than what it says now with one end moved
-     * back.</p>
-     */
-    private int crossingBefore(List<TopsAndBottoms.Pivot> pivots, int until,
-            boolean here, double[] average) {
-
-        List<TopsAndBottoms.Pivot> upTo = new ArrayList<>();
-
-        for (TopsAndBottoms.Pivot each : pivots) {
-            if (each.bar() <= until) {
-                upTo.add(each);
-            }
-        }
-
-        for (int i = upTo.size() - 1; i > 0; i--) {
-            Boolean now = sideOf(upTo.get(i), average);
-            Boolean before = sideOf(upTo.get(i - 1), average);
-
-            if (now == null || before == null) {
-                // The average does not answer that far back: on a larger scale
-                // it is NaN until the first coarse bar has closed. Unknown is
-                // not "the same side", so the walk stops rather than inventing
-                // a crossing at the edge of what was computed.
-                return -1;
-            }
-
-            if (now != here && before != here) {
-                return crossing == Crossing.BEFORE
-                        ? upTo.get(i - 1).bar() : upTo.get(i).bar();
-            }
-        }
-
-        return -1;
-    }
-
-    /** @return whether the pivot is above the average there, or null if unknown */
-    private static Boolean sideOf(TopsAndBottoms.Pivot pivot, double[] average) {
-        if (pivot.bar() < 0 || pivot.bar() >= average.length
-                || !Double.isFinite(average[pivot.bar()])) {
-            return null;
-        }
-
-        return pivot.price() > average[pivot.bar()];
     }
 
     /**
@@ -1191,8 +1107,7 @@ public final class TouchTrendlines implements Overlay {
     public void calculate(PriceSeries series) {
         this.source = series == null ? PriceSeries.empty() : series;
         this.average = averageFor(source);
-        this.crossings = average == null || anchoring != Anchoring.LAST_CROSSING
-                ? null : crossingsOf(source, average);
+        this.crossings = average == null ? null : crossingsOf(source, average);
 
         // The lines belong to bars that have just been replaced.
         this.drawn = null;
@@ -1257,13 +1172,12 @@ public final class TouchTrendlines implements Overlay {
 
         List<TopsAndBottoms.Pivot> pivots = pivotsFor(series, anchor);
 
-        double[] read = average;
         int[] crossed = crossings;
 
-        Drawn made = new Drawn(fitTo(pivots, false, 0, read, crossed),
-                fitTo(pivots, true, 0, read, crossed),
-                memory ? fitTo(pivots, false, 1, read, crossed) : null,
-                memory ? fitTo(pivots, true, 1, read, crossed) : null, anchor);
+        Drawn made = new Drawn(fitTo(pivots, false, 0, crossed),
+                fitTo(pivots, true, 0, crossed),
+                memory ? fitTo(pivots, false, 1, crossed) : null,
+                memory ? fitTo(pivots, true, 1, crossed) : null, anchor);
 
         drawn = made;
 

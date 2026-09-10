@@ -315,45 +315,6 @@ class TouchTrendlinesTest {
 
     // ------------------------------------------------------ os modos de ancora
 
-    /**
-     * Cinco topos e uma média em que eles trocam de lado uma vez.
-     *
-     * <pre>
-     *   barra   10    20    30    40    50
-     *   topo   100   110    96    92    88
-     *   média   95   105   100    98    94
-     *   lado  ACIMA ACIMA ABAIXO ABAIXO ABAIXO
-     *                  \____/
-     *                 a troca
-     * </pre>
-     */
-    private static List<TopsAndBottoms.Pivot> crossing() {
-        return List.of(top(10, 100), top(20, 110), top(30, 96), top(40, 92), top(50, 88));
-    }
-
-    /**
-     * @return uma média que só precisa responder nas barras dos pivôs
-     *
-     * <p>Longa o bastante para a última barra usada aqui. Curta ela responde
-     * NaN nos pivôs de fora, a regra para a busca por não saber o lado, e o
-     * teste falha por culpa da armação -- que foi o que aconteceu.</p>
-     */
-    private static double[] average(double... byBar) {
-        double[] made = new double[120];
-
-        java.util.Arrays.fill(made, 100.0);
-
-        for (int i = 0; i + 1 < byBar.length; i += 2) {
-            made[(int) byBar[i]] = byBar[i + 1];
-        }
-
-        return made;
-    }
-
-    private static double[] oneTurn() {
-        return average(10, 95, 20, 105, 30, 100, 40, 98, 50, 94);
-    }
-
     @Test
     @DisplayName("no extremo a ancora e o topo mais alto, e a reta pode nao tocar em nada")
     void theExtremeAnchorsOnTheHigh() {
@@ -374,224 +335,10 @@ class TouchTrendlinesTest {
         assertEquals(2, found.percent(), "a escada subiu num modo que nao busca nada");
     }
 
-    @Test
-    @DisplayName("DEPOIS: a ancora e o primeiro giro do lado novo da media")
-    void theAnchorAfterTheCrossing() {
-        TouchTrendlines lines = new TouchTrendlines(90);
-
-        lines.setAnchoring(TouchTrendlines.Anchoring.FAST_AVERAGE);
-        lines.setCrossing(TouchTrendlines.Crossing.AFTER);
-
-        TouchTrendlines.Trend found = lines.fitTo(crossing(), true, 0, oneTurn());
-
-        assertNotNull(found, "nao achou o cruzamento");
-        assertEquals(30, found.anchor(), "nao ancorou no primeiro topo abaixo da media");
-        assertEquals(50, found.destination(), "a ponta mudou");
-    }
-
-    @Test
-    @DisplayName("ANTES: a ancora e o ultimo giro do lado velho")
-    void theAnchorBeforeTheCrossing() {
-        TouchTrendlines lines = new TouchTrendlines(90);
-
-        lines.setAnchoring(TouchTrendlines.Anchoring.FAST_AVERAGE);
-        lines.setCrossing(TouchTrendlines.Crossing.BEFORE);
-
-        TouchTrendlines.Trend found = lines.fitTo(crossing(), true, 0, oneTurn());
-
-        assertNotNull(found, "nao achou o cruzamento");
-        // O par de vizinhos do lado de la e (10, 20). O ANTES pega a ponta
-        // VELHA dele -- o ultimo giro que ainda pertence ao que veio antes do
-        // movimento -- e o DEPOIS pega a nova. Tirar os dois da mesma ponta
-        // faria um deles cair DENTRO da excursao e nao querer dizer nada.
-        assertEquals(10, found.anchor(), "nao ancorou na ponta velha do par");
-        assertEquals(100.0, found.anchorPrice(), EXACT, "o preco da ancora");
-    }
-
-    @Test
-    @DisplayName("sem troca de lado nao ha ancora, e nao se desenha reta")
-    void noCrossingDrawsNothing() {
-        TouchTrendlines lines = new TouchTrendlines(90);
-
-        lines.setAnchoring(TouchTrendlines.Anchoring.FAST_AVERAGE);
-
-        // Todos os topos acima da media: eles nunca trocaram de lado dentro do
-        // alcance, entao a regra nao tem o que responder.
-        assertNull(lines.fitTo(crossing(), true, 0, average(10, 90, 20, 90, 30, 90,
-                40, 90, 50, 80)), "inventou uma ancora sem cruzamento");
-    }
-
-    @Test
-    @DisplayName("se a troca foi no ultimo giro, o DEPOIS cai na propria ponta e nao ha reta")
-    void theCrossingOnTheLastTurnIsNotALineYet() {
-        TouchTrendlines lines = new TouchTrendlines(90);
-
-        lines.setAnchoring(TouchTrendlines.Anchoring.FAST_AVERAGE);
-
-        // Trocam de lado so entre a barra 40 e a 50: o DEPOIS aponta para a
-        // ponta, e uma ponta sozinha nao e reta. O ANTES ainda desenha.
-        double[] late = average(10, 90, 20, 90, 30, 90, 40, 90, 50, 95);
-
-        lines.setCrossing(TouchTrendlines.Crossing.AFTER);
-        assertNull(lines.fitTo(crossing(), true, 0, late), "desenhou uma reta de um ponto");
-
-        lines.setCrossing(TouchTrendlines.Crossing.BEFORE);
-
-        TouchTrendlines.Trend found = lines.fitTo(crossing(), true, 0, late);
-
-        assertNotNull(found, "o ANTES tambem devia ter ancora aqui");
-        assertEquals(30, found.anchor(), "o ANTES nao pegou a ponta velha do par");
-    }
-
-    @Test
-    @DisplayName("media que nao responde tao atras para a busca em vez de fingir um lado")
-    void anUnknownAverageStopsTheWalk() {
-        TouchTrendlines lines = new TouchTrendlines(90);
-
-        lines.setAnchoring(TouchTrendlines.Anchoring.SLOW_AVERAGE);
-
-        // Na escala maior a media e NaN ate o primeiro candle grosso fechar.
-        // Nao saber de que lado o giro estava nao e o mesmo que estar do
-        // mesmo lado.
-        double[] blind = oneTurn();
-
-        blind[20] = Double.NaN;
-
-        assertNull(lines.fitTo(crossing(), true, 0, blind),
-                "tratou o desconhecido como um lado");
-    }
+    // ------------------------------------ a ancora no cruzamento do preco
 
     /**
-     * Uma queda, a virada, e uma alta com um repique furando a média.
-     *
-     * <pre>
-     *   barra    10   20   30   40 | 50   60   70   80   90  100
-     *   tipo      T    F    T    F |  T    F    T    F    T    F
-     *   preço    97   90   99   95 |106   98  112  108  118  114
-     *   média          100 em toda parte
-     *   lado      -    -    -    - |  +    -    +    +    +    +
-     *                        \____/
-     *                    o giro inteiro do lado de baixo
-     * </pre>
-     *
-     * <p>O fundo da barra 60 fura a média no meio da alta. É ele que quebrava a
-     * LTA: lendo a troca de lado só entre fundos, o cruzamento dos fundos passa
-     * a ser entre 60 e 80, e a LTA nascia lá na frente -- ou não nascia.</p>
-     */
-    private static List<TopsAndBottoms.Pivot> theTurn() {
-        return List.of(top(10, 97), bottom(20, 90), top(30, 99), bottom(40, 95),
-                top(50, 106), bottom(60, 98), top(70, 112), bottom(80, 108),
-                top(90, 118), bottom(100, 114));
-    }
-
-    @Test
-    @DisplayName("o cruzamento e um so: numa alta saem as DUAS retas, do mesmo lugar")
-    void oneCrossingDrawsBothLines() {
-        TouchTrendlines lines = new TouchTrendlines(90);
-
-        lines.setAnchoring(TouchTrendlines.Anchoring.FAST_AVERAGE);
-        lines.setCrossing(TouchTrendlines.Crossing.AFTER);
-
-        double[] flat = average();
-        TouchTrendlines.Trend resistance = lines.fitTo(theTurn(), true, 0, flat);
-        TouchTrendlines.Trend support = lines.fitTo(theTurn(), false, 0, flat);
-
-        // O DEFEITO ERA ESTE: em alta so saia a LTB.
-        assertNotNull(resistance, "nao achou a LTB");
-        assertNotNull(support, "em alta a LTA sumiu -- e o defeito que ele viu no grafico");
-
-        // As duas partem do MESMO cruzamento, na barra 40: a LTB do primeiro
-        // topo depois dele, a LTA do primeiro fundo depois dele.
-        assertEquals(50, resistance.anchor(), "a LTB nao saiu do topo do cruzamento");
-        assertEquals(60, support.anchor(), "a LTA nao saiu do fundo do cruzamento");
-    }
-
-    @Test
-    @DisplayName("um repique furando a media nao empurra a LTA para frente")
-    void aPullbackThroughTheAverageDoesNotMoveTheAnchor() {
-        TouchTrendlines lines = new TouchTrendlines(90);
-
-        lines.setAnchoring(TouchTrendlines.Anchoring.FAST_AVERAGE);
-        lines.setCrossing(TouchTrendlines.Crossing.AFTER);
-
-        TouchTrendlines.Trend support = lines.fitTo(theTurn(), false, 0, average());
-
-        // O fundo da barra 60 esta ABAIXO da media no meio de uma alta. Lendo
-        // so os fundos, a ultima troca de lado deles seria entre 60 e 80 e a
-        // ancora iria para 80. O cruzamento e do zigzag inteiro, entao ela
-        // fica em 60 -- o primeiro fundo do movimento.
-        assertNotNull(support, "a LTA sumiu por causa do repique");
-        assertEquals(60, support.anchor(), "o repique empurrou a ancora para frente");
-    }
-
-    @Test
-    @DisplayName("ANTES da virada as duas retas pegam o giro do lado velho")
-    void beforeTheTurnTakesTheOldSide() {
-        TouchTrendlines lines = new TouchTrendlines(90);
-
-        lines.setAnchoring(TouchTrendlines.Anchoring.FAST_AVERAGE);
-        lines.setCrossing(TouchTrendlines.Crossing.BEFORE);
-
-        double[] flat = average();
-
-        assertEquals(30, lines.fitTo(theTurn(), true, 0, flat).anchor(),
-                "a LTB nao pegou o ultimo topo do lado velho");
-        assertEquals(20, lines.fitTo(theTurn(), false, 0, flat).anchor(),
-                "a LTA nao pegou o ultimo fundo do lado velho");
-    }
-
-    /**
-     * O mercado picotado do pregão de 01/09, com a média no meio dele.
-     *
-     * <pre>
-     *   barra   10   20   30   40   50   60   70   80   90  100  110
-     *   tipo     T    F    T    F    T    F    T    F    T    F    T
-     *   preço  104   96  106   88   97   94  103   97  105   98  106
-     *   lado     +    -    +    -    -    -    +    -    +    -    +
-     *                            \____/
-     *                       o par do lado de lá
-     * </pre>
-     *
-     * <p>Todo topo acima da média e todo fundo abaixo, que é o que um mercado
-     * andando de lado faz. A ÚNICA exceção é o topo da barra 50, que falhou
-     * abaixo -- e é ele que, junto do fundo da 60, marca a passagem.</p>
-     *
-     * <p>Medido na base dele: com o lado vindo do destino de cada reta, a LTA
-     * não achava âncora nenhuma no pregão inteiro.</p>
-     */
-    private static List<TopsAndBottoms.Pivot> straddling() {
-        return List.of(top(10, 104), bottom(20, 96), top(30, 106), bottom(40, 88),
-                top(50, 97), bottom(60, 94), top(70, 103), bottom(80, 97),
-                top(90, 105), bottom(100, 98), top(110, 106));
-    }
-
-    @Test
-    @DisplayName("de lado, com topos acima e fundos abaixo, a LTA continua nascendo")
-    void theSupportSurvivesAStraddlingMarket() {
-        TouchTrendlines lines = new TouchTrendlines(90);
-
-        lines.setAnchoring(TouchTrendlines.Anchoring.FAST_AVERAGE);
-        lines.setCrossing(TouchTrendlines.Crossing.BEFORE);
-
-        double[] flat = average();
-        TouchTrendlines.Trend resistance = lines.fitTo(straddling(), true, 0, flat);
-        TouchTrendlines.Trend support = lines.fitTo(straddling(), false, 0, flat);
-
-        // O DEFEITO DO PRINT: a LTA sumia porque, terminando num fundo ABAIXO
-        // da media, ela ia procurar dois vizinhos os dois ACIMA -- e um fundo
-        // acima da media so acontece em tendencia forte.
-        assertNotNull(support, "a LTA sumiu no mercado de lado");
-        assertEquals(40, support.anchor(), "a LTA nao saiu do fundo da passagem");
-
-        // E a LTB nao se mexe: ela ja achava o mesmo par.
-        assertNotNull(resistance, "a LTB sumiu");
-        assertEquals(50, resistance.anchor(), "a LTB mudou de lugar");
-    }
-
-    // -------------------------------------- os giros do ultimo cruzamento
-
-    /**
-     * Sete giros e três cruzamentos do preço, dois deles aproveitáveis.
+     * Sete giros e três cruzamentos do preço com a média.
      *
      * <pre>
      *   barra   10   20   30   40   50   60   70
@@ -601,53 +348,192 @@ class TouchTrendlinesTest {
      *   cruzou em 25, 45 e 65
      * </pre>
      *
-     * <p>O de 65 é o mais novo e <b>não serve</b>: não há fundo nenhum depois
-     * dele -- é o que aconteceu no fim do pregão de 01/09, onde o último
-     * cruzamento foi às 18:19 e nenhum fundo se formou desde então.</p>
+     * <p>O cruzamento de 65 <b>não serve</b> para os modos 3 e 4: o fundo mais
+     * novo que existe é o da barra 60, anterior a ele, e uma LTA com a ponta
+     * antes da âncora correria para trás. Serve o de 45.</p>
      */
     private static List<TopsAndBottoms.Pivot> sevenTurns() {
         return List.of(top(10, 106), bottom(20, 92), top(30, 104), bottom(40, 90),
                 top(50, 108), bottom(60, 96), top(70, 110));
     }
 
+    /** Os mesmos sete, mais um fundo e um topo novos -- o tempo passando. */
+    private static List<TopsAndBottoms.Pivot> nineTurns() {
+        List<TopsAndBottoms.Pivot> more = new java.util.ArrayList<>(sevenTurns());
+
+        more.add(bottom(80, 98));
+        more.add(top(90, 112));
+
+        return List.copyOf(more);
+    }
+
     private static final int[] THREE_CROSSINGS = {25, 45, 65};
 
-    @Test
-    @DisplayName("as duas retas ligam os giros que cercam o mesmo cruzamento")
-    void bothLinesBracketTheSameCrossing() {
+    private static TouchTrendlines onTheCrossing(TouchTrendlines.Crossing side) {
         TouchTrendlines lines = new TouchTrendlines(90);
 
-        lines.setAnchoring(TouchTrendlines.Anchoring.LAST_CROSSING);
+        lines.setAnchoring(TouchTrendlines.Anchoring.FAST_AVERAGE);
+        lines.setCrossing(side);
 
-        TouchTrendlines.Trend resistance =
-                lines.fitTo(sevenTurns(), true, 0, average(), THREE_CROSSINGS);
-        TouchTrendlines.Trend support =
-                lines.fitTo(sevenTurns(), false, 0, average(), THREE_CROSSINGS);
+        return lines;
+    }
+
+    @Test
+    @DisplayName("DEPOIS: a ancora e o primeiro giro depois do cruzamento, a ponta e o mais novo")
+    void theAnchorFromTheCrossingWithALiveFarEnd() {
+        TouchTrendlines lines = onTheCrossing(TouchTrendlines.Crossing.AFTER);
+        TouchTrendlines.Trend found = lines.fitTo(sevenTurns(), true, 0, THREE_CROSSINGS);
+
+        assertNotNull(found, "nao achou a LTB");
+
+        // O cruzamento aproveitavel e o de 45: a ancora e o primeiro topo depois
+        // dele, e a ponta e o topo MAIS NOVO que existe, nao o vizinho.
+        assertEquals(50, found.anchor(), "a ancora nao e o primeiro topo depois do cruzamento");
+        assertEquals(70, found.destination(), "a ponta nao e o topo mais novo");
+    }
+
+    @Test
+    @DisplayName("logo depois do cruzamento ha um giro so, e um ponto nao e reta")
+    void oneTurnAfterTheCrossingDrawsNothing() {
+        TouchTrendlines lines = onTheCrossing(TouchTrendlines.Crossing.AFTER);
+
+        // O unico fundo depois do cruzamento de 45 e o da barra 60, que e
+        // tambem o mais novo: ancora e ponta na mesma barra. E o vao sem reta.
+        assertNull(lines.fitTo(sevenTurns(), false, 0, THREE_CROSSINGS),
+                "desenhou uma LTA de um ponto");
+    }
+
+    @Test
+    @DisplayName("a ponta anda: dois giros novos movem as pontas e nao as ancoras")
+    void theFarEndWalks() {
+        TouchTrendlines lines = onTheCrossing(TouchTrendlines.Crossing.AFTER);
+        int[] two = {25, 45};
+
+        TouchTrendlines.Trend resistance = lines.fitTo(nineTurns(), true, 0, two);
+        TouchTrendlines.Trend support = lines.fitTo(nineTurns(), false, 0, two);
+
+        assertNotNull(resistance, "a LTB sumiu com giros novos");
+        assertNotNull(support, "a LTA devia ter nascido com o segundo fundo");
+
+        // AS MESMAS ANCORAS de antes -- 50 e 60 -- e as pontas nos giros novos.
+        // E isso que o modo faz: a ancora fica, a ponta anda.
+        assertEquals(50, resistance.anchor(), "a ancora da LTB andou");
+        assertEquals(90, resistance.destination(), "a ponta da LTB nao seguiu o topo novo");
+        assertEquals(60, support.anchor(), "a ancora da LTA andou");
+        assertEquals(80, support.destination(), "a ponta da LTA nao seguiu o fundo novo");
+    }
+
+    @Test
+    @DisplayName("ANTES: as duas retas existem desde o primeiro giro, e sao mais longas")
+    void theAnchorBeforeTheCrossing() {
+        TouchTrendlines lines = onTheCrossing(TouchTrendlines.Crossing.BEFORE);
+
+        TouchTrendlines.Trend resistance = lines.fitTo(sevenTurns(), true, 0, THREE_CROSSINGS);
+        TouchTrendlines.Trend support = lines.fitTo(sevenTurns(), false, 0, THREE_CROSSINGS);
 
         assertNotNull(resistance, "nao achou a LTB");
         assertNotNull(support, "nao achou a LTA");
 
-        // O cruzamento aproveitavel mais novo e o da barra 45.
+        // A ancora vem de ANTES do cruzamento, entao nao existe o vao: as duas
+        // retas ja tem duas pontas no primeiro giro do movimento novo.
+        assertEquals(30, resistance.anchor(), "a LTB nao pegou o topo de antes");
+        assertEquals(70, resistance.destination(), "a ponta da LTB nao e a mais nova");
+        assertEquals(40, support.anchor(), "a LTA nao pegou o fundo de antes");
+        assertEquals(60, support.destination(), "a ponta da LTA nao e a mais nova");
+    }
+
+    @Test
+    @DisplayName("um cruzamento sem giro novo dos dois tipos e pulado")
+    void aCrossingWithoutANewerTurnIsSkipped() {
+        TouchTrendlines lines = onTheCrossing(TouchTrendlines.Crossing.BEFORE);
+
+        // O de 65 tem topo novo depois (a barra 70) mas nao tem fundo: o mais
+        // novo e o da 60. Sozinho, ele nao serve, e nao ha outro.
+        assertNull(lines.fitTo(sevenTurns(), true, 0, new int[]{65}),
+                "usou um cruzamento que deixaria a LTA correndo para tras");
+        assertNull(lines.fitTo(sevenTurns(), true, 0, new int[0]),
+                "desenhou sem cruzamento nenhum");
+    }
+
+    @Test
+    @DisplayName("a memoria recua a ponta um giro, e a ancora fica")
+    void theMemoryMovesTheFarEndBack() {
+        TouchTrendlines lines = onTheCrossing(TouchTrendlines.Crossing.BEFORE);
+        TouchTrendlines.Trend before = lines.fitTo(sevenTurns(), true, 1, THREE_CROSSINGS);
+
+        assertNotNull(before, "nao achou a memoria");
+        assertEquals(30, before.anchor(), "a memoria mudou de ancora");
+        assertEquals(50, before.destination(), "a memoria nao recuou a ponta um topo");
+    }
+
+    @Test
+    @DisplayName("o modo 4 e o mesmo mecanismo, so a media e outra")
+    void theSlowModeSharesTheRule() {
+        TouchTrendlines lines = new TouchTrendlines(90);
+
+        lines.setAnchoring(TouchTrendlines.Anchoring.SLOW_AVERAGE);
+        lines.setCrossing(TouchTrendlines.Crossing.AFTER);
+
+        TouchTrendlines.Trend found = lines.fitTo(sevenTurns(), true, 0, THREE_CROSSINGS);
+
+        assertNotNull(found, "o modo da media longa nao achou reta");
+        assertEquals(50, found.anchor(), "o modo 4 escolheu outra ancora");
+        assertEquals(70, found.destination(), "o modo 4 escolheu outra ponta");
+    }
+
+    // ---------------------------------- os giros do ultimo cruzamento
+
+    private static TouchTrendlines bracketing() {
+        TouchTrendlines lines = new TouchTrendlines(90);
+
+        lines.setAnchoring(TouchTrendlines.Anchoring.LAST_CROSSING);
+
+        return lines;
+    }
+
+    @Test
+    @DisplayName("as duas retas ligam os giros que cercam o mesmo cruzamento")
+    void bothLinesBracketTheSameCrossing() {
+        TouchTrendlines lines = bracketing();
+
+        TouchTrendlines.Trend resistance = lines.fitTo(sevenTurns(), true, 0, THREE_CROSSINGS);
+        TouchTrendlines.Trend support = lines.fitTo(sevenTurns(), false, 0, THREE_CROSSINGS);
+
+        assertNotNull(resistance, "nao achou a LTB");
+        assertNotNull(support, "nao achou a LTA");
+
+        // AQUI A PONTA E PRESA: o giro logo depois do cruzamento, e nao o mais
+        // novo -- e a unica diferenca entre este modo e o 3.
         assertEquals(30, resistance.anchor(), "a LTB nao pegou o topo de antes");
         assertEquals(50, resistance.destination(), "a LTB nao pegou o topo de depois");
         assertEquals(40, support.anchor(), "a LTA nao pegou o fundo de antes");
         assertEquals(60, support.destination(), "a LTA nao pegou o fundo de depois");
 
-        // Sao duas pontas e mais nada: a contagem de toques nao mede nada aqui,
-        // e a escada nao roda.
         assertEquals(2, resistance.touches(), "contou toque que nao existe");
         assertEquals(2, resistance.percent(), "a escada subiu num modo sem busca");
     }
 
     @Test
+    @DisplayName("a ponta presa nao anda quando nascem giros novos")
+    void theBracketedFarEndStaysPut() {
+        TouchTrendlines lines = bracketing();
+        int[] two = {25, 45};
+
+        TouchTrendlines.Trend found = lines.fitTo(nineTurns(), true, 0, two);
+
+        assertNotNull(found, "nao achou a LTB");
+
+        // Os mesmos giros novos que no modo 3 levaram a ponta para a barra 90
+        // nao mexem nesta: ela continua no topo logo depois do cruzamento.
+        assertEquals(30, found.anchor(), "a ancora andou");
+        assertEquals(50, found.destination(), "a ponta presa andou");
+    }
+
+    @Test
     @DisplayName("o cruzamento novo demais e pulado: ainda nao tem giro dos dois lados")
     void anUnusableCrossingIsSteppedOver() {
-        TouchTrendlines lines = new TouchTrendlines(90);
-
-        lines.setAnchoring(TouchTrendlines.Anchoring.LAST_CROSSING);
-
-        TouchTrendlines.Trend resistance =
-                lines.fitTo(sevenTurns(), true, 0, average(), THREE_CROSSINGS);
+        TouchTrendlines lines = bracketing();
+        TouchTrendlines.Trend resistance = lines.fitTo(sevenTurns(), true, 0, THREE_CROSSINGS);
 
         // O cruzamento de 65 tem topo dos dois lados (50 e 70) e serviria para a
         // LTB sozinha. Nao serve para o par, porque nao ha fundo depois dele --
@@ -659,12 +545,8 @@ class TouchTrendlinesTest {
     @Test
     @DisplayName("a memoria recua um cruzamento inteiro")
     void theMemoryStepsBackOneCrossing() {
-        TouchTrendlines lines = new TouchTrendlines(90);
-
-        lines.setAnchoring(TouchTrendlines.Anchoring.LAST_CROSSING);
-
-        TouchTrendlines.Trend before =
-                lines.fitTo(sevenTurns(), true, 1, average(), THREE_CROSSINGS);
+        TouchTrendlines lines = bracketing();
+        TouchTrendlines.Trend before = lines.fitTo(sevenTurns(), true, 1, THREE_CROSSINGS);
 
         assertNotNull(before, "nao achou o cruzamento anterior");
         assertEquals(10, before.anchor(), "a memoria nao recuou ate o cruzamento de 25");
@@ -674,13 +556,11 @@ class TouchTrendlinesTest {
     @Test
     @DisplayName("sem cruzamento aproveitavel nao se desenha nada")
     void noUsableCrossingDrawsNothing() {
-        TouchTrendlines lines = new TouchTrendlines(90);
+        TouchTrendlines lines = bracketing();
 
-        lines.setAnchoring(TouchTrendlines.Anchoring.LAST_CROSSING);
-
-        assertNull(lines.fitTo(sevenTurns(), true, 0, average(), new int[0]),
+        assertNull(lines.fitTo(sevenTurns(), true, 0, new int[0]),
                 "desenhou sem cruzamento nenhum");
-        assertNull(lines.fitTo(sevenTurns(), true, 0, average(), new int[]{65}),
+        assertNull(lines.fitTo(sevenTurns(), true, 0, new int[]{65}),
                 "desenhou em cima do cruzamento que nao serve");
     }
 }
