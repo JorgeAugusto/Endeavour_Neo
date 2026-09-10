@@ -135,13 +135,14 @@ porque alguém consertou algo e não prendeu.
 
 - **Simulador** — replay em que dá para operar. Conceito fechado em
   `auditoria/../BACKTEST.md`; nada construído.
-- **Backtest** — o avaliador único das duas frentes de pesquisa. Documento com
-  as seis decisões pendentes em `BACKTEST.md`; o motor existe no `endeavour` e
-  seria portado (~1.240 linhas de núcleo), com duas correções no caminho: custo
-  de 6,5 pontos e o motor não executa stop.
-- **Linguagem portável de execução** — registrada em `EXECUCAO-PORTAVEL.md`,
-  parada de propósito até haver backtest, família clássica escrita, e pelo menos
-  uma estratégia portada à mão para o NTSL.
+- **Backtest** — **não está mais adiado.** A linguagem de execução
+  (`6b8f7ba`) e o motor (`f9ab9a3`) estão construídos; quatro das seis decisões
+  se resolveram por evidência. Faltam o fatiamento com teste à frente e a tela.
+  Ver `BACKTEST.md`.
+- **Tradutor para NTSL / MQL5** — o vocabulário existe em
+  `domain.trading.order`; o tradutor continua parado de propósito, até haver a
+  família clássica escrita e pelo menos uma estratégia portada à mão. Ver
+  `EXECUCAO-PORTAVEL.md`.
 - **Teste end-to-end com janela visível** — modo escolhido por ele; a biblioteca
   é a AssertJ-Swing. Nada construído.
 - **As seis capacidades a trazer de outros softwares** — congeladas até a versão

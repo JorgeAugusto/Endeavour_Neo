@@ -1,6 +1,11 @@
-# O painel de backtest
+# O backtest
 
-**Status: proposta, aguardando aprovação.** Nada disto está construído.
+**Status: a linguagem e o motor estão construídos. A tela é proposta.**
+
+| | | |
+|---|---|---|
+| `6b8f7ba` | a linguagem de execução | `domain.trading.order` — 11 testes |
+| `f9ab9a3` | o motor | `domain.trading` — 22 testes |
 
 Diagrama da tela: [backtest-panel.svg](backtest-panel.svg)
 
@@ -10,10 +15,12 @@ Diagrama da tela: [backtest-panel.svg](backtest-panel.svg)
 
 | Fonte | O que ela resolveu, e nós aproveitamos |
 |---|---|
-| **ta4j** (MIT, clonado em `referencias/`) | O motor. Execução na abertura seguinte já é o padrão, modelos de custo, 31 critérios de análise prontos. |
-| **MetaTrader 5** | O **teste à frente embutido na própria rodada** (1/2, 1/3, 1/4), os modos de modelagem nomeados pela fidelidade, distribuição por hora/dia/mês, saldo × patrimônio como duas curvas. |
-| **Profit** | A forma do painel: seções recolhíveis *Execução*, *Abertura de Posição*, *Risco*, *Custos*. E `OHLC` × `Tick a Tick` como escolha explícita. |
-| **endeavour** | Os erros já pagos: custo de 6,5 pontos medido, trivial **por fatia**, série **crua**, e rótulo que não pode supor o que o motor não executa. |
+| **Manual do NTSL** (seções 11, 13 e 15) | **O modelo inteiro.** Os doze verbos de ordem, e a semântica de execução — quando a decisão vale, o que acontece com a ordem que não executou, o que uma cobertura pode e não pode fazer. |
+| **Os 45 robôs em `RoboMateus1`** | O que o manual permite e ele **realmente usa**: ordem limitada em repouso, escada de contratos, saída parcial em vários preços. Foi isso que refutou o vocabulário que eu tinha esboçado. |
+| **MetaTrader 5** | O **teste à frente embutido na própria rodada** (1/2, 1/3, 1/4), distribuição por hora/dia/mês, saldo × patrimônio como duas curvas. |
+| **Profit** | A forma do painel: seções recolhíveis *Execução*, *Abertura de Posição*, *Risco*, *Custos*. |
+| **endeavour** | Os erros já pagos: custo de 6,5 pontos medido, trivial **por fatia**, série **crua**. |
+| **ta4j** | Nada, e a próxima seção explica por quê. |
 
 ---
 
@@ -31,84 +38,112 @@ backtest.
 
 ---
 
-## A decisão de maior consequência: usar o ta4j
+## A decisão que virou: o motor é nosso
 
-Eu ia propor motor próprio. Depois de ler o ta4j, isso seria refazer, pior, o que
-já está pronto e testado. Mas há uma restrição dura de versão:
+A versão anterior deste documento propunha o **ta4j 0.17**, e o argumento era
+bom: por que refazer, pior, o que já está pronto e testado?
 
-| Versão | Java exigido | Traz |
-|---|---|---|
-| **0.17** (set/2024) | **11** ✅ | `BarSeriesManager` com `TradeOnNextOpenModel` **por padrão**, modelos de custo, 31 critérios |
-| 0.19–0.22.1 | 21 | — |
-| 0.22.4+ | 25 | `WalkForwardEngine`, `StrategyWalkForwardExecutor`, `PositionSizer` |
+O argumento caiu quando os robôs dele foram lidos. Um `Strategy` do ta4j é
+`shouldEnter(i)` / `shouldExit(i)` devolvendo um booleano, sobre **uma** posição
+por vez. Os robôs dele fazem três coisas que não cabem nisso:
 
-Verificado, não suposto: o `ta4j-core-0.17.jar` resolve do Maven Central e seu
-bytecode é **major 55 (Java 11)** — roda no nosso 17.
+- **Apregoam ordem limitada e esperam.** A entrada do canônico é um
+  `SellShortLimit` a 15 pontos antes da banda — a "pescaria" — que fica lá
+  enquanto os filtros permitirem. Um motor que só negocia na abertura seguinte
+  não roda isso.
+- **A quantidade é a decisão.** Entrada inicial, acumulação, núcleo, e um `N`
+  calculado por sinal. Não é um contrato fixo.
+- **Saem em pedaços, em vários preços ao mesmo tempo.** Dois
+  `SellToCoverLimit` em alvos diferentes, apregoados juntos.
 
-*Atualizado em 05/09/2026:* a máquina passou a ter **JDK 25** (Oracle 25.0.4.1,
-em `02-jdk/jdk-25.0.4.1`; a suíte inteira roda nela). O que continua valendo é a
-conclusão, por outro motivo: a IDE é a 2022.2.3 e não reconhece JDK 25, e de todo
-modo **fatiar a série e rodar o motor por fatia são umas cinquenta linhas
-nossas**, não um arcabouço. O ta4j 0.22.4+ só se paga se quisermos o
-`PositionSizer` junto.
+O `StopLimitExecutionModel` que existe no ta4j de hoje não resolve: ele deriva o
+stop e o limite de **razões sobre o preço do sinal**, não aceita um preço
+absoluto escolhido pela estratégia. E ele exige Java 25, que a IDE 2022.2.3 não
+reconhece.
 
-**Proposta: ta4j 0.17 para o motor; o fatiamento e o veredito são nossos.**
-
-A divisão é limpa e vale dizer em voz alta: **o ta4j executa as operações, nós
-somos donos da conclusão.** Tudo que o projeto anterior aprendeu — quanto custa
-de verdade, contra o que comparar, quando um resultado não replica — é
-interpretação, e nenhuma biblioteca faz isso por você.
-
-Licença: ta4j é MIT, compatível com a GPL v2 deste projeto.
+**O motor que roda um cruzamento de médias não é o motor que roda os robôs
+dele.** Escrevemos o nosso: 9 classes, e a parte que o ta4j faria de graça — os
+critérios de análise — é a parte fácil.
 
 ---
 
-## As cinco regras que decidem se o número é verdade
+## O modelo de execução, e de onde cada regra saiu
 
-### 1. Sinal no fechamento, ordem na abertura seguinte
+Cinco regras do manual, e duas nossas. As nossas estão marcadas, porque a
+diferença importa.
+
+### Do manual
+
+1. **O código roda no fechamento do candle, e nada executa antes da abertura
+   seguinte.** O outro modo do NTSL — ordens assim que a condição é satisfeita —
+   **não é modelado**, e não por escolha nossa: o manual diz que aquele modo "não
+   é compatível com o backtest da aplicação".
+2. **O livro é refeito a cada fechamento.** Ordem de entrada que não executou até
+   o fim do candle seguinte "será cancelada ou editada quando o próximo candle
+   finalizar, de acordo com a estratégia do usuário" — ou seja, **não reemitir é
+   como se cancela**. É por isso que os robôs dele guardam o nível do stop numa
+   `var` e reemitem `*ToCoverStop` em todo candle.
+3. **Ordem de abertura no lado errado cobre**, automaticamente, e inverte se for
+   maior que o que está aberto.
+4. **Cobertura nunca inverte**, e contra posição zerada ou do lado errado é
+   **ignorada** — não é erro, é silêncio.
+5. **As coberturas são uma OCO**: no máximo uma executa por barra. É assim que a
+   saída parcial funciona — o primeiro alvo executa, a OCO limpa o resto, e no
+   fechamento seguinte o código reapregoa o que ainda quer.
+
+### Nossas, porque o OHLC não responde
+
+6. **As ordens executam da mais perto da abertura para a mais longe.** O preço
+   não se afasta da abertura monotonicamente, mas quatro números por minuto não
+   dizem mais que isso.
+7. **Stop e alvo alcançáveis na mesma barra: ganha o stop.** Não porque seja
+   verdade — porque é o lado conservador.
+
+O que torna a regra 7 honesta não é acertar, é **contar**:
+`Result.ambiguousBars()` diz quantas barras foram decididas pelo desempate. No
+projeto anterior foi 0,1% das operações. Se subir, o resultado é um fato sobre o
+desempate e não sobre a estratégia, e o número está lá para mostrar isso.
+
+---
+
+## As regras que decidem se o número é verdade
+
+### 1. Sinal no fechamento, ordem na abertura seguinte ✅
 Decidir e executar no mesmo fechamento usa um preço que ainda não existia. É a
-forma mais comum de um backtest inventar vantagem. **O ta4j já faz isso por
-padrão** (`TradeOnNextOpenModel`); o `TradeOnCurrentCloseModel` existe e **não
-vamos oferecer**.
+forma mais comum de um backtest inventar vantagem. **Construído**, e é a primeira
+prova de dentes do motor: trocar as duas linhas de lugar faz sete testes cair.
 
 ### 2. A fidelidade tem nome na tela
-O MetaTrader acerta em nomear o que está sendo simulado: *todos os ticks*, *OHLC
-em M1*, *apenas preços de abertura*. Nós temos barras de 1 minuto e **medimos que
-tick não acrescenta** (0,001 de R² sobre a volatilidade). Então a tela diz
-**`OHLC em M1`** e mais nada — e diz também **quantas operações tocaram stop e
-alvo na mesma barra**, que é o único lugar onde a falta de tick pode doer. No
-projeto anterior foram 0,1%; se subir muito, o resultado depende da regra de
-desempate e não da estratégia.
+Temos barras de 1 minuto e **medimos que tick não acrescenta** (0,001 de R² sobre
+a volatilidade). Então a tela diz **`OHLC em M1`** e mais nada — e diz também
+**quantas barras foram decididas pelo desempate** (a regra 7 acima), que é o
+único lugar onde a falta de tick pode doer.
 
-Regra de desempate: **o stop primeiro**. Não por ser verdade, por ser o lado
-conservador.
-
-### 3. O custo é fixo em dinheiro, e a medição é em pontos
-6,5 pontos por operação completa — medido. Só vale na série **crua**. A tela
-mostra o custo sempre e **avisa quando ele é irreal**; o caso perigoso não é o
-custo zerado, é **um** dos dois zerado: parece normal e não é.
+### 3. O custo é fixo em dinheiro, e a medição é em pontos ✅
+6,5 pontos por giro completo de **um contrato**, cobrado metade em cada ponta,
+por contrato — então a escada que entra em três e sai em três paga 19,5.
+**Construído.** Só vale na série **crua**; a tela precisa dizer em que série
+rodou, porque nenhuma trava no código consegue impedir isso.
 
 ### 4. O teste à frente é parte da rodada, não um segundo passo
-Roubado inteiro do MetaTrader, e é a melhor ideia das três telas. O período se
-divide em **amostra** e **à frente** (`1/2`, `1/3`, `1/4` ou data escolhida), a
-fronteira aparece como **linha vertical no gráfico**, e o relatório traz **as
-duas colunas lado a lado**.
+Roubado inteiro do MetaTrader. O período se divide em **amostra** e **à frente**
+(`1/2`, `1/3`, `1/4` ou data escolhida), a fronteira aparece como **linha
+vertical no gráfico**, e o relatório traz **as duas colunas lado a lado**.
 
-Isto não é conveniência. No projeto anterior a carteira tinha `t = +3,75` na
-amostra e `+0,93` fora — e só se descobriu porque alguém foi conferir depois.
-Se as duas colunas nascem juntas, ninguém precisa lembrar de conferir.
+No projeto anterior a carteira tinha `t = +3,75` na amostra e `+0,93` fora — e só
+se descobriu porque alguém foi conferir depois. Se as duas colunas nascem juntas,
+ninguém precisa lembrar de conferir.
 
 ### 5. O resultado é por fatia, e o trivial é o da fatia
 Um total no período inteiro esconde a estratégia que ganhou tudo em 2022. E
-comparar o acerto de uma fatia com o trivial **global** inventa vantagem — o
-trivial muda de fatia para fatia.
+comparar o acerto de uma fatia com o trivial **global** inventa vantagem.
 
 ---
 
 ## A tela
 
-O painel entra **abaixo das abas de layout**, dentro da janela do gráfico, e tem
-duas partes.
+**Ainda proposta.** O painel entra **abaixo das abas de layout**, dentro da
+janela do gráfico, e tem duas partes.
 
 **① A linha de comando** — sempre visível, uma linha só:
 chave `Simulador`/`Backtest` · estratégia ▾ · ⚙ · período ▾ · à frente ▾ ·
@@ -138,40 +173,46 @@ saldo esconde.
 
 ## Ordem de construção
 
-| | Etapa | Entrega |
+| | Etapa | Estado |
 |---|---|---|
-| 1 | `PriceSeries` desce para `domain.market`; fronteira ampliada | nada visível; tudo depois depende disso |
-| 2 | ta4j 0.17 no `pom`; adaptador `PriceSeries` → `BarSeries` | motor disponível, com teste do adaptador |
-| 3 | `Strategy` nossa (posição desejada) + uma: cruzamento de médias | primeira rodada, sem tela |
-| 4 | Fatiamento e teste à frente | o que torna o resultado confiável — **antes** da tela |
-| 5 | ① linha de comando + `Resumo` | primeiro resultado visível |
-| 6 | Marcas no gráfico + `Operações` | o que torna o painel útil |
-| 7 | `Curva` e `Distribuição` | |
+| 1 | `PriceSeries` em `domain.market`; fronteira ampliada | ✅ feito antes |
+| 2 | **A linguagem de execução** — 12 verbos + 3 comandos | ✅ `6b8f7ba` |
+| 3 | **O motor** — livro em repouso, execução intrabarra, operações | ✅ `f9ab9a3` |
+| 4 | Uma estratégia clássica: cruzamento de médias | ⬜ |
+| 5 | **Fatiamento e teste à frente** | ⬜ **antes da tela** |
+| 6 | ① linha de comando + `Resumo` | ⬜ |
+| 7 | Marcas no gráfico + `Operações` | ⬜ |
+| 8 | `Curva` e `Distribuição` | ⬜ |
+| 9 | *(depois)* Tradutor para NTSL, precedido de **uma tradução à mão** | ⬜ |
 
-A etapa 4 vem **antes** da tela de propósito. Uma tela que mostra um número
+A etapa 5 vem **antes** da tela de propósito. Uma tela que mostra um número
 único é uma tela que ensina a olhar o número errado, e depois é tarde.
 
 ---
 
-## O que eu preciso que você decida
+## As decisões
 
-1. **ta4j 0.17, ou motor próprio?** (sugiro ta4j — a alternativa é refazer pior)
-2. **Tamanho da posição:** 1 contrato fixo por ora? (sugiro sim; sizing é outra
-   camada de decisão e contamina a medição da regra)
-3. **Comprado e vendido, ou só comprado?** (sugiro os dois)
-4. **A estratégia declara stop/alvo já na primeira versão, ou só a posição
-   desejada?** (sugiro **só a posição**; stop entra junto com a contagem de
-   barras ambíguas que o valida — senão repete-se o "rótulo supõe stop que o
-   motor não executa")
-5. **Fatias:** por trimestre? (com 4 anos dá 16 — consistência visível sem virar
+Quatro das seis se resolveram sozinhas — não por acordo, por evidência.
+
+| | Pergunta | Resposta |
+|---|---|---|
+| 1 | ta4j ou motor próprio? | **Motor próprio.** Os robôs dele não cabem no ta4j. |
+| 2 | 1 contrato fixo? | **Não.** A quantidade é parte da decisão, em toda ordem. |
+| 3 | Comprado e vendido? | **Os dois**, e a inversão também. |
+| 4 | Stop e alvo já na v1? | **Sim.** O motor os executa agora — o que resolve a ressalva antiga de que "o motor não executa stop", registrada na memória `rotulo-e-motor-discordam`. |
+
+Duas continuam abertas, e travam a etapa 5:
+
+5. **Fatias: por trimestre?** (com 4 anos dá 16 — consistência visível sem virar
    ruído)
-6. **Padrão do "à frente":** `1/3`? (o MetaTrader oferece 1/2, 1/3, 1/4)
+6. **Padrão do "à frente": `1/3`?** (o MetaTrader oferece 1/2, 1/3, 1/4)
 
 ---
 
-## Depois disto
+## A linguagem portável
 
-A linguagem comum de execução — para que toda estratégia nossa traduza para NTSL
-e MQL5 pelo mesmo caminho — está registrada em
-[EXECUCAO-PORTAVEL.md](EXECUCAO-PORTAVEL.md). Ela vem **depois** do backtest e
-depois de pelo menos uma estratégia portada à mão, de propósito.
+O vocabulário de execução **já existe** e está em `domain.trading.order` — foi
+extraído do manual e conferido contra os robôs, não desenhado. O que continua
+adiado é o **tradutor** para NTSL e MQL5, e o motivo está em
+[EXECUCAO-PORTAVEL.md](EXECUCAO-PORTAVEL.md): a tradução manual de uma estratégia
+é o que revela se o vocabulário está certo, não o contrário.

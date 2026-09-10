@@ -1,8 +1,10 @@
 # A linguagem de execução das estratégias
 
-**Status: registrado, nada decidido e nada construído.** Este documento existe
-para o assunto estar claro quando chegarmos nele — depois do backtest, não
-antes. Ver [BACKTEST.md](BACKTEST.md).
+**Status: o vocabulário está construído; o tradutor não.** A camada de
+execução vive em `domain.trading.order` desde `6b8f7ba`, extraída do manual do
+NTSL e conferida contra os 45 robôs em `RoboMateus1`. O que continua parado é o
+**tradutor** para NTSL e MQL5, e o motivo está no fim deste documento. Ver
+[BACKTEST.md](BACKTEST.md).
 
 ---
 
@@ -109,37 +111,65 @@ pobre. Misturar as duas é o que torna uma estratégia intraduzível.
 
 ---
 
-## O esboço, para discordar dele depois
+## O esboço que eu tinha feito, e por que ele estava errado
 
-Não é proposta; é o menor vocabulário que cobriria o que já existe.
+Era este, e não é mais:
 
 ```
-Intent              o que diz                        NTSL   MQL5   nosso
-------------------------------------------------------------------------
-BeLong(size)        quero estar comprado             sim    sim    sim
-BeShort(size)       quero estar vendido              sim    sim    sim
-BeFlat()            quero estar zerado               sim    sim    sim
-
-When.NEXT_OPEN      vale na abertura da barra seguinte
-When.THIS_CLOSE     vale no fechamento desta barra
+BeLong(size)        quero estar comprado
+BeShort(size)       quero estar vendido
+BeFlat()            quero estar zerado
 ```
 
-Três verbos e um momento. É quase exatamente o `Signal` que o `endeavour` já
-tem — **e essa pobreza é a virtude**, não uma primeira versão a ser enriquecida.
+Três verbos e um momento, e eu escrevi ali que **essa pobreza é a virtude**.
+A ideia estava certa; o tamanho estava errado. Quando os robôs foram lidos,
+**nenhum deles cabia nisso** — e não por sofisticação, por três hábitos
+banais:
 
-Stop e alvo **ficam de fora por enquanto**, pela mesma razão registrada na
-decisão 4 do backtest: o motor não os executa, e um vocabulário que os
-declarasse repetiria o erro do rótulo que supõe o que o motor não faz.
+- **Ordem limitada em repouso.** A pescaria apregoa `SellShortLimit` a 15
+  pontos antes da banda e espera. Não é "quero estar vendido" — é "quero estar
+  vendido *ali*, se o mercado vier".
+- **A quantidade é a decisão.** Escada que acumula, núcleo, `N` calculado por
+  sinal. `BeLong(size)` só sabe dizer o tamanho final, não o pedido.
+- **Saída parcial em vários preços ao mesmo tempo.** Dois `SellToCoverLimit` em
+  alvos diferentes, vivos juntos.
+
+A lição não é que pobreza seja ruim. É que **o piso do vocabulário não se
+escolhe, se mede** — e a régua é o que o alvo mais pobre executa, não o que
+parece elegante no papel.
+
+## O vocabulário que ficou
+
+Os doze verbos do NTSL não são doze ideias. São três perguntas feitas de uma
+vez:
+
+```
+{Buy, SellShort, BuyToCover, SellToCover} × {AtMarket, Limit, Stop}
+    = Side × Purpose × Trigger
+```
+
+Mais `ClosePosition`, `ReversePosition` e `CancelPendingOrders`. `Desk` é a
+porta de entrada, com os nomes do Profit e a quantidade opcional exatamente
+onde o NTSL a deixa opcional — então portar um robô é transcrição, não
+interpretação.
+
+Stop e alvo **entraram**, ao contrário do que este documento dizia. A ressalva
+era que o motor não os executava; o motor de agora executa.
 
 ---
 
-## O risco de fazer isso cedo demais
+## O risco de fazer isso cedo demais — que se realizou
 
-Um vocabulário de execução desenhado **antes** de existirem estratégias é um
-vocabulário desenhado contra estratégias imaginárias. Ele vai ter verbos que
-ninguém usa e faltar o que a terceira estratégia real precisar.
+Este documento avisava: um vocabulário desenhado **antes** de existirem
+estratégias é um vocabulário desenhado contra estratégias imaginárias. Foi
+exatamente o que aconteceu com o esboço de três verbos.
 
-Por isso este documento fica parado até termos: o backtest rodando, a família
-clássica escrita, e pelo menos uma estratégia que **já tenha sido portada à
-mão** para o NTSL. A tradução manual é o que revela o vocabulário — não o
-contrário.
+O que o salvou não foi esperar — foi trocar a fonte. **Em vez de imaginar as
+estratégias, lemos as que já existem**: o manual diz o que é executável, e os
+45 robôs dizem o que ele de fato usa. Vocabulário lido não corre o risco de
+vocabulário inventado.
+
+**O tradutor continua parado**, e por uma razão que não mudou: a tradução
+manual de uma estratégia é o que revela se o vocabulário está certo, não o
+contrário. Ele espera o backtest rodando de ponta a ponta, a família clássica
+escrita, e pelo menos uma estratégia **já portada à mão** para o NTSL.
