@@ -100,4 +100,49 @@ public record Result(List<Trade> trades, List<Fill> fills, int ambiguousBars,
     public boolean endedHolding() {
         return openAtTheEnd != 0;
     }
+
+    /**
+     * The balance curve: the running total after each operation closed.
+     *
+     * <p>Starts at zero and has one more point than there are trades, so the
+     * first segment is the first operation. This is the <b>saldo</b> curve of
+     * the two the report wants — it moves only when a trade ends.</p>
+     *
+     * <p>The other one, <b>patrimônio</b>, marks the open position to market on
+     * every bar, and the gap between the two is the hole inside a position that
+     * is still open. It is not built: it needs a value per bar and this needs
+     * one per trade, and quoting one while calling it the other is the kind of
+     * mistake that hides a drawdown.</p>
+     *
+     * @return points, cumulative and net of costs
+     */
+    public double[] equity() {
+        double[] curve = new double[trades.size() + 1];
+        double running = 0;
+
+        for (int i = 0; i < trades.size(); i++) {
+            running += trades.get(i).net();
+            curve[i + 1] = running;
+        }
+
+        return curve;
+    }
+
+    /**
+     * The deepest the balance curve ever fell below its own peak.
+     *
+     * @return points, zero or negative
+     */
+    public double drawdown() {
+        double[] curve = equity();
+        double peak = 0;
+        double worst = 0;
+
+        for (double point : curve) {
+            peak = Math.max(peak, point);
+            worst = Math.min(worst, point - peak);
+        }
+
+        return worst;
+    }
 }

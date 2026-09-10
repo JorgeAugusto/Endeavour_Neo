@@ -1079,6 +1079,7 @@ public final class MainWindow extends JFrame {
         JMenu tools = menu("menu.tools");
         tools.add(item("action.series", 0, this::openSeries));
         tools.add(item("action.replay", 0, this::openReplay));
+        tools.add(item("action.backtest", 0, this::openBacktest));
 
         JMenu run = menu("menu.run");
         run.add(item("action.sampleJob", 0, this::runSampleJob));
@@ -1142,6 +1143,36 @@ public final class MainWindow extends JFrame {
         });
 
         return menu;
+    }
+
+    /** The backtest window, built on first use and dropped when it closes. */
+    private transient br.com.jorge.reis.endeavourneo.ui.backtest.BacktestWindow backtest;
+
+    /**
+     * Opens the backtest window, or brings it back to the front.
+     *
+     * <p>Same shape as the replay below, and for the same reason: the window
+     * disposes itself on close, so the reference has to go with it or the next
+     * open would show a disposed frame with the previous run still in it.</p>
+     */
+    private void openBacktest() {
+        if (backtest == null) {
+            br.com.jorge.reis.endeavourneo.ui.backtest.BacktestWindow window =
+                    new br.com.jorge.reis.endeavourneo.ui.backtest.BacktestWindow(this);
+
+            window.addWindowListener(new java.awt.event.WindowAdapter() {
+
+                @Override
+                public void windowClosed(java.awt.event.WindowEvent e) {
+                    backtest = null;
+                }
+            });
+
+            backtest = window;
+        }
+
+        backtest.setVisible(true);
+        backtest.toFront();
     }
 
     /** The transport, built on first use and kept: one clock for every chart. */

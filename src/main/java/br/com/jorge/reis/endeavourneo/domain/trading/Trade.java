@@ -65,4 +65,36 @@ public record Trade(int openedAt, int closedAt, Side side, int contracts,
     public boolean won() {
         return net() > 0;
     }
+
+    /**
+     * The average price it was opened at.
+     *
+     * <p>Weighted, because a trade may have been opened three times up a ladder
+     * — which is exactly the case where a single "entry price" would be a
+     * fiction and the average is the only honest number.</p>
+     *
+     * @return points, or NaN if somehow nothing opened it
+     */
+    public double entryPrice() {
+        return averageOf(true);
+    }
+
+    /** The average price it was closed at. See {@link #entryPrice()}. */
+    public double exitPrice() {
+        return averageOf(false);
+    }
+
+    private double averageOf(boolean opening) {
+        double paid = 0;
+        int contracts = 0;
+
+        for (Fill fill : fills) {
+            if ((fill.side() == side) == opening) {
+                paid += fill.price() * fill.quantity();
+                contracts += fill.quantity();
+            }
+        }
+
+        return contracts == 0 ? Double.NaN : paid / contracts;
+    }
 }

@@ -2176,6 +2176,20 @@ public final class ChartCanvas extends JComponent {
         repaint();
     }
 
+    /**
+     * Brings a bar into view, roughly centred.
+     *
+     * <p>For a reader who is following something that is not on screen — a
+     * trade picked from a list, a date typed into a box. Centred and not put at
+     * the edge, because what surrounds the bar is the reason to go there.</p>
+     *
+     * @param bar index into the series; out of range is clamped
+     */
+    public void showBar(int bar) {
+        scrollTo(bar - visibleBars / 2);
+        repaint();
+    }
+
     /** @return the bar at the left of the screen */
     int firstVisibleBar() {
         return firstBar;
