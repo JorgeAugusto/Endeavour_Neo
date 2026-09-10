@@ -111,6 +111,14 @@ public final class ChartCanvas extends JComponent {
      */
     private static final int VERTICAL_SLACK = 6;
 
+    /**
+     * Space kept to the right of the newest bar when a chart opens.
+     *
+     * <p>Ten per cent, and not zero: a chart whose last candle touches the frame
+     * looks cut off, and the very first thing anybody does is drag it left.</p>
+     */
+    private static final double BIRTH_MARGIN = 0.10;
+
     /** Flatter than this and the candles are a line; taller and they leave the screen. */
     private static final double MINIMUM_STRETCH = 0.1;
 
@@ -410,12 +418,15 @@ public final class ChartCanvas extends JComponent {
 
     private int firstBar;
 
-    // THE MARGIN IS NOT A FIELD ANY MORE. It used to be: the air a reader
-    // happened to leave at the end of a drag was remembered and reused for
-    // every bar that arrived after it, so a drag that finished against the
-    // frame pinned every future candle against it, for good. It is a chart
-    // setting now -- ChartPreferences.rightMargin -- and birthMargin() is the
-    // one place that turns it into bars.
+    /**
+     * Empty bars kept to the right of the last one.
+     *
+     * <p>Chosen by dragging the chart past its own end, and then <b>kept</b> as
+     * bars arrive. Without it the newest candle is pinned against the right
+     * edge, which is where the eye is and where there is no room to see it
+     * form.</p>
+     */
+    private int rightMargin;
 
     private int visibleBars = DEFAULT_VISIBLE_BARS;
 
@@ -470,15 +481,6 @@ public final class ChartCanvas extends JComponent {
     private final transient Runnable followDrawing = () -> {
         for (Overlay each : overlays) {
             each.calculate(series);
-        }
-
-        // THE MARGIN MAY HAVE CHANGED, and a chart already at the end has to
-        // take the new room now: a setting whose effect waits for the next
-        // candle looks broken while the reader is standing in front of it.
-        // Only when at the end -- someone reading history is not dragged to
-        // the present by a settings window.
-        if (series.size() > 0 && firstBar + visibleBars >= series.size()) {
-            firstBar = clampFirstBar(series.size() - visibleBars + birthMargin());
         }
 
         repaint();
@@ -1758,7 +1760,7 @@ public final class ChartCanvas extends JComponent {
             // where every caller gets it and none can forget it.
             this.visibleBars = Math.max(1, Math.min(visibleBars,
                     Math.max(1, this.series.size())));
-            this.firstBar = clampFirstBar(this.series.size() - visibleBars + birthMargin());
+            this.firstBar = clampFirstBar(this.series.size() - visibleBars + rightMargin);
 
             repaint();
 
@@ -1772,12 +1774,7 @@ public final class ChartCanvas extends JComponent {
         }
 
         this.visibleBars = Math.max(1, Math.min(visibleBars, Math.max(1, this.series.size())));
-
-        // THE SETTING, and not the air the reader happened to leave: this is the
-        // moment a new candle is born, and it is born a quarter of the way in
-        // from the frame because that is what the setting says. Before, a drag
-        // that ended against the frame kept every later candle there.
-        this.firstBar = clampFirstBar(this.series.size() - visibleBars + birthMargin());
+        this.firstBar = clampFirstBar(this.series.size() - visibleBars + rightMargin);
 
         repaint();
     }
@@ -1931,6 +1928,7 @@ public final class ChartCanvas extends JComponent {
         // either side of the switch.
         int wasSize = this.series == null ? 0 : this.series.size();
         int wasVisible = this.visibleBars;
+        int wasMargin = this.rightMargin;
         int wasFirst = this.firstBar;
 
         // The candles first, always. They are instant, so the chart is never
@@ -1952,6 +1950,7 @@ public final class ChartCanvas extends JComponent {
             // Same bars, different decoration: the reader stays exactly where
             // they were.
             this.visibleBars = wasVisible;
+            this.rightMargin = wasMargin;
             this.firstBar = clampFirstBar(wasFirst);
 
             repaint();
@@ -1965,7 +1964,8 @@ public final class ChartCanvas extends JComponent {
         // A fresh series opens with air on the right, not glued to the frame: a
         // chart whose last candle touches the edge looks cut off, and the first
         // thing anybody does is drag it left.
-        this.firstBar = clampFirstBar(this.series.size() - visibleBars + birthMargin());
+        this.rightMargin = birthMargin();
+        this.firstBar = clampFirstBar(this.series.size() - visibleBars + rightMargin);
 
         // AFTER the defaults, so a restore that was waiting for bars overwrites
         // them rather than being overwritten by them. See restoreView.
@@ -2181,22 +2181,9 @@ public final class ChartCanvas extends JComponent {
         return firstBar;
     }
 
-    /**
-     * @return how many bars the window is wide
-     *
-     * <p>Package-private beside {@link #firstVisibleBar}, and for the same
-     * reason: the two together are the whole frame, and a test that wants to
-     * check where the newest candle sits needs both. The viewport would give
-     * them, but it is built from the plot bounds and would drag a laid-out
-     * window into a question about arithmetic.</p>
-     */
-    int visibleBarCount() {
-        return visibleBars;
-    }
-
-    /** Scrolls back to the newest bars, with the room the setting asks for. */
+    /** Scrolls back to the newest bars, keeping whatever air was left on the right. */
     public void goToEnd() {
-        firstBar = clampFirstBar(series.size() - visibleBars + birthMargin());
+        firstBar = clampFirstBar(series.size() - visibleBars + rightMargin);
 
         repaint();
     }
@@ -2380,7 +2367,8 @@ public final class ChartCanvas extends JComponent {
     public void centreChart() {
         stretch = 1.0;
         priceOffset = 0.0;
-        firstBar = clampFirstBar(series.size() - visibleBars + birthMargin());
+        rightMargin = birthMargin();
+        firstBar = clampFirstBar(series.size() - visibleBars + rightMargin);
 
         repaint();
         onScaleChanged.run();
@@ -2399,6 +2387,7 @@ public final class ChartCanvas extends JComponent {
      */
     public void storeView(br.com.jorge.reis.endeavourneo.platform.Settings into, String prefix) {
         into.putInt(prefix + "visibleBars", visibleBars);
+        into.putInt(prefix + "rightMargin", rightMargin);
         into.put(prefix + "stretch", String.valueOf(stretch));
         into.put(prefix + "priceOffset", String.valueOf(priceOffset));
         into.put(prefix + "period", periodCode);
@@ -2455,15 +2444,12 @@ public final class ChartCanvas extends JComponent {
                 Math.min(from.getInt(prefix + "visibleBars", visibleBars),
                         Math.max(MINIMUM_VISIBLE_BARS, series.size())));
 
+        rightMargin = Math.max(0, from.getInt(prefix + "rightMargin", rightMargin));
+
         // Back to where the reader was, measured from the end. Absent -- a
         // workspace written before this was stored -- falls back to the end of
         // the series, which is where every chart used to reopen.
-        //
-        // The stored "rightMargin" of older workspaces is IGNORED: the margin is
-        // a setting now, and reading a number written when it was per chart
-        // would put one chart back at an old answer to a question that is asked
-        // once for all of them.
-        int fromEnd = from.getInt(prefix + "fromEnd", visibleBars - birthMargin());
+        int fromEnd = from.getInt(prefix + "fromEnd", visibleBars - rightMargin);
 
         firstBar = clampFirstBar(series.size() - Math.max(0, fromEnd));
 
@@ -2489,16 +2475,8 @@ public final class ChartCanvas extends JComponent {
         }
     }
 
-    /**
-     * @return the empty bars kept to the right of the newest one
-     *
-     * <p>The single place the setting becomes a number of bars, so zooming
-     * changes the room in bars while keeping it the same share of the screen --
-     * which is how a reader thinks about it.</p>
-     */
     private int birthMargin() {
-        return Math.max(0,
-                (int) Math.round(visibleBars * ChartPreferences.rightMargin() / 100.0));
+        return Math.max(1, (int) Math.round(visibleBars * BIRTH_MARGIN));
     }
 
     private double clampOffset(double candidate) {
@@ -3618,5 +3596,15 @@ public final class ChartCanvas extends JComponent {
             repaint();
         }
 
+        private int clampFirstBar(int candidate) {
+            int clamped = ChartCanvas.this.clampFirstBar(candidate);
+
+            // Remember how much air the reader left, so it survives the next
+            // bar arriving. Zero while scrolled back into history: air is only
+            // air when it is past the end.
+            rightMargin = Math.max(0, clamped + visibleBars - Math.max(1, series.size()));
+
+            return clamped;
+        }
     }
 }

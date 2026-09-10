@@ -49,24 +49,11 @@ public final class ChartPreferences {
 
     private static final String INTERPOLATE = "interpolateOwnScale";
 
-    private static final String MARGIN = "rightMargin";
-
     /**
      * Copy-on-write because charts add and drop listeners as windows open and
      * close, on the same thread that is walking the list to tell them.
      */
     private static final List<Runnable> LISTENERS = new CopyOnWriteArrayList<>();
-
-    /** How much of the width is kept empty to the right of the newest bar. */
-    public static final int MARGIN_DEFAULT = 25;
-
-    /** Flush against the frame, for a reader who wants every pixel of history. */
-    public static final int LEAST_MARGIN = 0;
-
-    /** More than this and the chart is mostly air. */
-    public static final int MOST_MARGIN = 60;
-
-    private static int rightMargin = clampMargin(PREFS.getInt(MARGIN, MARGIN_DEFAULT));
 
     private static boolean periodLine = PREFS.getBoolean(PERIOD_LINE, false);
 
@@ -262,39 +249,6 @@ public final class ChartPreferences {
             PREFS.putBoolean(INTERPOLATE, slope);
             announce();
         }
-    }
-
-    /**
-     * @return how much of the chart's width is kept empty on the right, in per cent
-     *
-     * <p>It is where the newest candle is BORN. Ten per cent used to be a
-     * constant in the canvas, and the margin a reader ended a drag with was
-     * remembered and reused for every bar that arrived after -- so a drag that
-     * finished against the frame pinned every future candle to it, for good.
-     * As a setting it is the same number every time, which is what "the new
-     * candle appears a quarter of the way in" means.</p>
-     *
-     * <p>The room matters because the indicators point INTO it: a trendline and
-     * a projection are about where the price is going, and a chart with no air
-     * on the right shows the answer only after it has happened.</p>
-     */
-    public static int rightMargin() {
-        return rightMargin;
-    }
-
-    public static void setRightMargin(int percent) {
-        int wanted = clampMargin(percent);
-
-        if (rightMargin != wanted) {
-            rightMargin = wanted;
-
-            PREFS.putInt(MARGIN, wanted);
-            announce();
-        }
-    }
-
-    private static int clampMargin(int candidate) {
-        return Math.max(LEAST_MARGIN, Math.min(candidate, MOST_MARGIN));
     }
 
     /**

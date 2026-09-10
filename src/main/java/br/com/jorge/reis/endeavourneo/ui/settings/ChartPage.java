@@ -64,17 +64,6 @@ public final class ChartPage implements SettingsPage {
             new javax.swing.SpinnerNumberModel(ChartPreferences.WINDOW_DEFAULT,
                     ChartPreferences.LEAST_WINDOW, ChartPreferences.MOST_WINDOW, 10_000));
 
-    /**
-     * How much of the width stays empty past the newest candle.
-     *
-     * <p>Per cent and not bars, because that is how it reads at any zoom: a
-     * quarter of the screen is a quarter of the screen whether ninety bars fit
-     * or nine hundred.</p>
-     */
-    private final javax.swing.JSpinner margin = new javax.swing.JSpinner(
-            new javax.swing.SpinnerNumberModel(ChartPreferences.MARGIN_DEFAULT,
-                    ChartPreferences.LEAST_MARGIN, ChartPreferences.MOST_MARGIN, 5));
-
     public ChartPage() {
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
 
@@ -156,33 +145,6 @@ public final class ChartPage implements SettingsPage {
         panel.add(Box.createVerticalStrut(8));
         panel.add(row);
         panel.add(windowHint);
-
-        JPanel marginRow = new JPanel();
-
-        marginRow.setLayout(new BoxLayout(marginRow, BoxLayout.X_AXIS));
-        marginRow.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-        JLabel marginLabel = new JLabel(Messages.get("settings.chart.margin"));
-
-        marginLabel.setLabelFor(margin);
-        marginLabel.setDisplayedMnemonic(Messages.mnemonic("settings.chart.margin"));
-
-        margin.setMaximumSize(margin.getPreferredSize());
-
-        marginRow.add(marginLabel);
-        marginRow.add(Box.createHorizontalStrut(8));
-        marginRow.add(margin);
-        marginRow.add(Box.createHorizontalGlue());
-
-        JLabel marginHint = new JLabel(Messages.get("settings.chart.margin.hint"));
-
-        marginHint.setAlignmentX(Component.LEFT_ALIGNMENT);
-        marginHint.setBorder(BorderFactory.createEmptyBorder(0, 24, 8, 0));
-        marginHint.setEnabled(false);
-
-        panel.add(Box.createVerticalStrut(8));
-        panel.add(marginRow);
-        panel.add(marginHint);
         panel.add(Box.createVerticalGlue());
     }
 
@@ -206,7 +168,6 @@ public final class ChartPage implements SettingsPage {
         hollow.setSelected(ChartPreferences.hollowCandles());
         interpolate.setSelected(ChartPreferences.interpolateOwnScale());
         window.setValue(ChartPreferences.window());
-        margin.setValue(ChartPreferences.rightMargin());
     }
 
     @Override
@@ -217,6 +178,5 @@ public final class ChartPage implements SettingsPage {
         ChartPreferences.setHollowCandles(hollow.isSelected());
         ChartPreferences.setInterpolateOwnScale(interpolate.isSelected());
         ChartPreferences.setWindow(((Number) window.getValue()).intValue());
-        ChartPreferences.setRightMargin(((Number) margin.getValue()).intValue());
     }
 }
