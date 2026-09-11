@@ -96,9 +96,14 @@ class PatternLatchTest {
      * barra nove, e um latch que só pode armar dali em diante recusa as entradas
      * anteriores por não ter leitura nenhuma — o que é correto, e não é o que
      * estes testes querem medir.</p>
+     *
+     * <p>O desarme fica em 101 pelo mesmo motivo do nivel de venda: e
+     * inalcancavel. Com o desarme de verdade, em 50, um nivel de compra de
+     * 100 armaria e o proprio minuto seguinte desarmaria — o credito nunca
+     * chegaria a um padrao.</p>
      */
     private static final PatternBreakout.Latch ABERTO =
-            new PatternBreakout.Latch(true, 1, 1, 100, 101, 99);
+            new PatternBreakout.Latch(true, 1, 1, 100, 101, 101, 99);
 
     /**
      * Blocos de seis barras, cada um com um PFR de alta e o rompimento dele.
@@ -218,7 +223,7 @@ class PatternLatchTest {
         // Nivel de compra INALCANCAVEL e o de venda sempre atingido: se os dois
         // estivessem trocados no codigo, este seria o caso que opera.
         PatternBreakout.Latch trocado =
-                new PatternBreakout.Latch(true, 1, 1, -1, 0, 99);
+                new PatternBreakout.Latch(true, 1, 1, -1, 0, 101, 99);
 
         assertEquals(0, entradas(run(ohlc, trocado, PatternBreakout.Doubling.off())).size(),
                 "comprou com o nivel de compra inalcancavel: o lado esta invertido");
@@ -233,7 +238,7 @@ class PatternLatchTest {
         // vez no pregao inteiro -- e o credito daquela armada e tudo que existe.
         for (int credito = 1; credito <= 3; credito++) {
             PatternBreakout.Latch latch =
-                    new PatternBreakout.Latch(true, 1, 1, 100, 101, credito);
+                    new PatternBreakout.Latch(true, 1, 1, 100, 101, 101, credito);
 
             assertEquals(credito,
                     entradas(run(ohlc, latch, PatternBreakout.Doubling.off())).size(),
@@ -278,6 +283,34 @@ class PatternLatchTest {
     }
 
     @Test
+    @DisplayName("VOLTAR AO MEIO DESARMA: o credito nao sobrevive ao fim do estição")
+    void comingBackToTheMiddleDisarms() {
+        double[][] ohlc = blocos(true, true, true);
+
+        // Tres padroes e credito de sobra. O que muda entre as duas rodadas e SO
+        // onde fica o desarme.
+        //
+        // Com o desarme inalcancavel (101), a armada da primeira barra vale o
+        // pregao inteiro e os tres padroes operam.
+        PatternBreakout.Latch semDesarme =
+                new PatternBreakout.Latch(true, 1, 1, 100, 101, 101, 99);
+
+        assertEquals(3, entradas(run(ohlc, semDesarme, PatternBreakout.Doubling.off())).size(),
+                "o credito sem desarme nao pagou os tres padroes");
+
+        // Com o desarme em ZERO, ele passa a ser alcancavel: qualquer leitura do
+        // estocastico em zero ou acima joga o credito fora, e como o estocastico
+        // vive em zero ou acima, ele e jogado fora em toda barra. Nenhum padrao
+        // encontra credito.
+        PatternBreakout.Latch semprDesarma =
+                new PatternBreakout.Latch(true, 1, 1, 100, 101, 0, 99);
+
+        assertEquals(0,
+                entradas(run(ohlc, semprDesarma, PatternBreakout.Doubling.off())).size(),
+                "operou depois de o estocastico ter voltado ao nivel de desarme");
+    }
+
+    @Test
     @DisplayName("UM PADRAO QUE O LATCH RECUSA TAMBEM LARGA O PLANO ANTIGO")
     void apatternTheLatchRefusesAlsoDropsTheOlderPlan() {
         // Compra armada, venda nunca: um PFR de ALTA vira plano, e o de BAIXA da
@@ -298,7 +331,8 @@ class PatternLatchTest {
 
         // Credito de compra existe; o de venda nao pode existir, porque o nivel
         // de venda esta acima do maximo que o estocastico alcanca.
-        PatternBreakout.Latch soCompra = new PatternBreakout.Latch(true, 1, 1, 100, 101, 1);
+        PatternBreakout.Latch soCompra =
+                new PatternBreakout.Latch(true, 1, 1, 100, 101, 101, 1);
 
         assertEquals(0, entradas(run(ohlc, soCompra, PatternBreakout.Doubling.off())).size(),
                 "o plano comprado sobreviveu ao padrao de baixa da barra 3");
@@ -338,6 +372,80 @@ class PatternLatchTest {
 
         assertEquals(List.of(1, 1, 1, 1), maos(pedindo),
                 "a mao dobrou com o modulo desligado: " + maos(pedindo));
+    }
+
+    /** Blocos com PFR de alta, sobre uma tendência que se pode escolher. */
+    private static double[][] emTendencia(int blocos, double passoPorBarra) {
+        List<double[]> feitas = new ArrayList<>();
+        double l = 100_000;
+
+        for (int bloco = 0; bloco < blocos; bloco++) {
+            feitas.add(new double[] {l, l + 100, l - 50, l + 50});
+            feitas.add(new double[] {l + 50, l + 120, l - 100, l});
+            feitas.add(new double[] {l - 150, l + 100, l - 200, l + 80});
+            feitas.add(new double[] {l + 80, l + 700, l + 70, l + 650});
+            feitas.add(new double[] {l + 650, l + 700, l + 600, l + 620});
+            feitas.add(new double[] {l + 620, l + 640, l - 10, l});
+
+            l += passoPorBarra * 6;
+        }
+
+        feitas.add(new double[] {l, l + 50, l - 50, l});
+        feitas.add(new double[] {l, l + 50, l - 50, l});
+
+        return feitas.toArray(new double[0][]);
+    }
+
+    private static Result run(double[][] ohlc, PatternBreakout.Trend trend) {
+        PriceSeries bars = new Bars(ohlc);
+        PatternBreakout what = new PatternBreakout(SP, CandlePattern.Family.PFR,
+                1.5, 3, 1, PatternBreakout.Latch.off(), PatternBreakout.Doubling.off(), trend);
+
+        what.sourcedFrom(bars);
+
+        return new Backtest(Costs.NONE, 1).run(bars, bars, what, null);
+    }
+
+    @Test
+    @DisplayName("AS MEDIAS CRUZADAS PRA BAIXO NAO DEIXAM COMPRAR")
+    void averagesCrossedDownDoNotLetAbuyThrough() {
+        // Vinte blocos subindo: o pregao anda o bastante para as duas medias
+        // sairem do aquecimento e se cruzarem para cima.
+        double[][] subindo = emTendencia(20, 6);
+
+        int semPortao = entradas(run(subindo, PatternBreakout.Trend.off())).size();
+
+        assertTrue(semPortao > 0, "o pregao inventado nao gera entrada nenhuma");
+
+        // Subindo, o portao deixa comprar -- que e o que torna a recusa abaixo
+        // uma medida do portao e nao do pregao.
+        assertTrue(entradas(run(subindo, PatternBreakout.Trend.standard())).size() > 0,
+                "com as medias cruzadas pra cima a compra foi recusada");
+
+        // O MESMO desenho de padroes, num pregao que CAI: as medias cruzam pra
+        // baixo e nenhum PFR de alta passa.
+        double[][] caindo = emTendencia(20, -6);
+
+        assertTrue(entradas(run(caindo, PatternBreakout.Trend.off())).size() > 0,
+                "a versao caindo nao gera entrada nem sem portao");
+
+        assertEquals(0, entradas(run(caindo, PatternBreakout.Trend.standard())).size(),
+                "comprou com as medias cruzadas pra baixo");
+    }
+
+    @Test
+    @DisplayName("no aquecimento das medias o portao fica FECHADO dos dois lados")
+    void whiletheAveragesWarmUpTheGateIsShut() {
+        // Poucos blocos: a media de 21 em cinco minutos nem chega a ter valor.
+        // Sem resposta, o portao recusa -- e nao "deixa passar porque NaN
+        // compara falso", que e o jeito de um filtro virar ruido silencioso.
+        double[][] curto = emTendencia(3, 6);
+
+        assertTrue(entradas(run(curto, PatternBreakout.Trend.off())).size() > 0,
+                "o recorte curto nao gera entrada nem sem portao");
+
+        assertEquals(0, entradas(run(curto, PatternBreakout.Trend.standard())).size(),
+                "operou com as medias ainda aquecendo");
     }
 
     @Test

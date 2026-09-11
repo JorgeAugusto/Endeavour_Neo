@@ -17,6 +17,8 @@
  */
 package br.com.jorge.reis.endeavourneo.domain.trading.strategy;
 
+import br.com.jorge.reis.endeavourneo.domain.indicator.Ema;
+import br.com.jorge.reis.endeavourneo.domain.indicator.LastClosed;
 import br.com.jorge.reis.endeavourneo.domain.indicator.Stochastic;
 import br.com.jorge.reis.endeavourneo.domain.market.CandlePattern;
 import br.com.jorge.reis.endeavourneo.domain.market.CandlePatterns;
@@ -111,15 +113,34 @@ public final class PatternBreakout implements Strategy, Plotted, Sourced {
      * refused low worth buying. A buy spends buy credit and leaves the sell
      * credit where it was.
      *
-     * @param on        whether the filter applies at all
-     * @param period    the stochastic's range, in bars of one minute
-     * @param average   its smoothing
-     * @param buyLevel  at or below this, buys are armed
-     * @param sellLevel at or above this, sells are armed
-     * @param entries   how many entries one arming pays for
+     * <h2>Coming back to the middle DISARMS it</h2>
+     *
+     * <p>A credit is not a coupon with no expiry date. The stochastic went to
+     * twenty because the market was stretched, and by the time it has climbed
+     * back to fifty that stretch is spent — a pattern appearing then is a
+     * pattern in an ordinary market, which is the thing the filter exists to
+     * refuse. So crossing back through the middle throws the credit away, and
+     * the next stretch has to arm it again.
+     *
+     * <p>Fifty disarms the BUY on the way up and the SELL on the way down,
+     * which is the same sentence read from each end. The check is by level
+     * rather than by crossing, unlike arming: throwing away an empty credit
+     * changes nothing, so "it is above fifty" and "it has just gone above
+     * fifty" cannot produce different runs.
+     *
+     * @param on         whether the filter applies at all
+     * @param period     the stochastic's range, in bars of one minute
+     * @param average    its smoothing
+     * @param buyLevel   at or below this, buys are armed
+     * @param sellLevel  at or above this, sells are armed
+     * @param resetLevel back at this, the credit is thrown away
+     * @param entries    how many entries one arming pays for
      */
     public record Latch(boolean on, int period, int average,
-                        double buyLevel, double sellLevel, int entries) {
+                        double buyLevel, double sellLevel, double resetLevel, int entries) {
+
+        /** The middle of the range, where a stretch is over. */
+        public static final double RESET = 50;
 
         public Latch {
             period = Math.max(1, period);
@@ -129,12 +150,56 @@ public final class PatternBreakout implements Strategy, Plotted, Sourced {
 
         /** No filter: every pattern of the chosen family is traded. */
         public static Latch off() {
-            return new Latch(false, Stochastic.PERIOD, Stochastic.AVERAGE, 20, 80, 2);
+            return new Latch(false, Stochastic.PERIOD, Stochastic.AVERAGE, 20, 80, RESET, 2);
         }
 
-        /** Eight and three on one minute, twenty and eighty, two entries. */
+        /** Eight and three on one minute, twenty and eighty, back at fifty. */
         public static Latch standard() {
-            return new Latch(true, Stochastic.PERIOD, Stochastic.AVERAGE, 20, 80, 2);
+            return new Latch(true, Stochastic.PERIOD, Stochastic.AVERAGE, 20, 80, RESET, 2);
+        }
+    }
+
+    /**
+     * The trend gate: two averages of different scales, and which side they let
+     * through.
+     *
+     * <p>The fast one is read on ONE MINUTE and the slow one on FIVE, and the
+     * side comes from which is above which: fast over slow lets buys through,
+     * fast under slow lets sells through. Crossed down the strategy waits for
+     * the stochastic to go above eighty, then for a bearish pattern, and sells;
+     * crossed up it is the mirror.
+     *
+     * <h2>The slow one is the LAST CLOSED five-minute bar</h2>
+     *
+     * <p>Never the one containing this minute — see {@link LastClosed}. At 10:01
+     * the five-minute bar of 10:00 has four minutes of trading still to come,
+     * and its close is a price nobody has seen. Reading it is the kind of
+     * look-ahead that produces a filter which works beautifully in a backtest
+     * and does nothing at all live.
+     *
+     * @param on    whether the gate applies
+     * @param fast  the fast average's period, on one minute
+     * @param slow  the slow average's period, on five minutes
+     */
+    public record Trend(boolean on, int fast, int slow) {
+
+        /** The two he asked for: seventeen on one minute, twenty-one on five. */
+        public static final int FAST = 17;
+
+        public static final int SLOW = 21;
+
+        public Trend {
+            fast = Math.max(1, fast);
+            slow = Math.max(1, slow);
+        }
+
+        /** No gate: both sides are traded. */
+        public static Trend off() {
+            return new Trend(false, FAST, SLOW);
+        }
+
+        public static Trend standard() {
+            return new Trend(true, FAST, SLOW);
         }
     }
 
@@ -195,6 +260,8 @@ public final class PatternBreakout implements Strategy, Plotted, Sourced {
 
     private final Doubling doubling;
 
+    private final Trend trend;
+
     // ---------------------------------------------------------------- the run
 
     private PriceSeries bars;
@@ -207,10 +274,18 @@ public final class PatternBreakout implements Strategy, Plotted, Sourced {
     /** Which session each bar belongs to; a new number means the day turned. */
     private int[] session;
 
-    /** Decision bars during which the stochastic reached the buy level. */
-    private boolean[] armsBuy;
+    /**
+     * What the stochastic did to each side on each decision bar.
+     *
+     * <p>{@code +1} armed, {@code -1} disarmed, {@code 0} neither. One number
+     * rather than two flags because a decision bar can hold both events — a
+     * five-minute bar is five minutes of stochastic — and then the LAST one is
+     * what the strategy finds when the bar closes. Two flags would have to
+     * record which came first, which is the same number written twice.</p>
+     */
+    private int[] buyEvent;
 
-    private boolean[] armsSell;
+    private int[] sellEvent;
 
     private int buyCredit;
 
@@ -221,6 +296,9 @@ public final class PatternBreakout implements Strategy, Plotted, Sourced {
 
     /** What the open position was entered at, for telling a loss from a gain. */
     private double entered;
+
+    /** Which side the two averages allow at each decision bar: +1, -1 or 0. */
+    private int[] allows;
 
     // ---------------------------------------------------------------- the plan
 
@@ -250,7 +328,14 @@ public final class PatternBreakout implements Strategy, Plotted, Sourced {
     public PatternBreakout(ZoneId zone, CandlePattern.Family family, double reward,
                            int validFor, int lot) {
 
-        this(zone, family, reward, validFor, lot, Latch.off(), Doubling.off());
+        this(zone, family, reward, validFor, lot, Latch.off(), Doubling.off(), Trend.off());
+    }
+
+    /** The pattern with the two entry filters, and no trend gate. */
+    public PatternBreakout(ZoneId zone, CandlePattern.Family family, double reward,
+                           int validFor, int lot, Latch latch, Doubling doubling) {
+
+        this(zone, family, reward, validFor, lot, latch, doubling, Trend.off());
     }
 
     /**
@@ -261,9 +346,11 @@ public final class PatternBreakout implements Strategy, Plotted, Sourced {
      * @param lot      contracts per trade, before any doubling
      * @param latch    the stochastic filter, or {@link Latch#off()}
      * @param doubling the martingale, or {@link Doubling#off()}
+     * @param trend    the two averages, or {@link Trend#off()}
      */
     public PatternBreakout(ZoneId zone, CandlePattern.Family family, double reward,
-                           int validFor, int lot, Latch latch, Doubling doubling) {
+                           int validFor, int lot, Latch latch, Doubling doubling,
+                           Trend trend) {
 
         this.zone = zone == null ? Timeframe.defaultZone() : zone;
         this.family = family == null ? CandlePattern.Family.PFR : family;
@@ -272,6 +359,7 @@ public final class PatternBreakout implements Strategy, Plotted, Sourced {
         this.lot = Math.max(1, lot);
         this.latch = latch == null ? Latch.off() : latch;
         this.doubling = doubling == null ? Doubling.off() : doubling;
+        this.trend = trend == null ? Trend.off() : trend;
     }
 
     @Override
@@ -315,6 +403,59 @@ public final class PatternBreakout implements Strategy, Plotted, Sourced {
         entered = Double.NaN;
 
         findTheArmings();
+        findTheTrend();
+    }
+
+    /**
+     * Works out, once, which side the two averages allow on each decision bar.
+     *
+     * <p>The fast average on one minute against the slow one on five, both read
+     * from the bars as stored — so the answer does not change when the chart is
+     * put on another scale, which is the point of naming the scales in the
+     * setting. The five-minute value is the LAST CLOSED one; see
+     * {@link LastClosed} for why the other reading looks ahead.</p>
+     *
+     * <p>Where either average is still warming up the answer is <b>zero</b>, and
+     * zero refuses both sides. A gate that cannot see is a gate that is shut:
+     * the alternative is trading the first bars of every recorte on a comparison
+     * against NaN, which is false either way and so silently reads as "sell".
+     */
+    private void findTheTrend() {
+        allows = new int[size];
+
+        if (!trend.on() || size == 0) {
+            return;
+        }
+
+        PriceSeries from = source == null ? bars : source;
+        PriceSeries minutes = Timeframe.ONE_MINUTE.apply(from);
+        PriceSeries fives = Timeframe.FIVE_MINUTES.apply(from);
+
+        double[] fast = new Ema(trend.fast()).over(minutes);
+        double[] slow = LastClosed.spread(minutes, fives, new Ema(trend.slow()).over(fives));
+
+        int at = 0;
+
+        for (int minute = 0; minute < minutes.size(); minute++) {
+            while (at + 1 < size && minutes.timeAt(minute) >= bars.timeAt(at + 1)) {
+                at++;
+            }
+
+            // The LAST minute inside a decision bar wins, which is the one that
+            // had closed when the strategy is asked. Written every minute rather
+            // than picked once, because the bars of a renko do not divide the
+            // minutes evenly and there is no arithmetic that finds "the last
+            // one" without walking.
+            allows[at] = side(fast[minute], slow[minute]);
+        }
+    }
+
+    private static int side(double fast, double slow) {
+        if (Double.isNaN(fast) || Double.isNaN(slow) || fast == slow) {
+            return 0;
+        }
+
+        return fast > slow ? 1 : -1;
     }
 
     /**
@@ -334,8 +475,8 @@ public final class PatternBreakout implements Strategy, Plotted, Sourced {
      * note in the chart's own {@code OwnScale} records, running the other way.
      */
     private void findTheArmings() {
-        armsBuy = new boolean[size];
-        armsSell = new boolean[size];
+        buyEvent = new int[size];
+        sellEvent = new int[size];
 
         if (!latch.on() || size == 0) {
             return;
@@ -362,15 +503,24 @@ public final class PatternBreakout implements Strategy, Plotted, Sourced {
             boolean low = now <= latch.buyLevel();
             boolean high = now >= latch.sellLevel();
 
-            // ON THE WAY IN ONLY. Forty minutes spent under twenty is one event,
-            // not forty; counting each of them would refill the credit every
-            // bar and the cap on entries would say nothing.
+            // ARMING IS ON THE WAY IN ONLY. Forty minutes spent under twenty is
+            // one event, not forty; counting each of them would refill the
+            // credit every bar and the cap on entries would say nothing.
+            //
+            // DISARMING IS BY LEVEL, and the asymmetry is deliberate: throwing
+            // away a credit that is already empty changes nothing, so there is
+            // no run in which "it is past the middle" and "it has just gone
+            // past the middle" disagree. Arming does not have that luxury.
             if (low && !wasLow) {
-                armsBuy[at] = true;
+                buyEvent[at] = 1;
+            } else if (now >= latch.resetLevel()) {
+                buyEvent[at] = -1;
             }
 
             if (high && !wasHigh) {
-                armsSell[at] = true;
+                sellEvent[at] = 1;
+            } else if (now <= latch.resetLevel()) {
+                sellEvent[at] = -1;
             }
 
             wasLow = low;
@@ -432,12 +582,16 @@ public final class PatternBreakout implements Strategy, Plotted, Sourced {
         // The arming is applied BEFORE the pattern is looked for, and both
         // happen at this bar's close: every minute that armed it is inside the
         // bar that just ended.
-        if (armsBuy[bar]) {
+        if (buyEvent[bar] > 0) {
             buyCredit = latch.entries();
+        } else if (buyEvent[bar] < 0) {
+            buyCredit = 0;
         }
 
-        if (armsSell[bar]) {
+        if (sellEvent[bar] > 0) {
             sellCredit = latch.entries();
+        } else if (sellEvent[bar] < 0) {
+            sellCredit = 0;
         }
 
         if (!holding) {
@@ -483,6 +637,17 @@ public final class PatternBreakout implements Strategy, Plotted, Sourced {
         CandlePattern pattern = CandlePatterns.detect(bars, bar);
 
         if (pattern.isNone() || pattern.family() != family || pattern.direction() == 0) {
+            return;
+        }
+
+        // THE TREND GATE COMES FIRST, before the latch. The order is his: the
+        // averages say which side may be traded at all, the stochastic says the
+        // market is stretched enough to try, and the pattern says where. A side
+        // the trend refuses is not a trade waiting for a credit -- it is not a
+        // trade.
+        if (trend.on() && allows[bar] != pattern.direction()) {
+            forget();
+
             return;
         }
 

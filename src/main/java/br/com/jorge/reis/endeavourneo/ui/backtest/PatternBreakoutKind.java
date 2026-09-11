@@ -70,7 +70,15 @@ final class PatternBreakoutKind implements StrategyKind {
 
     private static final String LATCH_SELL = "strategy.breakout.latch.sell";
 
+    private static final String LATCH_RESET = "strategy.breakout.latch.reset";
+
     private static final String LATCH_ENTRIES = "strategy.breakout.latch.entries";
+
+    private static final String TREND = "strategy.breakout.trend";
+
+    private static final String TREND_FAST = "strategy.breakout.trend.fast";
+
+    private static final String TREND_SLOW = "strategy.breakout.trend.slow";
 
     private static final String DOUBLING = "strategy.breakout.doubling";
 
@@ -98,7 +106,7 @@ final class PatternBreakoutKind implements StrategyKind {
     @Override
     public Strategy build() {
         return new PatternBreakout(Timeframe.defaultZone(), family(),
-                reward() / 10.0, validFor(), lot(), latch(), doubling());
+                reward() / 10.0, validFor(), lot(), latch(), doubling(), trend());
     }
 
     @Override
@@ -146,7 +154,22 @@ final class PatternBreakoutKind implements StrategyKind {
                 clamp(settings.getInt(LATCH_AVERAGE, Stochastic.AVERAGE), 1, 500),
                 clamp(settings.getInt(LATCH_BUY, 20), 0, 100),
                 clamp(settings.getInt(LATCH_SELL, 80), 0, 100),
+                clamp(settings.getInt(LATCH_RESET,
+                        (int) PatternBreakout.Latch.RESET), 0, 100),
                 clamp(settings.getInt(LATCH_ENTRIES, 2), 1, 100));
+    }
+
+    /** @return the trend gate as saved, or {@link PatternBreakout.Trend#off()} */
+    static PatternBreakout.Trend trend() {
+        Settings settings = Settings.settings();
+
+        if (!settings.getBoolean(TREND, false)) {
+            return PatternBreakout.Trend.off();
+        }
+
+        return new PatternBreakout.Trend(true,
+                clamp(settings.getInt(TREND_FAST, PatternBreakout.Trend.FAST), 1, 500),
+                clamp(settings.getInt(TREND_SLOW, PatternBreakout.Trend.SLOW), 1, 500));
     }
 
     /** @return the martingale as saved, or {@link PatternBreakout.Doubling#off()} */
@@ -194,7 +217,19 @@ final class PatternBreakoutKind implements StrategyKind {
 
         private final JSpinner latchSell = new JSpinner(new SpinnerNumberModel(80, 0, 100, 1));
 
+        private final JSpinner latchReset = new JSpinner(new SpinnerNumberModel(
+                (int) PatternBreakout.Latch.RESET, 0, 100, 1));
+
         private final JSpinner latchEntries = new JSpinner(new SpinnerNumberModel(2, 1, 100, 1));
+
+        private final JCheckBox trend =
+                new JCheckBox(Messages.get("strategy.breakout.trend"));
+
+        private final JSpinner trendFast = new JSpinner(
+                new SpinnerNumberModel(PatternBreakout.Trend.FAST, 1, 500, 1));
+
+        private final JSpinner trendSlow = new JSpinner(
+                new SpinnerNumberModel(PatternBreakout.Trend.SLOW, 1, 500, 1));
 
         private final JCheckBox doubling =
                 new JCheckBox(Messages.get("strategy.breakout.doubling"));
@@ -232,6 +267,16 @@ final class PatternBreakoutKind implements StrategyKind {
             panel.add(row("strategy.breakout.lot", lot));
             panel.add(hint("strategy.breakout.stop.hint"));
 
+            // ------------------------------------------------ a tendencia
+            trend.setAlignmentX(Component.LEFT_ALIGNMENT);
+            trend.addActionListener(e -> followTheSwitches());
+
+            panel.add(trend);
+            panel.add(hint("strategy.breakout.trend.hint"));
+            panel.add(row("strategy.breakout.trend.fast", trendFast));
+            panel.add(row("strategy.breakout.trend.slow", trendSlow));
+            panel.add(hint("strategy.breakout.trend.scale.hint"));
+
             // ------------------------------------------------ o filtro
             latch.setAlignmentX(Component.LEFT_ALIGNMENT);
             latch.addActionListener(e -> followTheSwitches());
@@ -243,6 +288,8 @@ final class PatternBreakoutKind implements StrategyKind {
             panel.add(hint("strategy.breakout.latch.scale.hint"));
             panel.add(row("strategy.breakout.latch.buy", latchBuy));
             panel.add(row("strategy.breakout.latch.sell", latchSell));
+            panel.add(row("strategy.breakout.latch.reset", latchReset));
+            panel.add(hint("strategy.breakout.latch.reset.hint"));
             panel.add(row("strategy.breakout.latch.entries", latchEntries));
             panel.add(hint("strategy.breakout.latch.entries.hint"));
 
@@ -266,12 +313,18 @@ final class PatternBreakoutKind implements StrategyKind {
          * run came back the same as the last one.</p>
          */
         private void followTheSwitches() {
+            boolean byTheTrend = trend.isSelected();
+
+            trendFast.setEnabled(byTheTrend);
+            trendSlow.setEnabled(byTheTrend);
+
             boolean filtering = latch.isSelected();
 
             latchPeriod.setEnabled(filtering);
             latchAverage.setEnabled(filtering);
             latchBuy.setEnabled(filtering);
             latchSell.setEnabled(filtering);
+            latchReset.setEnabled(filtering);
             latchEntries.setEnabled(filtering);
 
             doublingMost.setEnabled(doubling.isSelected());
@@ -319,11 +372,17 @@ final class PatternBreakoutKind implements StrategyKind {
             // READ FROM THE STORE AND NOT FROM latch(), which answers off() for
             // every field when the switch is off -- the screen would then forget
             // the period and the levels every time the box was unticked.
+            trend.setSelected(settings.getBoolean(TREND, false));
+            trendFast.setValue(settings.getInt(TREND_FAST, PatternBreakout.Trend.FAST));
+            trendSlow.setValue(settings.getInt(TREND_SLOW, PatternBreakout.Trend.SLOW));
+
             latch.setSelected(settings.getBoolean(LATCH, false));
             latchPeriod.setValue(settings.getInt(LATCH_PERIOD, Stochastic.PERIOD));
             latchAverage.setValue(settings.getInt(LATCH_AVERAGE, Stochastic.AVERAGE));
             latchBuy.setValue(settings.getInt(LATCH_BUY, 20));
             latchSell.setValue(settings.getInt(LATCH_SELL, 80));
+            latchReset.setValue(settings.getInt(LATCH_RESET,
+                    (int) PatternBreakout.Latch.RESET));
             latchEntries.setValue(settings.getInt(LATCH_ENTRIES, 2));
 
             doubling.setSelected(settings.getBoolean(DOUBLING, false));
@@ -343,11 +402,16 @@ final class PatternBreakoutKind implements StrategyKind {
             int bars = (Integer) valid.getValue();
             int many = (Integer) lot.getValue();
 
+            boolean byTheTrend = trend.isSelected();
+            int fast = (Integer) trendFast.getValue();
+            int slow = (Integer) trendSlow.getValue();
+
             boolean filtering = latch.isSelected();
             int period = (Integer) latchPeriod.getValue();
             int average = (Integer) latchAverage.getValue();
             int buy = (Integer) latchBuy.getValue();
             int sell = (Integer) latchSell.getValue();
+            int reset = (Integer) latchReset.getValue();
             int entries = (Integer) latchEntries.getValue();
 
             boolean martingale = doubling.isSelected();
@@ -364,11 +428,16 @@ final class PatternBreakoutKind implements StrategyKind {
                 settings.putInt(VALID, bars);
                 settings.putInt(LOT, many);
 
+                settings.putBoolean(TREND, byTheTrend);
+                settings.putInt(TREND_FAST, fast);
+                settings.putInt(TREND_SLOW, slow);
+
                 settings.putBoolean(LATCH, filtering);
                 settings.putInt(LATCH_PERIOD, period);
                 settings.putInt(LATCH_AVERAGE, average);
                 settings.putInt(LATCH_BUY, buy);
                 settings.putInt(LATCH_SELL, sell);
+                settings.putInt(LATCH_RESET, reset);
                 settings.putInt(LATCH_ENTRIES, entries);
 
                 settings.putBoolean(DOUBLING, martingale);
