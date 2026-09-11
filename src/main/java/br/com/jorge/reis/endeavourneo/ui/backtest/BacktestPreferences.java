@@ -46,6 +46,8 @@ public final class BacktestPreferences {
 
     private static final String CONTRACTS = "backtestContracts";
 
+    private static final String POINT = "backtestPointCents";
+
     /** The measured cost of a round trip on the raw series, in tenths. */
     public static final int DEFAULT_COST_TENTHS = 65;
 
@@ -55,6 +57,12 @@ public final class BacktestPreferences {
     public static final int DEFAULT_CONTRACTS = 1;
 
     public static final int MOST_CONTRACTS = 100;
+
+    /** The WIN: twenty centavos per point per contract. */
+    public static final int DEFAULT_POINT_CENTS = 20;
+
+    /** The DOL is R$ 50; nothing on this exchange is worth more. */
+    public static final int MOST_POINT_CENTS = 10_000;
 
     private BacktestPreferences() {
         throw new AssertionError("Utility class must not be instantiated");
@@ -91,6 +99,36 @@ public final class BacktestPreferences {
 
     public static void setContracts(int contracts) {
         PREFS.putInt(CONTRACTS, clamp(contracts, 1, MOST_CONTRACTS));
+    }
+
+    /**
+     * What one point of the index is worth, in reais, per contract.
+     *
+     * <p><b>WIN 0,20 · IND 1,00 · WDO 10,00 · DOL 50,00.</b> It is a property of
+     * the instrument and not of the strategy, and getting it wrong is not a
+     * rounding error: running a WDO series at the WIN value is off by a factor
+     * of fifty and every figure in reais is wrong while every figure in points
+     * is right. That is why the quadro shows the value it used, beside the name
+     * of the series it ran on.</p>
+     *
+     * @return reais per point per contract
+     */
+    public static double pointValue() {
+        return pointCents() / 100.0;
+    }
+
+    /** @return the stored value, in centavos */
+    public static int pointCents() {
+        return clamp(PREFS.getInt(POINT, DEFAULT_POINT_CENTS), 1, MOST_POINT_CENTS);
+    }
+
+    public static void setPointCents(int cents) {
+        PREFS.putInt(POINT, clamp(cents, 1, MOST_POINT_CENTS));
+    }
+
+    /** @return whether the stored value is the WIN's */
+    public static boolean isTheMini() {
+        return pointCents() == DEFAULT_POINT_CENTS;
     }
 
     private static int clamp(int value, int least, int most) {

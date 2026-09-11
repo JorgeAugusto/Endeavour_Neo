@@ -49,6 +49,10 @@ public final class BacktestPage implements SettingsPage {
     private final JSpinner contracts = new JSpinner(new SpinnerNumberModel(
             BacktestPreferences.DEFAULT_CONTRACTS, 1, BacktestPreferences.MOST_CONTRACTS, 1));
 
+    private final JSpinner point = new JSpinner(new SpinnerNumberModel(
+            BacktestPreferences.DEFAULT_POINT_CENTS / 100.0,
+            0.01, BacktestPreferences.MOST_POINT_CENTS / 100.0, 0.01));
+
     public BacktestPage() {
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
 
@@ -56,6 +60,8 @@ public final class BacktestPage implements SettingsPage {
         panel.add(hint("settings.backtest.cost.hint"));
         panel.add(row("settings.backtest.contracts", contracts, null));
         panel.add(hint("settings.backtest.contracts.hint"));
+        panel.add(row("settings.backtest.point", point, "settings.backtest.perContract"));
+        panel.add(hint("settings.backtest.point.hint"));
         panel.add(Box.createVerticalGlue());
     }
 
@@ -97,6 +103,7 @@ public final class BacktestPage implements SettingsPage {
     public void load() {
         cost.setValue(BacktestPreferences.cost());
         contracts.setValue(BacktestPreferences.contracts());
+        point.setValue(BacktestPreferences.pointValue());
     }
 
     @Override
@@ -107,5 +114,7 @@ public final class BacktestPage implements SettingsPage {
         BacktestPreferences.setCostTenths(
                 (int) Math.round(((Number) cost.getValue()).doubleValue() * 10));
         BacktestPreferences.setContracts((Integer) contracts.getValue());
+        BacktestPreferences.setPointCents(
+                (int) Math.round(((Number) point.getValue()).doubleValue() * 100));
     }
 }

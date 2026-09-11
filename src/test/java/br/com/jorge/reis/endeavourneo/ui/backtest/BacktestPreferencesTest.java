@@ -104,6 +104,41 @@ class BacktestPreferencesTest {
     }
 
     @Test
+    @DisplayName("de fabrica o ponto vale vinte centavos, que e o WIN")
+    void outOfTheBoxThePointIsTheMinis() {
+        assertEquals(0.20, BacktestPreferences.pointValue(), 1e-9, "o padrao nao e o do WIN");
+        assertTrue(BacktestPreferences.isTheMini(), "o padrao nao se reconhece como WIN");
+    }
+
+    @Test
+    @DisplayName("o valor do ponto de outro ativo vai e volta, e se declara diferente")
+    void anotherInstrumentsPointValueSurvivesAndSaysSo() {
+        BacktestPreferences.setPointCents(1_000);
+
+        assertEquals(10.0, BacktestPreferences.pointValue(), 1e-9, "o WDO nao sobreviveu");
+        assertTrue(!BacktestPreferences.isTheMini(), "o WDO passou por WIN");
+
+        // Nao e erro de arredondamento: rodar WDO com o valor do WIN erra por
+        // CINQUENTA vezes, e todo numero em reais fica errado enquanto todo
+        // numero em pontos continua certo. Por isso o quadro mostra o valor.
+        assertEquals(50.0, BacktestPreferences.pointValue() / 0.20, 1e-9,
+                "a razao entre WDO e WIN deixou de ser cinquenta");
+    }
+
+    @Test
+    @DisplayName("um ponto que nao vale nada nao e um ponto")
+    void aPointWorthNothingIsNotAPoint() {
+        BacktestPreferences.setPointCents(0);
+
+        assertEquals(1, BacktestPreferences.pointCents(), "aceitou ponto valendo zero");
+
+        BacktestPreferences.setPointCents(999_999);
+
+        assertEquals(BacktestPreferences.MOST_POINT_CENTS, BacktestPreferences.pointCents(),
+                "aceitou ponto alem do teto");
+    }
+
+    @Test
     @DisplayName("valor escrito A MAO no arquivo tambem e aparado")
     void aValueTypedStraightIntoTheFileIsClampedToo() {
         // O guarda do LEITOR nao dispara pelo caminho normal: quem escreve ja
@@ -112,9 +147,11 @@ class BacktestPreferencesTest {
         // que parece segurar algo e nao segura nada.
         Settings.settings().putInt("backtestCostTenths", -400);
         Settings.settings().putInt("backtestContracts", 0);
+        Settings.settings().putInt("backtestPointCents", -5);
 
         assertEquals(0, BacktestPreferences.costTenths(), "custo negativo do arquivo passou");
         assertEquals(1, BacktestPreferences.contracts(), "lote zero do arquivo passou");
+        assertEquals(1, BacktestPreferences.pointCents(), "ponto negativo do arquivo passou");
 
         Settings.settings().putInt("backtestCostTenths", 999_999);
         Settings.settings().putInt("backtestContracts", 9_999);

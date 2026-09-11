@@ -46,6 +46,10 @@ import org.junit.jupiter.api.Test;
 @DisplayName("A tela de backtest")
 class BacktestPanelTest {
 
+    /** Ajustes deste teste, nunca os do leitor. */
+    @org.junit.jupiter.api.io.TempDir
+    java.nio.file.Path settings;
+
     /** Sobe, desce, sobe — o bastante para o cruzamento operar algumas vezes. */
     private record Waves(int bars) implements PriceSeries {
 
@@ -195,6 +199,78 @@ class BacktestPanelTest {
 
         assertNull(model.at(0), "modelo vazio devolveu operacao");
         assertNull(model.at(-1), "indice negativo nao foi tratado");
+    }
+
+    /**
+     * Casa cada rotulo do quadro com o valor ao lado dele.
+     *
+     * <p>Cada linha e um {@code JPanel} com o rotulo a oeste e o valor no
+     * centro, entao o par se le da propria arvore -- e nao da ORDEM em que os
+     * valores foram preenchidos. E' essa ordem a parte fragil: o painel enche
+     * uma lista por indice, e um bloco que ganha uma linha desloca todos os
+     * seguintes em silencio. Um teste que lesse a lista pela mesma ordem nao
+     * veria o deslocamento; este ve.</p>
+     */
+    private static java.util.Map<String, String> readOut(java.awt.Container root) {
+        java.util.Map<String, String> pairs = new java.util.LinkedHashMap<>();
+
+        for (java.awt.Component child : root.getComponents()) {
+            if (child instanceof javax.swing.JPanel panel
+                    && panel.getLayout() instanceof java.awt.BorderLayout layout) {
+                java.awt.Component west = layout.getLayoutComponent(java.awt.BorderLayout.WEST);
+                java.awt.Component centre = layout.getLayoutComponent(java.awt.BorderLayout.CENTER);
+
+                if (west instanceof javax.swing.JLabel caption
+                        && centre instanceof javax.swing.JLabel value) {
+                    pairs.put(caption.getText(), value.getText());
+                }
+            }
+
+            if (child instanceof java.awt.Container deeper) {
+                pairs.putAll(readOut(deeper));
+            }
+        }
+
+        return pairs;
+    }
+
+    @Test
+    @DisplayName("o quadro mostra o resultado em pontos E em reais, na linha certa")
+    void theQuadroShowsPointsAndReaisOnTheRightRow() {
+        br.com.jorge.reis.endeavourneo.platform.Settings.useForTest(settings);
+
+        try {
+            Result result = run();
+            ResultPanel quadro = new ResultPanel();
+
+            quadro.show(result, br.com.jorge.reis.endeavourneo.domain.trading.Metrics
+                    .of(result, new Waves(2_000)), "WINFULL");
+
+            java.util.Map<String, String> shown = readOut(quadro);
+
+            String perTrade = shown.get(
+                    br.com.jorge.reis.endeavourneo.platform.Messages.get("backtest.perTrade"));
+
+            assertNotNull(perTrade, "o quadro nao tem linha de resultado por operacao: " + shown.keySet());
+            assertTrue(perTrade.contains("R$"), "o por-operacao nao mostra reais: " + perTrade);
+            assertTrue(perTrade.contains(String.format("%+,.0f", result.perTrade()))
+                            || perTrade.startsWith(String.format("%+,.0f", result.perTrade())),
+                    "o por-operacao nao mostra pontos: " + perTrade);
+
+            // A CHECAGEM DO DESLOCAMENTO: acerto e porcentagem, e ponto vale e
+            // dinheiro. Se os indices escorregarem, um cai na linha do outro.
+            String hit = shown.get(
+                    br.com.jorge.reis.endeavourneo.platform.Messages.get("backtest.hitRate"));
+
+            assertTrue(hit != null && hit.endsWith("%"), "a linha de acerto mostra " + hit);
+
+            String point = shown.get(
+                    br.com.jorge.reis.endeavourneo.platform.Messages.get("backtest.pointValue"));
+
+            assertTrue(point != null && point.startsWith("R$"), "a linha do valor do ponto mostra " + point);
+        } finally {
+            br.com.jorge.reis.endeavourneo.platform.Settings.stopUsingTestStore();
+        }
     }
 
     @Test

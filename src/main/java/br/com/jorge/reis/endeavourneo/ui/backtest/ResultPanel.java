@@ -64,6 +64,9 @@ final class ResultPanel extends JPanel {
 
     private static final Color WARN = new Color(0xB26A00);
 
+    /** The instrument is traded in reais, whatever language the window is in. */
+    private static final java.util.Locale BRAZIL = java.util.Locale.forLanguageTag("pt-BR");
+
     private static final Color BALANCE = new Color(0x2E8B57);
 
     private static final Color WORTH = new Color(0x2F74B5);
@@ -108,11 +111,23 @@ final class ResultPanel extends JPanel {
         JPanel panel = shell("backtest.block.result");
 
         hero.setFont(hero.getFont().deriveFont(Font.BOLD, 22f));
-        heroSub.setFont(small());
-        heroSub.setForeground(muted());
+        heroSub.setFont(heroSub.getFont().deriveFont(Font.BOLD, 14f));
+        hero.setAlignmentX(LEFT_ALIGNMENT);
+        heroSub.setAlignmentX(LEFT_ALIGNMENT);
 
         panel.add(hero);
         panel.add(heroSub);
+        panel.add(Box.createVerticalStrut(5));
+
+        for (String key : new String[] {
+                "backtest.perTrade", "backtest.gross", "backtest.costs"}) {
+            JLabel value = new JLabel("-");
+
+            value.setFont(small());
+            values.add(value);
+
+            panel.add(row(Messages.get(key), value));
+        }
 
         return panel;
     }
@@ -175,7 +190,8 @@ final class ResultPanel extends JPanel {
 
     private JComponent honesty() {
         JPanel panel = block("backtest.block.honesty", "backtest.costPerTurn",
-                "backtest.series", "backtest.ambiguous", "backtest.openAtEnd");
+                "backtest.pointValue", "backtest.series", "backtest.ambiguous",
+                "backtest.openAtEnd");
 
         warning.setFont(small());
         warning.setForeground(muted());
@@ -263,17 +279,22 @@ final class ResultPanel extends JPanel {
      */
     void show(Result result, Metrics metrics, String series) {
         double net = result.net();
+        double perPoint = BacktestPreferences.pointValue();
 
         hero.setText(String.format("%+,.0f pts", net));
         hero.setForeground(net >= 0 ? UP : DOWN);
-        heroSub.setText(String.format("%+,.2f %s  ·  %s %+,.0f  ·  %s %,.0f",
-                result.perTrade(), Messages.get("backtest.perTrade"),
-                Messages.get("backtest.gross"), result.gross(),
-                Messages.get("backtest.costs"), result.cost()));
+
+        heroSub.setText(money(net, perPoint));
+        heroSub.setForeground(net >= 0 ? UP : DOWN);
 
         curve.show(result.balancePerBar(), result.worth(), result.costPerBar());
 
         int i = 0;
+
+        // Resultado
+        set(i++, both(result.perTrade(), perPoint));
+        set(i++, both(result.gross(), perPoint));
+        set(i++, both(-result.cost(), perPoint));
 
         // Exposicao
         set(i++, String.format("%,d", metrics.trades()));
@@ -290,19 +311,23 @@ final class ResultPanel extends JPanel {
         values.get(i++).setForeground(UP);
         set(i, String.format("%+,.0f", -metrics.averageLoss()));
         values.get(i++).setForeground(DOWN);
-        set(i, String.format("%,.0f pts", result.drawdown()));
+        set(i, both(result.drawdown(), perPoint));
         values.get(i++).setForeground(DOWN);
         set(i++, String.valueOf(metrics.longestLosingRun()));
 
         // Referencia
-        set(i++, String.format("%+,.0f", metrics.buyAndHold()));
-        set(i, String.format("%+,.0f", net - metrics.buyAndHold()));
+        set(i++, both(metrics.buyAndHold(), perPoint));
+        set(i, both(net - metrics.buyAndHold(), perPoint));
         values.get(i++).setForeground(net >= metrics.buyAndHold() ? UP : DOWN);
 
         // Honestidade
         set(i++, String.format("%.1f %s%s", result.costs().pointsPerRoundTrip(),
                 Messages.get("backtest.points"),
                 result.costs().measured() ? "  " + Messages.get("backtest.measured") : ""));
+        set(i, String.format("%s%s", money(1, perPoint),
+                BacktestPreferences.isTheMini() ? "  WIN" : ""));
+        values.get(i++).setForeground(
+                BacktestPreferences.isTheMini() ? UIManager.getColor("Label.foreground") : WARN);
         set(i++, series);
         set(i++, String.format("%,d  (%.2f%%)", result.ambiguousBars(),
                 result.count() == 0 ? 0 : 100.0 * result.ambiguousBars() / result.count()));
@@ -323,6 +348,27 @@ final class ResultPanel extends JPanel {
         set(index, String.format("%.1f%%", metrics.breakEvenHitRate() * 100));
 
         values.get(index).setForeground(metrics.edge() >= 0 ? UP : DOWN);
+    }
+
+    /**
+     * Points and reais, in that order.
+     *
+     * <p>Points first because they are the number that compares: two strategies
+     * on the same instrument can be put side by side in points without matching
+     * capital or contract count. Reais second because that is the number that
+     * is felt — and because it is the one that is <b>wrong</b> when the point
+     * value does not belong to the instrument, which is why the quadro shows
+     * the value it used.</p>
+     */
+    private static String both(double points, double perPoint) {
+        return Double.isNaN(points)
+                ? "-"
+                : String.format("%+,.0f  ·  %s", points, money(points, perPoint));
+    }
+
+    /** @return reais, always in Brazilian form -- the contract is Brazilian */
+    private static String money(double points, double perPoint) {
+        return String.format(BRAZIL, "R$ %,.2f", points * perPoint);
     }
 
     private void set(int index, String text) {
