@@ -22,10 +22,12 @@ import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
 import br.com.jorge.reis.endeavourneo.domain.market.Timeframe;
 import br.com.jorge.reis.endeavourneo.domain.trading.Backtest;
 import br.com.jorge.reis.endeavourneo.domain.trading.Costs;
+import br.com.jorge.reis.endeavourneo.domain.trading.Metrics;
 import br.com.jorge.reis.endeavourneo.domain.trading.Result;
 import br.com.jorge.reis.endeavourneo.domain.trading.Trade;
 import br.com.jorge.reis.endeavourneo.domain.trading.strategy.MovingAverageCrossing;
 import br.com.jorge.reis.endeavourneo.platform.Messages;
+import br.com.jorge.reis.endeavourneo.platform.Settings;
 import br.com.jorge.reis.endeavourneo.ui.chart.ChartCanvas;
 
 import java.awt.BorderLayout;
@@ -39,11 +41,11 @@ import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JLabel;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JSpinner;
 import javax.swing.JSplitPane;
-import javax.swing.JTabbedPane;
 import javax.swing.JTable;
 import javax.swing.ListSelectionModel;
 import javax.swing.SpinnerNumberModel;
@@ -54,11 +56,11 @@ import javax.swing.table.DefaultTableCellRenderer;
  * Pick a series, pick a strategy, run it, and look at what it did.
  *
  * <p>Three things share this window and each answers something the others
- * cannot. The <b>summary</b> says whether it made money. The <b>curve</b> says
- * what shape that took — one lucky year, or a slope. The <b>price chart</b>,
- * with the operations marked on it, says <i>where</i>, and it is the only one
- * that can tell you the strategy only works in the first hour of the
- * session.</p>
+ * cannot. The <b>quadro</b> down the right says whether it made money and
+ * whether the number can be believed. The <b>table</b> is the index of what
+ * happened. The <b>price chart</b>, with the operations marked on it, says
+ * <i>where</i> — and it is the only one that can tell you the strategy only
+ * works in the first hour of the session.</p>
  *
  * <h2>Clicking an operation takes the chart to it</h2>
  *
@@ -109,13 +111,11 @@ final class BacktestPanel extends JPanel {
 
     private final JButton run = new JButton(Messages.get("backtest.run"));
 
-    private final JLabel summary = new JLabel(Messages.get("backtest.noRun"));
+    private final ResultPanel result = new ResultPanel();
 
     private final ChartCanvas chart = new ChartCanvas();
 
     private final TradeMarks marks = new TradeMarks();
-
-    private final EquityChart curve = new EquityChart();
 
     private final TradeTableModel model = new TradeTableModel(new String[] {
             Messages.get("backtest.col.index"), Messages.get("backtest.col.side"),
@@ -176,12 +176,8 @@ final class BacktestPanel extends JPanel {
         second.add(cost);
         second.add(run);
 
-        JPanel third = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
-        third.add(summary);
-
         top.add(first);
         top.add(second);
-        top.add(third);
 
         return top;
     }
@@ -204,19 +200,65 @@ final class BacktestPanel extends JPanel {
         }
     }
 
+    /**
+     * The chart over the table on the left, the quadro down the right.
+     *
+     * <p>Both dividers are draggable and both remember where they were left. The
+     * quadro takes 330 pixels off the price chart, which in a small docked window
+     * is a lot — so it is the reader who decides, and the decision survives the
+     * window being closed.</p>
+     */
     private JSplitPane body() {
         chart.addOverlay(marks);
-        chart.setPreferredSize(new Dimension(900, 320));
+        chart.setPreferredSize(new Dimension(700, 320));
 
-        JTabbedPane tabs = new JTabbedPane();
-        tabs.addTab(Messages.get("backtest.tab.trades"), tradeTable());
-        tabs.addTab(Messages.get("backtest.tab.curve"), curve);
+        JSplitPane left = new JSplitPane(JSplitPane.VERTICAL_SPLIT, chart, tradeTable());
 
-        JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, chart, tabs);
-        split.setResizeWeight(0.55);
+        left.setResizeWeight(0.62);
+        left.setBorder(BorderFactory.createEmptyBorder());
+        remember(left, "backtest.split.rows", 320);
+
+        JScrollPane quadro = new JScrollPane(result,
+                JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+                JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+
+        quadro.setBorder(BorderFactory.createEmptyBorder());
+        quadro.getVerticalScrollBar().setUnitIncrement(16);
+
+        JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, left, quadro);
+
+        // ONE, not zero: the quadro keeps its width and the chart takes every
+        // pixel the window gains. A quadro that grew with the window would push
+        // the numbers apart and leave the chart no better off.
+        split.setResizeWeight(1.0);
         split.setBorder(BorderFactory.createEmptyBorder());
+        split.setOneTouchExpandable(true);
+        remember(split, "backtest.split.quadro", -330);
 
         return split;
+    }
+
+    /**
+     * Keeps a divider where the reader left it.
+     *
+     * @param fallback where it starts; negative means "that far from the end"
+     */
+    private static void remember(JSplitPane split, String key, int fallback) {
+        Settings prefs = Settings.workspace();
+        int saved = prefs.getInt(key, Integer.MIN_VALUE);
+
+        split.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY,
+                event -> prefs.putInt(key, split.getDividerLocation()));
+
+        javax.swing.SwingUtilities.invokeLater(() -> {
+            if (saved != Integer.MIN_VALUE && saved > 0) {
+                split.setDividerLocation(saved);
+            } else if (fallback < 0) {
+                split.setDividerLocation(split.getWidth() + fallback);
+            } else {
+                split.setDividerLocation(fallback);
+            }
+        });
     }
 
     private JScrollPane tradeTable() {
@@ -265,7 +307,7 @@ final class BacktestPanel extends JPanel {
         SeriesChoice picked = (SeriesChoice) series.getSelectedItem();
 
         if (picked == null) {
-            summary.setText(Messages.get("backtest.noSeries"));
+            result.clear();
 
             return;
         }
@@ -276,7 +318,7 @@ final class BacktestPanel extends JPanel {
         Costs charged = new Costs((Double) cost.getValue());
 
         run.setEnabled(false);
-        summary.setText(Messages.get("backtest.running"));
+        run.setText(Messages.get("backtest.running"));
 
         new SwingWorker<Run, Void>() {
 
@@ -285,24 +327,25 @@ final class BacktestPanel extends JPanel {
                 PriceSeries bars = chosen.how().apply(picked.open());
 
                 return new Run(bars, new Backtest(charged, (Integer) contracts.getValue())
-                        .run(bars, what));
+                        .run(bars, what), picked.label());
             }
 
             @Override
             protected void done() {
                 run.setEnabled(true);
+                run.setText(Messages.get("backtest.run"));
 
                 try {
                     show(get());
                 } catch (InterruptedException stopped) {
                     Thread.currentThread().interrupt();
-                    summary.setText(Messages.get("backtest.failed"));
+                    failed(Messages.get("backtest.failed"));
                 } catch (Exception failed) {
                     // The message, not a stack trace in a label: the reader gets
                     // "no such file", and the console has the rest.
                     Throwable cause = failed.getCause() == null ? failed : failed.getCause();
 
-                    summary.setText(Messages.get("backtest.failed") + " " + cause.getMessage());
+                    failed(Messages.get("backtest.failed") + " " + cause.getMessage());
                     cause.printStackTrace();
                 }
             }
@@ -320,31 +363,25 @@ final class BacktestPanel extends JPanel {
         marks.highlight(null);
 
         model.show(trades, running);
-        curve.show(result.equity());
 
-        summary.setText(sentence(result));
+        this.result.show(finished.result(), Metrics.of(finished.result(), running),
+                finished.label());
 
         chart.goToEnd();
     }
 
-    private static String sentence(Result result) {
-        return String.format(
-                "%,d %s   ·   %s %,.0f   ·   %s %,.0f   ·   %s %,.2f   ·   %s %.1f%%"
-                        + "   ·   %s %,.0f   ·   %s %,d",
-                result.count(), Messages.get("backtest.trades"),
-                Messages.get("backtest.net"), result.net(),
-                Messages.get("backtest.costs"), result.cost(),
-                Messages.get("backtest.perTrade"), result.perTrade(),
-                Messages.get("backtest.hitRate"),
-                100.0 * result.wins() / Math.max(1, result.count()),
-                Messages.get("backtest.drawdown"), result.drawdown(),
-                Messages.get("backtest.ambiguous"), result.ambiguousBars());
+    /** Says it out loud and empties the quadro, so no stale number is read. */
+    private void failed(String why) {
+        result.clear();
+
+        JOptionPane.showMessageDialog(this, why, Messages.get("backtest.title"),
+                JOptionPane.WARNING_MESSAGE);
     }
 
     private void chose(int row) {
         if (row < 0) {
             marks.highlight(null);
-            curve.highlight(-1);
+            result.highlight(-1);
             chart.repaint();
 
             return;
@@ -354,17 +391,18 @@ final class BacktestPanel extends JPanel {
         Trade trade = model.at(index);
 
         marks.highlight(trade);
-        curve.highlight(index);
 
         if (trade != null) {
+            result.highlight(trade.closedAt());
+
             // Halfway through the operation, so both ends have a chance of
             // being on screen for a short one.
             chart.showBar((trade.openedAt() + trade.closedAt()) / 2);
         }
     }
 
-    /** A finished run, and the bars it ran over. */
-    private record Run(PriceSeries series, Result result) {
+    /** A finished run: the bars it ran over, what it produced, and what to call it. */
+    private record Run(PriceSeries series, Result result, String label) {
     }
 
     /** One entry of the scale list: what it is called, and what it does. */

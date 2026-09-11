@@ -24,56 +24,105 @@ import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.geom.Path2D;
+import java.util.ArrayList;
+import java.util.List;
 import javax.swing.JComponent;
 import javax.swing.UIManager;
 
 /**
- * The balance curve: what the account did, operation by operation.
+ * The three curves, on one axis: bars.
  *
- * <p>The horizontal axis is <b>operations, not time</b>, and that is a real
- * choice with a real cost. It makes a stretch of ten losing trades look the same
- * whether it took a week or a year — but it makes the shape of the strategy
- * legible, which the time axis does not when four thousand trades are squeezed
- * into six years of pixels. The time axis is the price chart's job, and the
- * price chart is right there below.</p>
+ * <p><b>Saldo</b> is what has been banked — it holds flat while a position is
+ * open and steps when the operation ends. <b>Patrimônio</b> marks that open
+ * position to market on every bar. The gap between the two is the hole inside
+ * whatever is still open, and it is the only place that hole is ever visible: a
+ * position bleeding for three days is a flat line on the balance curve and a
+ * cliff on the day it closes. <b>Custo acumulado</b> is the third line because
+ * it answers for free the question the other two raise — how much of this was
+ * brokerage.</p>
  *
- * <h2>Zero is always drawn</h2>
+ * <h2>Zero is always in the scale</h2>
  *
- * <p>A curve auto-scaled to its own range can go from −40.000 to −69.000 and
- * look like a gentle slope on a healthy chart. Pinning zero into the scale is
- * what makes a losing strategy look like one at a glance.</p>
+ * <p>A curve auto-scaled to its own range can fall from −40.000 to −69.000 and
+ * look like a gentle slope on a healthy chart. Pinning zero is what makes a
+ * losing strategy look like one at a glance.</p>
+ *
+ * <h2>Drawn by column, not by point</h2>
+ *
+ * <p>Six years of one-minute bars is 165 thousand points into a strip 300 pixels
+ * wide. Feeding every one of them to a {@code Path2D} costs more than the rest
+ * of the window put together and draws the same picture: the curves are reduced
+ * to one value per column first.</p>
  */
 final class EquityChart extends JComponent {
 
     private static final long serialVersionUID = 1L;
 
-    private static final Color UP = new Color(38, 166, 109);
+    private static final Color BALANCE = new Color(0x2E8B57);
 
-    private static final Color DOWN = new Color(214, 73, 73);
+    private static final Color WORTH = new Color(0x2F74B5);
 
-    private static final int PAD = 8;
+    private static final Color COST = new Color(0xB26A00);
 
-    private double[] curve = new double[0];
+    private static final int PAD = 6;
 
-    private int chosen = -1;
+    private transient List<Line> lines = List.of();
+
+    private int mark = -1;
+
+    /** One curve and the colour it is drawn in. */
+    private record Line(double[] points, Color colour, float width) {
+    }
 
     EquityChart() {
-        setPreferredSize(new Dimension(400, 160));
+        setPreferredSize(new Dimension(300, 96));
     }
 
-    /** @param points the running total after each operation, starting at zero */
-    void show(double[] points) {
-        curve = points == null ? new double[0] : points.clone();
-        chosen = -1;
+    /**
+     * @param balance the banked result per bar
+     * @param worth   the same, marked to market
+     * @param cost    what had been paid by each bar, positive
+     */
+    void show(double[] balance, double[] worth, double[] cost) {
+        List<Line> built = new ArrayList<>(3);
+
+        // Costs go NEGATIVE on the chart although they are counted positive:
+        // what the reader is comparing is how far the result fell against how
+        // much of the fall was paid out, and two lines heading in opposite
+        // directions would have to be read twice.
+        if (cost != null && cost.length > 1) {
+            built.add(new Line(negated(cost), COST, 1.2f));
+        }
+
+        if (worth != null && worth.length > 1) {
+            built.add(new Line(worth, WORTH, 1.2f));
+        }
+
+        if (balance != null && balance.length > 1) {
+            built.add(new Line(balance, BALANCE, 1.8f));
+        }
+
+        lines = built;
+        mark = -1;
 
         repaint();
     }
 
-    /** @param trade index of the operation to mark, or -1 */
-    void highlight(int trade) {
-        chosen = trade;
+    /** @param bar the bar to mark with a vertical line, or -1 for none */
+    void highlight(int bar) {
+        mark = bar;
 
         repaint();
+    }
+
+    private static double[] negated(double[] values) {
+        double[] flipped = new double[values.length];
+
+        for (int i = 0; i < values.length; i++) {
+            flipped[i] = -values[i];
+        }
+
+        return flipped;
     }
 
     @Override
@@ -84,35 +133,30 @@ final class EquityChart extends JComponent {
             g.setColor(UIManager.getColor("Panel.background"));
             g.fillRect(0, 0, getWidth(), getHeight());
 
-            if (curve.length < 2) {
-                hint(g);
-
+            if (lines.isEmpty()) {
                 return;
             }
 
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-            paintCurve(g);
+            paintLines(g);
         } finally {
             g.dispose();
         }
     }
 
-    private void hint(Graphics2D g) {
-        g.setColor(UIManager.getColor("Label.disabledForeground"));
-
-        String text = br.com.jorge.reis.endeavourneo.platform.Messages.get("backtest.noRun");
-
-        g.drawString(text, PAD, getHeight() / 2);
-    }
-
-    private void paintCurve(Graphics2D g) {
+    private void paintLines(Graphics2D g) {
         double top = 0;
         double bottom = 0;
+        int longest = 0;
 
-        for (double point : curve) {
-            top = Math.max(top, point);
-            bottom = Math.min(bottom, point);
+        for (Line line : lines) {
+            longest = Math.max(longest, line.points().length);
+
+            for (double point : line.points()) {
+                top = Math.max(top, point);
+                bottom = Math.min(bottom, point);
+            }
         }
 
         if (top == bottom) {
@@ -120,41 +164,48 @@ final class EquityChart extends JComponent {
             bottom = -1;
         }
 
-        int w = getWidth() - 2 * PAD;
-        int h = getHeight() - 2 * PAD;
-
-        // Zero is in the scale by construction, because top starts at zero and
-        // so does bottom -- see the class note.
+        int w = Math.max(getWidth() - 2 * PAD, 1);
+        int h = Math.max(getHeight() - 2 * PAD, 1);
         double scale = h / (top - bottom);
-        int zero = (int) (PAD + (top - 0) * scale);
 
         g.setColor(UIManager.getColor("Separator.foreground"));
         g.setStroke(new BasicStroke(1));
+
+        int zero = (int) (PAD + top * scale);
         g.drawLine(PAD, zero, PAD + w, zero);
 
+        for (Line line : lines) {
+            g.setColor(line.colour());
+            g.setStroke(new BasicStroke(line.width()));
+            g.draw(pathOf(line.points(), w, h, top, scale));
+        }
+
+        if (mark >= 0 && longest > 1) {
+            int x = PAD + (int) ((double) w * Math.min(mark, longest - 1) / (longest - 1));
+
+            g.setColor(UIManager.getColor("Label.foreground"));
+            g.setStroke(new BasicStroke(1));
+            g.drawLine(x, PAD, x, PAD + h);
+        }
+    }
+
+    /** One point per column, so the cost does not follow the number of bars. */
+    private static Path2D pathOf(double[] points, int w, int h, double top, double scale) {
         Path2D path = new Path2D.Double();
+        int columns = Math.min(w, points.length);
 
-        for (int i = 0; i < curve.length; i++) {
-            double x = PAD + (double) w * i / (curve.length - 1);
-            double y = PAD + (top - curve[i]) * scale;
+        for (int column = 0; column < columns; column++) {
+            int at = (int) ((long) column * (points.length - 1) / Math.max(1, columns - 1));
+            double x = PAD + (double) w * column / Math.max(1, columns - 1);
+            double y = PAD + (top - points[at]) * scale;
 
-            if (i == 0) {
+            if (column == 0) {
                 path.moveTo(x, y);
             } else {
                 path.lineTo(x, y);
             }
         }
 
-        g.setColor(curve[curve.length - 1] >= 0 ? UP : DOWN);
-        g.setStroke(new BasicStroke(1.6f));
-        g.draw(path);
-
-        if (chosen >= 0 && chosen + 1 < curve.length) {
-            double x = PAD + (double) w * (chosen + 1) / (curve.length - 1);
-
-            g.setColor(UIManager.getColor("Label.foreground"));
-            g.setStroke(new BasicStroke(1));
-            g.drawLine((int) x, PAD, (int) x, PAD + h);
-        }
+        return path;
     }
 }

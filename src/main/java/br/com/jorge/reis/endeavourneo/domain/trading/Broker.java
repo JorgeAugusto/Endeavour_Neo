@@ -77,6 +77,14 @@ final class Broker {
 
     private int ambiguous;
 
+    // Running totals over EVERY fill, including the ones of a trade that has
+    // not ended. Trade.gross() only exists once the position is back to zero,
+    // and the balance of an open position is precisely what the mark-to-market
+    // curve is about.
+    private double realisedGross;
+
+    private double paidCost;
+
     // The trade being accumulated, or openedAt < 0 while flat.
     private int openedAt = -1;
 
@@ -112,6 +120,15 @@ final class Broker {
 
     int ambiguousBars() {
         return ambiguous;
+    }
+
+    /**
+     * @param price what to mark the open position against
+     * @return everything the account is worth right now: what has been realised
+     *         so far, net of what it cost, plus the open position at that price
+     */
+    double worthAt(double price) {
+        return realisedGross - paidCost + position.openResult(price);
     }
 
     // ------------------------------------------------------------------- bar
@@ -307,8 +324,13 @@ final class Broker {
             tradeFills = new ArrayList<>();
         }
 
-        gross += position.apply(fill);
+        double realised = position.apply(fill);
+
+        gross += realised;
         cost += costs.ofFill(fill.quantity());
+
+        realisedGross += realised;
+        paidCost += costs.ofFill(fill.quantity());
         peak = Math.max(peak, position.size());
 
         fills.add(fill);

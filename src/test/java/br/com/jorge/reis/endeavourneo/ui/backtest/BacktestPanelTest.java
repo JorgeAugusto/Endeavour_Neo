@@ -171,8 +171,8 @@ class BacktestPanelTest {
         // Curva: 0 -> 100 -> 70 -> 40. Ela NUNCA fica negativa, entao uma queda
         // medida a partir do zero daria zero -- e a estrategia que subiu 100 e
         // devolveu 60 pareceria nao ter tido queda nenhuma.
-        Result result = new Result(
-                List.of(worth(100), worth(-30), worth(-30)), List.of(), 0, Costs.NONE, 0, 0);
+        Result result = new Result(List.of(worth(100), worth(-30), worth(-30)),
+                List.of(), 0, Costs.NONE, 0, 0, new double[0], 0);
 
         assertEquals(40, result.net(), 1e-9, "a serie de teste nao soma o que devia");
         assertEquals(-60, result.drawdown(), 1e-9,
@@ -182,7 +182,7 @@ class BacktestPanelTest {
     @Test
     @DisplayName("sem operacao nenhuma a queda maxima e zero")
     void withNoTradesTheDrawdownIsZero() {
-        Result nothing = new Result(List.of(), List.of(), 0, Costs.NONE, 0, 0);
+        Result nothing = Result.empty();
 
         assertEquals(0, nothing.drawdown(), 0.0, "queda maxima inventada do nada");
         assertEquals(1, nothing.equity().length, "a curva vazia nao e so a origem");

@@ -79,6 +79,9 @@ public final class Backtest {
         Desk desk = new Desk(lot);
         Market market = new Market(series, broker.position(), broker.book());
 
+        double[] worth = new double[series.size()];
+        int exposed = 0;
+
         strategy.start();
 
         for (int bar = 0; bar < series.size(); bar++) {
@@ -89,12 +92,24 @@ public final class Backtest {
             strategy.onBar(market, desk);
 
             broker.book().reconcile(desk.instructions());
+
+            // AFTER the bar's executions and the strategy's turn, marked to the
+            // close. This is the only place the hole inside a position that is
+            // still open ever shows up -- the balance curve moves only when a
+            // trade ends, and a position bleeding for three days looks like a
+            // flat line on it.
+            worth[bar] = broker.worthAt(series.closeAt(bar));
+
+            if (!broker.position().flat()) {
+                exposed++;
+            }
         }
 
         double last = series.size() == 0 ? Double.NaN : series.closeAt(series.size() - 1);
 
         return new Result(broker.trades(), broker.fills(), broker.ambiguousBars(), costs,
                 broker.position().net(),
-                broker.position().flat() ? 0 : broker.position().openResult(last));
+                broker.position().flat() ? 0 : broker.position().openResult(last),
+                worth, exposed);
     }
 }

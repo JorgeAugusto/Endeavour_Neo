@@ -49,13 +49,106 @@ import java.util.List;
  * @param costs               what was charged
  * @param openAtTheEnd        signed contracts still open when the data ran out
  * @param openResultAtTheEnd  what those would be worth at the last close
+ * @param worth               the account marked to market at every bar's close
+ * @param exposedBars         bars that ended with a position open
  */
 public record Result(List<Trade> trades, List<Fill> fills, int ambiguousBars,
-                     Costs costs, int openAtTheEnd, double openResultAtTheEnd) {
+                     Costs costs, int openAtTheEnd, double openResultAtTheEnd,
+                     double[] worth, int exposedBars) {
 
     public Result {
         trades = List.copyOf(trades);
         fills = List.copyOf(fills);
+        worth = worth == null ? new double[0] : worth.clone();
+    }
+
+    /** A run that produced nothing, for a screen with no result yet. */
+    public static Result empty() {
+        return new Result(List.of(), List.of(), 0, Costs.NONE, 0, 0, new double[0], 0);
+    }
+
+    /**
+     * The mark-to-market curve: what the account was worth at each bar's close.
+     *
+     * <p>This is <b>patrimônio</b>, and it is a different question from
+     * {@link #equity()}. The balance curve moves only when a trade ends, so a
+     * position bleeding for three days is a flat line on it and a cliff on the
+     * day it closes. This one shows the bleeding while it happens, and the gap
+     * between the two curves is exactly the hole inside whatever is open.</p>
+     *
+     * @return points, one per bar, net of the costs paid so far
+     */
+    public double[] worth() {
+        return worth.clone();
+    }
+
+    /**
+     * @return the fraction of bars that ended with a position open
+     *
+     * <p>Together with the average length of a trade, this is the pair that
+     * says whether a strategy can pay for itself at all — before any profit
+     * figure is worth reading.</p>
+     */
+    public double exposure() {
+        return worth.length == 0 ? 0 : (double) exposedBars / worth.length;
+    }
+
+    /**
+     * The balance curve laid on the same axis as {@link #worth()}: bars.
+     *
+     * <p>{@link #equity()} is one point per operation, which is the right shape
+     * for reading a strategy and the wrong shape for putting beside a curve
+     * measured per bar. Ten losing trades in a week and ten in a year are the
+     * same picture on the operation axis; on this one they are not — and since
+     * the point of drawing the two together is the gap between them, they have
+     * to share an axis or the gap is an artefact of the drawing.</p>
+     *
+     * <p>It is a staircase: it holds flat while a position is open and steps on
+     * the bar the operation ends.</p>
+     *
+     * @return points, one per bar, net of costs
+     */
+    public double[] balancePerBar() {
+        double[] curve = new double[worth.length];
+        double running = 0;
+        int next = 0;
+
+        for (int bar = 0; bar < curve.length; bar++) {
+            while (next < trades.size() && trades.get(next).closedAt() <= bar) {
+                running += trades.get(next).net();
+                next++;
+            }
+
+            curve[bar] = running;
+        }
+
+        return curve;
+    }
+
+    /**
+     * What had been paid in costs by each bar, cumulative and positive.
+     *
+     * <p>The third line of the chart, and it answers for free the question the
+     * other two raise: <b>how much of this was brokerage</b>. On the run that is
+     * in front of us it is most of the loss.</p>
+     *
+     * @return points, one per bar
+     */
+    public double[] costPerBar() {
+        double[] curve = new double[worth.length];
+        double running = 0;
+        int next = 0;
+
+        for (int bar = 0; bar < curve.length; bar++) {
+            while (next < fills.size() && fills.get(next).bar() <= bar) {
+                running += costs.ofFill(fills.get(next).quantity());
+                next++;
+            }
+
+            curve[bar] = running;
+        }
+
+        return curve;
     }
 
     /** @return points after costs, over the trades that ended */
