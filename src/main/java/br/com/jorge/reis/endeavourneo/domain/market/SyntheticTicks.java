@@ -173,14 +173,44 @@ public final class SyntheticTicks implements TickPath {
     }
 
     /**
-     * @return the prices inside that bar, the first being its open and the last
-     *         its close
+     * How many prices the bar will really be broken into.
+     *
+     * <p><b>Not {@link #countFor}</b>, which is the fitted number of price
+     * changes and is only where the walk starts from. The legs then round their
+     * budget up to the ground they have to cover, bump it for parity — a walk of
+     * whole ticks cannot end an odd number of ticks away in an even number of
+     * steps — and add the landing step. Measured over two thousand bars the walk
+     * came out longer than the fit on <b>every one of them</b>, by 2,6 prices on
+     * average and up to 5.</p>
+     *
+     * <p>That gap was invisible while the path was only watched: {@code
+     * SyntheticSeries} indexed the minute by the fit and the last few prices of
+     * every minute simply never appeared — and the last price of a minute is its
+     * <b>close</b>. A backtest walking those ticks saw every minute end two or
+     * three ticks short of where it ended.</p>
+     *
+     * <p>This is arithmetic and walks nothing, so an index over eight hundred
+     * thousand minutes still costs one pass and no paths.</p>
+     *
+     * @return exactly {@code pathFor(series, index).length}
      */
-    @Override
-    public double[] pathFor(PriceSeries series, int index) {
+    public int lengthFor(PriceSeries series, int index) {
+        return 1 + lengthOf(series.openAt(index), routeFor(series, index).targets(),
+                countFor(series, index));
+    }
+
+    /**
+     * Where the legs are going, and the draw that decided it.
+     *
+     * <p>The two travel together because they must not be worked out twice: the
+     * order of the extremes comes off the first draw of the bar's own random, and
+     * a second caller reproducing that draw by hand is a copy waiting to drift
+     * from the original.</p>
+     */
+    private record Route(Random random, double[] targets) { }
+
+    private Route routeFor(PriceSeries series, int index) {
         double open = series.openAt(index);
-        double high = series.highAt(index);
-        double low = series.lowAt(index);
         double close = series.closeAt(index);
 
         // Mixed with the index so each bar has its own route, and the same route
@@ -193,11 +223,26 @@ public final class SyntheticTicks implements TickPath {
         boolean usual = random.nextDouble()
                 < (rising ? LOW_FIRST_RISING : HIGH_FIRST_FALLING);
         boolean lowFirst = rising == usual;
-        double[] targets = {
-            lowFirst ? low : high,
-            lowFirst ? high : low,
+
+        return new Route(random, new double[] {
+            lowFirst ? series.lowAt(index) : series.highAt(index),
+            lowFirst ? series.highAt(index) : series.lowAt(index),
             close,
-        };
+        });
+    }
+
+    /**
+     * @return the prices inside that bar, the first being its open and the last
+     *         its close
+     */
+    @Override
+    public double[] pathFor(PriceSeries series, int index) {
+        double open = series.openAt(index);
+        double high = series.highAt(index);
+        double low = series.lowAt(index);
+
+        Route route = routeFor(series, index);
+        double[] targets = route.targets();
 
         int total = countFor(series, index);
         double[] path = new double[1 + lengthOf(open, targets, total)];
@@ -208,7 +253,8 @@ public final class SyntheticTicks implements TickPath {
         double from = open;
 
         for (int leg = 0; leg < targets.length; leg++) {
-            at = walk(path, at, from, targets[leg], share(total, leg), low, high, random);
+            at = walk(path, at, from, targets[leg], share(total, leg),
+                    low, high, route.random());
             from = targets[leg];
         }
 

@@ -112,6 +112,8 @@ final class BacktestPanel extends JPanel {
 
     private final JComboBox<Scale> scale = new JComboBox<>(SCALES);
 
+    private final JComboBox<Execution> how = new JComboBox<>(Execution.values());
+
     private final JComboBox<Slice> slice = new JComboBox<>(Slice.values());
 
     private final br.com.jorge.reis.endeavourneo.ui.replay.DatePicker from =
@@ -223,6 +225,7 @@ final class BacktestPanel extends JPanel {
         });
 
         slice.setSelectedItem(Slice.ALL);
+        how.setSelectedItem(Execution.TICKS);
 
         // ANTES do restorePicks, e nao depois. O padrao tem de estar posto para
         // que a preferencia guardada tenha o que sobrescrever -- invertido, era
@@ -238,6 +241,11 @@ final class BacktestPanel extends JPanel {
 
         slice.addActionListener(e -> {
             followTheSlice();
+            rememberPicks();
+        });
+
+        how.addActionListener(e -> {
+            followTheSeries();
             rememberPicks();
         });
 
@@ -269,6 +277,8 @@ final class BacktestPanel extends JPanel {
         JPanel first = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
         first.add(new JLabel(Messages.get("backtest.series")));
         first.add(series);
+        first.add(new JLabel(Messages.get("backtest.execution")));
+        first.add(how);
         first.add(new JLabel(Messages.get("backtest.scale")));
         first.add(scale);
         first.add(new JLabel(Messages.get("backtest.slice")));
@@ -324,6 +334,16 @@ final class BacktestPanel extends JPanel {
             }
         }
 
+        String wantedHow = prefs.get("backtest.pick.execution", null);
+
+        for (Execution each : Execution.values()) {
+            if (each.name().equals(wantedHow)) {
+                how.setSelectedItem(each);
+
+                break;
+            }
+        }
+
         String wantedSlice = prefs.get("backtest.pick.slice", null);
 
         for (Slice each : Slice.values()) {
@@ -371,6 +391,12 @@ final class BacktestPanel extends JPanel {
             if (which != null) {
                 prefs.put("backtest.pick.slice", which.name());
             }
+
+            Execution mode = (Execution) how.getSelectedItem();
+
+            if (mode != null) {
+                prefs.put("backtest.pick.execution", mode.name());
+            }
         });
     }
 
@@ -383,7 +409,14 @@ final class BacktestPanel extends JPanel {
      */
     private void followTheSeries() {
         SeriesChoice chosen = (SeriesChoice) series.getSelectedItem();
-        boolean byTheClock = chosen != null && chosen.measuredInTime();
+
+        // THE SCALE LIST IS OFF IN TICK MODE, and turned off rather than quietly
+        // ignored. The tick path was measured against the shape of a MINUTE;
+        // generating one inside a five-minute bar would be applying those
+        // statistics to something they were never measured on. Same for a renko
+        // series, which has no clock to aggregate by at all.
+        boolean byTheClock = chosen != null && chosen.measuredInTime()
+                && ((Execution) how.getSelectedItem()).allowsAnotherScale();
 
         scale.setEnabled(byTheClock);
 
@@ -717,6 +750,7 @@ final class BacktestPanel extends JPanel {
         }
 
         Scale chosen = (Scale) scale.getSelectedItem();
+        boolean tickMode = how.getSelectedItem() == Execution.TICKS;
 
         // READ AT THE MOMENT OF THE RUN, not held from when the window opened.
         // The settings dialog can have been through twice since then, and a run
@@ -752,11 +786,20 @@ final class BacktestPanel extends JPanel {
                 // the cut would be built from minutes the run then never sees.
                 PriceSeries bars = chosen.how().apply(cutTo(picked.open()));
 
-                Result produced = new Backtest(charged, lot).run(bars, what);
+                // AND THE TICKS LAST OF ALL. A path is walked inside the bars
+                // that survived, never inside bars that were about to be thrown
+                // away -- fifteen hundred of them per minute is not a cost to
+                // pay for a stretch nobody asked for.
+                TickLevel.Walked walked = tickMode
+                        ? TickLevel.of(picked, bars, Timeframe.defaultZone())
+                        : new TickLevel.Walked(bars, false, 0);
 
-                return new Run(bars, produced, picked.label(),
+                Result produced = new Backtest(charged, lot).run(walked.series(), what);
+
+                return new Run(walked.series(), produced, picked.label(),
                         what instanceof br.com.jorge.reis.endeavourneo.domain.trading.Plotted shown
-                                ? shown.curves() : java.util.Map.of());
+                                ? shown.curves() : java.util.Map.of(),
+                        tickMode, walked.real(), walked.ticks());
             }
 
             @Override
@@ -796,7 +839,7 @@ final class BacktestPanel extends JPanel {
         model.show(trades, running);
 
         this.result.show(finished.result(), Metrics.of(finished.result(), running),
-                finished.label());
+                finished.label(), howItRan(finished));
 
         chart.goToEnd();
     }
@@ -818,6 +861,22 @@ final class BacktestPanel extends JPanel {
         return which.handPicked()
                 ? Slice.between(whole, from.date(), to.date(), Timeframe.defaultZone())
                 : which.cut(whole, Timeframe.defaultZone());
+    }
+
+    /**
+     * @return what the quadro shows under "executado", which is evidence and not
+     *         decoration: a stop hit on the tape WAS hit, and one hit on a
+     *         synthetic path was hit by one of the paths that minute could have
+     *         taken
+     */
+    private static String howItRan(Run finished) {
+        if (!finished.tickMode()) {
+            return Messages.get("backtest.execution.ohlc");
+        }
+
+        return Messages.get(finished.realTicks()
+                ? "backtest.ticks.real" : "backtest.ticks.synthetic")
+                + String.format("  (%,d)", finished.ticks());
     }
 
     /** Says it out loud and empties the quadro, so no stale number is read. */
@@ -853,7 +912,8 @@ final class BacktestPanel extends JPanel {
 
     /** A finished run: the bars it ran over, what it produced, and what to call it. */
     private record Run(PriceSeries series, Result result, String label,
-                       java.util.Map<String, double[]> curves) {
+                       java.util.Map<String, double[]> curves,
+                       boolean tickMode, boolean realTicks, int ticks) {
     }
 
     /** One entry of the scale list: what it is called, and what it does. */

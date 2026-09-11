@@ -24,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import br.com.jorge.reis.endeavourneo.domain.market.MarketFile;
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
 import br.com.jorge.reis.endeavourneo.domain.market.Segment;
+import br.com.jorge.reis.endeavourneo.domain.market.TickSource;
 import br.com.jorge.reis.endeavourneo.domain.market.Timeframe;
 import br.com.jorge.reis.endeavourneo.platform.Segmentation;
 import br.com.jorge.reis.endeavourneo.platform.SeriesCatalog;
@@ -256,6 +257,86 @@ class SeriesChoiceTest {
         java.util.NavigableSet<LocalDate> nada = new SeriesChoice("nao-existe-1m", "").sessions();
 
         assertTrue(nada.isEmpty(), "uma serie inexistente ofereceu dias");
+    }
+
+    /**
+     * Um pregão de fita, onde o catálogo diz que a fita mora.
+     *
+     * <p>Cinco negócios de um segundo em segundo a partir das 09:00, que é o que
+     * basta: o que se testa aqui é se a fita <b>entra na lista</b> e se abre,
+     * não como ela é lida.</p>
+     */
+    private void tape(String instrument, LocalDate day, int from) throws IOException {
+        SeriesCatalog.useFolderForTest(folder);
+
+        Path file = TickSource.METATRADER.fileFor(
+                SeriesCatalog.ticksOf(instrument), instrument, day);
+
+        Files.createDirectories(file.getParent());
+
+        try (br.com.jorge.reis.endeavourneo.domain.market.TickFile.Writer writer =
+                     new br.com.jorge.reis.endeavourneo.domain.market.TickFile.Writer(file, day)) {
+
+            for (int i = 0; i < 5; i++) {
+                writer.add(9 * 3_600_000 + i * 1_000, 0, 0, from + i, 1, 88,
+                        br.com.jorge.reis.endeavourneo.domain.market.TickFile.Writer
+                                .mask(false, false, true, true));
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("A FITA ENTRA NA LISTA, ao lado das series de candle")
+    void thetapeIsOfferedBesideTheCandleSeries() throws IOException {
+        series("winfull-1m", 10);
+        tape("win", LocalDate.of(2026, 9, 1), 140_000);
+
+        // A lista lia o catalogo, que so conhece arquivos de candle. Uma fita
+        // tem pregoes, se segmenta e e a UNICA fonte onde uma rodada tick a tick
+        // anda sobre negocios que aconteceram de verdade -- deixa-la de fora era
+        // deixar a unica evidencia real fora do backtest.
+        assertTrue(keys().contains("win/ticks/metatrader"),
+                "a fita nao foi oferecida: " + keys());
+        assertTrue(keys().contains("winfull-1m"),
+                "a serie de candle sumiu quando a fita entrou: " + keys());
+    }
+
+    @Test
+    @DisplayName("a fita tambem se segmenta, e o segmento aparece")
+    void thetapeSegmentsToo() throws IOException {
+        series("winfull-1m", 10);
+        tape("win", LocalDate.of(2026, 9, 1), 140_000);
+        tape("win", LocalDate.of(2026, 9, 2), 140_100);
+
+        Segmentation.set("win/ticks/metatrader", List.of(
+                new Segment("primeiro", LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 1))));
+
+        assertTrue(keys().contains("win/ticks/metatrader#primeiro"),
+                "o segmento da fita nao apareceu: " + keys());
+    }
+
+    @Test
+    @DisplayName("abrir uma fita traz minutos, e ela se diz fita")
+    void openingAtapeGivesMinutes() throws IOException {
+        series("winfull-1m", 10);
+        tape("win", LocalDate.of(2026, 9, 1), 140_000);
+
+        SeriesChoice fita = new SeriesChoice("win/ticks/metatrader", "");
+
+        // MINUTOS, e nao negocios. O recorte, a escala e os candles da propria
+        // estrategia trabalham em minutos; os negocios voltam depois, e so se a
+        // rodada for executada tick a tick.
+        PriceSeries bars = fita.open();
+
+        assertTrue(bars.size() > 0, "a fita abriu vazia");
+        assertTrue(fita.isTape(), "a fita nao se reconheceu como fita");
+        assertFalse(new SeriesChoice("winfull-1m", "").isTape(),
+                "uma serie de candle se disse fita");
+
+        // Uma fita chega dobrada em minutos, entao ela E medida em tempo -- a
+        // chave dela nomeia uma fonte, nao uma escala, e ler escala dali daria
+        // nada e desligaria a lista de escala sem motivo.
+        assertTrue(fita.measuredInTime(), "a fita recusou ser medida em tempo");
     }
 
     @Test

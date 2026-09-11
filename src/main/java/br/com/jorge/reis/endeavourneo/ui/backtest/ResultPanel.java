@@ -190,8 +190,8 @@ final class ResultPanel extends JPanel {
 
     private JComponent honesty() {
         JPanel panel = block("backtest.block.honesty", "backtest.costPerTurn",
-                "backtest.pointValue", "backtest.series", "backtest.ambiguous",
-                "backtest.openAtEnd");
+                "backtest.pointValue", "backtest.series", "backtest.ranAs",
+                "backtest.ambiguous", "backtest.openAtEnd");
 
         warning.setFont(small());
         warning.setForeground(muted());
@@ -277,7 +277,7 @@ final class ResultPanel extends JPanel {
      * @param metrics what was derived from it
      * @param series what to call the series it ran over
      */
-    void show(Result result, Metrics metrics, String series) {
+    void show(Result result, Metrics metrics, String series, String ranAs) {
         double net = result.net();
         double perPoint = BacktestPreferences.pointValue();
 
@@ -329,6 +329,7 @@ final class ResultPanel extends JPanel {
         values.get(i++).setForeground(
                 BacktestPreferences.isTheMini() ? UIManager.getColor("Label.foreground") : WARN);
         set(i++, series);
+        set(i++, ranAs);
         set(i++, String.format("%,d  (%.2f%%)", result.ambiguousBars(),
                 result.count() == 0 ? 0 : 100.0 * result.ambiguousBars() / result.count()));
         set(i++, result.endedHolding()

@@ -245,7 +245,7 @@ class BacktestPanelTest {
             ResultPanel quadro = new ResultPanel();
 
             quadro.show(result, br.com.jorge.reis.endeavourneo.domain.trading.Metrics
-                    .of(result, new Waves(2_000)), "WINFULL");
+                    .of(result, new Waves(2_000)), "WINFULL", "ticks sinteticos");
 
             java.util.Map<String, String> shown = readOut(quadro);
 

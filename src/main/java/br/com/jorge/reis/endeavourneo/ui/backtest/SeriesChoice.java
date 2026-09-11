@@ -23,6 +23,7 @@ import br.com.jorge.reis.endeavourneo.domain.market.SegmentedSeries;
 import br.com.jorge.reis.endeavourneo.domain.market.Timeframe;
 import br.com.jorge.reis.endeavourneo.platform.Segmentation;
 import br.com.jorge.reis.endeavourneo.platform.SeriesCatalog;
+import br.com.jorge.reis.endeavourneo.ui.series.Segmentable;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -59,15 +60,27 @@ record SeriesChoice(String key, String label) {
         return label;
     }
 
-    /** @return every series and segment worth offering, series by series */
+    /**
+     * Every series and segment worth offering — <b>tapes included</b>.
+     *
+     * <p>Through {@code Segmentable.keys()} rather than the catalog's own list,
+     * which holds candle files only. A tape is a series: it has sessions, it can
+     * be segmented, and it is the one source where a tick-by-tick run is walking
+     * prints that actually happened. Leaving it out of this list was leaving the
+     * only real evidence out of the backtest.</p>
+     *
+     * <p>No filter for retired series here: {@code names()} already drops them,
+     * and a second guard over the same set could never fire — it would read like
+     * the thing keeping a retired series out while doing nothing at all.</p>
+     */
     static List<SeriesChoice> available() {
         List<SeriesChoice> found = new ArrayList<>();
 
-        // NO FILTER FOR RETIRED SERIES HERE. names() already drops them, and a
-        // second guard over the same set could never fire -- it would read like
-        // the thing keeping a retired series out while doing nothing at all.
-        for (String name : SeriesCatalog.names()) {
-            String display = SeriesCatalog.displayOf(name);
+        for (String name : Segmentable.keys()) {
+            String display = Segmentable.isTicks(name)
+                    ? Segmentable.labelOf(name)
+                    : SeriesCatalog.displayOf(name);
+
             List<Segment> segments = Segmentation.of(name);
 
             if (!Segmentation.segmentsOnly(name)) {
@@ -83,6 +96,11 @@ record SeriesChoice(String key, String label) {
         return found;
     }
 
+    /** @return whether this entry is a tape rather than a file of candles */
+    boolean isTape() {
+        return Segmentable.isTicks(Segmentation.seriesIn(key));
+    }
+
     /**
      * Reads the bars this entry stands for.
      *
@@ -91,15 +109,37 @@ record SeriesChoice(String key, String label) {
      */
     PriceSeries open() throws IOException {
         String name = Segmentation.seriesIn(key);
+        PriceSeries whole = Segmentable.isTicks(name) ? tape(name) : file(name);
+
+        // SegmentedSeries hands back the series itself when the segment is
+        // null, so nothing below has to know which of the two it got.
+        return SegmentedSeries.of(whole, Segmentation.segmentIn(key), Timeframe.defaultZone());
+    }
+
+    private static PriceSeries file(String name) throws IOException {
         PriceSeries whole = SeriesCatalog.open(name).orElse(null);
 
         if (whole == null) {
             throw new IOException(name);
         }
 
-        // SegmentedSeries hands back the series itself when the segment is
-        // null, so nothing below has to know which of the two it got.
-        return SegmentedSeries.of(whole, Segmentation.segmentIn(key), Timeframe.defaultZone());
+        return whole;
+    }
+
+    /**
+     * A tape, read as minutes.
+     *
+     * <p>Minutes and not prints, because this is what everything upstream of the
+     * run works in — the recorte, the scale, the strategy's own candles. The
+     * prints come back later, and only if the run is executed tick by tick; see
+     * {@code TickLevel}.</p>
+     */
+    private static PriceSeries tape(String name) {
+        String instrument = Segmentable.instrumentOf(name);
+
+        return br.com.jorge.reis.endeavourneo.domain.market.FoldedTicks.all(
+                br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.ticksOf(instrument),
+                instrument, Segmentable.sourceOf(name), Timeframe.defaultZone());
     }
 
     /**
@@ -140,6 +180,11 @@ record SeriesChoice(String key, String label) {
      * bars are used as they are stored.</p>
      */
     boolean measuredInTime() {
-        return SeriesCatalog.secondsOf(SeriesCatalog.scaleOf(Segmentation.seriesIn(key))) > 0;
+        String name = Segmentation.seriesIn(key);
+
+        // A tape arrives folded into minutes, so it is measured in time whatever
+        // its key looks like -- the key names a source, not a scale.
+        return Segmentable.isTicks(name)
+                || SeriesCatalog.secondsOf(SeriesCatalog.scaleOf(name)) > 0;
     }
 }
