@@ -35,6 +35,7 @@ import br.com.jorge.reis.endeavourneo.platform.Settings;
 import br.com.jorge.reis.endeavourneo.ui.chart.ChartCanvas;
 import br.com.jorge.reis.endeavourneo.ui.chart.ChartPane;
 import br.com.jorge.reis.endeavourneo.ui.chart.PeriodCatalog;
+import br.com.jorge.reis.endeavourneo.ui.chart.PeriodDialog;
 
 import java.awt.BorderLayout;
 import java.awt.Component;
@@ -99,49 +100,70 @@ final class BacktestPanel extends JPanel {
     /** What it is born at, and what it comes back to until the reader drags it. */
     private static final int WANTED_QUADRO = 330;
 
-    /** The bricks offered, named the way the chart's period box names them. */
-    private static final int[] BRICKS = {3, 4, 5, 6, 11, 21};
+    /** What remembers "as stored", which is the one scale with no period code. */
+    private static final String STORED = "asStored";
 
     /**
-     * The scales a run may be read at.
+     * The scales a run may be read at, from the catalogue the chart reads.
      *
-     * <p>The first is "as stored", and it is the default. A series already kept
+     * <p>The first is "as stored", and it is the default: a series already kept
      * at five minutes does not need aggregating, and a series not measured in
-     * time must not be: the list is disabled entirely for one of those.</p>
+     * time must not be — the list is disabled entirely for one of those. Every
+     * other entry comes from {@link PeriodCatalog#common()}, so this window and
+     * the chart offer the same scales, spelled the same way, and the "…" button
+     * beside the list reaches everything else through the same dialog the
+     * indicator screens use.</p>
      *
      * <h2>Renko is a scale here, like any other</h2>
      *
-     * <p>It belongs in this list rather than in a control of its own, because it
-     * answers the same question the others answer — <b>what is a decision
+     * <p>It answers the same question the others answer — <b>what is a decision
      * bar</b>. {@link Renko} is an {@link Aggregation} precisely so that it can
      * stand where a {@link Timeframe} stands.</p>
      *
-     * <p>Not the chart's renko, though. The period box builds its bricks with
-     * {@code withForming(true)} so the live edge keeps moving while the minute
-     * runs, and a forming brick is one that <b>can still change</b>: asking a
-     * strategy to decide on it is asking it to decide on a bar that has not
-     * closed. {@link Renko#of} leaves that off, which is what a run needs.</p>
+     * <p>What the run does NOT take from the catalogue is the forming brick. The
+     * period box builds its bricks with {@code withForming(true)} so the live
+     * edge keeps moving while the minute runs, and a forming brick is one that
+     * <b>can still change</b>: asking a strategy to decide on it is asking it to
+     * decide on a bar that has not closed. See {@link #settled}.</p>
      */
-    private static final Scale[] SCALES = scales();
+    static Scale[] scales() {
+        List<Scale> made = new ArrayList<>();
 
-    private static Scale[] scales() {
-        List<Scale> made = new ArrayList<>(List.of(
-                Scale.named("backtest.asStored", Aggregation.none()),
-                Scale.named("backtest.scale.5m", Timeframe.FIVE_MINUTES),
-                Scale.named("backtest.scale.15m", Timeframe.FIFTEEN_MINUTES),
-                Scale.named("backtest.scale.30m", Timeframe.THIRTY_MINUTES),
-                Scale.named("backtest.scale.1h", Timeframe.ONE_HOUR)));
+        made.add(Scale.stored());
 
-        for (int brick : BRICKS) {
-            made.add(Scale.renko(brick));
+        for (PeriodCatalog.Choice each : PeriodCatalog.common()) {
+            made.add(settled(each));
         }
 
         return made.toArray(new Scale[0]);
     }
 
+    /**
+     * The same period, with the forming brick off.
+     *
+     * <p>The catalogue builds every renko for the CHART, where the brick still
+     * being built has to be drawn or the live edge stops moving. A run must not
+     * see it: it is a bar that has not closed, and a strategy asked to decide on
+     * it is deciding on a bar the next trade can still change underneath it.</p>
+     *
+     * <p>Timeframes come through untouched — there is no such thing as a forming
+     * five minutes here, because the aggregation only emits bars that ended.</p>
+     */
+    static Scale settled(PeriodCatalog.Choice choice) {
+        if (!(choice.aggregation() instanceof Renko renko)) {
+            return new Scale(choice);
+        }
+
+        return new Scale(new PeriodCatalog.Choice(choice.code(), choice.description(),
+                renko.withForming(false)));
+    }
+
     private final JComboBox<SeriesChoice> series = new JComboBox<>();
 
-    private final JComboBox<Scale> scale = new JComboBox<>(SCALES);
+    private final JComboBox<Scale> scale = new JComboBox<>(scales());
+
+    /** Opens the period dialog, for the scales the short list does not carry. */
+    private final JButton more = ellipsis();
 
     private final JComboBox<Execution> how = new JComboBox<>(Execution.values());
 
@@ -160,6 +182,83 @@ final class BacktestPanel extends JPanel {
     private final JButton settings = gear();
 
     private final JButton run = new JButton(Messages.get("backtest.run"));
+
+    /**
+     * The way to a scale the short list does not carry.
+     *
+     * <p>The list holds the fourteen periods worth showing before anything is
+     * typed; the catalogue builds any minute count and any brick from 3R to
+     * 101R. Rather than a second, longer list here — which is exactly the
+     * divergence this window just stopped having — the button opens {@link
+     * PeriodDialog}, the same screen the eight indicator dialogs open, and the
+     * period it returns is added to the list and selected.</p>
+     */
+    private JButton ellipsis() {
+        JButton button = new JButton("…");
+
+        button.setToolTipText(Messages.get("backtest.scale.more"));
+        button.setFocusable(false);
+        button.addActionListener(e -> askForAperiod());
+
+        return button;
+    }
+
+    /**
+     * Puts back the scale a workspace was saved on.
+     *
+     * <p>Through the CATALOGUE and not only through the list, which is the whole
+     * point of storing a period code. A run left on 37R — typed into the dialog,
+     * never one of the fourteen listed — used to reopen on "as stored", quietly,
+     * and quietly is the problem: a window that comes back on the wrong scale
+     * looks exactly like one that came back right.</p>
+     *
+     * <p>A code the catalogue no longer knows leaves the default alone rather
+     * than guessing at something near it.</p>
+     */
+    private void restoreTheScale(String wanted) {
+        if (wanted == null || STORED.equals(wanted)) {
+            return;
+        }
+
+        PeriodCatalog.Choice known = PeriodCatalog.byCode(wanted);
+
+        if (known != null) {
+            use(settled(known));
+        }
+    }
+
+    private void askForAperiod() {
+        PeriodCatalog.Choice picked = PeriodDialog.ask(
+                javax.swing.SwingUtilities.getWindowAncestor(this), null);
+
+        if (picked == null) {
+            return;
+        }
+
+        use(settled(picked));
+    }
+
+    /**
+     * Selects that scale, adding it to the list when it is not already there.
+     *
+     * <p>Matched by CODE and not by the object: a {@link Timeframe} is built
+     * fresh on every call of the catalogue, so two entries meaning five minutes
+     * are equal in every way that matters and equal in none that {@code equals}
+     * can see. Comparing objects would file a second "5m" under the first one
+     * every time.</p>
+     */
+    private void use(Scale wanted) {
+        for (int i = 0; i < scale.getItemCount(); i++) {
+            if (scale.getItemAt(i).id().equals(wanted.id())) {
+                scale.setSelectedIndex(i);
+
+                return;
+            }
+        }
+
+        scale.addItem(wanted);
+        scale.setSelectedItem(wanted);
+    }
 
     /**
      * The door to Configurações > Backtest, next to the button that needs it.
@@ -374,6 +473,7 @@ final class BacktestPanel extends JPanel {
         first.add(how);
         first.add(new JLabel(Messages.get("backtest.scale")));
         first.add(scale);
+        first.add(more);
         first.add(new JLabel(Messages.get("backtest.slice")));
         first.add(slice);
         first.add(between);
@@ -502,15 +602,7 @@ final class BacktestPanel extends JPanel {
             }
         }
 
-        String wantedScale = prefs.get("backtest.pick.scale", null);
-
-        for (int i = 0; wantedScale != null && i < scale.getItemCount(); i++) {
-            if (scale.getItemAt(i).id().equals(wantedScale)) {
-                scale.setSelectedIndex(i);
-
-                break;
-            }
-        }
+        restoreTheScale(prefs.get("backtest.pick.scale", null));
 
         String wantedHow = prefs.get("backtest.pick.execution", null);
 
@@ -599,6 +691,7 @@ final class BacktestPanel extends JPanel {
         boolean byTheClock = chosen != null && chosen.measuredInTime();
 
         scale.setEnabled(byTheClock);
+        more.setEnabled(byTheClock);
 
         if (!byTheClock) {
             scale.setSelectedIndex(0);
@@ -1233,58 +1326,58 @@ final class BacktestPanel extends JPanel {
     }
 
     /**
-     * One entry of the scale list: what it is called, and what it builds.
+     * One entry of the scale list.
      *
-     * <p>Two ways of being called, because there are two kinds of name here. A
-     * timeframe is translated — "como está", "5 minutos" — so it carries a
-     * bundle key. A brick is not: <b>{@code 11R} is the same word in every
-     * language</b>, and it is the word he types into the chart's period box, so
-     * the two windows have to spell it the same or the same scale reads as two.
+     * <p>A thin wrapper over {@link PeriodCatalog.Choice} and deliberately
+     * nothing more: the periods this program offers are defined <b>once</b>, in
+     * the catalogue the chart's period box reads, and this window fills its list
+     * from there. It used to hold an array of its own — five entries against the
+     * catalogue's fourteen — which is why a run could not be put on a renko, and
+     * why the same scale could have been spelled two ways in two windows.</p>
      *
-     * @param key   the bundle key, or null for a scale that names itself
-     * @param code  the literal name, or null for a scale named through the bundle
-     * @param how   what turns the stored bars into decision bars
+     * <p>The one entry the catalogue cannot supply is the first: <b>as
+     * stored</b>. It is not a period at all, it is the absence of one, and a
+     * chart always has a period while a run need not aggregate anything.</p>
+     *
+     * @param chosen the period, or null for "as stored"
      */
-    private record Scale(String key, String code, Aggregation how) {
+    record Scale(PeriodCatalog.Choice chosen) {
 
-        static Scale named(String key, Aggregation how) {
-            return new Scale(key, null, how);
+        /** The bars as the series keeps them, aggregated by nothing. */
+        static Scale stored() {
+            return new Scale(null);
         }
 
-        /** @param brick the brick's NAME, as the chart lists it: 11 is 11R */
-        static Scale renko(int brick) {
-            return new Scale(null, brick + "R",
-                    Renko.of(PeriodCatalog.brickOf(brick)));
+        Aggregation how() {
+            return chosen == null ? Aggregation.none() : chosen.aggregation();
         }
 
         /** @return whether decision bars here are bricks rather than lengths of time */
         boolean isRenko() {
-            return how instanceof Renko;
+            return how() instanceof Renko;
         }
 
         /**
          * @return what remembers this choice across a restart
          *
-         * <p>Never {@link #toString()}, and never {@link #key()} alone. The
-         * printed name is translated, so a workspace saved in Portuguese would
-         * reopen on the default in English; and the key is null for a brick,
-         * which {@code Preferences.put} refuses and {@code equals} would have
-         * thrown on when reading back.</p>
+         * <p>The CODE, never {@link #toString()}. The printed name is
+         * translated, so a workspace saved in Portuguese would reopen on the
+         * default in English — and the code is also what {@link
+         * PeriodCatalog#byCode} reads, which is what lets a period typed into
+         * the dialog come back after a restart instead of only the six that
+         * happen to be listed.</p>
          */
         String id() {
-            return key == null ? code : key;
+            return chosen == null ? STORED : chosen.code();
         }
 
         @Override
         public String toString() {
-            if (code == null) {
-                return Messages.get(key);
-            }
-
-            // BOTH NUMBERS, as the chart's title carries both: the code is what
-            // he types and will type again, and the height is what a brick
-            // actually measures. Neither alone is enough to pick from a list.
-            return code + " - " + ((Renko) how).label();
+            // The catalogue's own words, so a scale reads the same here as in
+            // the period box: "11R - 50 pts", "5m - 5 minutos".
+            return chosen == null
+                    ? Messages.get("backtest.asStored")
+                    : chosen.title() + " - " + chosen.description();
         }
     }
 }

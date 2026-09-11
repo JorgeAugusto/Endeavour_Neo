@@ -189,8 +189,17 @@ public final class PeriodCatalog {
         return null;
     }
 
-    /** @return the periods worth showing before anything is typed */
-    private static List<Choice> common() {
+    /**
+     * @return the periods worth showing before anything is typed
+     *
+     * <p>Public because it is the <b>one</b> definition of what scales this
+     * program offers, and a second list elsewhere is how two windows come to
+     * disagree about what exists. The backtest kept an array of five of its own
+     * and therefore could not be put on a renko at all; it fills its list from
+     * here now, and reaches everything past it through {@link PeriodDialog},
+     * the same way the eight indicator dialogs already do.</p>
+     */
+    public static List<Choice> common() {
         List<Choice> choices = new ArrayList<>();
 
         for (Timeframe frame : Timeframe.common()) {
