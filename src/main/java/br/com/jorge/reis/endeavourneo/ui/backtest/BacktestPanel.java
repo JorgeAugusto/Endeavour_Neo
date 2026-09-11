@@ -485,8 +485,10 @@ final class BacktestPanel extends JPanel {
             return;
         }
 
-        from.setDate(days.first());
-        to.setDate(days.last());
+        // QUIETLY: putting a value back is not the reader choosing it, and
+        // saving it again from here is a write that can outlive the window.
+        from.setQuietly(days.first());
+        to.setQuietly(days.last());
     }
 
     /**

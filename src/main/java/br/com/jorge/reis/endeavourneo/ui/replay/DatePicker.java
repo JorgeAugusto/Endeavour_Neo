@@ -111,6 +111,32 @@ public final class DatePicker extends JPanel {
         }
     }
 
+    /**
+     * Sets the date WITHOUT telling anyone.
+     *
+     * <p>For the difference between a reader choosing a date and this class
+     * putting one back. The document listener cannot tell them apart -- it sees
+     * text change either way -- so a panel restoring its saved range was
+     * immediately saving it again. Harmless-looking, because the value is the
+     * same, and not harmless at all: the restore can arrive from a background
+     * load that finishes after the window is gone, and then it is a preferences
+     * file being written by a panel that no longer exists. It crashed the event
+     * thread, once, in the middle of the suite.</p>
+     *
+     * @param date the day to show, or null for today
+     */
+    public void setQuietly(LocalDate date) {
+        Runnable was = onChange;
+
+        onChange = () -> { };
+
+        try {
+            setDate(date);
+        } finally {
+            onChange = was;
+        }
+    }
+
     public void setDate(LocalDate date) {
         // Today for null, which is what the constructor already decided this
         // class's answer to null is -- and the public method did not apply it,
