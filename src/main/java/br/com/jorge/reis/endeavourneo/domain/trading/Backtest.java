@@ -75,6 +75,24 @@ public final class Backtest {
      * @return the trades, the fills and what they cost
      */
     public Result run(PriceSeries series, Strategy strategy) {
+        return run(series, strategy, Watching.NOBODY);
+    }
+
+    /**
+     * @param watching told how far along the run is, occasionally
+     * @see #run(PriceSeries, Strategy)
+     */
+    public Result run(PriceSeries series, Strategy strategy, Watching watching) {
+        Watching told = watching == null ? Watching.NOBODY : watching;
+
+        // ONE REPORT IN TWO HUNDRED BARS, at the most. A month of ticks is
+        // seventeen million of them and a bar on screen repaints sixty times a
+        // second: reporting every one would be seventeen million calls to draw
+        // the same two hundred pictures. The cadence is the engine's to pick
+        // because only the engine knows how many bars there are -- a caller
+        // choosing it would have to guess, and would guess per strategy.
+        int every = Math.max(1, series.size() / 200);
+
         Broker broker = new Broker(costs);
         Desk desk = new Desk(lot);
         Market market = new Market(series, broker.position(), broker.book(),
@@ -104,7 +122,17 @@ public final class Backtest {
             if (!broker.position().flat()) {
                 exposed++;
             }
+
+            if (bar % every == 0) {
+                told.at(bar + 1, series.size());
+            }
         }
+
+        // AND ONCE AT THE END, whatever the cadence landed on. Without this a
+        // run of 999 bars reporting every fifth stops at 996, and the bar sits
+        // just short of full while the window says it has finished -- which is
+        // exactly the moment a reader looks at it.
+        told.at(series.size(), series.size());
 
         double last = series.size() == 0 ? Double.NaN : series.closeAt(series.size() - 1);
 

@@ -46,6 +46,7 @@ import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JProgressBar;
 import javax.swing.JScrollPane;
 import javax.swing.JSpinner;
 import javax.swing.JSplitPane;
@@ -192,6 +193,19 @@ final class BacktestPanel extends JPanel {
 
     private final JTable table = new JTable(model);
 
+    /**
+     * How far the run has got, and what it is doing.
+     *
+     * <p>Determinate only for the part that can be counted. Opening the series,
+     * cutting the recorte and walking the ticks are steps that cannot say how
+     * far along they are, and a bar that <b>pretends</b> to know is worse than
+     * one that says it does not: the reader learns to distrust the number.</p>
+     */
+    private final JProgressBar progress = new JProgressBar(0, 100);
+
+    /** What the bar says it is doing, kept so the percentage can join it. */
+    private transient String stage;
+
     private transient PriceSeries running;
 
     BacktestPanel() {
@@ -264,6 +278,8 @@ final class BacktestPanel extends JPanel {
         showQuadro.setFocusable(false);
         showQuadro.addActionListener(e -> toggleQuadro());
 
+        progress.setFocusable(false);
+
         add(commands(), BorderLayout.NORTH);
         add(body(), BorderLayout.CENTER);
     }
@@ -297,8 +313,69 @@ final class BacktestPanel extends JPanel {
 
         top.add(first);
         top.add(second);
+        top.add(pace());
 
         return top;
+    }
+
+    /**
+     * The progress bar: under the controls, directly over the chart.
+     *
+     * <p>It stays in the layout whether a run is happening or not. Hiding it
+     * between runs would move the chart up and down by its own height every
+     * time the reader pressed Run, and a chart that jumps is a chart you lose
+     * your place in — so what changes is what the bar SAYS, not whether it is
+     * there.</p>
+     */
+    private JPanel pace() {
+        JPanel row = new JPanel(new BorderLayout()) {
+
+            private static final long serialVersionUID = 1L;
+
+            @Override
+            public java.awt.Dimension getMaximumSize() {
+                // A BoxLayout on the Y axis stretches a child up to its maximum,
+                // and a JPanel's maximum is unbounded in BOTH directions -- so
+                // without this the bar would swallow every pixel the command bar
+                // did not use, which on a tall window is most of it.
+                return new java.awt.Dimension(Integer.MAX_VALUE, getPreferredSize().height);
+            }
+        };
+
+        row.setBorder(BorderFactory.createEmptyBorder(1, 6, 3, 6));
+        row.add(progress, BorderLayout.CENTER);
+
+        return row;
+    }
+
+    /** Puts the bar to work, saying what it cannot yet measure. */
+    private void say(String what) {
+        stage = what;
+
+        progress.setStringPainted(true);
+        progress.setString(what);
+    }
+
+    private void reached(int percent) {
+        progress.setIndeterminate(false);
+        progress.setValue(percent);
+        progress.setString(stage == null ? percent + "%" : stage + " — " + percent + "%");
+    }
+
+    /**
+     * Empties the bar.
+     *
+     * <p>The string goes with it rather than staying at "100%": a full bar left
+     * over from the last run, above a chart showing that run, reads as a run
+     * still happening.</p>
+     */
+    private void idle() {
+        stage = null;
+
+        progress.setIndeterminate(false);
+        progress.setStringPainted(false);
+        progress.setString(null);
+        progress.setValue(0);
     }
 
     /**
@@ -776,7 +853,10 @@ final class BacktestPanel extends JPanel {
         run.setEnabled(false);
         run.setText(Messages.get("backtest.running"));
 
-        new SwingWorker<Run, Void>() {
+        progress.setIndeterminate(true);
+        say(Messages.get("backtest.stage.opening"));
+
+        SwingWorker<Run, String> worker = new SwingWorker<>() {
 
             @Override
             protected Run doInBackground() throws IOException {
@@ -786,6 +866,9 @@ final class BacktestPanel extends JPanel {
                 // the cut would be built from minutes the run then never sees.
                 PriceSeries bars = chosen.how().apply(cutTo(picked.open()));
 
+                publish(Messages.get(tickMode
+                        ? "backtest.stage.ticks" : "backtest.stage.running"));
+
                 // AND THE TICKS LAST OF ALL. A path is walked inside the bars
                 // that survived, never inside bars that were about to be thrown
                 // away -- fifteen hundred of them per minute is not a cost to
@@ -794,7 +877,15 @@ final class BacktestPanel extends JPanel {
                         ? TickLevel.of(picked, bars, Timeframe.defaultZone())
                         : new TickLevel.Walked(bars, false, 0);
 
-                Result produced = new Backtest(charged, lot).run(walked.series(), what);
+                publish(Messages.get("backtest.stage.running"));
+
+                // SIX DECIMAL PLACES OF A PERCENT THROWN AWAY, on purpose: the
+                // worker only fires its listeners when the whole number changes,
+                // so seventeen million bars move the screen a hundred times and
+                // not seventeen million.
+                Result produced = new Backtest(charged, lot).run(walked.series(), what,
+                        (reached, many) -> setProgress(
+                                (int) Math.min(100L, 100L * reached / Math.max(1, many))));
 
                 return new Run(walked.series(), produced, picked.label(),
                         what instanceof br.com.jorge.reis.endeavourneo.domain.trading.Plotted shown
@@ -803,9 +894,15 @@ final class BacktestPanel extends JPanel {
             }
 
             @Override
+            protected void process(java.util.List<String> stages) {
+                say(stages.get(stages.size() - 1));
+            }
+
+            @Override
             protected void done() {
                 run.setEnabled(true);
                 run.setText(Messages.get("backtest.run"));
+                idle();
 
                 try {
                     show(get());
@@ -821,7 +918,20 @@ final class BacktestPanel extends JPanel {
                     cause.printStackTrace();
                 }
             }
-        }.execute();
+        };
+
+        // THE PERCENTAGE ARRIVES AS A PROPERTY, which is how SwingWorker hands
+        // it over -- already on the interface thread, and only when the whole
+        // number changed. Reading it here rather than calling the panel from
+        // inside doInBackground is what keeps the worker from touching Swing at
+        // all.
+        worker.addPropertyChangeListener(changed -> {
+            if ("progress".equals(changed.getPropertyName())) {
+                reached((Integer) changed.getNewValue());
+            }
+        });
+
+        worker.execute();
     }
 
     private void show(Run finished) {

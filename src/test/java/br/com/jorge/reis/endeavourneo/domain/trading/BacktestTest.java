@@ -153,6 +153,49 @@ class BacktestTest {
     }
 
     @Test
+    @DisplayName("A VARREDURA DIZ POR ONDE ANDA, e termina dizendo que acabou")
+    void therunSaysHowFarAlongItIs() {
+        double[] flat = new double[1_000];
+
+        java.util.Arrays.fill(flat, 100);
+
+        Bars bars = new Bars(flat, flat, flat, flat);
+
+        java.util.List<int[]> ditos = new java.util.ArrayList<>();
+
+        new Backtest(Costs.NONE, 1).run(bars, (market, desk) -> { },
+                (reached, many) -> ditos.add(new int[] {reached, many}));
+
+        // AVISA DURANTE, e nao so no fim. Uma varredura que so fala na ultima
+        // barra deixa a barra vazia o tempo todo e cheia de uma vez, que e a
+        // mesma coisa que nao ter barra nenhuma.
+        assertTrue(ditos.size() >= 50,
+                "a varredura so avisou " + ditos.size() + " vezes em mil barras");
+
+        // POUCOS AVISOS, nao um por barra: dezessete milhoes de chamadas para
+        // mover uma barra que redesenha sessenta vezes por segundo seria o motor
+        // trabalhando para a tela em vez do contrario.
+        assertTrue(ditos.size() <= 220,
+                "a varredura avisou " + ditos.size() + " vezes em mil barras");
+
+        int antes = 0;
+
+        for (int[] dito : ditos) {
+            assertTrue(dito[0] >= antes, "o contador voltou: " + dito[0] + " depois de " + antes);
+            assertEquals(1_000, dito[1], "o total mudou no meio da varredura");
+
+            antes = dito[0];
+        }
+
+        // E O ULTIMO E O FIM. Sem isto uma varredura de mil barras avisando de
+        // cinco em cinco para em 996, e a barra fica parada quase cheia enquanto
+        // a janela ja mostra o resultado -- que e exatamente a hora em que
+        // alguem olha para ela.
+        assertEquals(1_000, ditos.get(ditos.size() - 1)[0],
+                "o ultimo aviso nao foi o da ultima barra");
+    }
+
+    @Test
     @DisplayName("A ESTRATEGIA LE AS EXECUCOES DA PROPRIA BARRA, e so as dela")
     void thestrategyReadsTheFillsOfItsOwnBarAndNoOthers() {
         Bars bars = new Bars(
