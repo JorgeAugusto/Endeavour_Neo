@@ -1145,34 +1145,24 @@ public final class MainWindow extends JFrame {
         return menu;
     }
 
-    /** The backtest window, built on first use and dropped when it closes. */
-    private transient br.com.jorge.reis.endeavourneo.ui.backtest.BacktestWindow backtest;
+    /** The backtest, built on first use and dropped when it closes. */
+    private transient br.com.jorge.reis.endeavourneo.ui.backtest.BacktestHolder backtest;
 
     /**
-     * Opens the backtest window, or brings it back to the front.
+     * Opens the backtest, or brings it back to the front.
      *
-     * <p>Same shape as the replay below, and for the same reason: the window
-     * disposes itself on close, so the reference has to go with it or the next
-     * open would show a disposed frame with the previous run still in it.</p>
+     * <p>It docks into the desktop like a chart, so it can be arranged beside
+     * one — which is most of what looking at a run is. The reference is dropped
+     * when it closes, or the next open would show a disposed frame with the
+     * previous run still in it.</p>
      */
     private void openBacktest() {
         if (backtest == null) {
-            br.com.jorge.reis.endeavourneo.ui.backtest.BacktestWindow window =
-                    new br.com.jorge.reis.endeavourneo.ui.backtest.BacktestWindow(this);
-
-            window.addWindowListener(new java.awt.event.WindowAdapter() {
-
-                @Override
-                public void windowClosed(java.awt.event.WindowEvent e) {
-                    backtest = null;
-                }
-            });
-
-            backtest = window;
+            backtest = new br.com.jorge.reis.endeavourneo.ui.backtest.BacktestHolder(
+                    desktop, this, () -> backtest = null);
         }
 
-        backtest.setVisible(true);
-        backtest.toFront();
+        backtest.show();
     }
 
     /** The transport, built on first use and kept: one clock for every chart. */
