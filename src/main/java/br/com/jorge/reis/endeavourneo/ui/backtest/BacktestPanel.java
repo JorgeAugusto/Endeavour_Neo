@@ -1123,6 +1123,15 @@ final class BacktestPanel extends JPanel {
                 TickLevel.Walked walked = ticks != null
                         ? ticks : new TickLevel.Walked(decided, false, 0);
 
+                // THE BARS AS STORED, for a strategy that pins an indicator to a
+                // scale of its own. Not the decision bars, which the scale may
+                // have made coarse or made into bricks with no minute in them at
+                // all; and not the tick path, which exists so orders fill inside
+                // a bar and is a random walk to anything that tries to read it.
+                if (what instanceof br.com.jorge.reis.endeavourneo.domain.trading.Sourced reads) {
+                    reads.sourcedFrom(cut);
+                }
+
                 publish(Messages.get("backtest.stage.running"));
 
                 // SIX DECIMAL PLACES OF A PERCENT THROWN AWAY, on purpose: the

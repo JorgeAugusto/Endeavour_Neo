@@ -17,6 +17,7 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.backtest;
 
+import br.com.jorge.reis.endeavourneo.domain.indicator.Stochastic;
 import br.com.jorge.reis.endeavourneo.domain.market.CandlePattern;
 import br.com.jorge.reis.endeavourneo.domain.market.Timeframe;
 import br.com.jorge.reis.endeavourneo.domain.trading.Strategy;
@@ -31,6 +32,7 @@ import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.DefaultListCellRenderer;
+import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
@@ -58,6 +60,22 @@ final class PatternBreakoutKind implements StrategyKind {
 
     private static final String LOT = "strategy.breakout.lot";
 
+    private static final String LATCH = "strategy.breakout.latch";
+
+    private static final String LATCH_PERIOD = "strategy.breakout.latch.period";
+
+    private static final String LATCH_AVERAGE = "strategy.breakout.latch.average";
+
+    private static final String LATCH_BUY = "strategy.breakout.latch.buy";
+
+    private static final String LATCH_SELL = "strategy.breakout.latch.sell";
+
+    private static final String LATCH_ENTRIES = "strategy.breakout.latch.entries";
+
+    private static final String DOUBLING = "strategy.breakout.doubling";
+
+    private static final String DOUBLING_MOST = "strategy.breakout.doubling.most";
+
     /** The ratio in TENTHS: Settings stores ints, and 1,5 is not one. */
     private static final int REWARD_TENTHS = 15;
 
@@ -80,7 +98,7 @@ final class PatternBreakoutKind implements StrategyKind {
     @Override
     public Strategy build() {
         return new PatternBreakout(Timeframe.defaultZone(), family(),
-                reward() / 10.0, validFor(), lot());
+                reward() / 10.0, validFor(), lot(), latch(), doubling());
     }
 
     @Override
@@ -115,6 +133,35 @@ final class PatternBreakoutKind implements StrategyKind {
         return clamp(Settings.settings().getInt(LOT, 1), 1, 100);
     }
 
+    /** @return the stochastic filter as saved, or {@link PatternBreakout.Latch#off()} */
+    static PatternBreakout.Latch latch() {
+        Settings settings = Settings.settings();
+
+        if (!settings.getBoolean(LATCH, false)) {
+            return PatternBreakout.Latch.off();
+        }
+
+        return new PatternBreakout.Latch(true,
+                clamp(settings.getInt(LATCH_PERIOD, Stochastic.PERIOD), 1, 500),
+                clamp(settings.getInt(LATCH_AVERAGE, Stochastic.AVERAGE), 1, 500),
+                clamp(settings.getInt(LATCH_BUY, 20), 0, 100),
+                clamp(settings.getInt(LATCH_SELL, 80), 0, 100),
+                clamp(settings.getInt(LATCH_ENTRIES, 2), 1, 100));
+    }
+
+    /** @return the martingale as saved, or {@link PatternBreakout.Doubling#off()} */
+    static PatternBreakout.Doubling doubling() {
+        Settings settings = Settings.settings();
+
+        if (!settings.getBoolean(DOUBLING, false)) {
+            return PatternBreakout.Doubling.off();
+        }
+
+        return new PatternBreakout.Doubling(true,
+                clamp(settings.getInt(DOUBLING_MOST, 2), 0,
+                        PatternBreakout.Doubling.CEILING));
+    }
+
     private static int clamp(int value, int least, int most) {
         return Math.max(least, Math.min(value, most));
     }
@@ -133,6 +180,27 @@ final class PatternBreakoutKind implements StrategyKind {
                 new JSpinner(new SpinnerNumberModel(PatternBreakout.VALID_FOR, 1, 500, 1));
 
         private final JSpinner lot = new JSpinner(new SpinnerNumberModel(1, 1, 100, 1));
+
+        private final JCheckBox latch =
+                new JCheckBox(Messages.get("strategy.breakout.latch"));
+
+        private final JSpinner latchPeriod =
+                new JSpinner(new SpinnerNumberModel(Stochastic.PERIOD, 1, 500, 1));
+
+        private final JSpinner latchAverage =
+                new JSpinner(new SpinnerNumberModel(Stochastic.AVERAGE, 1, 500, 1));
+
+        private final JSpinner latchBuy = new JSpinner(new SpinnerNumberModel(20, 0, 100, 1));
+
+        private final JSpinner latchSell = new JSpinner(new SpinnerNumberModel(80, 0, 100, 1));
+
+        private final JSpinner latchEntries = new JSpinner(new SpinnerNumberModel(2, 1, 100, 1));
+
+        private final JCheckBox doubling =
+                new JCheckBox(Messages.get("strategy.breakout.doubling"));
+
+        private final JSpinner doublingMost = new JSpinner(
+                new SpinnerNumberModel(2, 0, PatternBreakout.Doubling.CEILING, 1));
 
         private Page() {
             panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
@@ -163,7 +231,50 @@ final class PatternBreakoutKind implements StrategyKind {
             panel.add(hint("strategy.breakout.valid.hint"));
             panel.add(row("strategy.breakout.lot", lot));
             panel.add(hint("strategy.breakout.stop.hint"));
+
+            // ------------------------------------------------ o filtro
+            latch.setAlignmentX(Component.LEFT_ALIGNMENT);
+            latch.addActionListener(e -> followTheSwitches());
+
+            panel.add(latch);
+            panel.add(hint("strategy.breakout.latch.hint"));
+            panel.add(row("strategy.breakout.latch.period", latchPeriod));
+            panel.add(row("strategy.breakout.latch.average", latchAverage));
+            panel.add(hint("strategy.breakout.latch.scale.hint"));
+            panel.add(row("strategy.breakout.latch.buy", latchBuy));
+            panel.add(row("strategy.breakout.latch.sell", latchSell));
+            panel.add(row("strategy.breakout.latch.entries", latchEntries));
+            panel.add(hint("strategy.breakout.latch.entries.hint"));
+
+            // ------------------------------------------------ dobrar a mao
+            doubling.setAlignmentX(Component.LEFT_ALIGNMENT);
+            doubling.addActionListener(e -> followTheSwitches());
+
+            panel.add(doubling);
+            panel.add(hint("strategy.breakout.doubling.hint"));
+            panel.add(row("strategy.breakout.doubling.most", doublingMost));
+            panel.add(hint("strategy.breakout.doubling.most.hint"));
+
             panel.add(Box.createVerticalGlue());
+        }
+
+        /**
+         * Greys out what a switch that is off does not use.
+         *
+         * <p>A period and two levels that change nothing are three numbers the
+         * reader has to work out are inert, and the working out happens after a
+         * run came back the same as the last one.</p>
+         */
+        private void followTheSwitches() {
+            boolean filtering = latch.isSelected();
+
+            latchPeriod.setEnabled(filtering);
+            latchAverage.setEnabled(filtering);
+            latchBuy.setEnabled(filtering);
+            latchSell.setEnabled(filtering);
+            latchEntries.setEnabled(filtering);
+
+            doublingMost.setEnabled(doubling.isSelected());
         }
 
         private static JPanel row(String key, JComponent control) {
@@ -202,6 +313,23 @@ final class PatternBreakoutKind implements StrategyKind {
             reward.setValue(PatternBreakoutKind.reward() / 10.0);
             valid.setValue(PatternBreakoutKind.validFor());
             lot.setValue(PatternBreakoutKind.lot());
+
+            Settings settings = Settings.settings();
+
+            // READ FROM THE STORE AND NOT FROM latch(), which answers off() for
+            // every field when the switch is off -- the screen would then forget
+            // the period and the levels every time the box was unticked.
+            latch.setSelected(settings.getBoolean(LATCH, false));
+            latchPeriod.setValue(settings.getInt(LATCH_PERIOD, Stochastic.PERIOD));
+            latchAverage.setValue(settings.getInt(LATCH_AVERAGE, Stochastic.AVERAGE));
+            latchBuy.setValue(settings.getInt(LATCH_BUY, 20));
+            latchSell.setValue(settings.getInt(LATCH_SELL, 80));
+            latchEntries.setValue(settings.getInt(LATCH_ENTRIES, 2));
+
+            doubling.setSelected(settings.getBoolean(DOUBLING, false));
+            doublingMost.setValue(settings.getInt(DOUBLING_MOST, 2));
+
+            followTheSwitches();
         }
 
         @Override
@@ -215,6 +343,16 @@ final class PatternBreakoutKind implements StrategyKind {
             int bars = (Integer) valid.getValue();
             int many = (Integer) lot.getValue();
 
+            boolean filtering = latch.isSelected();
+            int period = (Integer) latchPeriod.getValue();
+            int average = (Integer) latchAverage.getValue();
+            int buy = (Integer) latchBuy.getValue();
+            int sell = (Integer) latchSell.getValue();
+            int entries = (Integer) latchEntries.getValue();
+
+            boolean martingale = doubling.isSelected();
+            int most = (Integer) doublingMost.getValue();
+
             Settings settings = Settings.settings();
 
             settings.hold(() -> {
@@ -225,6 +363,16 @@ final class PatternBreakoutKind implements StrategyKind {
                 settings.putInt(REWARD, Math.max(1, tenths));
                 settings.putInt(VALID, bars);
                 settings.putInt(LOT, many);
+
+                settings.putBoolean(LATCH, filtering);
+                settings.putInt(LATCH_PERIOD, period);
+                settings.putInt(LATCH_AVERAGE, average);
+                settings.putInt(LATCH_BUY, buy);
+                settings.putInt(LATCH_SELL, sell);
+                settings.putInt(LATCH_ENTRIES, entries);
+
+                settings.putBoolean(DOUBLING, martingale);
+                settings.putInt(DOUBLING_MOST, most);
             });
         }
     }

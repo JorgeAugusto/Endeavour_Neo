@@ -18,6 +18,7 @@
 package br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic;
 
 import br.com.jorge.reis.endeavourneo.ui.chart.Overlay;
+import br.com.jorge.reis.endeavourneo.domain.indicator.Stochastic;
 import br.com.jorge.reis.endeavourneo.ui.chart.OwnScale;
 import br.com.jorge.reis.endeavourneo.ui.chart.overlay.MovingAverage;
 
@@ -537,132 +538,25 @@ public final class SlowStochastic implements Overlay {
         // must never be turned on is a switch that will be.
     }
 
-    private void computeOver(PriceSeries bars, double[] intoSlow, double[] intoSignal) {
-        double[] fast = new double[bars.size()];
-        double carried = 50.0;
-
-        for (int i = 0; i < bars.size(); i++) {
-            if (i < period - 1) {
-                // NaN, never zero: a period of eight has nothing to say at bar
-                // three, and zero would be a claim -- plotted, it drags the line
-                // along the floor until the first real value.
-                fast[i] = Double.NaN;
-
-                continue;
-            }
-
-            double lowest = bars.lowAt(i);
-            double highest = bars.highAt(i);
-
-            for (int back = i - period + 1; back <= i; back++) {
-                lowest = Math.min(lowest, bars.lowAt(back));
-                highest = Math.max(highest, bars.highAt(back));
-            }
-
-            double span = highest - lowest;
-
-            // A window where price never moved. See the class documentation:
-            // the previous value is carried, because there was no range to be
-            // at the top or the bottom of.
-            carried = span <= 0.0 ? carried
-                    : 100.0 * (bars.closeAt(i) - lowest) / span;
-            fast[i] = carried;
-        }
-
-        smooth(fast, intoSlow);
-        smooth(intoSlow, intoSignal);
-    }
-
     /**
-     * Averages one line into another, over {@link #average()} points.
+     * The numbers, from the ONE place they are worked out.
      *
-     * <p>Warm-up stays NaN and is not counted: an average of three that met two
-     * numbers is an average of two wearing the wrong name.</p>
+     * <p>This method held the arithmetic, and a strategy that wants to filter
+     * on a stochastic could not reach it: {@code domain} may not import
+     * {@code ui}. Writing it a second time down there is how the chart and the
+     * run come to disagree about whether the market was oversold, each looking
+     * right on its own. So it moved, and this calls it.</p>
+     *
+     * <p>What stayed here is everything about DRAWING -- colours, widths, the
+     * levels, which scale to read at. None of that is arithmetic.</p>
      */
-    private void smooth(double[] from, double[] into) {
-        // A RING OF PRIMITIVES, not a List<Double>. This runs twice per
-        // calculate, over every bar: on the real source that was 1,65 million
-        // Double objects boxed and thrown away per recalculation, plus a
-        // remove(0) shifting the list each time. Measured before: 319 ms to
-        // recalculate one stochastic, against 5 ms for a moving average over the
-        // same bars -- and this method was the whole of the difference. The
-        // recalculation happens on the interface thread, in five places, once
-        // per indicator in the panel.
-        int span = Math.max(1, average);
-        double[] window = new double[span];
-        int held = 0;
-        int next = 0;
-        double sum = 0.0;
-        double previous = Double.NaN;
-        double weight = 2.0 / (average + 1.0);
+    private void computeOver(PriceSeries bars, double[] intoSlow, double[] intoSignal) {
+        // BY NAME, because the two enums are deliberately the same three words:
+        // see Stochastic.Smoothing, which says why it is not imported from here.
+        Stochastic.Lines lines = new Stochastic(period, average)
+                .over(bars, Stochastic.Smoothing.valueOf(kind.name()));
 
-        for (int i = 0; i < from.length; i++) {
-            if (Double.isNaN(from[i])) {
-                into[i] = Double.NaN;
-                held = 0;
-                next = 0;
-                sum = 0.0;
-                previous = Double.NaN;
-
-                continue;
-            }
-
-            if (held == span) {
-                // Full: the oldest is where the next one goes.
-                sum -= window[next];
-            } else {
-                held++;
-            }
-
-            window[next] = from[i];
-            sum += from[i];
-            next = (next + 1) % span;
-
-            if (held < average) {
-                into[i] = Double.NaN;
-
-                continue;
-            }
-
-            if (kind == MovingAverage.Kind.EXPONENTIAL) {
-                // AFTER the window, not before it, and seeded with that
-                // window's arithmetic mean. This branch used to sit at the top
-                // of the loop: it wrote a value on the very first finite point,
-                // seeded from that one number, so the stochastic began drawing
-                // `average` bars earlier than the javadoc right above says it
-                // does, with a hook at the left edge -- and the signal line,
-                // being the smoothing of this one, inherited the hook.
-                //
-                // Three behaviours for one idea, in one project: this, the
-                // arithmetic branch below (which does wait), and
-                // MovingAverage.exponential, whose own comment says why the
-                // seed is the first window and not the first price. This is now
-                // the same as that one, number for number.
-                previous = Double.isNaN(previous) ? sum / average
-                        : from[i] * weight + previous * (1.0 - weight);
-                into[i] = previous;
-
-                continue;
-            }
-
-            if (kind == MovingAverage.Kind.WEIGHTED) {
-                double total = 0.0;
-                double divisor = 0.0;
-
-                // Oldest first, which when the ring is full is where the next
-                // write would land. The weight rises with age towards the
-                // present, exactly as it did over the list.
-                for (int at = 0; at < held; at++) {
-                    total += window[(next + at) % span] * (at + 1);
-                    divisor += at + 1;
-                }
-
-                into[i] = total / divisor;
-
-                continue;
-            }
-
-            into[i] = sum / average;
-        }
+        System.arraycopy(lines.slow(), 0, intoSlow, 0, intoSlow.length);
+        System.arraycopy(lines.signal(), 0, intoSignal, 0, intoSignal.length);
     }
 }
