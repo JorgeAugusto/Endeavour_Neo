@@ -1326,6 +1326,7 @@ public final class MainWindow extends JFrame {
                 new GeneralPage(),
                 new br.com.jorge.reis.endeavourneo.ui.settings.ChartPage(),
                 new br.com.jorge.reis.endeavourneo.ui.settings.ReplayPage(),
+                new br.com.jorge.reis.endeavourneo.ui.settings.BacktestPage(),
                 new AppearancePage(installed -> {
                     console.write(Messages.get("console.appearance", installed));
                     status.say(installed);

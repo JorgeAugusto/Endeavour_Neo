@@ -37,6 +37,7 @@ import java.awt.FlowLayout;
 import java.io.IOException;
 import java.util.List;
 import javax.swing.BorderFactory;
+import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
@@ -105,11 +106,29 @@ final class BacktestPanel extends JPanel {
 
     private final JSpinner slow = new JSpinner(new SpinnerNumberModel(34, 2, 999, 1));
 
-    private final JSpinner contracts = new JSpinner(new SpinnerNumberModel(1, 1, 100, 1));
-
-    private final JSpinner cost = new JSpinner(new SpinnerNumberModel(6.5, 0.0, 100.0, 0.5));
+    private final JButton settings = gear();
 
     private final JButton run = new JButton(Messages.get("backtest.run"));
+
+    /**
+     * The door to Configurações > Backtest, next to the button that needs it.
+     *
+     * <p>The same page the menu opens and the same stored values — this one just
+     * saves the walk. A reader about to press Run is exactly the reader who
+     * wants to check what a round trip is being charged.</p>
+     */
+    private JButton gear() {
+        JButton button = new JButton("⚙");
+
+        button.setToolTipText(Messages.get("settings.backtest"));
+        button.setFocusable(false);
+        button.addActionListener(e -> br.com.jorge.reis.endeavourneo.ui.settings.SettingsDialog
+                .show(javax.swing.SwingUtilities.getWindowAncestor(this),
+                        java.util.List.of(
+                                new br.com.jorge.reis.endeavourneo.ui.settings.BacktestPage())));
+
+        return button;
+    }
 
     private final ResultPanel result = new ResultPanel();
 
@@ -170,10 +189,8 @@ final class BacktestPanel extends JPanel {
         second.add(fast);
         second.add(new JLabel(Messages.get("backtest.slow")));
         second.add(slow);
-        second.add(new JLabel(Messages.get("backtest.contracts")));
-        second.add(contracts);
-        second.add(new JLabel(Messages.get("backtest.cost")));
-        second.add(cost);
+        second.add(Box.createHorizontalStrut(8));
+        second.add(settings);
         second.add(run);
 
         top.add(first);
@@ -313,9 +330,15 @@ final class BacktestPanel extends JPanel {
         }
 
         Scale chosen = (Scale) scale.getSelectedItem();
+
+        // READ AT THE MOMENT OF THE RUN, not held from when the window opened.
+        // The settings dialog can have been through twice since then, and a run
+        // charged yesterday's cost is the kind of wrong that looks ordinary.
+        int lot = BacktestPreferences.contracts();
+        Costs charged = BacktestPreferences.costs();
+
         MovingAverageCrossing what = new MovingAverageCrossing(
-                (Integer) fast.getValue(), (Integer) slow.getValue(), (Integer) contracts.getValue());
-        Costs charged = new Costs((Double) cost.getValue());
+                (Integer) fast.getValue(), (Integer) slow.getValue(), lot);
 
         run.setEnabled(false);
         run.setText(Messages.get("backtest.running"));
@@ -326,8 +349,7 @@ final class BacktestPanel extends JPanel {
             protected Run doInBackground() throws IOException {
                 PriceSeries bars = chosen.how().apply(picked.open());
 
-                return new Run(bars, new Backtest(charged, (Integer) contracts.getValue())
-                        .run(bars, what), picked.label());
+                return new Run(bars, new Backtest(charged, lot).run(bars, what), picked.label());
             }
 
             @Override
