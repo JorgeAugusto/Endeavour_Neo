@@ -456,14 +456,17 @@ public final class PatternBreakout implements Strategy, Plotted, Sourced {
      * the newer level is the one the market has just refused.
      */
     private void look(int bar) {
-        if (bar <= livesUntil && side != 0) {
-            return;
-        }
-
+        // The plan dies of old age on its own.
         if (bar > livesUntil) {
             forget();
         }
 
+        // IT LOOKS EVEN WITH A PLAN ALIVE, and it used to return here instead.
+        // That made the javadoc above false: a live plan blocked the detector
+        // entirely, so the newer pattern was never seen and the older level
+        // stood until it expired. Measured on his year, the difference is not
+        // cosmetic -- a bearish PFR two bars before a bullish one would hold the
+        // short plan over the top of the long one.
         if (bar < CandlePatterns.LOOKBACK) {
             return;
         }
@@ -486,7 +489,13 @@ public final class PatternBreakout implements Strategy, Plotted, Sourced {
         // THE LATCH HAS TO HAVE BEEN ARMED, on this side. The credit is spent by
         // the ENTRY and not by the plan: a trigger that expires without being
         // touched cost the market nothing and should cost the latch nothing.
+        //
+        // And a refusal FORGETS rather than returning, because by here a pattern
+        // of the chosen family has been found and the older level is stale
+        // whatever the latch says: the market has just refused somewhere else.
         if (latch.on() && creditFor(pattern.direction()) <= 0) {
+            forget();
+
             return;
         }
 

@@ -278,6 +278,50 @@ class PatternLatchTest {
     }
 
     @Test
+    @DisplayName("UM PADRAO QUE O LATCH RECUSA TAMBEM LARGA O PLANO ANTIGO")
+    void apatternTheLatchRefusesAlsoDropsTheOlderPlan() {
+        // Compra armada, venda nunca: um PFR de ALTA vira plano, e o de BAIXA da
+        // barra seguinte e recusado por falta de credito vendido. O plano velho
+        // morre assim mesmo -- o mercado acabou de recusar do outro lado, e o
+        // nivel de ontem nao volta a valer so porque nao podemos operar o de
+        // hoje.
+        double[][] ohlc = {
+            {100, 110, 95, 105},
+            {105, 112, 90, 100},
+            {85, 110, 80, 108},     // PFR de alta: gatilho comprado em 115
+            {112, 114, 100, 105},   // PFR de baixa, e a maxima de 114 nao toca 115
+            {105, 130, 104, 128},   // sobe atravessando 115
+            {128, 132, 126, 130},
+            {128, 132, 126, 130},
+            {128, 132, 126, 130},
+        };
+
+        // Credito de compra existe; o de venda nao pode existir, porque o nivel
+        // de venda esta acima do maximo que o estocastico alcanca.
+        PatternBreakout.Latch soCompra = new PatternBreakout.Latch(true, 1, 1, 100, 101, 1);
+
+        assertEquals(0, entradas(run(ohlc, soCompra, PatternBreakout.Doubling.off())).size(),
+                "o plano comprado sobreviveu ao padrao de baixa da barra 3");
+
+        // A prova de que o pregao TEM a entrada quando nao ha padrao novo por
+        // cima dela: sem o PFR de baixa na barra 3, a compra acontece.
+        double[][] semOdeBaixa = {
+            {100, 110, 95, 105},
+            {105, 112, 90, 100},
+            {85, 110, 80, 108},
+            {108, 109, 100, 105},   // barra morna: nao e padrao nenhum
+            {105, 130, 104, 128},
+            {128, 132, 126, 130},
+            {128, 132, 126, 130},
+            {128, 132, 126, 130},
+        };
+
+        assertEquals(1,
+                entradas(run(semOdeBaixa, soCompra, PatternBreakout.Doubling.off())).size(),
+                "sem o padrao de baixa no meio a compra tambem nao aconteceu");
+    }
+
+    @Test
     @DisplayName("UM MODULO DESLIGADO NAO TEM DOBRAS, nem que lhe peçam")
     void amoduleThatIsOffHasNoDoublings() {
         // O estado em que os dois campos discordam nao existe: quem desliga o

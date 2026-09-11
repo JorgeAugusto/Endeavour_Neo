@@ -305,6 +305,47 @@ class PatternBreakoutTest {
     }
 
     @Test
+    @DisplayName("UM PADRAO NOVO LARGA O PLANO ANTIGO, em vez de esperar ele expirar")
+    void anewPatternDropsTheOlderPlan() {
+        // Um PFR de BAIXA na barra 4 e um de ALTA na 5, com o gatilho vendido da
+        // barra 4 ainda de pe e ainda nao tocado. O plano velho aponta para
+        // baixo, o mercado acabou de recusar para cima, e so um dos dois pode
+        // valer.
+        double[][] ohlc = {
+            {100, 110, 95, 105},
+            {105, 112, 90, 100},
+            {100, 115, 98, 112},
+            {112, 130, 118, 128},
+            {145, 150, 120, 125},   // PFR de baixa: gatilho vendido em 115
+            {118, 140, 116, 138},   // PFR de alta: gatilho comprado em 145
+            {138, 200, 137, 195},   // rompe 145 para cima, e nunca tocou 115
+            {195, 200, 190, 195},
+            {195, 200, 190, 195},
+            {195, 200, 190, 195},
+        };
+
+        Result result = run(ohlc, umPregaoSo(10), CandlePattern.Family.PFR, 1.5, 3);
+
+        assertFalse(result.fills().isEmpty(),
+                "o padrao de alta da barra 5 nao operou: o plano vendido da 4 ficou na frente");
+
+        Fill entrada = result.fills().get(0);
+
+        assertEquals("BuyStop", entrada.verb(),
+                "a primeira execucao nao foi a compra: " + entrada.verb());
+        assertEquals(145, entrada.price(), 1e-9,
+                "a compra nao saiu no gatilho do padrao novo, saiu em " + entrada.price());
+
+        // E o gatilho vendido de fato nunca foi tocado, que e o que torna este
+        // pregao uma prova: o plano velho morreu por ser velho, e nao por ter
+        // executado.
+        for (int bar = 5; bar < ohlc.length; bar++) {
+            assertTrue(ohlc[bar][2] > 115,
+                    "a barra " + bar + " desceu ate o gatilho vendido, e a prova cai por terra");
+        }
+    }
+
+    @Test
     @DisplayName("uma forma so e operada por vez")
     void onlyOneShapeIsTradedAtATime() {
         // O mesmo desenho, pedido como inside, nao opera: ele e PFR.
