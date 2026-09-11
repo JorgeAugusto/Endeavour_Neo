@@ -500,6 +500,38 @@ class BacktestPanelTest {
     }
 
     @Test
+    @DisplayName("o recorte escolhido volta com a janela")
+    void thechosenRangeComesBackWithTheWindow() throws Exception {
+        assumeFalse(java.awt.GraphicsEnvironment.isHeadless(), "no graphics environment");
+
+        br.com.jorge.reis.endeavourneo.platform.Settings.useForTest(settings);
+        br.com.jorge.reis.endeavourneo.platform.Settings.workspace()
+                .put("backtest.pick.slice",
+                        br.com.jorge.reis.endeavourneo.domain.market.Slice.WEEK.name());
+
+        javax.swing.JFrame frame = laidOut();
+
+        try {
+            javax.swing.JComboBox<?> combo = find(frame, javax.swing.JComboBox.class,
+                    box -> box.getItemCount() > 0
+                            && box.getItemAt(0)
+                                    instanceof br.com.jorge.reis.endeavourneo.domain.market.Slice);
+
+            assertNotNull(combo, "a barra nao tem o seletor de recorte");
+
+            // A ORDEM NO CONSTRUTOR. O padrao era posto DEPOIS de ler a
+            // preferencia, entao era o padrao que sobrescrevia a escolha -- e o
+            // recorte nunca voltava. Um ajuste que so e lido ao reabrir a janela
+            // falha calado e parece que funciona.
+            assertEquals(br.com.jorge.reis.endeavourneo.domain.market.Slice.WEEK,
+                    combo.getSelectedItem(), "o recorte escolhido nao voltou");
+        } finally {
+            letGo(frame);
+            br.com.jorge.reis.endeavourneo.platform.Settings.stopUsingTestStore();
+        }
+    }
+
+    @Test
     @DisplayName("recolher esconde o quadro; voltar o traz do tamanho que tinha")
     void collapsingHidesItAndBringingItBackKeepsItsWidth() throws Exception {
         assumeFalse(java.awt.GraphicsEnvironment.isHeadless(), "no graphics environment");

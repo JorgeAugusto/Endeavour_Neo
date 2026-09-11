@@ -205,8 +205,6 @@ final class BacktestPanel extends JPanel {
             series.addItem(choice);
         }
 
-        restorePicks();
-
         slice.setRenderer(new javax.swing.DefaultListCellRenderer() {
 
             private static final long serialVersionUID = 1L;
@@ -225,6 +223,13 @@ final class BacktestPanel extends JPanel {
         });
 
         slice.setSelectedItem(Slice.ALL);
+
+        // ANTES do restorePicks, e nao depois. O padrao tem de estar posto para
+        // que a preferencia guardada tenha o que sobrescrever -- invertido, era
+        // o padrao que sobrescrevia a preferencia, e o recorte escolhido nunca
+        // voltava. Um ajuste que so e lido depois de reabrir a janela falha
+        // calado e parece que funciona.
+        restorePicks();
 
         series.addActionListener(e -> {
             followTheSeries();

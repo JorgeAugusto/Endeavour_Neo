@@ -200,13 +200,26 @@ class PaneOrderTest {
 
         StudyPane going = stack.panes().get(0);
 
-        stack.hide(going);
+        // HIDE AND LOOK IN THE SAME TURN OF THE EDT, and that is not tidiness:
+        // it is the only way to ask this question at all. hide() POSTS the
+        // removal, so "has it happened yet?" is a race between this thread and
+        // the event queue -- and the race is winnable from either side. Asked
+        // from the JUnit thread the test passed alone and failed under the full
+        // suite, which is the shape of a flaky test and the shape of a test
+        // that is not measuring what it says.
+        //
+        // Inside invokeAndWait the queue cannot have run the posted task,
+        // because the task is behind THIS one. So a pane still in place proves
+        // the removal was posted, and a pane already gone proves it was inline.
+        SwingUtilities.invokeAndWait(() -> {
+            stack.hide(going);
 
-        assertEquals(2, stack.panes().size(),
-                "the pane was torn out inline, while the gesture that asked for it "
-                        + "was still being delivered");
-        assertSame(stack, going.getParent(),
-                "the pane lost its parent before the click that closed it had finished");
+            assertEquals(2, stack.panes().size(),
+                    "the pane was torn out inline, while the gesture that asked for it "
+                            + "was still being delivered");
+            assertSame(stack, going.getParent(),
+                    "the pane lost its parent before the click that closed it had finished");
+        });
 
         settle();
 
