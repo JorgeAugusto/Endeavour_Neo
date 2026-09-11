@@ -146,6 +146,21 @@ public final class SettingsDialog extends JDialog {
         return scroll;
     }
 
+    /**
+     * One page, under its heading, with somewhere to scroll to.
+     *
+     * <p><b>The page scrolls and the heading does not.</b> A page taller than
+     * the dialog used to be cut off with nothing to say so — the breakout's
+     * screen lost its last two rows, and a control you cannot see is one you
+     * cannot discover is there. It is done here rather than in each page
+     * because every page can outgrow the dialog, and the one that does it next
+     * should not have to remember this.</p>
+     *
+     * <p>Sideways it does NOT scroll. A settings page that is too wide is a
+     * layout to fix, not a page to drag around; and a horizontal bar that
+     * appears for four pixels of overflow steals a row from every page that
+     * does fit.</p>
+     */
     private static JComponent wrap(SettingsPage page) {
         JPanel panel = new JPanel(new BorderLayout(0, 8));
 
@@ -153,11 +168,71 @@ public final class SettingsDialog extends JDialog {
         heading.setFont(heading.getFont().deriveFont(java.awt.Font.BOLD));
         heading.setBorder(BorderFactory.createEmptyBorder(0, 0, 4, 0));
 
+        JScrollPane scroll = new JScrollPane(new Tall(page.getComponent()),
+                JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+                JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+
+        // NO BORDER: a JScrollPane brings its own etched line, and inside a
+        // panel that already has a heading and padding it reads as a box drawn
+        // around the settings for no reason.
+        scroll.setBorder(BorderFactory.createEmptyBorder());
+        scroll.getVerticalScrollBar().setUnitIncrement(16);
+
         panel.setBorder(BorderFactory.createEmptyBorder(12, 14, 12, 14));
         panel.add(heading, BorderLayout.NORTH);
-        panel.add(page.getComponent(), BorderLayout.CENTER);
+        panel.add(scroll, BorderLayout.CENTER);
 
         return panel;
+    }
+
+    /**
+     * A page that may be taller than the window but never wider.
+     *
+     * <p>A plain panel inside a viewport is given its PREFERRED size, and the
+     * preferred width of a settings page is the width of its longest hint —
+     * a whole sentence on one line. The page would then reach past the right
+     * edge and be cut there, with no horizontal bar to reach the rest by.
+     *
+     * <p>Tracking the viewport's width hands the page exactly the room there
+     * is, which is what the hints already assume: they shorten themselves with
+     * an ellipsis when the line runs out. Height is the opposite — it must be
+     * free to grow past the viewport, because growing is the whole point of
+     * being in one.</p>
+     */
+    private static final class Tall extends JPanel implements javax.swing.Scrollable {
+
+        private static final long serialVersionUID = 1L;
+
+        private Tall(JComponent page) {
+            super(new BorderLayout());
+
+            add(page, BorderLayout.CENTER);
+        }
+
+        @Override
+        public Dimension getPreferredScrollableViewportSize() {
+            return getPreferredSize();
+        }
+
+        @Override
+        public int getScrollableUnitIncrement(java.awt.Rectangle seen, int axis, int way) {
+            return 16;
+        }
+
+        @Override
+        public int getScrollableBlockIncrement(java.awt.Rectangle seen, int axis, int way) {
+            return Math.max(16, seen.height - 16);
+        }
+
+        @Override
+        public boolean getScrollableTracksViewportWidth() {
+            return true;
+        }
+
+        @Override
+        public boolean getScrollableTracksViewportHeight() {
+            return false;
+        }
     }
 
     private JComponent buildButtons() {
