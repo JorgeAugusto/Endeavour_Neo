@@ -24,6 +24,7 @@ import br.com.jorge.reis.endeavourneo.domain.trading.Backtest;
 import br.com.jorge.reis.endeavourneo.domain.trading.Costs;
 import br.com.jorge.reis.endeavourneo.domain.trading.Metrics;
 import br.com.jorge.reis.endeavourneo.domain.trading.Result;
+import br.com.jorge.reis.endeavourneo.domain.trading.Strategy;
 import br.com.jorge.reis.endeavourneo.domain.trading.Trade;
 import br.com.jorge.reis.endeavourneo.domain.trading.strategy.MovingAverageCrossing;
 import br.com.jorge.reis.endeavourneo.platform.Messages;
@@ -157,6 +158,8 @@ final class BacktestPanel extends JPanel {
     private final ChartCanvas chart = new ChartCanvas();
 
     private final TradeMarks marks = new TradeMarks();
+
+    private final StrategyCurves curves = new StrategyCurves();
 
     private final TradeTableModel model = new TradeTableModel(new String[] {
             Messages.get("backtest.col.index"), Messages.get("backtest.col.side"),
@@ -319,6 +322,10 @@ final class BacktestPanel extends JPanel {
      * window being closed.</p>
      */
     private JSplitPane body() {
+        // AS CURVAS PRIMEIRO, as marcas por cima: as marcas sao o assunto e
+        // as linhas sao o porque. Na ordem inversa uma media passaria por cima
+        // da seta que ela explica.
+        chart.addOverlay(curves);
         chart.addOverlay(marks);
         chart.setPreferredSize(new Dimension(700, 320));
 
@@ -535,7 +542,11 @@ final class BacktestPanel extends JPanel {
         int lot = BacktestPreferences.contracts();
         Costs charged = BacktestPreferences.costs();
 
-        MovingAverageCrossing what = new MovingAverageCrossing(
+        // Declarada como Strategy, e nao como a classe concreta: e assim que o
+        // instanceof abaixo quer dizer alguma coisa -- "esta estrategia mostra
+        // o que fez?" -- em vez de ser uma pergunta cuja resposta o compilador
+        // ja sabe. A segunda estrategia que entrar aqui nao muda esta linha.
+        Strategy what = new MovingAverageCrossing(
                 (Integer) fast.getValue(), (Integer) slow.getValue(), lot);
 
         run.setEnabled(false);
@@ -547,7 +558,11 @@ final class BacktestPanel extends JPanel {
             protected Run doInBackground() throws IOException {
                 PriceSeries bars = chosen.how().apply(picked.open());
 
-                return new Run(bars, new Backtest(charged, lot).run(bars, what), picked.label());
+                Result produced = new Backtest(charged, lot).run(bars, what);
+
+                return new Run(bars, produced, picked.label(),
+                        what instanceof br.com.jorge.reis.endeavourneo.domain.trading.Plotted shown
+                                ? shown.curves() : java.util.Map.of());
             }
 
             @Override
@@ -579,6 +594,8 @@ final class BacktestPanel extends JPanel {
         List<Trade> trades = result.trades();
 
         chart.setSeries(running);
+
+        curves.show(finished.curves());
         marks.show(trades);
         marks.highlight(null);
 
@@ -622,7 +639,8 @@ final class BacktestPanel extends JPanel {
     }
 
     /** A finished run: the bars it ran over, what it produced, and what to call it. */
-    private record Run(PriceSeries series, Result result, String label) {
+    private record Run(PriceSeries series, Result result, String label,
+                       java.util.Map<String, double[]> curves) {
     }
 
     /** One entry of the scale list: what it is called, and what it does. */

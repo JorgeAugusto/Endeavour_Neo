@@ -26,6 +26,7 @@ import br.com.jorge.reis.endeavourneo.domain.trading.Backtest;
 import br.com.jorge.reis.endeavourneo.domain.trading.Costs;
 import br.com.jorge.reis.endeavourneo.domain.trading.Fill;
 import br.com.jorge.reis.endeavourneo.domain.trading.Result;
+import br.com.jorge.reis.endeavourneo.domain.trading.Trade;
 import br.com.jorge.reis.endeavourneo.domain.trading.order.Side;
 
 import org.junit.jupiter.api.DisplayName;
@@ -145,6 +146,83 @@ class MovingAverageCrossingTest {
         // rodada sobreviveriam e a segunda seria outra estrategia.
         assertEquals(primeira.fills(), segunda.fills(), "a segunda rodada operou diferente");
         assertEquals(primeira.net(), segunda.net(), 0.0, "a segunda rodada deu outro resultado");
+    }
+
+    // --------------------------------------------- o que a estrategia mostra
+
+    @Test
+    @DisplayName("a curva desenhada tem um valor por barra, e nada antes de existir")
+    void theCurveHasOneValuePerBarAndNothingBeforeItExisted() {
+        Closes serie = rampThenFall(10, 40, 60);
+        MovingAverageCrossing estrategia = new MovingAverageCrossing(3, 8, 1);
+
+        new Backtest(Costs.NONE, 1).run(serie, estrategia);
+
+        java.util.Map<String, double[]> curvas = estrategia.curves();
+
+        assertEquals(2, curvas.size(), "o cruzamento nao mostrou as duas medias");
+        assertTrue(curvas.containsKey("EMA 3") && curvas.containsKey("EMA 8"),
+                "as medias nao vieram com o periodo no nome: " + curvas.keySet());
+
+        for (java.util.Map.Entry<String, double[]> cada : curvas.entrySet()) {
+            assertEquals(serie.size(), cada.getValue().length,
+                    cada.getKey() + " nao tem um valor por barra");
+        }
+    }
+
+    @Test
+    @DisplayName("A ENTRADA CAI NA BARRA EM QUE A LINHA DESENHADA CRUZOU")
+    void theEntryLandsOnTheBarWhereTheDrawnLineCrossed() {
+        Closes serie = rampThenFall(10, 40, 60);
+        MovingAverageCrossing estrategia = new MovingAverageCrossing(3, 8, 1);
+
+        Result result = new Backtest(Costs.NONE, 1).run(serie, estrategia);
+
+        double[] rapida = estrategia.curves().get("EMA 3");
+        double[] lenta = estrategia.curves().get("EMA 8");
+
+        assertTrue(result.count() > 0, "a serie de teste nao produziu operacao nenhuma");
+
+        for (Trade trade : result.trades()) {
+            // A estrategia decide no FECHAMENTO de uma barra e a ordem executa
+            // na ABERTURA da seguinte. Entao a barra que decidiu esta operacao
+            // e a anterior a que ela abriu.
+            int decidiu = trade.openedAt() - 1;
+
+            if (decidiu < 1) {
+                continue;
+            }
+
+            boolean agora = rapida[decidiu] > lenta[decidiu];
+            boolean antes = rapida[decidiu - 1] > lenta[decidiu - 1];
+
+            // E' ISTO QUE ELE QUER OLHAR NA TELA. Se a linha desenhada fosse
+            // uma media recalculada pelo grafico -- sem o mesmo inicio, sem a
+            // mesma escala -- ela cruzaria na barra VIZINHA, e a seta pareceria
+            // ter saido do lugar. A linha e a que decidiu, entao o cruzamento
+            // cai debaixo da seta.
+            assertTrue(antes != agora,
+                    "a operacao abriu na barra " + trade.openedAt()
+                            + ", mas as medias desenhadas nao cruzaram na " + decidiu);
+        }
+    }
+
+    @Test
+    @DisplayName("uma rodada nova nao herda a curva da anterior")
+    void afreshRunDoesNotInheritTheLastOnesCurve() {
+        MovingAverageCrossing estrategia = new MovingAverageCrossing(3, 8, 1);
+        Backtest backtest = new Backtest(Costs.NONE, 1);
+
+        backtest.run(rampThenFall(10, 60, 60), estrategia);
+
+        int longa = estrategia.curves().get("EMA 3").length;
+
+        backtest.run(rampThenFall(5, 10, 5), estrategia);
+
+        int curta = estrategia.curves().get("EMA 3").length;
+
+        assertEquals(130, longa, "a primeira rodada nao mediu o que devia");
+        assertEquals(20, curta, "a curva ficou do tamanho da rodada ANTERIOR");
     }
 
     @Test

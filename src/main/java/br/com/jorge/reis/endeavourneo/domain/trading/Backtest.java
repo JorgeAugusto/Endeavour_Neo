@@ -82,7 +82,7 @@ public final class Backtest {
         double[] worth = new double[series.size()];
         int exposed = 0;
 
-        strategy.start();
+        strategy.start(series);
 
         for (int bar = 0; bar < series.size(); bar++) {
             broker.executeDuring(bar, series.openAt(bar), series.highAt(bar), series.lowAt(bar));

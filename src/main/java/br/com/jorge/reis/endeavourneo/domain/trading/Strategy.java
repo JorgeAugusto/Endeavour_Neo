@@ -17,6 +17,7 @@
  */
 package br.com.jorge.reis.endeavourneo.domain.trading;
 
+import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
 import br.com.jorge.reis.endeavourneo.domain.trading.order.Desk;
 
 /**
@@ -58,9 +59,13 @@ public interface Strategy {
      * remembers is reset here.</p>
      *
      * <p>A strategy that remembers nothing — most of them, and every lambda —
-     * ignores this.</p>
+     * ignores this. One that does gets the series it is about to be run over,
+     * because the commonest thing to remember is one value per bar, and the
+     * count is not knowable from inside {@code onBar}.</p>
+     *
+     * @param series the bars about to be walked
      */
-    default void start() {
+    default void start(PriceSeries series) {
     }
 
     /**

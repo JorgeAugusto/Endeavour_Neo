@@ -17,9 +17,14 @@
  */
 package br.com.jorge.reis.endeavourneo.domain.trading.strategy;
 
+import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
 import br.com.jorge.reis.endeavourneo.domain.trading.Market;
+import br.com.jorge.reis.endeavourneo.domain.trading.Plotted;
 import br.com.jorge.reis.endeavourneo.domain.trading.Strategy;
 import br.com.jorge.reis.endeavourneo.domain.trading.order.Desk;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * The oldest strategy there is: two averages, and you follow the crossing.
@@ -49,7 +54,7 @@ import br.com.jorge.reis.endeavourneo.domain.trading.order.Desk;
  * trusting the single one. {@code ClosePosition} and then an opening order is
  * what his robots do, so it is what the benchmark does.</p>
  */
-public final class MovingAverageCrossing implements Strategy {
+public final class MovingAverageCrossing implements Strategy, Plotted {
 
     private final int fastPeriod;
 
@@ -64,6 +69,12 @@ public final class MovingAverageCrossing implements Strategy {
     private boolean above;
 
     private boolean known;
+
+    // What it decided from, kept bar by bar so the chart can show the very
+    // numbers that put each mark where it is. See Plotted.
+    private double[] fastLine = new double[0];
+
+    private double[] slowLine = new double[0];
 
     /**
      * @param fastPeriod  bars of the fast average, his 17
@@ -91,11 +102,29 @@ public final class MovingAverageCrossing implements Strategy {
     }
 
     @Override
-    public void start() {
+    public void start(PriceSeries series) {
         fast = Double.NaN;
         slow = Double.NaN;
         above = false;
         known = false;
+
+        int bars = series == null ? 0 : series.size();
+
+        fastLine = new double[bars];
+        slowLine = new double[bars];
+
+        java.util.Arrays.fill(fastLine, Double.NaN);
+        java.util.Arrays.fill(slowLine, Double.NaN);
+    }
+
+    @Override
+    public Map<String, double[]> curves() {
+        Map<String, double[]> lines = new LinkedHashMap<>();
+
+        lines.put("EMA " + fastPeriod, fastLine.clone());
+        lines.put("EMA " + slowPeriod, slowLine.clone());
+
+        return lines;
     }
 
     @Override
@@ -104,6 +133,11 @@ public final class MovingAverageCrossing implements Strategy {
 
         fast = step(fast, close, fastPeriod);
         slow = step(slow, close, slowPeriod);
+
+        if (market.bar() < fastLine.length) {
+            fastLine[market.bar()] = fast;
+            slowLine[market.bar()] = slow;
+        }
 
         // The averages need to have separated before a crossing means anything.
         // Seeded from the same first close, they start equal, and the first bar

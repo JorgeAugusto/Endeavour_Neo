@@ -411,6 +411,85 @@ class BacktestPanelTest {
         }
     }
 
+    // -------------------------------------------- as curvas da estrategia
+
+    private static StrategyCurves curvesOf(double[] fast, double[] slow) {
+        StrategyCurves curves = new StrategyCurves();
+        java.util.Map<String, double[]> lines = new java.util.LinkedHashMap<>();
+
+        lines.put("EMA 3", fast);
+        lines.put("EMA 8", slow);
+
+        curves.show(lines);
+
+        return curves;
+    }
+
+    @Test
+    @DisplayName("a sobreposicao entrega, por barra, o valor que a estrategia gravou")
+    void theOverlayHandsBackWhatTheStrategyRecorded() {
+        StrategyCurves curves = curvesOf(
+                new double[] {10, 11, 12}, new double[] {20, 21, 22});
+
+        assertEquals(2, curves.colours().size(), "nao pediu uma linha por curva");
+
+        assertEquals(10, curves.valueAt(0)[0], 0.0, "a rapida na barra 0 nao e a que foi gravada");
+        assertEquals(22, curves.valueAt(2)[1], 0.0, "a lenta na barra 2 nao e a que foi gravada");
+    }
+
+    @Test
+    @DisplayName("barra fora da curva e NaN, que e como a linha se interrompe")
+    void abarOutsideTheCurveIsNaN() {
+        StrategyCurves curves = curvesOf(new double[] {10}, new double[] {20});
+
+        // NaN quebra a polilinha, e e assim que se diz "aqui a media ainda nao
+        // existia". Zero seria um preco, e a linha desceria ate o chao.
+        assertTrue(Double.isNaN(curves.valueAt(5)[0]), "barra alem do fim devolveu um numero");
+        assertTrue(Double.isNaN(curves.valueAt(-1)[0]), "barra negativa devolveu um numero");
+    }
+
+    @Test
+    @DisplayName("a legenda diz QUAIS linhas sao, nao que ha linhas")
+    void thelegendSaysWhichLinesTheseAre() {
+        StrategyCurves curves = curvesOf(new double[] {1}, new double[] {2});
+
+        assertTrue(curves.label().contains("EMA 3") && curves.label().contains("EMA 8"),
+                "a legenda nao nomeia as medias: " + curves.label());
+    }
+
+    @Test
+    @DisplayName("sem rodada, a sobreposicao nao desenha nada")
+    void withNoRunTheOverlayDrawsNothing() {
+        StrategyCurves curves = new StrategyCurves();
+
+        assertEquals(0, curves.colours().size(), "pediu linha sem ter curva");
+        assertEquals(0, curves.valueAt(0).length, "devolveu valor sem ter curva");
+
+        curves.show(null);
+
+        assertEquals(0, curves.colours().size(), "um mapa nulo virou linha");
+    }
+
+    @Test
+    @DisplayName("mais curvas que cores: as que sobram ficam de fora")
+    void morecurvesThanColoursDropsTheExtras() {
+        java.util.Map<String, double[]> many = new java.util.LinkedHashMap<>();
+
+        for (int i = 0; i < 12; i++) {
+            many.put("linha " + i, new double[] {i});
+        }
+
+        StrategyCurves curves = new StrategyCurves();
+        curves.show(many);
+
+        // Duas linhas da MESMA cor sao piores que uma linha faltando: o leitor
+        // le um cruzamento que nao existe.
+        assertTrue(curves.colours().size() <= 6,
+                "desenhou " + curves.colours().size() + " linhas com seis cores");
+        assertEquals(curves.colours().size(), curves.colours().stream().distinct().count(),
+                "duas linhas dividem a mesma cor");
+    }
+
     @Test
     @DisplayName("as marcas aceitam a lista e a escolha sem serie carregada")
     void theMarksTakeTheListAndTheChoiceBeforeAnythingIsDrawn() {
