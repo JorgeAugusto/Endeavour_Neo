@@ -92,8 +92,8 @@ final class ResultPanel extends JPanel {
 
         add(result());
         add(worth());
-        add(block("backtest.block.exposure", "backtest.trades", "backtest.timeIn",
-                "backtest.barsHeld", "backtest.perSession"));
+        add(block("backtest.block.exposure", "backtest.trades", "backtest.turned",
+                "backtest.timeIn", "backtest.barsHeld", "backtest.perSession"));
         add(block("backtest.block.quality", "backtest.hitRate", "backtest.breakEven",
                 "backtest.profitFactor", "backtest.avgWin", "backtest.avgLoss",
                 "backtest.drawdown", "backtest.losingRun"));
@@ -298,6 +298,18 @@ final class ResultPanel extends JPanel {
 
         // Exposicao
         set(i++, String.format("%,d", metrics.trades()));
+
+        // GIRADOS E MAXIMO SIMULTANEO SAO COISAS DIFERENTES, e a tabela ao lado
+        // ja mostrava so o segundo. Vinte contratos de posicao maxima podem ser
+        // seiscentos girados, e e sobre os seiscentos que a corretagem e
+        // cobrada.
+        int turned = result.contractsTurned();
+
+        set(i++, metrics.trades() == 0
+                ? String.format("%,d", turned)
+                : String.format("%,d  (%.0f por operacao)", turned,
+                        turned / (double) metrics.trades()));
+
         set(i++, String.format("%.1f%%", metrics.exposure() * 100));
         set(i++, String.format("%.1f", metrics.barsHeld()));
         set(i++, String.format("%.1f", metrics.tradesPerSession()));

@@ -188,8 +188,8 @@ final class BacktestPanel extends JPanel {
             Messages.get("backtest.col.opened"), Messages.get("backtest.col.closed"),
             Messages.get("backtest.col.entry"), Messages.get("backtest.col.exit"),
             Messages.get("backtest.col.points"), Messages.get("backtest.col.contracts"),
-            Messages.get("backtest.col.bars"), Messages.get("backtest.col.cost"),
-            Messages.get("backtest.col.net"),
+            Messages.get("backtest.col.turned"), Messages.get("backtest.col.bars"),
+            Messages.get("backtest.col.cost"), Messages.get("backtest.col.net"),
     });
 
     private final JTable table = new JTable(model);
@@ -862,6 +862,20 @@ final class BacktestPanel extends JPanel {
             table.getColumnModel().getColumn(i).setCellRenderer(right);
         }
 
+        // DOIS CLIQUES ABREM OS GIROS. A tabela da uma entrada e uma saida, que
+        // para uma operacao que entrou uma vez e saiu uma vez e a historia toda
+        // -- e para uma que subiu em cinco lotes e saiu em seis pedacos e uma
+        // media de vinte e seis historias.
+        table.addMouseListener(new java.awt.event.MouseAdapter() {
+
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent clicked) {
+                if (clicked.getClickCount() == 2) {
+                    detail(table.rowAtPoint(clicked.getPoint()));
+                }
+            }
+        });
+
         table.getSelectionModel().addListSelectionListener(event -> {
             if (event.getValueIsAdjusting()) {
                 return;
@@ -1091,6 +1105,18 @@ final class BacktestPanel extends JPanel {
 
         JOptionPane.showMessageDialog(this, why, Messages.get("backtest.title"),
                 JOptionPane.WARNING_MESSAGE);
+    }
+
+    /** Opens one operation taken apart, or does nothing when there is none. */
+    private void detail(int row) {
+        Trade trade = model.at(row < 0 ? -1 : table.convertRowIndexToModel(row));
+
+        if (trade == null) {
+            return;
+        }
+
+        TradeDetail.show(this, trade, row + 1, running,
+                BacktestPreferences.pointValue());
     }
 
     private void chose(int row) {

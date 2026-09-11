@@ -91,7 +91,7 @@ class MetricsTest {
     /** Uma operação que rendeu {@code gross} e pagou {@code cost}. */
     private static Trade trade(double gross, double cost) {
         return new Trade(0, 1, br.com.jorge.reis.endeavourneo.domain.trading.order.Side.BUY,
-                1, gross, cost, java.util.List.of());
+                1, 1, gross, cost, java.util.List.of());
     }
 
     private static Result of(Trade... trades) {

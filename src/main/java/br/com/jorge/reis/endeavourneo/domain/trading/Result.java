@@ -151,6 +151,40 @@ public record Result(List<Trade> trades, List<Fill> fills, int ambiguousBars,
         return curve;
     }
 
+    /**
+     * How many contracts were opened over the whole run.
+     *
+     * <p><b>Not the largest position.</b> The two answer different questions and
+     * the specification of the Range 90 says so in as many words: a day that
+     * ladders to twenty contracts, sheds half of each lot at a partial and
+     * refills the freed room has a maximum of twenty and turns a few hundred.
+     * The first is what the account has to carry; the second is what the
+     * brokerage is charged on, and what says whether a strategy is a strategy or
+     * a churn.</p>
+     *
+     * <p>Counted off the fills rather than summed from the trades, so the
+     * position still open at the end is in it: those contracts were opened and
+     * paid for whether or not anything closed them.</p>
+     *
+     * @return contracts
+     */
+    public int contractsTurned() {
+        int many = 0;
+        int held = 0;
+
+        for (Fill fill : fills) {
+            int was = Math.abs(held);
+
+            held += fill.signed();
+
+            if (Math.abs(held) > was) {
+                many += fill.quantity();
+            }
+        }
+
+        return many;
+    }
+
     /** @return points after costs, over the trades that ended */
     public double net() {
         return gross() - cost();

@@ -48,9 +48,10 @@ final class TradeTableModel extends AbstractTableModel {
     static final int EXIT = 5;
     static final int POINTS = 6;
     static final int CONTRACTS = 7;
-    static final int BARS = 8;
-    static final int COST = 9;
-    static final int NET = 10;
+    static final int TURNED = 8;
+    static final int BARS = 9;
+    static final int COST = 10;
+    static final int NET = 11;
 
     /** The exchange's zone, like the chart's axis. */
     private static final ZoneId SP = ZoneId.of("America/Sao_Paulo");
@@ -97,7 +98,7 @@ final class TradeTableModel extends AbstractTableModel {
 
     @Override
     public Class<?> getColumnClass(int column) {
-        return column == INDEX || column == CONTRACTS || column == BARS
+        return column == INDEX || column == CONTRACTS || column == TURNED || column == BARS
                 ? Integer.class
                 : (column == SIDE || column == OPENED || column == CLOSED
                         ? String.class : Double.class);
@@ -116,6 +117,7 @@ final class TradeTableModel extends AbstractTableModel {
             case EXIT -> trade.exitPrice();
             case POINTS -> trade.gross();
             case CONTRACTS -> trade.contracts();
+            case TURNED -> trade.turned();
             case BARS -> trade.bars();
             case COST -> trade.cost();
             case NET -> trade.net();

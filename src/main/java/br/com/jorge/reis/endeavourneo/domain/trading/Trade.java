@@ -40,11 +40,14 @@ import java.util.List;
  * @param closedAt   bar where it came back
  * @param side       the side it was opened on: {@code BUY} is a long trade
  * @param contracts  the largest the position got — not the number traded
+ * @param turned     how many contracts were OPENED, which is the number traded:
+ *                   a ladder that goes to twenty in five lots of four, sheds two
+ *                   of each at a partial and refills, turns far more than twenty
  * @param gross      points made or lost before costs
  * @param cost       points paid, always positive
  * @param fills      everything that happened, in order
  */
-public record Trade(int openedAt, int closedAt, Side side, int contracts,
+public record Trade(int openedAt, int closedAt, Side side, int contracts, int turned,
                     double gross, double cost, List<Fill> fills) {
 
     public Trade {
@@ -82,6 +85,69 @@ public record Trade(int openedAt, int closedAt, Side side, int contracts,
     /** The average price it was closed at. See {@link #entryPrice()}. */
     public double exitPrice() {
         return averageOf(false);
+    }
+
+    /**
+     * One execution of the trade, with what it did to the position.
+     *
+     * @param fill     the execution itself
+     * @param opening  whether it added contracts or took them off
+     * @param held     how many contracts were open after it
+     * @param average  the average price of what was open after it, or NaN once
+     *                 nothing is
+     * @param points   realised by THIS execution, per the whole of it and not
+     *                 per contract; zero for an opening, which realises nothing
+     */
+    public record Step(Fill fill, boolean opening, int held, double average, double points) { }
+
+    /**
+     * Every execution of the trade, in order, with the arithmetic done.
+     *
+     * <p>This is the answer to "where did each piece go in and out", which a
+     * single entry price and a single exit price cannot give: a trade that
+     * ladders into twenty contracts and leaves in six pieces has one average and
+     * twenty-six stories, and the averages hide precisely the thing worth
+     * looking at — that the first partial made money and the last two gave it
+     * back.</p>
+     *
+     * <p>The points of a closing execution are measured against the <b>average
+     * of what was open at that moment</b>, which is the only honest reading: the
+     * contracts are not distinguishable, so pairing a particular exit with a
+     * particular entry would need a rule — FIFO? LIFO? — and the rule would
+     * change the numbers. It is the same arithmetic the engine itself uses.</p>
+     *
+     * @return one entry per fill
+     */
+    public List<Step> steps() {
+        List<Step> walked = new java.util.ArrayList<>();
+
+        int held = 0;
+        double average = Double.NaN;
+
+        for (Fill fill : fills) {
+            boolean opening = fill.side() == side;
+            double points = 0;
+
+            if (opening) {
+                average = held == 0
+                        ? fill.price()
+                        : (average * held + fill.price() * fill.quantity()) / (held + fill.quantity());
+                held += fill.quantity();
+            } else {
+                // The sign comes from the side of the TRADE: a short that covers
+                // lower made money, and the subtraction has to know that.
+                points = (fill.price() - average) * fill.quantity() * side.signal();
+                held -= fill.quantity();
+
+                if (held <= 0) {
+                    average = Double.NaN;
+                }
+            }
+
+            walked.add(new Step(fill, opening, Math.max(0, held), average, points));
+        }
+
+        return walked;
     }
 
     private double averageOf(boolean opening) {

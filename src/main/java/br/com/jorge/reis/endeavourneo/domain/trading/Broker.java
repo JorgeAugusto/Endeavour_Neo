@@ -92,6 +92,9 @@ final class Broker {
 
     private int peak;
 
+    /** Contracts opened during the trade being built, which is the number traded. */
+    private int turned;
+
     private double gross;
 
     private double cost;
@@ -337,12 +340,24 @@ final class Broker {
             openedAt = fill.bar();
             openSide = fill.side();
             peak = 0;
+            turned = 0;
             gross = 0;
             cost = 0;
             tradeFills = new ArrayList<>();
         }
 
+        // COUNTED BEFORE THE FILL IS APPLIED, because what makes a contract
+        // "turned" is that it OPENED -- and that is only visible as the
+        // difference between the position before and after. Fills that cross
+        // zero were split further up, so each one here is purely an opening or
+        // purely a closing.
+        int was = Math.abs(position.net());
+
         double realised = position.apply(fill);
+
+        if (Math.abs(position.net()) > was) {
+            turned += fill.quantity();
+        }
 
         gross += realised;
         cost += costs.ofFill(fill.quantity());
@@ -355,7 +370,8 @@ final class Broker {
         tradeFills.add(fill);
 
         if (position.flat()) {
-            trades.add(new Trade(openedAt, fill.bar(), openSide, peak, gross, cost, tradeFills));
+            trades.add(new Trade(openedAt, fill.bar(), openSide, peak, turned,
+                    gross, cost, tradeFills));
 
             openedAt = -1;
             tradeFills = null;

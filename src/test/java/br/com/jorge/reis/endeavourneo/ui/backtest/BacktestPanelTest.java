@@ -99,7 +99,7 @@ class BacktestPanelTest {
 
         assertTrue(result.count() > 3, "a serie de teste nao produziu operacoes suficientes");
 
-        TradeTableModel model = new TradeTableModel(new String[11]);
+        TradeTableModel model = new TradeTableModel(new String[TradeTableModel.NET + 1]);
         model.show(result.trades(), series);
 
         assertEquals(result.count(), model.getRowCount(), "a tabela perdeu operacoes");
@@ -133,7 +133,7 @@ class BacktestPanelTest {
     void theRowShowsTheBarsDateNotItsIndex() {
         Result result = run();
 
-        TradeTableModel model = new TradeTableModel(new String[11]);
+        TradeTableModel model = new TradeTableModel(new String[TradeTableModel.NET + 1]);
         model.show(result.trades(), new Waves(2_000));
 
         String opened = (String) model.getValueAt(0, TradeTableModel.OPENED);
@@ -146,7 +146,7 @@ class BacktestPanelTest {
     void withoutASeriesTheRowFallsBackToTheBarNumber() {
         Result result = run();
 
-        TradeTableModel model = new TradeTableModel(new String[11]);
+        TradeTableModel model = new TradeTableModel(new String[TradeTableModel.NET + 1]);
         model.show(result.trades(), null);
 
         // Um modelo montado antes de a serie chegar acontece, e uma tabela que
@@ -168,7 +168,7 @@ class BacktestPanelTest {
 
     /** @return uma operacao que rendeu {@code net} pontos, sem execucoes */
     private static Trade worth(double net) {
-        return new Trade(0, 1, Side.BUY, 1, net, 0, List.of());
+        return new Trade(0, 1, Side.BUY, 1, 1, net, 0, List.of());
     }
 
     @Test
@@ -197,7 +197,7 @@ class BacktestPanelTest {
     @Test
     @DisplayName("linha fora da tabela devolve nulo em vez de estourar")
     void aRowOutsideTheTableGivesNullInsteadOfThrowing() {
-        TradeTableModel model = new TradeTableModel(new String[11]);
+        TradeTableModel model = new TradeTableModel(new String[TradeTableModel.NET + 1]);
 
         assertNull(model.at(0), "modelo vazio devolveu operacao");
         assertNull(model.at(-1), "indice negativo nao foi tratado");
