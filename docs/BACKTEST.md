@@ -113,11 +113,40 @@ Decidir e executar no mesmo fechamento usa um preço que ainda não existia. É 
 forma mais comum de um backtest inventar vantagem. **Construído**, e é a primeira
 prova de dentes do motor: trocar as duas linhas de lugar faz sete testes cair.
 
-### 2. A fidelidade tem nome na tela
-Temos barras de 1 minuto e **medimos que tick não acrescenta** (0,001 de R² sobre
-a volatilidade). Então a tela diz **`OHLC em M1`** e mais nada — e diz também
-**quantas barras foram decididas pelo desempate** (a regra 7 acima), que é o
-único lugar onde a falta de tick pode doer.
+### 2. A fidelidade tem nome na tela ✅
+A tela tem o **modo de execução** do próprio Profit, com os nomes dele:
+`OHLC` e `Tick a Tick`, este o padrão. E o quadro diz qual dos dois rodou.
+
+O que muda entre os dois não é precisão, é uma pergunta que some. Dentro de um
+minuto a máxima e a mínima aconteceram as duas, e o OHLC não diz em que ordem:
+um stop e um alvo dentro do mesmo minuto são decididos por uma **regra** — a
+nossa toma o stop, que é o lado conservador — e a regra decide parte de todo
+resultado que toca. Andando um caminho de ticks a pergunta nunca é feita.
+
+Então, dito honestamente: **o OHLC dá um resultado mais um desempate, e os ticks
+dão um resultado mais um caminho inventado cujas estatísticas foram medidas.**
+Os dois são aproximações, de coisas diferentes — que é por isso que a escolha
+está na tela em vez de decidida no código.
+
+**Quando a série é de ticks reais, anda sobre eles.** A fita do Profit alcança
+oito pregões; o que vier antes só existe como minuto, e o minuto é caminhado
+pelo `SyntheticTicks`, cujas constantes foram medidas contra essa mesma fita
+(97,1% dos passos são um tick, 17,6% seguem a direção do anterior). O quadro
+separa os dois casos porque **não são a mesma evidência**: um stop batido na
+fita foi batido; um batido no caminho sintético foi batido por um dos caminhos
+que aquele minuto poderia ter tomado.
+
+A lista de escala é **desligada** no modo tick a tick, e não ignorada em
+silêncio: o caminho foi medido contra a forma de um *minuto*, e gerá-lo dentro
+de uma barra de cinco minutos é aplicar aquelas estatísticas a algo que elas
+nunca mediram.
+
+Custo, medido na base dele: 1.500 ticks por minuto. Um dia vira 986.840 ticks
+(93 ms), uma semana 4,5 milhões (274 ms), um mês 17 milhões (963 ms) — e é por
+isso que o recorte se escolhe **antes** da rodada.
+
+O quadro continua dizendo **quantas barras foram decididas pelo desempate**,
+que no modo OHLC é o único lugar onde a falta de tick pode doer.
 
 ### 3. O custo é fixo em dinheiro, e a medição é em pontos ✅
 6,5 pontos por giro completo de **um contrato**, cobrado metade em cada ponta,
@@ -140,10 +169,57 @@ comparar o acerto de uma fatia com o trivial **global** inventa vantagem.
 
 ---
 
+## As estratégias que existem
+
+**Cruzamento de médias** — duas médias, período e tipo na tela própria dela. É a
+estratégia de referência: simples o bastante para se conferir à mão.
+
+**Range 90** — a do `ESPECIFICACAO_ESTRATEGIA_RANGE90_PULLBACK.md`. Ela existe
+menos pelo resultado e mais pela **máquina**: livro de lotes, stop individual por
+lote, parcial de metade por lote, e um seletor walk-forward que decide toda manhã
+se opera e se o alvo é 1,5R ou 2R. Eram quatro coisas que o motor nunca tinha
+sido obrigado a fazer.
+
+Ela **já está refutada** — a nota `range-de-abertura-e-bussola` a registra
+negativa nas três células da base cega, e os R$ 148.811 da §19 da especificação
+vêm da base em que a estratégia foi procurada.
+
+Três coisas que é preciso saber para usá-la:
+
+- **Recorte curto não gera operação nenhuma.** O seletor precisa de 20 pregões
+  recentes e 20 amostras estruturais *dentro do trecho que roda*; um mês não tem
+  história dentro de si. O quadro avisa quando isso acontece, em vez de mostrar
+  uma tabela de zeros.
+- **O alvo não está na tela dela**, de propósito: quem escolhe entre 1,5R e 2R é
+  o seletor, com os pregões anteriores. Pô-lo na tela seria deixar escolher o
+  alvo depois de ver o resultado.
+- **Os números não batem com o Python**, e não devem bater. Quatro diferenças,
+  todas o mesmo caso — a implementação de referência lendo algo que este motor
+  não deixa uma estratégia ler: a entrada é uma ordem em repouso e não um preço
+  escolhido depois do candle fechar; o lote acrescentado paga o gap; o dia cujos
+  dois lados romperam dentro de *um* minuto é entrado aqui; e vários lotes só
+  saem dentro do mesmo minuto no modo tick a tick, porque as coberturas são uma
+  OCO no Profit. Fazer o motor bater com o Python seria fazer o motor mentir.
+
+### O livro de lotes precisou de uma leitura nova
+
+`Market.filled()` entrega as execuções da própria barra — e o NTSL não tem isso,
+porque estratégia de NTSL não mantém livro de lotes. A nossa mantém, e pela
+posição líquida não há como saber **qual** lote acabou de fechar. As duas saídas
+eram adivinhar pelos preços — refazendo os desempates do motor dentro de cada
+estratégia, onde iam divergir dele na primeira mudança de qualquer um dos dois —
+ou perguntar. Uma mesa de verdade sabe as próprias execuções.
+
+Não vaza futuro: o laço executa as ordens em repouso **antes** de entregar a
+barra à estratégia, então o que está ali já aconteceu, em preços que a estratégia
+pediu no fechamento anterior.
+
+---
+
 ## A tela
 
-**Ainda proposta.** O painel entra **abaixo das abas de layout**, dentro da
-janela do gráfico, e tem duas partes.
+**Construída.** O painel mora dentro da janela do gráfico, encaixado como uma
+janela normal e com controle para soltá-lo, e tem duas partes.
 
 **① A linha de comando** — sempre visível, uma linha só:
 chave `Simulador`/`Backtest` · estratégia ▾ · ⚙ · período ▾ · à frente ▾ ·
@@ -178,15 +254,22 @@ saldo esconde.
 | 1 | `PriceSeries` em `domain.market`; fronteira ampliada | ✅ feito antes |
 | 2 | **A linguagem de execução** — 12 verbos + 3 comandos | ✅ `6b8f7ba` |
 | 3 | **O motor** — livro em repouso, execução intrabarra, operações | ✅ `f9ab9a3` |
-| 4 | Uma estratégia clássica: cruzamento de médias | ⬜ |
-| 5 | **Fatiamento e teste à frente** | ⬜ **antes da tela** |
-| 6 | ① linha de comando + `Resumo` | ⬜ |
-| 7 | Marcas no gráfico + `Operações` | ⬜ |
-| 8 | `Curva` e `Distribuição` | ⬜ |
-| 9 | *(depois)* Tradutor para NTSL, precedido de **uma tradução à mão** | ⬜ |
+| 4 | Uma estratégia clássica: cruzamento de médias | ✅ |
+| 5 | **Recorte** (13 entradas, contadas em pregões) | ✅ `12cfe07` |
+| 6 | ① linha de comando + quadro de resultado | ✅ |
+| 7 | Marcas no gráfico + tabela de operações | ✅ |
+| 8 | Curva de patrimônio, saldo e custo | ✅ |
+| 9 | **Modo de execução**: OHLC ou tick a tick, fita real quando existe | ✅ `6447490` |
+| 10 | **Range 90** — livro de lotes, parciais e seletor walk-forward | ✅ `72a092c` |
+| 11 | Teste à frente dentro da rodada (amostra × fora) | ⬜ |
+| 12 | Distribuição por hora, dia da semana e mês | ⬜ |
+| 13 | *(depois)* Tradutor para NTSL, precedido de **uma tradução à mão** | ⬜ |
 
-A etapa 5 vem **antes** da tela de propósito. Uma tela que mostra um número
-único é uma tela que ensina a olhar o número errado, e depois é tarde.
+A etapa 11 continua aberta e continua sendo a que mais importa. O recorte já
+existe, mas a rodada ainda dá **um número só**: quem quiser saber se a
+estratégia sobrevive fora da amostra tem que rodar duas vezes e comparar à mão
+— e foi exatamente assim que a carteira do projeto anterior passou de `t=+3,75`
+para `+0,93` sem ninguém perceber na hora.
 
 ---
 
