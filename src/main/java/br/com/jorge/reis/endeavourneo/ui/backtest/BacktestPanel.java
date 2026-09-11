@@ -967,16 +967,10 @@ final class BacktestPanel extends JPanel {
 
         curves.show(finished.curves());
 
-        // THE MARKS ARE MOVED ONTO THE CHART'S OWN BARS. A fill is numbered
-        // against the series it EXECUTED on, which over ticks is four and a half
-        // million bars while the chart is drawing two thousand candles -- the
-        // same instant, two different numbers. Without the translation every
-        // mark of a tick run lands in the first pixel of the chart.
-        marks.onTheAxisOf(walked, running);
         marks.show(trades);
         marks.highlight(null);
 
-        model.show(trades, running, walked);
+        model.show(trades, running);
 
         this.result.show(finished.result(), Metrics.of(finished.result(), running),
                 finished.label(), howItRan(finished));
@@ -1046,12 +1040,7 @@ final class BacktestPanel extends JPanel {
 
             // Halfway through the operation, so both ends have a chance of
             // being on screen for a short one.
-            // ON THE CHART'S OWN AXIS. The trade's numbers belong to the
-            // series it executed on; scrolling the chart to one of them without
-            // translating jumps to the wrong place, or to bar zero.
-            Axis axis = Axis.of(walked, running);
-
-            chart.showBar((axis.map(trade.openedAt()) + axis.map(trade.closedAt())) / 2);
+            chart.showBar((trade.openedAt() + trade.closedAt()) / 2);
         }
     }
 

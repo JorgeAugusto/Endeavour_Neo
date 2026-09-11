@@ -140,7 +140,14 @@ public final class Backtest {
         Market market = new Market(decided, broker.position(), broker.book(),
                 broker.liveFills());
 
-        double[] worth = new double[series.size()];
+        // ONE POINT PER DECISION BAR, not per executed bar.
+        //
+        // It is the honest axis -- the curve is drawn beside a chart of exactly
+        // these bars -- and it is the difference between running and not: a year
+        // of WIN in ticks is 194 MILLION bars, and one double each is a gigabyte
+        // and a half of curve for a chart that draws 141.602 candles. It ran out
+        // of heap before it ran out of patience.
+        double[] worth = new double[decided.size()];
         int exposed = 0;
 
         strategy.start(decided);
@@ -151,11 +158,19 @@ public final class Backtest {
         int at = 0;
 
         for (int bar = 0; bar < series.size(); bar++) {
-            broker.executeDuring(bar, series.openAt(bar), series.highAt(bar), series.lowAt(bar));
-
             while (at + 1 < decided.size() && series.timeAt(bar) >= decided.timeAt(at + 1)) {
                 at++;
             }
+
+            // THE DECISION BAR IS WHAT A FILL IS STAMPED WITH, not the executed
+            // one. The number a fill carries is the one every reader points at:
+            // the candle on the chart, the row in the table, the step in the
+            // balance curve. Which of four and a half million ticks it was is
+            // the engine's own business, and carrying it outwards bought one
+            // thing -- a translation at every use site -- and cost the curves,
+            // which are drawn per bar and were comparing tick numbers against
+            // candle numbers.
+            broker.executeDuring(at, series.openAt(bar), series.highAt(bar), series.lowAt(bar));
 
             // THE LAST EXECUTED BAR OF A DECISION BAR, which is known by looking
             // at the next bar's CLOCK. That is not looking ahead: a timestamp is
@@ -171,17 +186,17 @@ public final class Backtest {
 
                 broker.book().reconcile(desk.instructions());
                 market.settled();
-            }
 
-            // AFTER the bar's executions and the strategy's turn, marked to the
-            // close. This is the only place the hole inside a position that is
-            // still open ever shows up -- the balance curve moves only when a
-            // trade ends, and a position bleeding for three days looks like a
-            // flat line on it.
-            worth[bar] = broker.worthAt(series.closeAt(bar));
+                // AFTER the bar's executions and the strategy's turn, marked to
+                // the close. This is the only place the hole inside a position
+                // that is still open ever shows up -- the balance curve moves
+                // only when a trade ends, and a position bleeding for three days
+                // looks like a flat line on it.
+                worth[at] = broker.worthAt(series.closeAt(bar));
 
-            if (!broker.position().flat()) {
-                exposed++;
+                if (!broker.position().flat()) {
+                    exposed++;
+                }
             }
 
             if (bar % every == 0) {

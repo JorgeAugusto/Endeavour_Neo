@@ -88,17 +88,57 @@ final class Book {
      * <p>A market order and the two commands are <b>sent</b>, not rested: they
      * execute at the next open and that is the end of them. A limit or a stop
      * waits for a price and stays until the strategy stops asking for it.</p>
-     *
-     * <p>This did nothing at all while the book was rebuilt on every bar, which
-     * is why it was not here. The moment a run could execute more finely than it
-     * decides, it became the difference between a strategy and a machine gun: a
-     * market order left resting fills again at every bar between two decisions,
-     * and a week of the crossing over ticks came out with <b>136.455</b>
-     * operations against the 65 it really makes.</p>
      */
     void sent() {
         resting.removeIf(instruction ->
                 !(instruction instanceof Order order) || !order.rests());
+    }
+
+    /**
+     * Drops the orders that just executed, and the cover legs that died with
+     * them.
+     *
+     * <p><b>An order that filled is off the book.</b> That is not a rule of this
+     * engine, it is what an order is — and it did not need saying while the book
+     * was rebuilt on every single bar, because the next rebuild swept it away
+     * before anything could notice.</p>
+     *
+     * <p>The moment a run could execute more finely than it decides, it became
+     * the difference between a strategy and a machine gun. A whole tick path
+     * goes by between two decisions, and an entry stop left on the book after it
+     * filled fills AGAIN on the next print, and the one after that — the Range
+     * 90 collapsed on it with a lot whose stop was never set, and the crossing
+     * turned 65 operations of a week into 136.455.</p>
+     *
+     * <p>The cover legs go together because the manual says they are one OCO:
+     * "cover orders are always sent as OCO orders, so you do not need to worry
+     * about managing and cancelling eventual cover orders that could remain open
+     * after the execution of only one of the exit legs". One leg fills, the rest
+     * are gone, and the strategy asks again at its next turn for whatever still
+     * fits the smaller position.</p>
+     *
+     * @param executed the very instances that filled, compared by identity: two
+     *        orders that are equal but were asked for separately are two orders
+     * @param covered  whether one of them was a cover, which kills the others
+     */
+    void filled(List<Order> executed, boolean covered) {
+        resting.removeIf(instruction -> {
+            if (!(instruction instanceof Order order)) {
+                return false;
+            }
+
+            if (covered && order.covers()) {
+                return true;
+            }
+
+            for (Order each : executed) {
+                if (each == order) {
+                    return true;
+                }
+            }
+
+            return false;
+        });
     }
 
     /** {@code HasPendingOrders} */

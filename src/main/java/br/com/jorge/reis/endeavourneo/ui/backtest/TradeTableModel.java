@@ -64,18 +64,8 @@ final class TradeTableModel extends AbstractTableModel {
 
     private PriceSeries series;
 
-    /** From the bars the fills are numbered against to the bars being shown. */
-    private transient Axis axis = Axis.SAME;
-
     TradeTableModel(String[] columns) {
         this.columns = columns.clone();
-    }
-
-    /** @param executed the bars the trades are numbered against */
-    void show(List<Trade> found, PriceSeries over, PriceSeries executed) {
-        axis = Axis.of(executed, over);
-
-        show(found, over);
     }
 
     void show(List<Trade> found, PriceSeries over) {
@@ -133,22 +123,11 @@ final class TradeTableModel extends AbstractTableModel {
         };
     }
 
-    /**
-     * @param bar numbered against the series the run EXECUTED on
-     * @return the clock reading, taken off the bars the table is showing
-     *
-     * <p>The translation matters the moment those two are different series: a
-     * fill of a tick run carries a number in the millions, and reading it
-     * straight off two thousand candles puts every row past the end and prints
-     * the raw number instead of a time.</p>
-     */
     private String when(int bar) {
-        int at = axis.map(bar);
-
-        if (series == null || at < 0 || at >= series.size()) {
+        if (series == null || bar < 0 || bar >= series.size()) {
             return String.valueOf(bar);
         }
 
-        return ZonedDateTime.ofInstant(Instant.ofEpochMilli(series.timeAt(at)), SP).format(WHEN);
+        return ZonedDateTime.ofInstant(Instant.ofEpochMilli(series.timeAt(bar)), SP).format(WHEN);
     }
 }

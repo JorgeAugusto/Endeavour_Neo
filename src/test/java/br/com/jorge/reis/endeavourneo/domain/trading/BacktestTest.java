@@ -258,8 +258,8 @@ class BacktestTest {
     }
 
     @Test
-    @DisplayName("as ordens executam na barra fina, dentro da barra da decisao")
-    void theordersFillOnTheFineBarInsideTheDecisionBar() {
+    @DisplayName("EXECUTA CONTRA A BARRA FINA, e e reportada na barra da decisao")
+    void theorderFillsAgainstTheFineBarAndIsReportedOnTheDecisionBar() {
         Fine fine = new Fine(
                 new double[] {100, 100, 100, 100, 100, 100, 100, 100},
                 new double[] {100, 100, 100, 100, 100, 130, 100, 100},
@@ -276,10 +276,16 @@ class BacktestTest {
 
         assertEquals(1, result.fills().size(), "a ordem nao executou");
 
-        // NA BARRA FINA, e nao na grossa: o stop disparou no quinto minuto, que
-        // e o segundo da segunda barra grossa. E ai que ele estaria no mercado.
-        assertEquals(5, result.fills().get(0).bar(), "executou na barra errada");
+        // O PRECO VEM DA BARRA FINA -- o stop disparou no quinto minuto, que e o
+        // segundo da segunda barra grossa, e e ai que ele estaria no mercado. Uma
+        // execucao por barra grossa teria de esperar a abertura dela.
         assertEquals(120, result.fills().get(0).price(), 0.0, "nao executou no gatilho");
+
+        // E O NUMERO VEM DA BARRA DA DECISAO, que e a que o grafico desenha. O
+        // numero da barra fina nao serve a ninguem de fora do motor: e um entre
+        // quatro milhoes e meio, e todo leitor -- o grafico, a tabela, a curva --
+        // trabalha em candles.
+        assertEquals(1, result.fills().get(0).bar(), "a execucao nao foi reportada na barra do grafico");
     }
 
     @Test
@@ -311,6 +317,126 @@ class BacktestTest {
     }
 
     @Test
+    @DisplayName("A ORDEM EM REPOUSO QUE EXECUTOU SAI DO LIVRO")
+    void arestingOrderThatFilledLeavesTheBook() {
+        // O gatilho e alcancado em TRES barras finas seguidas, todas dentro da
+        // mesma barra de decisao. A ordem foi pedida uma vez.
+        Fine fine = new Fine(
+                new double[] {100, 100, 100, 100, 100, 100, 100, 100},
+                new double[] {100, 100, 100, 100, 130, 130, 130, 100},
+                new double[] {100, 100, 100, 100, 100, 100, 100, 100},
+                new double[] {100, 100, 100, 100, 100, 100, 100, 100});
+
+        Coarse coarse = new Coarse(fine);
+
+        Result result = new Backtest(Costs.NONE, 1).run(fine, coarse, (market, desk) -> {
+            if (market.bar() == 0) {
+                desk.buyStop(120, 120);
+            }
+        }, null);
+
+        // ORDEM QUE EXECUTOU NAO E MAIS ORDEM. Isso nao precisava ser dito
+        // enquanto o livro era refeito em toda barra, porque a reconstrucao
+        // seguinte a varria antes que alguem notasse -- e com a execucao mais
+        // fina que a decisao ela executava de novo a cada preco.
+        //
+        // Foi assim que a Range 90 caiu com um lote de stop NaN: o gatilho de
+        // entrada executava duas vezes, a segunda ja com a posicao aberta, e o
+        // segundo lote entrava pelo caminho da adicao sem nunca ter tido um
+        // pullback para lhe dar um stop.
+        assertEquals(1, result.fills().size(),
+                "a ordem em repouso executou " + result.fills().size() + " vezes");
+    }
+
+    @Test
+    @DisplayName("A PERNA DA OCO QUE EXECUTA MATA AS OUTRAS ate a proxima volta")
+    void oneOCOlegFillingKillsTheOthersUntilTheNextTurn() {
+        // Comprado em QUATRO, com stop de quatro e alvo parcial de dois. O alvo
+        // e alcancado na primeira barra fina da volta e o stop na segunda --
+        // separados de proposito, porque com os dois na mesma barra o desempate
+        // do stop resolve sozinho e nao se prova nada.
+        Fine fine = new Fine(
+                new double[] {100, 100, 100, 100, 100, 100, 100, 100,
+                        100, 100, 100, 100, 100, 100, 100, 100},
+                new double[] {100, 100, 100, 100, 100, 100, 100, 100,
+                        140, 100, 100, 100, 100, 100, 100, 100},
+                new double[] {100, 100, 100, 100, 100, 100, 100, 100,
+                        100, 60, 100, 100, 100, 100, 100, 100},
+                new double[] {100, 100, 100, 100, 100, 100, 100, 100,
+                        100, 100, 100, 100, 100, 100, 100, 100});
+
+        Coarse coarse = new Coarse(fine);
+
+        Result result = new Backtest(Costs.NONE, 1).run(fine, coarse, (market, desk) -> {
+            if (market.bar() == 0) {
+                desk.buyAtMarket(4);
+            }
+
+            if (market.bar() == 1) {
+                desk.sellToCoverStop(80, 80, 4);
+                desk.sellToCoverLimit(130, 2);
+            }
+        }, null);
+
+        // O manual: as coberturas sao mandadas como OCO, "de modo que voce nao
+        // precisa se preocupar em gerenciar e cancelar eventuais ordens de
+        // cobertura que possam permanecer abertas apos a execucao de apenas uma
+        // das pernas de saida". Uma perna executa, as outras morrem -- e morrem
+        // ATE A PROXIMA VOLTA, nao ate a proxima barra fina.
+        //
+        // Sem isso: a parcial sai com dois, e o stop que sobrou no livro leva os
+        // outros dois um preco depois, fechando o dia por uma ordem que a
+        // estrategia nunca reautorizou.
+        assertEquals(2, result.fills().size(),
+                "a OCO deixou executar mais de uma perna: " + result.fills().size());
+        assertEquals(2, result.openAtTheEnd(),
+                "a posicao devia ter sobrado em dois contratos");
+    }
+
+    @Test
+    @DisplayName("A CURVA DE PATRIMONIO E UM PONTO POR BARRA DO GRAFICO")
+    void theworthCurveIsOnePointPerChartBar() {
+        double[] up = new double[16];
+
+        for (int at = 0; at < up.length; at++) {
+            up[at] = 100 + at;
+        }
+
+        Fine fine = new Fine(up, up, up, up);
+        Coarse coarse = new Coarse(fine);
+
+        Result result = new Backtest(Costs.NONE, 1).run(fine, coarse, (market, desk) -> {
+            if (market.bar() == 0) {
+                desk.buyAtMarket();
+            }
+
+            if (market.bar() == 2) {
+                desk.closePosition();
+            }
+        }, null);
+
+        // UM PONTO POR BARRA DE DECISAO, e nao por barra executada. E o eixo
+        // honesto -- a curva e desenhada ao lado de um grafico exatamente destas
+        // barras -- e e a diferenca entre rodar e nao rodar: um ano do WIN em
+        // ticks sao 194 MILHOES de barras, e um double em cada uma e um giga e
+        // meio de curva para um grafico de 141.602 candles. Acabava a memoria
+        // antes de acabar a paciencia.
+        assertEquals(coarse.size(), result.worth().length,
+                "a curva de patrimonio nao esta no eixo do grafico");
+        assertEquals(coarse.size(), result.balancePerBar().length,
+                "a curva de saldo nao esta no eixo do grafico");
+
+        // E ELA ANDA. As tres curvas caminham pelo indice da barra e comparam
+        // com o indice que o fill carrega; se os dois estiverem em eixos
+        // diferentes, o saldo fica reto em zero o tempo todo e parece uma
+        // estrategia que nao fez nada.
+        double[] balance = result.balancePerBar();
+
+        assertTrue(balance[balance.length - 1] != 0,
+                "o saldo terminou em zero: a curva nunca encontrou as operacoes");
+    }
+
+    @Test
     @DisplayName("a ordem em repouso continua viva entre duas decisoes")
     void arestingOrderStaysAliveBetweenTwoDecisions() {
         Fine fine = new Fine(
@@ -332,7 +458,8 @@ class BacktestTest {
         // alcancado na setima barra fina, tres depois da decisao que o colocou.
         // Um livro que jogasse fora tudo que foi enviado deixaria esta de fora.
         assertEquals(1, result.fills().size(), "a ordem em repouso nao sobreviveu a barra");
-        assertEquals(6, result.fills().get(0).bar(), "executou na barra errada");
+        assertEquals(1, result.fills().get(0).bar(), "nao foi reportada na barra do grafico");
+        assertEquals(120, result.fills().get(0).price(), 0.0, "nao executou no gatilho");
     }
 
     @Test
@@ -357,15 +484,18 @@ class BacktestTest {
             }
         }, null);
 
-        // TRES EXECUCOES NUMA VOLTA SO. A compra sai no quarto minuto; no sexto
-        // a venda dispara, e como e ordem de ABERTURA do outro lado ela cobre os
-        // dois contratos e abre dois -- o motor parte isso em duas execucoes
-        // para a operacao continuar honesta.
+        // DUAS EXECUCOES NUMA VOLTA SO: a compra dispara no quinto minuto e a
+        // venda no setimo, e as duas acontecem entre a mesma decisao e a
+        // seguinte.
         //
-        // Entre duas decisoes passa uma barra grossa inteira de barras finas, e
-        // um livro de lotes que so visse a ultima delas seguiria emitindo ordem
-        // para contratos que sairam tres minutos antes.
-        assertEquals(java.util.List.of(0, 3), quantos,
+        // Este numero ja foi TRES, e o tres era sintoma: a ordem de compra
+        // continuava no livro depois de executar e executava de novo no minuto
+        // seguinte, que tambem alcanca o gatilho. Ordem que executou sai do
+        // livro.
+        //
+        // Um livro de lotes que so visse a ultima execucao da volta seguiria
+        // emitindo ordem para contratos que sairam tres minutos antes.
+        assertEquals(java.util.List.of(0, 2), quantos,
                 "a estrategia nao viu as execucoes da volta: " + quantos);
     }
 

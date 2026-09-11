@@ -141,10 +141,11 @@ final class Broker {
     /**
      * Runs one bar against everything resting from the previous close.
      *
-     * @param bar  index into the series
-     * @param open the bar's open
-     * @param high the bar's high
-     * @param low  the bar's low
+     * @param bar  the DECISION bar the fills will be stamped with, which is
+     *             not necessarily the bar whose prices these are
+     * @param open the executed bar's open
+     * @param high its high
+     * @param low  its low
      */
     void executeDuring(int bar, double open, double high, double low) {
         List<Instruction> resting = book.resting();
@@ -192,6 +193,7 @@ final class Broker {
         reached.sort(Comparator.comparingDouble(Reached::distance));
 
         boolean covered = false;
+        List<Order> done = new ArrayList<>();
 
         for (Reached candidate : theStopFirst(reached)) {
             if (candidate.order().covers()) {
@@ -203,7 +205,12 @@ final class Broker {
             }
 
             execute(candidate.order(), bar, candidate.price());
+            done.add(candidate.order());
         }
+
+        // AND OFF THE BOOK THEY GO. An order that filled is not an order any
+        // more, and the cover legs die with whichever of them fired.
+        book.filled(done, covered);
     }
 
     /**
