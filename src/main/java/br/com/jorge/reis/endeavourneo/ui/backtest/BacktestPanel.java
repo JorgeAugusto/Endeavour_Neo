@@ -206,7 +206,17 @@ final class BacktestPanel extends JPanel {
     /** What the bar says it is doing, kept so the percentage can join it. */
     private transient String stage;
 
+    /** The bars on screen: the recorte at the chosen scale. */
     private transient PriceSeries running;
+
+    /**
+     * The bars the run executed on, which the fills are numbered against.
+     *
+     * <p>The same object as {@link #running} whenever the run executed on the
+     * chart's own candles, and four and a half million tick bars when it did
+     * not.</p>
+     */
+    private transient PriceSeries walked;
 
     BacktestPanel() {
         super(new BorderLayout(0, 6));
@@ -487,13 +497,15 @@ final class BacktestPanel extends JPanel {
     private void followTheSeries() {
         SeriesChoice chosen = (SeriesChoice) series.getSelectedItem();
 
-        // THE SCALE LIST IS OFF IN TICK MODE, and turned off rather than quietly
-        // ignored. The tick path was measured against the shape of a MINUTE;
-        // generating one inside a five-minute bar would be applying those
-        // statistics to something they were never measured on. Same for a renko
-        // series, which has no clock to aggregate by at all.
-        boolean byTheClock = chosen != null && chosen.measuredInTime()
-                && ((Execution) how.getSelectedItem()).allowsAnotherScale();
+        // THE EXECUTION MODE DOES NOT TOUCH THE SCALE. It used to turn the list
+        // off in tick mode, on the grounds that the tick path was measured on
+        // the shape of a MINUTE -- which is true, and is answered by building
+        // the path from the stored bars rather than from the aggregated ones.
+        // The scale is the chart's, and the chart is his to set.
+        //
+        // What still turns it off is a series with no clock to aggregate by: a
+        // renko brick is not a length of time.
+        boolean byTheClock = chosen != null && chosen.measuredInTime();
 
         scale.setEnabled(byTheClock);
 
@@ -864,18 +876,27 @@ final class BacktestPanel extends JPanel {
                 // to five minutes and then throwing away all but a week is six
                 // years of work for a week of bars -- and the last coarse bar of
                 // the cut would be built from minutes the run then never sees.
-                PriceSeries bars = chosen.how().apply(cutTo(picked.open()));
+                PriceSeries cut = cutTo(picked.open());
+
+                // THE SCALE MAKES THE DECISION BARS -- the ones the chart draws
+                // and the ones the strategy reads.
+                PriceSeries decided = chosen.how().apply(cut);
 
                 publish(Messages.get(tickMode
                         ? "backtest.stage.ticks" : "backtest.stage.running"));
 
-                // AND THE TICKS LAST OF ALL. A path is walked inside the bars
-                // that survived, never inside bars that were about to be thrown
-                // away -- fifteen hundred of them per minute is not a cost to
-                // pay for a stretch nobody asked for.
+                // AND THE TICKS COME FROM THE STORED BARS, not from those. The
+                // path was measured on the shape of a minute; walking one inside
+                // a five-minute bar would be applying those statistics where
+                // they were never measured. This is what lets the chart be read
+                // at any scale while the execution stays what it is.
+                //
+                // After the recorte, though, and never before it: fifteen
+                // hundred ticks a minute is not a cost to pay for a stretch
+                // nobody asked for.
                 TickLevel.Walked walked = tickMode
-                        ? TickLevel.of(picked, bars, Timeframe.defaultZone())
-                        : new TickLevel.Walked(bars, false, 0);
+                        ? TickLevel.of(picked, cut, Timeframe.defaultZone())
+                        : new TickLevel.Walked(decided, false, 0);
 
                 publish(Messages.get("backtest.stage.running"));
 
@@ -883,11 +904,11 @@ final class BacktestPanel extends JPanel {
                 // worker only fires its listeners when the whole number changes,
                 // so seventeen million bars move the screen a hundred times and
                 // not seventeen million.
-                Result produced = new Backtest(charged, lot).run(walked.series(), what,
-                        (reached, many) -> setProgress(
+                Result produced = new Backtest(charged, lot).run(walked.series(), decided,
+                        what, (reached, many) -> setProgress(
                                 (int) Math.min(100L, 100L * reached / Math.max(1, many))));
 
-                return new Run(walked.series(), produced, picked.label(),
+                return new Run(decided, walked.series(), produced, picked.label(),
                         what instanceof br.com.jorge.reis.endeavourneo.domain.trading.Plotted shown
                                 ? shown.curves() : java.util.Map.of(),
                         tickMode, walked.real(), walked.ticks());
@@ -940,13 +961,22 @@ final class BacktestPanel extends JPanel {
         Result result = finished.result();
         List<Trade> trades = result.trades();
 
+        walked = finished.walked();
+
         chart.setSeries(running);
 
         curves.show(finished.curves());
+
+        // THE MARKS ARE MOVED ONTO THE CHART'S OWN BARS. A fill is numbered
+        // against the series it EXECUTED on, which over ticks is four and a half
+        // million bars while the chart is drawing two thousand candles -- the
+        // same instant, two different numbers. Without the translation every
+        // mark of a tick run lands in the first pixel of the chart.
+        marks.onTheAxisOf(walked, running);
         marks.show(trades);
         marks.highlight(null);
 
-        model.show(trades, running);
+        model.show(trades, running, walked);
 
         this.result.show(finished.result(), Metrics.of(finished.result(), running),
                 finished.label(), howItRan(finished));
@@ -1016,12 +1046,25 @@ final class BacktestPanel extends JPanel {
 
             // Halfway through the operation, so both ends have a chance of
             // being on screen for a short one.
-            chart.showBar((trade.openedAt() + trade.closedAt()) / 2);
+            // ON THE CHART'S OWN AXIS. The trade's numbers belong to the
+            // series it executed on; scrolling the chart to one of them without
+            // translating jumps to the wrong place, or to bar zero.
+            Axis axis = Axis.of(walked, running);
+
+            chart.showBar((axis.map(trade.openedAt()) + axis.map(trade.closedAt())) / 2);
         }
     }
 
-    /** A finished run: the bars it ran over, what it produced, and what to call it. */
-    private record Run(PriceSeries series, Result result, String label,
+    /**
+     * A finished run: the bars it ran over, what it produced, and what to call it.
+     *
+     * @param series the decision bars — what the chart draws and what the
+     *               strategy read
+     * @param walked the executed bars, which the fills are numbered against; the
+     *               same object as {@code series} when the run executed on the
+     *               chart's own candles
+     */
+    private record Run(PriceSeries series, PriceSeries walked, Result result, String label,
                        java.util.Map<String, double[]> curves,
                        boolean tickMode, boolean realTicks, int ticks) {
     }

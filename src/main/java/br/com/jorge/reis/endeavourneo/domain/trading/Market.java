@@ -59,6 +59,9 @@ public final class Market {
 
     private int bar;
 
+    /** How many fills the strategy had already been shown. */
+    private int seen;
+
     Market(PriceSeries series, Position position, Book book, java.util.List<Fill> fills) {
         this.series = series;
         this.position = position;
@@ -68,6 +71,11 @@ public final class Market {
 
     void at(int bar) {
         this.bar = bar;
+    }
+
+    /** Marks everything filled so far as seen, once the strategy has had its turn. */
+    void settled() {
+        this.seen = fills.size();
     }
 
     // ------------------------------------------------------------------ price
@@ -91,16 +99,16 @@ public final class Market {
      * <b>before</b> handing the bar to the strategy, so what is here has already
      * happened, at prices the strategy asked for at the previous close.</p>
      *
-     * @return the fills of this bar, oldest first; empty when nothing executed
+     * <p><b>Since the last turn, not "on this bar".</b> When the run executes
+     * more finely than it decides, a whole tick path goes by between two
+     * decisions and several lots can come out inside it. Filtering by bar index
+     * would show the strategy the last tick's fill and hide the other four.</p>
+     *
+     * @return what has filled since the strategy last had its turn, oldest
+     *         first; empty when nothing did
      */
     public java.util.List<Fill> filled() {
-        int from = fills.size();
-
-        while (from > 0 && fills.get(from - 1).bar() == bar) {
-            from--;
-        }
-
-        return java.util.List.copyOf(fills.subList(from, fills.size()));
+        return java.util.List.copyOf(fills.subList(Math.min(seen, fills.size()), fills.size()));
     }
 
     /** {@code Open} — this bar's open. */

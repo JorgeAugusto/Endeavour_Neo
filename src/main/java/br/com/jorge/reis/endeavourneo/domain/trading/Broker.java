@@ -150,6 +150,12 @@ final class Broker {
         List<Instruction> resting = book.resting();
 
         atTheOpen(resting, bar, open);
+
+        // WHAT WAS SENT IS GONE, before anything else happens. Until a run could
+        // execute more finely than it decided, the book was rebuilt every bar
+        // and this could not be noticed.
+        book.sent();
+
         thenWhatThePriceReached(resting, bar, open, high, low);
     }
 

@@ -83,6 +83,48 @@ public final class Backtest {
      * @see #run(PriceSeries, Strategy)
      */
     public Result run(PriceSeries series, Strategy strategy, Watching watching) {
+        return run(series, series, strategy, watching);
+    }
+
+    /**
+     * Runs a strategy that <b>decides on one series and executes on another</b>.
+     *
+     * <h2>Why the two are separate</h2>
+     *
+     * <p>They answer different questions, and tying them together makes one of
+     * the two lie:</p>
+     *
+     * <ul>
+     *   <li><b>{@code decided}</b> is the scale the strategy reads. An EMA 17
+     *       that does not name its own scale is seventeen of <i>these</i> bars —
+     *       which is the whole meaning of "the chart's scale" — and the range,
+     *       the pullback and every other rule are read here too.</li>
+     *   <li><b>{@code executed}</b> is how finely the orders fill. Over a tick
+     *       path a stop and a target inside the same bar are settled by whichever
+     *       price came first, and several lots can come out one after another
+     *       inside one bar. Over the decision bars themselves, at most one cover
+     *       fills per bar and the tie is broken by a rule.</li>
+     * </ul>
+     *
+     * <p>Running both on the executed series is what an earlier version did, and
+     * it made a strategy's "EMA 17" mean <b>seventeen ticks</b> — under a second
+     * of market — the moment the reader chose tick execution. Nothing on screen
+     * said so.</p>
+     *
+     * <h2>The strategy is asked once per decision bar</h2>
+     *
+     * <p>At the close of it, never in the middle: the orders it leaves standing
+     * are executed against every executed bar of the <i>next</i> decision bar.
+     * So a decision still cannot see the bar it trades on, whichever pair of
+     * series this is given.</p>
+     *
+     * @param executed what the orders fill against, finest
+     * @param decided  what the strategy reads, coarsest; the same series when
+     *                 there is no distinction to make
+     */
+    public Result run(PriceSeries executed, PriceSeries decided, Strategy strategy,
+                      Watching watching) {
+        PriceSeries series = executed;
         Watching told = watching == null ? Watching.NOBODY : watching;
 
         // ONE REPORT IN TWO HUNDRED BARS, at the most. A month of ticks is
@@ -95,22 +137,41 @@ public final class Backtest {
 
         Broker broker = new Broker(costs);
         Desk desk = new Desk(lot);
-        Market market = new Market(series, broker.position(), broker.book(),
+        Market market = new Market(decided, broker.position(), broker.book(),
                 broker.liveFills());
 
         double[] worth = new double[series.size()];
         int exposed = 0;
 
-        strategy.start(series);
+        strategy.start(decided);
+
+        // WHICH DECISION BAR WE ARE INSIDE, walked in step rather than looked up.
+        // Both series are in time order, so one cursor answers it for seventeen
+        // million bars without an index of seventeen million entries.
+        int at = 0;
 
         for (int bar = 0; bar < series.size(); bar++) {
             broker.executeDuring(bar, series.openAt(bar), series.highAt(bar), series.lowAt(bar));
 
-            market.at(bar);
-            desk.clear();
-            strategy.onBar(market, desk);
+            while (at + 1 < decided.size() && series.timeAt(bar) >= decided.timeAt(at + 1)) {
+                at++;
+            }
 
-            broker.book().reconcile(desk.instructions());
+            // THE LAST EXECUTED BAR OF A DECISION BAR, which is known by looking
+            // at the next bar's CLOCK. That is not looking ahead: a timestamp is
+            // not a price, and the strategy is handed no number from a bar that
+            // has not closed.
+            boolean closes = bar + 1 == series.size()
+                    || (at + 1 < decided.size() && series.timeAt(bar + 1) >= decided.timeAt(at + 1));
+
+            if (closes) {
+                market.at(at);
+                desk.clear();
+                strategy.onBar(market, desk);
+
+                broker.book().reconcile(desk.instructions());
+                market.settled();
+            }
 
             // AFTER the bar's executions and the strategy's turn, marked to the
             // close. This is the only place the hole inside a position that is

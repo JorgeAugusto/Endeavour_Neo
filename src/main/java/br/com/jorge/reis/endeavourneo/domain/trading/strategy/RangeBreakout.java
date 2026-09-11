@@ -87,12 +87,20 @@ import java.util.Map;
  * <p>None of these are worth "fixing": matching the Python's numbers would mean
  * making the engine read the bar it is trading on.
  *
- * <h2>Decisions in minutes, orders at whatever the engine walks</h2>
+ * <h2>It reads the scale it is given</h2>
  *
- * <p>Every rule here — the range, the slope, the pullback — is read off
- * {@link Minutes}, so the strategy is the same strategy whether the run is one
- * bar a minute or fifteen hundred. What changes with the ticks is only how
- * precisely the orders fill.
+ * <p>The engine hands a strategy the <b>decision</b> series and fills its orders
+ * against the <b>executed</b> one, so everything here — the range, the slope, the
+ * pullback — is read at whatever scale the chart is showing, and the orders fill
+ * as finely as the execution mode says. This class regrouped the bars by hand
+ * before the engine learned to do it; that code is gone.
+ *
+ * <p>One consequence worth saying out loud: <b>the pullback candle follows the
+ * chart.</b> At five minutes a pullback is a five-minute close under the previous
+ * five-minute close and not a one-minute one, which makes it a different
+ * strategy — the specification was written at one minute. What does not move is
+ * the formation: it is ninety minutes of <i>clock</i> from the session's first
+ * bar, and that is the same ninety minutes at any scale.
  */
 public final class RangeBreakout implements Strategy, Plotted {
 
@@ -163,14 +171,13 @@ public final class RangeBreakout implements Strategy, Plotted {
 
     // ---------------------------------------------------------------- the run
 
-    private Minutes minutes;
-
-    private PriceSeries byMinute;
+    /** The decision bars, at whatever scale the reader is looking at. */
+    private PriceSeries candles;
 
     private List<OpeningRange.Session> sessions;
 
-    /** The session each minute belongs to, or {@code -1} before the first. */
-    private int[] sessionOfMinute;
+    /** The session each bar belongs to, or {@code -1} when it is in none. */
+    private int[] sessionOfBar;
 
     /** The target the selector authorised for each session, or NaN for none. */
     private double[] authorised;
@@ -280,20 +287,19 @@ public final class RangeBreakout implements Strategy, Plotted {
 
     @Override
     public void start(PriceSeries series) {
-        minutes = Minutes.of(series);
-        byMinute = minutes.asSeries();
-        sessions = OpeningRange.of(byMinute, zone, formation);
-        leaning = DailyTrend.directions(byMinute, sessions);
-        sessionOfMinute = new int[minutes.size()];
-        bars = series == null ? 0 : series.size();
+        candles = series == null ? PriceSeries.empty() : series;
+        bars = candles.size();
+        sessions = OpeningRange.of(candles, zone, formation);
+        leaning = DailyTrend.directions(candles, sessions);
+        sessionOfBar = new int[bars];
 
-        Arrays.fill(sessionOfMinute, -1);
+        Arrays.fill(sessionOfBar, -1);
 
         for (int day = 0; day < sessions.size(); day++) {
             OpeningRange.Session each = sessions.get(day);
 
-            for (int minute = each.first(); minute <= each.last(); minute++) {
-                sessionOfMinute[minute] = day;
+            for (int bar = each.first(); bar <= each.last(); bar++) {
+                sessionOfBar[bar] = day;
             }
         }
 
@@ -323,18 +329,16 @@ public final class RangeBreakout implements Strategy, Plotted {
 
     @Override
     public void onBar(Market market, Desk desk) {
-        if (minutes == null || minutes.size() == 0) {
+        if (bars == 0) {
             return;
         }
 
         int bar = market.bar();
-        int minute = minutes.minuteOf(bar);
-        int day = sessionOfMinute[minute];
+        int day = sessionOfBar[bar];
 
-        // THE BOOK FOLLOWS THE FILLS ON EVERY BAR, not only at a minute close.
-        // Over ticks a stop fills mid-minute, and a book that only caught up at
-        // the close would spend the rest of that minute re-emitting an order for
-        // contracts that are no longer there.
+        // EVERYTHING THAT FILLED SINCE THE LAST TURN, which over a tick path is
+        // a whole bar of them and not one. A book that took only the last fill
+        // would keep re-emitting orders for contracts that left four ticks ago.
         settle(market.filled());
 
         // E DEPOIS O LIVRO SE CURVA A POSICAO. O livro e um modelo e a posicao
@@ -351,11 +355,7 @@ public final class RangeBreakout implements Strategy, Plotted {
         }
 
         draw(bar, day);
-
-        if (minutes.endsAMinute(bar, bars)) {
-            decide(minute, day);
-        }
-
+        decide(bar, day);
         emit(market, desk);
     }
 
@@ -386,7 +386,7 @@ public final class RangeBreakout implements Strategy, Plotted {
      * is the part that is genuinely a decision: whether the day may be entered at
      * all, and where the pullback stands.
      */
-    private void decide(int minute, int day) {
+    private void decide(int bar, int day) {
         OpeningRange.Session session = sessions.get(day);
 
         // OUT AT 17:45, or at the session's last minute if it ends sooner.
@@ -395,10 +395,9 @@ public final class RangeBreakout implements Strategy, Plotted {
         // a close: the order goes out at the close of the minute that ends at
         // the deadline, and fills at the open of the minute that starts on it.
         // Waiting until the deadline itself would fill a minute after it.
-        LocalTime ends = Instant.ofEpochMilli(minutes.timeAt(minute) + 60_000L)
-                .atZone(zone).toLocalTime();
+        LocalTime ends = Instant.ofEpochMilli(endOf(bar)).atZone(zone).toLocalTime();
 
-        if (!ends.isBefore(closeAt) || minute >= session.last() - 1) {
+        if (!ends.isBefore(closeAt) || bar >= session.last() - 1) {
             trigger = Double.NaN;
             adding = Double.NaN;
 
@@ -412,7 +411,7 @@ public final class RangeBreakout implements Strategy, Plotted {
         }
 
         if (!entered) {
-            watch(minute, session);
+            watch(bar, session);
 
             return;
         }
@@ -426,7 +425,19 @@ public final class RangeBreakout implements Strategy, Plotted {
             return;
         }
 
-        pullback(minute);
+        pullback(bar);
+    }
+
+    /**
+     * @return when that bar ends, in epoch millis
+     *
+     * <p>The NEXT bar's start where there is one, because a bar's length is only
+     * known from its neighbour: at one minute this is the same as adding sixty
+     * seconds and at five minutes it is not. The last bar of all has no
+     * neighbour, and a minute is the smallest honest guess.</p>
+     */
+    private long endOf(int bar) {
+        return bar + 1 < bars ? candles.timeAt(bar + 1) : candles.timeAt(bar) + 60_000L;
     }
 
     /**
@@ -437,14 +448,14 @@ public final class RangeBreakout implements Strategy, Plotted {
      * sides broke inside <b>one</b> minute cannot, and is not done — see the
      * class note.
      */
-    private void watch(int minute, OpeningRange.Session session) {
-        long ends = minutes.timeAt(minute) + 60_000L;
+    private void watch(int bar, OpeningRange.Session session) {
+        long ends = endOf(bar);
 
-        // NOT "<=". The formation is [first, formedAt), so the last minute
-        // of it ENDS exactly at formedAt -- and that close is the first
-        // moment the range is known and the first chance to rest the
-        // trigger. Refusing the boundary here left the order out of the
-        // whole first tradable minute and pushed every entry a minute late.
+        // NOT "<=". The formation is [first, formedAt), so its last bar ENDS
+        // exactly at formedAt -- and that close is the first moment the range
+        // is known and the first chance to rest the trigger. Refusing the
+        // boundary here left the order out of the whole first tradable bar and
+        // pushed every entry one bar late.
         if (refused || ends < session.formedAt()) {
             return;
         }
@@ -463,8 +474,8 @@ public final class RangeBreakout implements Strategy, Plotted {
         // The FIRST break decides the day, whichever side it was on. A break
         // against the EMA kills the day rather than leaving the trigger armed
         // for a second break the specification would never have taken.
-        boolean brokeUp = minutes.highAt(minute) >= up;
-        boolean brokeDown = minutes.lowAt(minute) <= down;
+        boolean brokeUp = candles.highAt(bar) >= up;
+        boolean brokeDown = candles.lowAt(bar) <= down;
 
         if ((brokeUp && wanted < 0) || (brokeDown && wanted > 0)) {
             trigger = Double.NaN;
@@ -478,10 +489,10 @@ public final class RangeBreakout implements Strategy, Plotted {
     }
 
     /** §10: arms, continues and confirms the pullback, in normalised prices. */
-    private void pullback(int minute) {
-        double close = side * minutes.closeAt(minute);
-        double high = side * (side > 0 ? minutes.highAt(minute) : minutes.lowAt(minute));
-        double low = side * (side > 0 ? minutes.lowAt(minute) : minutes.highAt(minute));
+    private void pullback(int bar) {
+        double close = side * candles.closeAt(bar);
+        double high = side * (side > 0 ? candles.highAt(bar) : candles.lowAt(bar));
+        double low = side * (side > 0 ? candles.lowAt(bar) : candles.highAt(bar));
         double advance = high - side * entry;
 
         if (!Double.isNaN(previousClose) && advance >= ARM_R * risk && close < previousClose) {
@@ -490,12 +501,11 @@ public final class RangeBreakout implements Strategy, Plotted {
                     ? low : Math.min(pullbackExtreme, low);
         }
 
-        // THE EXTREME OF THE MINUTE THAT JUST CLOSED, not the one before it.
+        // THE EXTREME OF THE BAR THAT JUST CLOSED, not the one before it.
         // §10.2 confirms at candle t against the high of t-1, and t-1 is the
         // candle this call is looking at -- the order is being placed for t.
-        // Resting it at previousHigh put it a minute further back, one pullback
-        // leg too deep, and the confirmation fired on a level the market had
-        // already left behind.
+        // Resting it a bar further back was one pullback leg too deep, and the
+        // confirmation fired on a level the market had already left behind.
         //
         // The level being exceeded IS the confirmation: written as an order
         // rather than as a test, so it fires when it happens and not at a close.
@@ -722,7 +732,7 @@ public final class RangeBreakout implements Strategy, Plotted {
 
             for (int which = 0; which < TARGETS.length; which++) {
                 hypothetical[which][day] = eligible[day]
-                        ? OpeningRange.hypothetical(byMinute, session, TARGETS[which],
+                        ? OpeningRange.hypothetical(candles, session, TARGETS[which],
                                 COST_BRL, PER_POINT)
                         : Double.NaN;
             }

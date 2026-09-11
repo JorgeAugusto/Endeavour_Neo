@@ -152,6 +152,223 @@ class BacktestTest {
         assertEquals(107, result.fills().get(0).price(), 0.0, "nao executou na abertura da barra 1");
     }
 
+    /** Barras finas: quatro por barra grossa, um minuto cada. */
+    private record Fine(double[] open, double[] high, double[] low, double[] close)
+            implements PriceSeries {
+
+        @Override
+        public int size() {
+            return close.length;
+        }
+
+        @Override
+        public long timeAt(int index) {
+            return index * 60_000L;
+        }
+
+        @Override
+        public double openAt(int index) {
+            return open[index];
+        }
+
+        @Override
+        public double highAt(int index) {
+            return high[index];
+        }
+
+        @Override
+        public double lowAt(int index) {
+            return low[index];
+        }
+
+        @Override
+        public double closeAt(int index) {
+            return close[index];
+        }
+    }
+
+    /** As mesmas barras, agrupadas de quatro em quatro. */
+    private record Coarse(Fine fine) implements PriceSeries {
+
+        @Override
+        public int size() {
+            return fine.size() / 4;
+        }
+
+        @Override
+        public long timeAt(int index) {
+            return fine.timeAt(index * 4);
+        }
+
+        @Override
+        public double openAt(int index) {
+            return fine.openAt(index * 4);
+        }
+
+        @Override
+        public double closeAt(int index) {
+            return fine.closeAt(index * 4 + 3);
+        }
+
+        @Override
+        public double highAt(int index) {
+            double top = Double.NEGATIVE_INFINITY;
+
+            for (int at = index * 4; at < index * 4 + 4; at++) {
+                top = Math.max(top, fine.highAt(at));
+            }
+
+            return top;
+        }
+
+        @Override
+        public double lowAt(int index) {
+            double bottom = Double.POSITIVE_INFINITY;
+
+            for (int at = index * 4; at < index * 4 + 4; at++) {
+                bottom = Math.min(bottom, fine.lowAt(at));
+            }
+
+            return bottom;
+        }
+    }
+
+    @Test
+    @DisplayName("A ESTRATEGIA LE A BARRA DA DECISAO, e nao a da execucao")
+    void thestrategyReadsTheDecisionBarAndNotTheExecutedOne() {
+        Fine fine = new Fine(
+                new double[] {100, 101, 102, 103, 200, 201, 202, 203},
+                new double[] {110, 111, 112, 113, 210, 211, 212, 213},
+                new double[] {90, 91, 92, 93, 190, 191, 192, 193},
+                new double[] {105, 106, 107, 108, 205, 206, 207, 208});
+
+        Coarse coarse = new Coarse(fine);
+
+        java.util.List<String> visto = new java.util.ArrayList<>();
+
+        new Backtest(Costs.NONE, 1).run(fine, coarse, (market, desk) ->
+                visto.add(market.bar() + ":" + market.open() + "/" + market.close()), null);
+
+        // Uma EMA 17 que nao nomeia a propria escala e dezessete DESTAS barras.
+        // Lendo a serie da execucao ela virava dezessete ticks -- menos de um
+        // segundo de mercado -- no instante em que o leitor escolhesse ticks, e
+        // nada na tela dizia isso.
+        assertEquals(java.util.List.of("0:100.0/108.0", "1:200.0/208.0"), visto,
+                "a estrategia nao leu as barras grossas: " + visto);
+    }
+
+    @Test
+    @DisplayName("as ordens executam na barra fina, dentro da barra da decisao")
+    void theordersFillOnTheFineBarInsideTheDecisionBar() {
+        Fine fine = new Fine(
+                new double[] {100, 100, 100, 100, 100, 100, 100, 100},
+                new double[] {100, 100, 100, 100, 100, 130, 100, 100},
+                new double[] {100, 100, 100, 100, 100, 100, 100, 100},
+                new double[] {100, 100, 100, 100, 100, 100, 100, 100});
+
+        Coarse coarse = new Coarse(fine);
+
+        Result result = new Backtest(Costs.NONE, 1).run(fine, coarse, (market, desk) -> {
+            if (market.bar() == 0) {
+                desk.buyStop(120, 120);
+            }
+        }, null);
+
+        assertEquals(1, result.fills().size(), "a ordem nao executou");
+
+        // NA BARRA FINA, e nao na grossa: o stop disparou no quinto minuto, que
+        // e o segundo da segunda barra grossa. E ai que ele estaria no mercado.
+        assertEquals(5, result.fills().get(0).bar(), "executou na barra errada");
+        assertEquals(120, result.fills().get(0).price(), 0.0, "nao executou no gatilho");
+    }
+
+    @Test
+    @DisplayName("A ORDEM A MERCADO EXECUTA UMA VEZ, nao a cada barra fina")
+    void amarketOrderFillsOnceAndNotOnEveryFineBar() {
+        double[] flat = new double[16];
+
+        java.util.Arrays.fill(flat, 100);
+
+        Fine fine = new Fine(flat, flat, flat, flat);
+        Coarse coarse = new Coarse(fine);
+
+        Result result = new Backtest(Costs.NONE, 1).run(fine, coarse, (market, desk) -> {
+            if (market.bar() == 0) {
+                desk.buyAtMarket();
+            }
+        }, null);
+
+        // ORDEM A MERCADO E ENVIADA, nao fica em repouso: executa na abertura
+        // seguinte e acabou. Enquanto o livro era refeito em toda barra isto nao
+        // dava para notar, porque a proxima reconstrucao a apagava.
+        //
+        // Com a execucao mais fina que a decisao, uma ordem a mercado deixada no
+        // livro executa DE NOVO em cada barra entre duas decisoes -- e uma
+        // semana do cruzamento sobre ticks saiu com 136.455 operacoes contra as
+        // 65 que ela faz de verdade.
+        assertEquals(1, result.fills().size(),
+                "a ordem a mercado executou " + result.fills().size() + " vezes");
+    }
+
+    @Test
+    @DisplayName("a ordem em repouso continua viva entre duas decisoes")
+    void arestingOrderStaysAliveBetweenTwoDecisions() {
+        Fine fine = new Fine(
+                new double[] {100, 100, 100, 100, 100, 100, 100, 100},
+                new double[] {100, 100, 100, 100, 100, 100, 130, 100},
+                new double[] {100, 100, 100, 100, 100, 100, 100, 100},
+                new double[] {100, 100, 100, 100, 100, 100, 100, 100});
+
+        Coarse coarse = new Coarse(fine);
+
+        Result result = new Backtest(Costs.NONE, 1).run(fine, coarse, (market, desk) -> {
+            if (market.bar() == 0) {
+                desk.buyStop(120, 120);
+            }
+        }, null);
+
+        // O OUTRO LADO DA MESMA REGRA. Limitada e stop esperam um preco, e
+        // esperam ate a estrategia parar de pedi-las -- aqui o gatilho so e
+        // alcancado na setima barra fina, tres depois da decisao que o colocou.
+        // Um livro que jogasse fora tudo que foi enviado deixaria esta de fora.
+        assertEquals(1, result.fills().size(), "a ordem em repouso nao sobreviveu a barra");
+        assertEquals(6, result.fills().get(0).bar(), "executou na barra errada");
+    }
+
+    @Test
+    @DisplayName("A ESTRATEGIA VE TUDO QUE EXECUTOU DESDE A VEZ ANTERIOR")
+    void thestrategySeesEverythingThatFilledSinceItsLastTurn() {
+        Fine fine = new Fine(
+                new double[] {100, 100, 100, 100, 100, 100, 100, 100},
+                new double[] {100, 100, 100, 100, 130, 130, 100, 100},
+                new double[] {100, 100, 100, 100, 100, 100, 70, 100},
+                new double[] {100, 100, 100, 100, 100, 100, 100, 100});
+
+        Coarse coarse = new Coarse(fine);
+
+        java.util.List<Integer> quantos = new java.util.ArrayList<>();
+
+        new Backtest(Costs.NONE, 1).run(fine, coarse, (market, desk) -> {
+            quantos.add(market.filled().size());
+
+            if (market.bar() == 0) {
+                desk.buyStop(120, 120, 2);
+                desk.sellShortStop(80, 80, 2);
+            }
+        }, null);
+
+        // TRES EXECUCOES NUMA VOLTA SO. A compra sai no quarto minuto; no sexto
+        // a venda dispara, e como e ordem de ABERTURA do outro lado ela cobre os
+        // dois contratos e abre dois -- o motor parte isso em duas execucoes
+        // para a operacao continuar honesta.
+        //
+        // Entre duas decisoes passa uma barra grossa inteira de barras finas, e
+        // um livro de lotes que so visse a ultima delas seguiria emitindo ordem
+        // para contratos que sairam tres minutos antes.
+        assertEquals(java.util.List.of(0, 3), quantos,
+                "a estrategia nao viu as execucoes da volta: " + quantos);
+    }
+
     @Test
     @DisplayName("A VARREDURA DIZ POR ONDE ANDA, e termina dizendo que acabou")
     void therunSaysHowFarAlongItIs() {

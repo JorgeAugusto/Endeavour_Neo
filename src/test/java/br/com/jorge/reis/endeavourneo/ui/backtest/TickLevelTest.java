@@ -19,6 +19,7 @@ package br.com.jorge.reis.endeavourneo.ui.backtest;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import br.com.jorge.reis.endeavourneo.domain.market.MarketFile;
@@ -186,15 +187,20 @@ class TickLevelTest {
     }
 
     @Test
-    @DisplayName("o modo tick a tick nao deixa escolher outra escala")
-    void thetickModeDoesNotAllowAnotherScale() {
-        // O caminho de ticks foi medido contra a forma de um MINUTO. Gerar um
-        // dentro de uma barra de cinco minutos e aplicar aquelas estatisticas a
-        // algo que elas nunca mediram -- entao a lista de escala e desligada, e
-        // nao silenciosamente ignorada.
-        assertFalse(Execution.TICKS.allowsAnotherScale(),
-                "o modo tick a tick aceitou uma escala diferente da armazenada");
-        assertTrue(Execution.OHLC.allowsAnotherScale(),
-                "o modo OHLC deixou de aceitar uma escala maior");
+    @DisplayName("o modo de execucao nao diz nada sobre escala")
+    void theexecutionModeSaysNothingAboutScale() {
+        // ELE SO DIZ COMO AS ORDENS EXECUTAM. A escala e a do grafico -- e o que
+        // a estrategia le quando nao nomeia uma propria -- e as duas sao livres
+        // uma da outra: qualquer escala roda dos dois jeitos.
+        //
+        // O caminho de ticks continua vindo das barras ARMAZENADAS, nunca das
+        // agregadas, que e como a medicao feita sobre a forma de um minuto
+        // continua valendo com o grafico em cinco minutos.
+        assertEquals(2, Execution.values().length, "o modo de execucao ganhou uma terceira opcao");
+
+        for (Execution each : Execution.values()) {
+            assertNotNull(each.label(), each + " nao tem nome na tela");
+            assertFalse(each.label().isBlank(), each + " tem nome vazio");
+        }
     }
 }

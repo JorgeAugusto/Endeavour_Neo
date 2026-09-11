@@ -97,7 +97,28 @@ public final class TradeMarks implements Overlay {
 
     private Trade chosen;
 
+    /**
+     * From the bars a fill executed on to the bars the chart draws.
+     *
+     * <p>{@link Axis#SAME} while the two are one series, which is every run that
+     * executes on the chart's own candles.</p>
+     */
+    private transient Axis axis = Axis.SAME;
+
     private boolean visible = true;
+
+    /**
+     * Says which bars the marks are numbered in, and which they are drawn on.
+     *
+     * @param executed the bars the fills are numbered against
+     * @param shown    the bars the chart is drawing
+     */
+    public void onTheAxisOf(
+            br.com.jorge.reis.endeavourneo.domain.market.PriceSeries executed,
+            br.com.jorge.reis.endeavourneo.domain.market.PriceSeries shown) {
+
+        axis = Axis.of(executed, shown);
+    }
 
     /** @param found the operations to draw; the list is copied */
     public void show(List<Trade> found) {
@@ -163,13 +184,13 @@ public final class TradeMarks implements Overlay {
         Object was = g.getRenderingHint(RenderingHints.KEY_ANTIALIASING);
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-        if (chosen != null && chosen.closedAt() >= from && chosen.openedAt() <= to) {
+        if (chosen != null && closedAt(chosen) >= from && openedAt(chosen) <= to) {
             band(g, viewport, chosen, from, to);
             levels(g, viewport, chosen, from, to);
         }
 
         for (Trade trade : trades) {
-            if (trade.closedAt() < from || trade.openedAt() > to) {
+            if (closedAt(trade) < from || openedAt(trade) > to) {
                 continue;
             }
 
@@ -184,8 +205,8 @@ public final class TradeMarks implements Overlay {
     // ------------------------------------------------------------------- band
 
     private void band(Graphics2D g, Viewport viewport, Trade trade, int from, int to) {
-        int first = Math.max(trade.openedAt(), from);
-        int last = Math.min(trade.closedAt(), to);
+        int first = Math.max(openedAt(trade), from);
+        int last = Math.min(closedAt(trade), to);
 
         if (first > last) {
             return;
@@ -239,8 +260,8 @@ public final class TradeMarks implements Overlay {
 
         // FROM ITS OWN FILL, not from the start of the trade: the level came
         // into being when the order that made it executed.
-        int first = Math.max(fill.bar(), from);
-        int last = Math.min(trade.closedAt(), to);
+        int first = Math.max(axis.map(fill.bar()), from);
+        int last = Math.min(closedAt(trade), to);
 
         if (first > last) {
             return;
@@ -276,8 +297,8 @@ public final class TradeMarks implements Overlay {
         Color base = trade.won() ? WON : LOST;
         Color colour = loud ? base : new Color(base.getRed(), base.getGreen(), base.getBlue(), QUIET);
 
-        double xIn = viewport.x(trade.openedAt());
-        double xOut = viewport.x(trade.closedAt());
+        double xIn = viewport.x(openedAt(trade));
+        double xOut = viewport.x(closedAt(trade));
         double yIn = viewport.y(trade.entryPrice());
         double yOut = viewport.y(trade.exitPrice());
 
@@ -298,6 +319,14 @@ public final class TradeMarks implements Overlay {
     }
 
     /** @param up whether the arrow points up */
+    private int openedAt(Trade trade) {
+        return axis.map(trade.openedAt());
+    }
+
+    private int closedAt(Trade trade) {
+        return axis.map(trade.closedAt());
+    }
+
     private static Path2D arrow(double x, double y, boolean up) {
         Path2D path = new Path2D.Double();
         int tip = up ? -ARROW : ARROW;

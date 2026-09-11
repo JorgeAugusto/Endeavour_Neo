@@ -19,6 +19,7 @@ package br.com.jorge.reis.endeavourneo.domain.trading;
 
 import br.com.jorge.reis.endeavourneo.domain.trading.order.Command;
 import br.com.jorge.reis.endeavourneo.domain.trading.order.Instruction;
+import br.com.jorge.reis.endeavourneo.domain.trading.order.Order;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -79,6 +80,25 @@ final class Book {
     /** @return what is resting, in the order it was asked */
     List<Instruction> resting() {
         return List.copyOf(resting);
+    }
+
+    /**
+     * Drops what has already gone to the market, keeping what is still resting.
+     *
+     * <p>A market order and the two commands are <b>sent</b>, not rested: they
+     * execute at the next open and that is the end of them. A limit or a stop
+     * waits for a price and stays until the strategy stops asking for it.</p>
+     *
+     * <p>This did nothing at all while the book was rebuilt on every bar, which
+     * is why it was not here. The moment a run could execute more finely than it
+     * decides, it became the difference between a strategy and a machine gun: a
+     * market order left resting fills again at every bar between two decisions,
+     * and a week of the crossing over ticks came out with <b>136.455</b>
+     * operations against the 65 it really makes.</p>
+     */
+    void sent() {
+        resting.removeIf(instruction ->
+                !(instruction instanceof Order order) || !order.rests());
     }
 
     /** {@code HasPendingOrders} */
