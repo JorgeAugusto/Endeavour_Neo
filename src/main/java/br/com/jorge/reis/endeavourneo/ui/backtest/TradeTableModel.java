@@ -65,11 +65,22 @@ final class TradeTableModel extends AbstractTableModel {
 
     private PriceSeries series;
 
+    /**
+     * Reais per point per contract, read when the table is filled.
+     *
+     * <p>Read and not held from when the window opened: the point value is a
+     * setting, and a table showing yesterday's currency beside today's prices is
+     * the kind of wrong that looks ordinary.</p>
+     */
+    private double perPoint = BacktestPreferences.pointValue();
+
     TradeTableModel(String[] columns) {
         this.columns = columns.clone();
     }
 
     void show(List<Trade> found, PriceSeries over) {
+        perPoint = BacktestPreferences.pointValue();
+
         trades.clear();
         trades.addAll(found);
         series = over;
@@ -115,12 +126,22 @@ final class TradeTableModel extends AbstractTableModel {
             case CLOSED -> when(trade.closedAt());
             case ENTRY -> trade.entryPrice();
             case EXIT -> trade.exitPrice();
+            // PONTOS SO NO BRUTO. Pontos e o numero que COMPARA -- duas
+            // estrategias no mesmo ativo se poem lado a lado sem igualar
+            // capital nem contratos -- e por isso ele fica onde o resultado da
+            // operacao ainda e so o movimento do preco.
+            //
+            // Custo e liquido em DINHEIRO, porque nenhum dos dois compara nada:
+            // o custo e uma tabela de corretagem e o liquido e o que sobra
+            // depois dela, e os dois so querem dizer alguma coisa na moeda em
+            // que sao pagos. Custo em pontos ainda obriga a multiplicar de
+            // cabeca pelo valor do ponto para saber se e caro.
             case POINTS -> trade.gross();
             case CONTRACTS -> trade.contracts();
             case TURNED -> trade.turned();
             case BARS -> trade.bars();
-            case COST -> trade.cost();
-            case NET -> trade.net();
+            case COST -> -trade.cost() * perPoint;
+            case NET -> trade.net() * perPoint;
             default -> null;
         };
     }

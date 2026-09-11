@@ -106,10 +106,27 @@ class BacktestPanelTest {
 
         Trade first = result.trades().get(0);
 
+        // PONTOS SO NO BRUTO. E o numero que COMPARA: duas estrategias no mesmo
+        // ativo se poem lado a lado sem igualar capital nem contratos.
         assertEquals(first.gross(), (Double) model.getValueAt(0, TradeTableModel.POINTS), 1e-9,
                 "o bruto da linha nao e o bruto da operacao");
-        assertEquals(first.net(), (Double) model.getValueAt(0, TradeTableModel.NET), 1e-9,
-                "o liquido da linha nao e o liquido da operacao");
+
+        // E CUSTO E LIQUIDO EM DINHEIRO, porque nenhum dos dois compara nada: o
+        // custo e uma tabela de corretagem e o liquido e o que sobra depois
+        // dela. Custo em pontos ainda obriga a multiplicar de cabeca pelo valor
+        // do ponto para saber se e caro.
+        double porPonto = BacktestPreferences.pointValue();
+
+        assertEquals(first.net() * porPonto,
+                (Double) model.getValueAt(0, TradeTableModel.NET), 1e-9,
+                "o liquido da linha nao e o liquido da operacao em dinheiro");
+
+        // NEGATIVO, porque custo e o que saiu. A operacao guarda o custo como
+        // numero positivo, e uma coluna que repetisse esse sinal somaria com o
+        // bruto ao inves de descontar dele quando o leitor fizer a conta.
+        assertEquals(-first.cost() * porPonto,
+                (Double) model.getValueAt(0, TradeTableModel.COST), 1e-9,
+                "o custo da linha nao e o custo da operacao em dinheiro, negativo");
         assertEquals(first.contracts(), model.getValueAt(0, TradeTableModel.CONTRACTS),
                 "a quantidade da linha nao e a da operacao");
 
