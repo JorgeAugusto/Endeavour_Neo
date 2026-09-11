@@ -290,6 +290,43 @@ class BacktestTest {
     }
 
     @Test
+    @DisplayName("A MERCADO EXECUTA NO PRIMEIRO PRECO SEGUINTE, que e o proximo tick")
+    void amarketOrderFillsAtTheVeryNextPrice() {
+        // As barras finas de dentro da segunda barra grossa sao todas
+        // diferentes, de proposito: se a execucao esperasse a barra grossa
+        // "acabar" ou usasse qualquer preco que nao o primeiro, sairia noutro
+        // numero.
+        Fine fine = new Fine(
+                new double[] {100, 100, 100, 100, 700, 800, 900, 950},
+                new double[] {100, 100, 100, 100, 700, 800, 900, 950},
+                new double[] {100, 100, 100, 100, 700, 800, 900, 950},
+                new double[] {100, 100, 100, 100, 700, 800, 900, 950});
+
+        Coarse coarse = new Coarse(fine);
+
+        Result result = new Backtest(Costs.NONE, 1).run(fine, coarse, (market, desk) -> {
+            if (market.bar() == 0) {
+                desk.buyAtMarket();
+            }
+        }, null);
+
+        assertEquals(1, result.fills().size(), "a ordem nao executou");
+
+        // NO PROXIMO PRECO, que na execucao tick a tick e o proximo NEGOCIO e
+        // nao a abertura do proximo candle.
+        assertEquals(fine.openAt(4), result.fills().get(0).price(), 0.0,
+                "nao executou no primeiro preco depois da decisao");
+
+        // E os dois numeros sao o MESMO numero, que e o que faz a duvida nao ter
+        // consequencia para uma ordem a mercado: a abertura de um candle E o
+        // primeiro negocio dele. O que muda entre os dois modos nao e este
+        // preco -- e o das ordens em repouso, que tick a tick executam no
+        // proprio nivel no meio do candle em vez de esperarem ele fechar.
+        assertEquals(coarse.openAt(1), fine.openAt(4), 0.0,
+                "a abertura do candle deixou de ser o primeiro negocio dele");
+    }
+
+    @Test
     @DisplayName("A ORDEM A MERCADO EXECUTA UMA VEZ, nao a cada barra fina")
     void amarketOrderFillsOnceAndNotOnEveryFineBar() {
         double[] flat = new double[16];
