@@ -102,8 +102,8 @@ class PatternLatchTest {
      * 100 armaria e o proprio minuto seguinte desarmaria — o credito nunca
      * chegaria a um padrao.</p>
      */
-    private static final PatternBreakout.Latch ABERTO =
-            new PatternBreakout.Latch(true, 1, 1, 100, 101, 101, 99);
+    private static final StochasticLatch.Settings ABERTO =
+            new StochasticLatch.Settings(true, 1, 1, 100, 101, 101, 99);
 
     /**
      * Blocos de seis barras, cada um com um PFR de alta e o rompimento dele.
@@ -146,7 +146,7 @@ class PatternLatchTest {
         return feitas.toArray(new double[0][]);
     }
 
-    private static Result run(double[][] ohlc, PatternBreakout.Latch latch,
+    private static Result run(double[][] ohlc, StochasticLatch.Settings latch,
                               PatternBreakout.Doubling doubling) {
 
         PriceSeries bars = new Bars(ohlc);
@@ -202,11 +202,11 @@ class PatternLatchTest {
 
         // Sem filtro os tres padroes operam. Com o filtro padrao, nenhum: o
         // estocastico nunca desceu ao nivel que arma a compra.
-        assertEquals(3, entradas(run(ohlc, PatternBreakout.Latch.off(),
+        assertEquals(3, entradas(run(ohlc, StochasticLatch.Settings.off(),
                 PatternBreakout.Doubling.off())).size(),
                 "o pregao inventado nao gera os tres padroes esperados");
 
-        assertEquals(0, entradas(run(ohlc, PatternBreakout.Latch.standard(),
+        assertEquals(0, entradas(run(ohlc, StochasticLatch.Settings.standard(),
                 PatternBreakout.Doubling.off())).size(),
                 "comprou sem o estocastico ter chegado em 20");
     }
@@ -222,8 +222,8 @@ class PatternLatchTest {
 
         // Nivel de compra INALCANCAVEL e o de venda sempre atingido: se os dois
         // estivessem trocados no codigo, este seria o caso que opera.
-        PatternBreakout.Latch trocado =
-                new PatternBreakout.Latch(true, 1, 1, -1, 0, 101, 99);
+        StochasticLatch.Settings trocado =
+                new StochasticLatch.Settings(true, 1, 1, -1, 0, 101, 99);
 
         assertEquals(0, entradas(run(ohlc, trocado, PatternBreakout.Doubling.off())).size(),
                 "comprou com o nivel de compra inalcancavel: o lado esta invertido");
@@ -237,8 +237,8 @@ class PatternLatchTest {
         // O estocastico entra na zona uma vez e fica la, entao o latch arma UMA
         // vez no pregao inteiro -- e o credito daquela armada e tudo que existe.
         for (int credito = 1; credito <= 3; credito++) {
-            PatternBreakout.Latch latch =
-                    new PatternBreakout.Latch(true, 1, 1, 100, 101, 101, credito);
+            StochasticLatch.Settings latch =
+                    new StochasticLatch.Settings(true, 1, 1, 100, 101, 101, credito);
 
             assertEquals(credito,
                     entradas(run(ohlc, latch, PatternBreakout.Doubling.off())).size(),
@@ -292,8 +292,8 @@ class PatternLatchTest {
         //
         // Com o desarme inalcancavel (101), a armada da primeira barra vale o
         // pregao inteiro e os tres padroes operam.
-        PatternBreakout.Latch semDesarme =
-                new PatternBreakout.Latch(true, 1, 1, 100, 101, 101, 99);
+        StochasticLatch.Settings semDesarme =
+                new StochasticLatch.Settings(true, 1, 1, 100, 101, 101, 99);
 
         assertEquals(3, entradas(run(ohlc, semDesarme, PatternBreakout.Doubling.off())).size(),
                 "o credito sem desarme nao pagou os tres padroes");
@@ -302,8 +302,8 @@ class PatternLatchTest {
         // estocastico em zero ou acima joga o credito fora, e como o estocastico
         // vive em zero ou acima, ele e jogado fora em toda barra. Nenhum padrao
         // encontra credito.
-        PatternBreakout.Latch semprDesarma =
-                new PatternBreakout.Latch(true, 1, 1, 100, 101, 0, 99);
+        StochasticLatch.Settings semprDesarma =
+                new StochasticLatch.Settings(true, 1, 1, 100, 101, 0, 99);
 
         assertEquals(0,
                 entradas(run(ohlc, semprDesarma, PatternBreakout.Doubling.off())).size(),
@@ -331,8 +331,8 @@ class PatternLatchTest {
 
         // Credito de compra existe; o de venda nao pode existir, porque o nivel
         // de venda esta acima do maximo que o estocastico alcanca.
-        PatternBreakout.Latch soCompra =
-                new PatternBreakout.Latch(true, 1, 1, 100, 101, 101, 1);
+        StochasticLatch.Settings soCompra =
+                new StochasticLatch.Settings(true, 1, 1, 100, 101, 101, 1);
 
         assertEquals(0, entradas(run(ohlc, soCompra, PatternBreakout.Doubling.off())).size(),
                 "o plano comprado sobreviveu ao padrao de baixa da barra 3");
@@ -399,7 +399,7 @@ class PatternLatchTest {
     private static Result run(double[][] ohlc, PatternBreakout.Trend trend) {
         PriceSeries bars = new Bars(ohlc);
         PatternBreakout what = new PatternBreakout(SP, CandlePattern.Family.PFR,
-                1.5, 3, 1, PatternBreakout.Latch.off(), PatternBreakout.Doubling.off(), trend);
+                1.5, 3, 1, StochasticLatch.Settings.off(), PatternBreakout.Doubling.off(), trend);
 
         what.sourcedFrom(bars);
 
@@ -456,7 +456,7 @@ class PatternLatchTest {
         Result antigo = new Backtest(Costs.NONE, 1).run(new Bars(ohlc), new Bars(ohlc),
                 new PatternBreakout(SP, CandlePattern.Family.PFR, 1.5, 3, 1), null);
 
-        Result agora = run(ohlc, PatternBreakout.Latch.off(), PatternBreakout.Doubling.off());
+        Result agora = run(ohlc, StochasticLatch.Settings.off(), PatternBreakout.Doubling.off());
 
         assertFalse(antigo.fills().isEmpty(), "a comparacao foi entre duas rodadas vazias");
         assertEquals(antigo.fills().size(), agora.fills().size(),

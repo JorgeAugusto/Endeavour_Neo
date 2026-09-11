@@ -93,73 +93,6 @@ public final class PatternBreakout implements Strategy, Plotted, Sourced {
     public static final double REWARD = 1.5;
 
     /**
-     * The stochastic latch: what has to have happened for a pattern to count.
-     *
-     * <p>A PFR is a refusal, and a refusal is worth more where the market had
-     * something to refuse. The latch says so in a testable way: the stochastic
-     * of eight on ONE MINUTE has to have reached its level, and reaching it
-     * <b>arms</b> a credit of a few entries which the next patterns spend.
-     *
-     * <h2>It arms on the way IN, not on every bar inside</h2>
-     *
-     * <p>That is what makes it a latch rather than a condition. Price can sit
-     * under twenty for forty minutes; that is one event, not forty, and treating
-     * it as forty would refill the credit continuously and the cap would mean
-     * nothing. Leaving the zone and coming back is a second event.
-     *
-     * <h2>The two sides are separate</h2>
-     *
-     * <p>Twenty arms buys and eighty arms sells: oversold is what makes a
-     * refused low worth buying. A buy spends buy credit and leaves the sell
-     * credit where it was.
-     *
-     * <h2>Coming back to the middle DISARMS it</h2>
-     *
-     * <p>A credit is not a coupon with no expiry date. The stochastic went to
-     * twenty because the market was stretched, and by the time it has climbed
-     * back to fifty that stretch is spent — a pattern appearing then is a
-     * pattern in an ordinary market, which is the thing the filter exists to
-     * refuse. So crossing back through the middle throws the credit away, and
-     * the next stretch has to arm it again.
-     *
-     * <p>Fifty disarms the BUY on the way up and the SELL on the way down,
-     * which is the same sentence read from each end. The check is by level
-     * rather than by crossing, unlike arming: throwing away an empty credit
-     * changes nothing, so "it is above fifty" and "it has just gone above
-     * fifty" cannot produce different runs.
-     *
-     * @param on         whether the filter applies at all
-     * @param period     the stochastic's range, in bars of one minute
-     * @param average    its smoothing
-     * @param buyLevel   at or below this, buys are armed
-     * @param sellLevel  at or above this, sells are armed
-     * @param resetLevel back at this, the credit is thrown away
-     * @param entries    how many entries one arming pays for
-     */
-    public record Latch(boolean on, int period, int average,
-                        double buyLevel, double sellLevel, double resetLevel, int entries) {
-
-        /** The middle of the range, where a stretch is over. */
-        public static final double RESET = 50;
-
-        public Latch {
-            period = Math.max(1, period);
-            average = Math.max(1, average);
-            entries = Math.max(1, entries);
-        }
-
-        /** No filter: every pattern of the chosen family is traded. */
-        public static Latch off() {
-            return new Latch(false, Stochastic.PERIOD, Stochastic.AVERAGE, 20, 80, RESET, 2);
-        }
-
-        /** Eight and three on one minute, twenty and eighty, back at fifty. */
-        public static Latch standard() {
-            return new Latch(true, Stochastic.PERIOD, Stochastic.AVERAGE, 20, 80, RESET, 2);
-        }
-    }
-
-    /**
      * The trend gate: two averages of different scales, and which side they let
      * through.
      *
@@ -256,7 +189,7 @@ public final class PatternBreakout implements Strategy, Plotted, Sourced {
 
     private final int lot;
 
-    private final Latch latch;
+    private final StochasticLatch latch;
 
     private final Doubling doubling;
 
@@ -273,23 +206,6 @@ public final class PatternBreakout implements Strategy, Plotted, Sourced {
 
     /** Which session each bar belongs to; a new number means the day turned. */
     private int[] session;
-
-    /**
-     * What the stochastic did to each side on each decision bar.
-     *
-     * <p>{@code +1} armed, {@code -1} disarmed, {@code 0} neither. One number
-     * rather than two flags because a decision bar can hold both events — a
-     * five-minute bar is five minutes of stochastic — and then the LAST one is
-     * what the strategy finds when the bar closes. Two flags would have to
-     * record which came first, which is the same number written twice.</p>
-     */
-    private int[] buyEvent;
-
-    private int[] sellEvent;
-
-    private int buyCredit;
-
-    private int sellCredit;
 
     /** How many times the lot has doubled in the current losing run. */
     private int doublings;
@@ -328,12 +244,14 @@ public final class PatternBreakout implements Strategy, Plotted, Sourced {
     public PatternBreakout(ZoneId zone, CandlePattern.Family family, double reward,
                            int validFor, int lot) {
 
-        this(zone, family, reward, validFor, lot, Latch.off(), Doubling.off(), Trend.off());
+        this(zone, family, reward, validFor, lot, StochasticLatch.Settings.off(),
+                Doubling.off(), Trend.off());
     }
 
     /** The pattern with the two entry filters, and no trend gate. */
     public PatternBreakout(ZoneId zone, CandlePattern.Family family, double reward,
-                           int validFor, int lot, Latch latch, Doubling doubling) {
+                           int validFor, int lot, StochasticLatch.Settings latch,
+                           Doubling doubling) {
 
         this(zone, family, reward, validFor, lot, latch, doubling, Trend.off());
     }
@@ -344,20 +262,20 @@ public final class PatternBreakout implements Strategy, Plotted, Sourced {
      * @param reward   the target, as a multiple of the entry-to-stop distance
      * @param validFor how many bars the resting entry lives for
      * @param lot      contracts per trade, before any doubling
-     * @param latch    the stochastic filter, or {@link Latch#off()}
+     * @param latch    the stochastic filter, or {@link StochasticLatch.Settings#off()}
      * @param doubling the martingale, or {@link Doubling#off()}
      * @param trend    the two averages, or {@link Trend#off()}
      */
     public PatternBreakout(ZoneId zone, CandlePattern.Family family, double reward,
-                           int validFor, int lot, Latch latch, Doubling doubling,
-                           Trend trend) {
+                           int validFor, int lot, StochasticLatch.Settings latch,
+                           Doubling doubling, Trend trend) {
 
         this.zone = zone == null ? Timeframe.defaultZone() : zone;
         this.family = family == null ? CandlePattern.Family.PFR : family;
         this.reward = reward > 0 ? reward : REWARD;
         this.validFor = Math.max(1, validFor);
         this.lot = Math.max(1, lot);
-        this.latch = latch == null ? Latch.off() : latch;
+        this.latch = new StochasticLatch(latch);
         this.doubling = doubling == null ? Doubling.off() : doubling;
         this.trend = trend == null ? Trend.off() : trend;
     }
@@ -397,12 +315,10 @@ public final class PatternBreakout implements Strategy, Plotted, Sourced {
         target = Double.NaN;
         livesUntil = -1;
         holding = false;
-        buyCredit = 0;
-        sellCredit = 0;
         doublings = 0;
         entered = Double.NaN;
 
-        findTheArmings();
+        latch.start(bars, source);
         findTheTrend();
     }
 
@@ -458,76 +374,6 @@ public final class PatternBreakout implements Strategy, Plotted, Sourced {
         return fast > slow ? 1 : -1;
     }
 
-    /**
-     * Works out, once, on which decision bars the latch arms.
-     *
-     * <p>Read on ONE MINUTE and not on the decision bars, which is the whole
-     * point of asking for it that way: the chart may be on five minutes or on
-     * renko, where there is no minute in the series at all, and the reading is
-     * supposed to be the same either way. The minutes come from the bars as
-     * stored — see {@link Sourced} — and aggregating them to one minute is a
-     * no-op on his base and the only honest answer on a finer one.
-     *
-     * <p><b>Every minute used here is inside the decision bar it is filed
-     * under</b>, so by the time that bar closes and the strategy is asked, all
-     * of them have happened. The look-ahead this could have had — filing a
-     * minute under the bar it precedes — is the same mistake the multi-timeframe
-     * note in the chart's own {@code OwnScale} records, running the other way.
-     */
-    private void findTheArmings() {
-        buyEvent = new int[size];
-        sellEvent = new int[size];
-
-        if (!latch.on() || size == 0) {
-            return;
-        }
-
-        PriceSeries minutes = Timeframe.ONE_MINUTE.apply(source == null ? bars : source);
-        double[] slow = new Stochastic(latch.period(), latch.average()).over(minutes).slow();
-
-        int at = 0;
-        boolean wasLow = false;
-        boolean wasHigh = false;
-
-        for (int minute = 0; minute < minutes.size(); minute++) {
-            while (at + 1 < size && minutes.timeAt(minute) >= bars.timeAt(at + 1)) {
-                at++;
-            }
-
-            double now = slow[minute];
-
-            if (Double.isNaN(now)) {
-                continue;
-            }
-
-            boolean low = now <= latch.buyLevel();
-            boolean high = now >= latch.sellLevel();
-
-            // ARMING IS ON THE WAY IN ONLY. Forty minutes spent under twenty is
-            // one event, not forty; counting each of them would refill the
-            // credit every bar and the cap on entries would say nothing.
-            //
-            // DISARMING IS BY LEVEL, and the asymmetry is deliberate: throwing
-            // away a credit that is already empty changes nothing, so there is
-            // no run in which "it is past the middle" and "it has just gone
-            // past the middle" disagree. Arming does not have that luxury.
-            if (low && !wasLow) {
-                buyEvent[at] = 1;
-            } else if (now >= latch.resetLevel()) {
-                buyEvent[at] = -1;
-            }
-
-            if (high && !wasHigh) {
-                sellEvent[at] = 1;
-            } else if (now <= latch.resetLevel()) {
-                sellEvent[at] = -1;
-            }
-
-            wasLow = low;
-            wasHigh = high;
-        }
-    }
-
     private static double[] blank(int many) {
         double[] made = new double[many];
 
@@ -567,8 +413,8 @@ public final class PatternBreakout implements Strategy, Plotted, Sourced {
             // holding sixteen, against a market that has gapped overnight and
             // owes yesterday nothing.
             doublings = 0;
-            buyCredit = 0;
-            sellCredit = 0;
+
+            latch.clear();
 
             if (market.hasPosition()) {
                 desk.closePosition();
@@ -582,17 +428,7 @@ public final class PatternBreakout implements Strategy, Plotted, Sourced {
         // The arming is applied BEFORE the pattern is looked for, and both
         // happen at this bar's close: every minute that armed it is inside the
         // bar that just ended.
-        if (buyEvent[bar] > 0) {
-            buyCredit = latch.entries();
-        } else if (buyEvent[bar] < 0) {
-            buyCredit = 0;
-        }
-
-        if (sellEvent[bar] > 0) {
-            sellCredit = latch.entries();
-        } else if (sellEvent[bar] < 0) {
-            sellCredit = 0;
-        }
+        latch.at(bar);
 
         if (!holding) {
             look(bar);
@@ -658,7 +494,7 @@ public final class PatternBreakout implements Strategy, Plotted, Sourced {
         // And a refusal FORGETS rather than returning, because by here a pattern
         // of the chosen family has been found and the older level is stale
         // whatever the latch says: the market has just refused somewhere else.
-        if (latch.on() && creditFor(pattern.direction()) <= 0) {
+        if (latch.credit(pattern.direction()) <= 0) {
             forget();
 
             return;
@@ -727,26 +563,11 @@ public final class PatternBreakout implements Strategy, Plotted, Sourced {
                 holding = true;
                 entered = fill.price();
 
-                spendTheCredit();
+                latch.spend(side);
             }
         }
     }
 
-    private int creditFor(int direction) {
-        return direction > 0 ? buyCredit : sellCredit;
-    }
-
-    private void spendTheCredit() {
-        if (!latch.on()) {
-            return;
-        }
-
-        if (side > 0) {
-            buyCredit = Math.max(0, buyCredit - 1);
-        } else {
-            sellCredit = Math.max(0, sellCredit - 1);
-        }
-    }
 
     /**
      * Moves the doubling along, now that a trade has ended.

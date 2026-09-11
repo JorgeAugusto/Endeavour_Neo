@@ -22,6 +22,7 @@ import br.com.jorge.reis.endeavourneo.domain.market.CandlePattern;
 import br.com.jorge.reis.endeavourneo.domain.market.Timeframe;
 import br.com.jorge.reis.endeavourneo.domain.trading.Strategy;
 import br.com.jorge.reis.endeavourneo.domain.trading.strategy.PatternBreakout;
+import br.com.jorge.reis.endeavourneo.domain.trading.strategy.StochasticLatch;
 import br.com.jorge.reis.endeavourneo.platform.Messages;
 import br.com.jorge.reis.endeavourneo.platform.Settings;
 import br.com.jorge.reis.endeavourneo.ui.settings.SettingsPage;
@@ -141,21 +142,21 @@ final class PatternBreakoutKind implements StrategyKind {
         return clamp(Settings.settings().getInt(LOT, 1), 1, 100);
     }
 
-    /** @return the stochastic filter as saved, or {@link PatternBreakout.Latch#off()} */
-    static PatternBreakout.Latch latch() {
+    /** @return the stochastic filter as saved, or {@link StochasticLatch.Settings#off()} */
+    static StochasticLatch.Settings latch() {
         Settings settings = Settings.settings();
 
         if (!settings.getBoolean(LATCH, false)) {
-            return PatternBreakout.Latch.off();
+            return StochasticLatch.Settings.off();
         }
 
-        return new PatternBreakout.Latch(true,
+        return new StochasticLatch.Settings(true,
                 clamp(settings.getInt(LATCH_PERIOD, Stochastic.PERIOD), 1, 500),
                 clamp(settings.getInt(LATCH_AVERAGE, Stochastic.AVERAGE), 1, 500),
                 clamp(settings.getInt(LATCH_BUY, 20), 0, 100),
                 clamp(settings.getInt(LATCH_SELL, 80), 0, 100),
                 clamp(settings.getInt(LATCH_RESET,
-                        (int) PatternBreakout.Latch.RESET), 0, 100),
+                        (int) StochasticLatch.Settings.RESET), 0, 100),
                 clamp(settings.getInt(LATCH_ENTRIES, 2), 1, 100));
     }
 
@@ -218,7 +219,7 @@ final class PatternBreakoutKind implements StrategyKind {
         private final JSpinner latchSell = new JSpinner(new SpinnerNumberModel(80, 0, 100, 1));
 
         private final JSpinner latchReset = new JSpinner(new SpinnerNumberModel(
-                (int) PatternBreakout.Latch.RESET, 0, 100, 1));
+                (int) StochasticLatch.Settings.RESET, 0, 100, 1));
 
         private final JSpinner latchEntries = new JSpinner(new SpinnerNumberModel(2, 1, 100, 1));
 
@@ -382,7 +383,7 @@ final class PatternBreakoutKind implements StrategyKind {
             latchBuy.setValue(settings.getInt(LATCH_BUY, 20));
             latchSell.setValue(settings.getInt(LATCH_SELL, 80));
             latchReset.setValue(settings.getInt(LATCH_RESET,
-                    (int) PatternBreakout.Latch.RESET));
+                    (int) StochasticLatch.Settings.RESET));
             latchEntries.setValue(settings.getInt(LATCH_ENTRIES, 2));
 
             doubling.setSelected(settings.getBoolean(DOUBLING, false));
