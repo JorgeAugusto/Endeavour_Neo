@@ -315,6 +315,41 @@ public final class ChartCanvas extends JComponent {
     private transient ChartStyle style = new CandleStyle();
 
     /**
+     * @return what recolours the bars, gathered from the indicators that do
+     *
+     * <p>The FIRST visible one that has an opinion about a bar wins, which is
+     * the same rule the legend's order already carries: the indicator nearest
+     * the top is the one the reader put there first. Two pattern indicators on
+     * one chart is not a sensible thing to have, and if it happens the answer
+     * has to be one colour rather than an argument.</p>
+     */
+    private BarTint tint() {
+        java.util.List<BarTint> painters = new java.util.ArrayList<>();
+
+        for (Overlay each : overlays) {
+            if (each.isVisible() && each instanceof BarTint painter) {
+                painters.add(painter);
+            }
+        }
+
+        if (painters.isEmpty()) {
+            return BarTint.NONE;
+        }
+
+        return bar -> {
+            for (BarTint painter : painters) {
+                java.awt.Color colour = painter.at(bar);
+
+                if (colour != null) {
+                    return colour;
+                }
+            }
+
+            return null;
+        };
+    }
+
+    /**
      * The overlays drawn on the price, in the order the reader arranged them.
      *
      * <p>The order is theirs and not the order of insertion: it is the order
@@ -2516,7 +2551,7 @@ public final class ChartCanvas extends JComponent {
             Viewport viewport = viewport();
 
             paintGrid(g, viewport);
-            style.paint(g, series, viewport);
+            style.paint(g, series, viewport, tint());
             paintOverlays(g, viewport);
             paintPriceAxis(g, viewport);
             paintTimeAxis(g, viewport);

@@ -104,6 +104,14 @@ public final class OverlayCatalog {
     private static final List<Kind> KINDS = List.of(
             new Kind("overlay.movingAverage", List.of(9), 1, 2_000,
                     br.com.jorge.reis.endeavourneo.ui.chart.overlay.MovingAverage::new),
+
+            // NO PARAMETERS, and that is not an omission. The PFR, the inside
+            // and the 1-2-3 are defined over exactly three bars; a "period"
+            // here would be a different indicator wearing the same name. What
+            // the reader chooses -- which shapes, in what colours -- is a
+            // legend and lives in the settings, not in the legend line.
+            new Kind("overlay.patterns", List.of(), 0, 0,
+                    br.com.jorge.reis.endeavourneo.ui.chart.overlay.Patterns::new),
             // Period only. The deviation is a setting of the dialog, not a
             // parameter in the legend's sense -- it can be 2,5, which does not
             // survive a list of integers, and the reference product titles the

@@ -76,6 +76,13 @@ public interface ChartStyle {
      * @param g where to draw; already clipped to the viewport's bounds
      * @param series the data
      * @param viewport the mapping and the visible range
+     * @param tint what recolours individual bars, or {@link BarTint#NONE}
+     *
+     * <p><b>The tint is a parameter and not a field</b> for the same reason the
+     * viewport is: a style holds nothing about the chart it is drawing, so one
+     * instance serves every window and a style added later cannot accidentally
+     * become stateful. A style with nothing to recolour — a line — ignores
+     * it.</p>
      */
-    void paint(Graphics2D g, PriceSeries series, Viewport viewport);
+    void paint(Graphics2D g, PriceSeries series, Viewport viewport, BarTint tint);
 }

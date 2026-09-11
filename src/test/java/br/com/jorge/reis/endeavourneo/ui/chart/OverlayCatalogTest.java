@@ -78,6 +78,20 @@ class OverlayCatalogTest {
         // a pointless array. Both get typed by accident, and a spinner that
         // refuses them is better than an error dialog after the fact.
         for (OverlayCatalog.Kind kind : OverlayCatalog.kinds()) {
+            // A KIND WITH NO PARAMETERS HAS NO RANGE TO DECLARE, and demanding
+            // one of it would be demanding bounds on a number that does not
+            // exist. A three-bar pattern has no period: three is the definition.
+            //
+            // Checked rather than skipped, so the two states are both pinned and
+            // neither is a way round the guard: a kind that says it takes
+            // nothing must also HOLD nothing.
+            if (kind.defaults().isEmpty()) {
+                assertEquals(0, kind.held(java.util.List.of()).length,
+                        kind.nameKey() + " takes no parameters but held some anyway");
+
+                continue;
+            }
+
             assertTrue(kind.minimum() >= 1,
                     kind.nameKey() + " allows a period below one");
             assertTrue(kind.maximum() > kind.minimum(),

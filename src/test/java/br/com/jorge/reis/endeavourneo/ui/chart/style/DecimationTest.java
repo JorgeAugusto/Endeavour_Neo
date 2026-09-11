@@ -115,7 +115,7 @@ class DecimationTest {
                 BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = image.createGraphics();
 
-        style.paint(g, series, viewport);
+        style.paint(g, series, viewport, br.com.jorge.reis.endeavourneo.ui.chart.BarTint.NONE);
         g.dispose();
 
         return image;

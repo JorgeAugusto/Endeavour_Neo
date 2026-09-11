@@ -70,7 +70,9 @@ public final class CandleStyle implements ChartStyle {
     }
 
     @Override
-    public void paint(Graphics2D g, PriceSeries series, Viewport viewport) {
+    public void paint(Graphics2D g, PriceSeries series, Viewport viewport,
+                      br.com.jorge.reis.endeavourneo.ui.chart.BarTint tint) {
+
         double width = viewport.barWidth();
         double bodyWidth = Math.max(1.0, Math.floor(width * BODY_SHARE));
         boolean bodies = width >= MINIMUM_BODY_WIDTH;
@@ -114,7 +116,19 @@ public final class CandleStyle implements ChartStyle {
 
             boolean rising = close >= open;
 
-            g.setColor(gap ? ChartColors.untraded()
+            // THE TINT IS ASKED FIRST and beats both. A bar that formed a
+            // pattern is painted in the pattern's colour whether it rose or
+            // fell -- that IS the indicator -- and an untraded brick never
+            // formed anything, so the question does not arise for it.
+            //
+            // Asked for the column's FIRST bar, because below one pixel per bar
+            // a column is many bars drawn as one and there is no single pattern
+            // to show. At any readable width the step is one and this is the
+            // bar itself.
+            java.awt.Color tinted = gap || tint == null ? null : tint.at(i);
+
+            g.setColor(tinted != null ? tinted
+                    : gap ? ChartColors.untraded()
                     : rising ? ChartColors.up() : ChartColors.down());
 
             // The centre of the COLUMN, which for a step of one is the centre of

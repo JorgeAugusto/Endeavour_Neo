@@ -70,6 +70,14 @@ public interface Overlay {
         StringBuilder text = new StringBuilder(
                 br.com.jorge.reis.endeavourneo.platform.Messages.get(nameKey()));
 
+        // NO BRACKETS WHEN THERE IS NOTHING IN THEM. An indicator with no
+        // parameters is a real thing -- a three-bar pattern has no period to
+        // choose -- and "Padroes []" is a pair of brackets asking the reader
+        // what is missing from them.
+        if (parameters().isEmpty()) {
+            return text.toString();
+        }
+
         text.append(" [");
 
         for (int i = 0; i < parameters().size(); i++) {

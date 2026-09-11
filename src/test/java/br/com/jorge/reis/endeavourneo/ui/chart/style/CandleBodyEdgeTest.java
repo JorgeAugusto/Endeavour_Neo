@@ -135,7 +135,8 @@ class CandleBodyEdgeTest {
 
         Rectangle bounds = new Rectangle(0, 0, WIDTH, HEIGHT);
 
-        new CandleStyle().paint(g, series, Viewport.of(series, bounds, 0, BARS));
+        new CandleStyle().paint(g, series, Viewport.of(series, bounds, 0, BARS),
+                br.com.jorge.reis.endeavourneo.ui.chart.BarTint.NONE);
         g.dispose();
 
         return image;

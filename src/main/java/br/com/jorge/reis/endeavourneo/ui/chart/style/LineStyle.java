@@ -43,7 +43,14 @@ public final class LineStyle implements ChartStyle {
     }
 
     @Override
-    public void paint(Graphics2D g, PriceSeries series, Viewport viewport) {
+    public void paint(Graphics2D g, PriceSeries series, Viewport viewport,
+                      br.com.jorge.reis.endeavourneo.ui.chart.BarTint tint) {
+
+        // A LINHA NAO TEM BARRA PARA TINGIR. Uma linha de fechamentos e um
+        // traco continuo: nao ha onde uma barra comecar e a seguinte acabar, e
+        // pintar um pedaco dela de outra cor diria que o padrao durou o trecho
+        // inteiro entre dois fechamentos.
+
         int from = viewport.firstBar();
         int to = Math.min(viewport.lastBar(), series.size());
 

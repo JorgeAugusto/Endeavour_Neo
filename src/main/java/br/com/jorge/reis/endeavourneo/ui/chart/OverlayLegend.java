@@ -673,6 +673,19 @@ public final class OverlayLegend extends JComponent {
                 return;
             }
 
+            // The patterns have no numbers at all: three switches and six
+            // colours, which a dialog of spinners has nowhere to put.
+            if (overlay instanceof br.com.jorge.reis.endeavourneo.ui.chart.overlay
+                    .Patterns patterns) {
+
+                if (PatternsDialog.edit(owner, patterns) != null) {
+                    canvas.repaint();
+                    canvas.overlaysChanged();
+                }
+
+                return;
+            }
+
             // The zigzag has a tie rule, which is a real choice and not a
             // detail -- the two answers differ on a tenth of the pivots -- and
             // a dialog of bare spinners has nowhere to put it.
