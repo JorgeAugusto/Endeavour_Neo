@@ -238,7 +238,10 @@ public final class MainWindow extends JFrame {
         // the desktop, and the desktop has no size until the window is laid out.
         // Restoring here in the constructor would give every chart the fallback
         // size instead of a quarter of the window.
-        javax.swing.SwingUtilities.invokeLater(this::restoreCharts);
+        javax.swing.SwingUtilities.invokeLater(() -> {
+            restoreCharts();
+            restoreBacktest();
+        });
 
         addWindowListener(new WindowAdapter() {
 
@@ -301,6 +304,23 @@ public final class MainWindow extends JFrame {
         status.unbind(jobs);
 
         leaving = true;
+
+        // DEPOIS de leaving, e nao antes. Fechar a janela dispara o
+        // rememberBacktest(false) -- que a partir daqui e ignorado. Fechada
+        // antes, ela apagaria a propria lembranca de estar aberta, e o
+        // backtest nunca voltaria.
+        //
+        // E fechada, porque uma troca de idioma descarta esta janela: deixada
+        // de pe, sobra um quadro solto pertencendo a uma janela que nao existe
+        // mais.
+        closeBacktest();
+    }
+
+    private void closeBacktest() {
+        if (backtest != null) {
+            backtest.close();
+            backtest = null;
+        }
     }
 
     /**
@@ -1159,10 +1179,39 @@ public final class MainWindow extends JFrame {
     private void openBacktest() {
         if (backtest == null) {
             backtest = new br.com.jorge.reis.endeavourneo.ui.backtest.BacktestHolder(
-                    desktop, this, () -> backtest = null);
+                    desktop, this, () -> {
+                        backtest = null;
+
+                        rememberBacktest(false);
+                    });
         }
 
         backtest.show();
+        rememberBacktest(true);
+    }
+
+    /**
+     * Writes down whether the backtest is open, for the next start.
+     *
+     * <p>Guarded by the same two flags as {@link #rememberCharts()}, and for the
+     * same reason: leaving the application closes the window, and the close
+     * would write "not open" over the answer that was true a moment earlier. A
+     * setting that is only ever read after a restart fails silently and looks
+     * like it works.</p>
+     */
+    private void rememberBacktest(boolean open) {
+        if (leaving || restoring) {
+            return;
+        }
+
+        Settings.workspace().putBoolean("backtest.open", open);
+    }
+
+    /** Brings the backtest back if it was on screen when the application left. */
+    void restoreBacktest() {
+        if (Settings.workspace().getBoolean("backtest.open", false)) {
+            openBacktest();
+        }
     }
 
     /** The transport, built on first use and kept: one clock for every chart. */

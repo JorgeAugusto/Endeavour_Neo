@@ -18,6 +18,7 @@
 package br.com.jorge.reis.endeavourneo.ui.backtest;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -269,6 +270,143 @@ class BacktestPanelTest {
 
             assertTrue(point != null && point.startsWith("R$"), "a linha do valor do ponto mostra " + point);
         } finally {
+            br.com.jorge.reis.endeavourneo.platform.Settings.stopUsingTestStore();
+        }
+    }
+
+    // ------------------------------------------------------------- o quadro
+
+    /** @return o primeiro componente da arvore que for da classe pedida */
+    private static <T> T find(java.awt.Container root, Class<T> what,
+                              java.util.function.Predicate<T> matching) {
+        for (java.awt.Component child : root.getComponents()) {
+            if (what.isInstance(child) && matching.test(what.cast(child))) {
+                return what.cast(child);
+            }
+
+            if (child instanceof java.awt.Container deeper) {
+                T found = find(deeper, what, matching);
+
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Monta o painel numa janela de verdade, para o divisor ter largura.
+     *
+     * <p><b>A janela TEM de ser descartada</b>, e por isso ela e entregue junto:
+     * o painel carrega um {@code ChartCanvas}, e um canvas numa arvore
+     * mostravel entra num contador ESTATICO de quantos estao na tela. Deixada
+     * de pe, ela some da vista e continua contando -- e quem paga e outro
+     * arquivo de teste, que conta dois e encontra quatro. Foi exatamente assim
+     * que este vazamento apareceu.</p>
+     */
+    private static javax.swing.JFrame laidOut() throws Exception {
+        java.util.concurrent.atomic.AtomicReference<javax.swing.JFrame> made =
+                new java.util.concurrent.atomic.AtomicReference<>();
+
+        javax.swing.SwingUtilities.invokeAndWait(() -> {
+            javax.swing.JFrame frame = new javax.swing.JFrame();
+
+            frame.setContentPane(new BacktestPanel());
+            frame.setSize(1_200, 700);
+            frame.pack();
+            frame.setSize(1_200, 700);
+            frame.doLayout();
+            frame.validate();
+
+            made.set(frame);
+        });
+
+        javax.swing.SwingUtilities.invokeAndWait(() -> { });
+
+        return made.get();
+    }
+
+    private static void letGo(javax.swing.JFrame frame) throws Exception {
+        javax.swing.SwingUtilities.invokeAndWait(frame::dispose);
+        javax.swing.SwingUtilities.invokeAndWait(() -> { });
+    }
+
+    private static javax.swing.JScrollPane quadroOf(javax.swing.JFrame frame) {
+        return find(frame, javax.swing.JScrollPane.class,
+                scroll -> scroll.getViewport().getView() instanceof ResultPanel);
+    }
+
+    private static javax.swing.JToggleButton switchOf(javax.swing.JFrame frame) {
+        return find(frame, javax.swing.JToggleButton.class, button -> true);
+    }
+
+    @Test
+    @DisplayName("o quadro nasce visivel, e nao tomando a janela inteira")
+    void theQuadroIsBornVisibleAndNotOverTheWholeWindow() throws Exception {
+        assumeFalse(java.awt.GraphicsEnvironment.isHeadless(), "no graphics environment");
+
+        br.com.jorge.reis.endeavourneo.platform.Settings.useForTest(settings);
+
+        javax.swing.JFrame frame = laidOut();
+
+        try {
+            javax.swing.JScrollPane quadro = quadroOf(frame);
+
+            assertNotNull(quadro, "o quadro nao esta na arvore");
+            assertTrue(quadro.isVisible(), "o quadro nasceu escondido");
+
+            javax.swing.JSplitPane sides = (javax.swing.JSplitPane) quadro.getParent();
+
+            assertTrue(sides.getDividerLocation() > 300,
+                    "o quadro nasceu sobre a janela inteira: divisor em "
+                            + sides.getDividerLocation() + " de " + sides.getWidth());
+        } finally {
+            letGo(frame);
+            br.com.jorge.reis.endeavourneo.platform.Settings.stopUsingTestStore();
+        }
+    }
+
+    @Test
+    @DisplayName("recolher esconde o quadro; voltar o traz do tamanho que tinha")
+    void collapsingHidesItAndBringingItBackKeepsItsWidth() throws Exception {
+        assumeFalse(java.awt.GraphicsEnvironment.isHeadless(), "no graphics environment");
+
+        br.com.jorge.reis.endeavourneo.platform.Settings.useForTest(settings);
+
+        javax.swing.JFrame frame = laidOut();
+
+        try {
+            javax.swing.JScrollPane quadro = quadroOf(frame);
+            javax.swing.JSplitPane sides = (javax.swing.JSplitPane) quadro.getParent();
+            javax.swing.JToggleButton toggle = switchOf(frame);
+
+            assertNotNull(toggle, "nao ha botao para recolher o quadro");
+
+            int before = sides.getWidth() - sides.getDividerLocation();
+
+            javax.swing.SwingUtilities.invokeAndWait(toggle::doClick);
+
+            assertTrue(!quadro.isVisible(), "recolher nao escondeu o quadro");
+
+            javax.swing.SwingUtilities.invokeAndWait(toggle::doClick);
+            javax.swing.SwingUtilities.invokeAndWait(() -> { });
+
+            assertTrue(quadro.isVisible(), "voltar nao trouxe o quadro");
+
+            int after = sides.getWidth() - sides.getDividerLocation();
+
+            // O DEFEITO QUE ELE VIU: com setOneTouchExpandable, a seta que traz
+            // o quadro de volta o leva ao EXTREMO -- a janela inteira. Esconder
+            // e restaurar nao e o mesmo gesto que arrastar o divisor ate o fim,
+            // e o controle pronto nao sabe distinguir os dois.
+            assertTrue(after < sides.getWidth() / 2,
+                    "o quadro voltou tomando " + after + " de " + sides.getWidth());
+            assertTrue(Math.abs(after - before) <= 40,
+                    "o quadro voltou com " + after + " onde tinha " + before);
+        } finally {
+            letGo(frame);
             br.com.jorge.reis.endeavourneo.platform.Settings.stopUsingTestStore();
         }
     }

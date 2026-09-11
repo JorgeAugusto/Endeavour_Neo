@@ -65,6 +65,62 @@ class MainWindowTest {
         br.com.jorge.reis.endeavourneo.platform.Settings.stopUsingTestStore();
     }
 
+    /** @return se ha uma janela de backtest docada no desktop */
+    private static boolean backtestIsOpen(javax.swing.JDesktopPane desktop) {
+        String wanted = br.com.jorge.reis.endeavourneo.platform.Messages.get("backtest.title");
+
+        for (javax.swing.JInternalFrame frame : desktop.getAllFrames()) {
+            if (wanted.equals(frame.getTitle())) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    @Test
+    @DisplayName("o backtest volta com o aplicativo, e sair nao apaga a lembranca")
+    void thebacktestComesBackWithTheApplication() throws Exception {
+        br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.useFolderForTest(store);
+        br.com.jorge.reis.endeavourneo.platform.Settings.workspace()
+                .putBoolean("backtest.open", true);
+
+        try {
+            onEdt(window -> {
+                assertTrue(backtestIsOpen(window.getDesktop()),
+                        "o backtest nao voltou com o aplicativo");
+
+                window.prepareToLeave();
+
+                // A ARMADILHA QUE OS GRAFICOS JA TINHAM DOCUMENTADO: sair fecha
+                // a janela, e o fechamento escreveria "nao estava aberta" por
+                // cima da resposta que era verdadeira um instante antes. Um
+                // ajuste que so e lido depois de reiniciar falha calado e
+                // parece que funciona.
+                assertTrue(br.com.jorge.reis.endeavourneo.platform.Settings.workspace()
+                                .getBoolean("backtest.open", false),
+                        "sair apagou a lembranca de que o backtest estava aberto");
+            });
+        } finally {
+            br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.useFolderForTest(null);
+            br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.forget();
+        }
+    }
+
+    @Test
+    @DisplayName("sem a lembranca, o backtest nao aparece sozinho")
+    void withoutTheMemoryTheBacktestDoesNotAppear() throws Exception {
+        br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.useFolderForTest(store);
+
+        try {
+            onEdt(window -> assertTrue(!backtestIsOpen(window.getDesktop()),
+                    "o backtest apareceu sem nunca ter sido aberto"));
+        } finally {
+            br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.useFolderForTest(null);
+            br.com.jorge.reis.endeavourneo.platform.SeriesCatalog.forget();
+        }
+    }
+
     @Test
     @DisplayName("builds the four regions: navigator, editors, console and status bar")
     void buildsEveryRegion() throws Exception {

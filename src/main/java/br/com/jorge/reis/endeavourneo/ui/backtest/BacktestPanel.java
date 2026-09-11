@@ -48,6 +48,7 @@ import javax.swing.JScrollPane;
 import javax.swing.JSpinner;
 import javax.swing.JSplitPane;
 import javax.swing.JTable;
+import javax.swing.JToggleButton;
 import javax.swing.ListSelectionModel;
 import javax.swing.SpinnerNumberModel;
 import javax.swing.SwingWorker;
@@ -80,6 +81,15 @@ import javax.swing.table.DefaultTableCellRenderer;
 final class BacktestPanel extends JPanel {
 
     private static final long serialVersionUID = 1L;
+
+    /** Below this the quadro is a column of cut-off numbers, not a quadro. */
+    private static final int LEAST_QUADRO = 220;
+
+    /** And below this there is no chart left to look at. */
+    private static final int LEAST_CHART = 320;
+
+    /** What it is born at, and what it comes back to until the reader drags it. */
+    private static final int WANTED_QUADRO = 330;
 
     /**
      * The scales a run may be read at.
@@ -132,6 +142,18 @@ final class BacktestPanel extends JPanel {
 
     private final ResultPanel result = new ResultPanel();
 
+    private final JScrollPane quadro = new JScrollPane(result,
+            JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+            JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+
+    private final JSplitPane sides = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+
+    private final JToggleButton showQuadro =
+            new JToggleButton(Messages.get("backtest.quadro"), true);
+
+    /** Whether the divider has been put where it belongs, which needs a width. */
+    private boolean placed;
+
     private final ChartCanvas chart = new ChartCanvas();
 
     private final TradeMarks marks = new TradeMarks();
@@ -160,11 +182,24 @@ final class BacktestPanel extends JPanel {
             series.addItem(choice);
         }
 
-        series.addActionListener(e -> followTheSeries());
+        restorePicks();
+
+        series.addActionListener(e -> {
+            followTheSeries();
+            rememberPicks();
+        });
+
+        scale.addActionListener(e -> rememberPicks());
+        fast.addChangeListener(e -> rememberPicks());
+        slow.addChangeListener(e -> rememberPicks());
 
         followTheSeries();
 
         run.addActionListener(e -> start());
+
+        showQuadro.setToolTipText(Messages.get("backtest.quadro.hint"));
+        showQuadro.setFocusable(false);
+        showQuadro.addActionListener(e -> toggleQuadro());
 
         add(commands(), BorderLayout.NORTH);
         add(body(), BorderLayout.CENTER);
@@ -190,6 +225,7 @@ final class BacktestPanel extends JPanel {
         second.add(new JLabel(Messages.get("backtest.slow")));
         second.add(slow);
         second.add(Box.createHorizontalStrut(8));
+        second.add(showQuadro);
         second.add(settings);
         second.add(run);
 
@@ -197,6 +233,63 @@ final class BacktestPanel extends JPanel {
         top.add(second);
 
         return top;
+    }
+
+    /**
+     * Puts the command bar back the way it was left.
+     *
+     * <p>Run twice on the same series and the second run should be one button
+     * press, not four. And the window comes back with the application now, so
+     * coming back empty would undo exactly what that is for.</p>
+     *
+     * <p>Silently skips anything that is no longer there — a series that was
+     * retired, or a segment that was deleted, leaves the list on its first
+     * entry rather than on nothing.</p>
+     */
+    private void restorePicks() {
+        Settings prefs = Settings.workspace();
+        String wanted = prefs.get("backtest.pick.series", null);
+
+        for (int i = 0; wanted != null && i < series.getItemCount(); i++) {
+            if (series.getItemAt(i).key().equals(wanted)) {
+                series.setSelectedIndex(i);
+
+                break;
+            }
+        }
+
+        String wantedScale = prefs.get("backtest.pick.scale", null);
+
+        for (int i = 0; wantedScale != null && i < scale.getItemCount(); i++) {
+            if (scale.getItemAt(i).key().equals(wantedScale)) {
+                scale.setSelectedIndex(i);
+
+                break;
+            }
+        }
+
+        fast.setValue(prefs.getInt("backtest.pick.fast", 17));
+        slow.setValue(prefs.getInt("backtest.pick.slow", 34));
+    }
+
+    private void rememberPicks() {
+        Settings prefs = Settings.workspace();
+
+        prefs.hold(() -> {
+            SeriesChoice picked = (SeriesChoice) series.getSelectedItem();
+            Scale chosen = (Scale) scale.getSelectedItem();
+
+            if (picked != null) {
+                prefs.put("backtest.pick.series", picked.key());
+            }
+
+            if (chosen != null) {
+                prefs.put("backtest.pick.scale", chosen.key());
+            }
+
+            prefs.putInt("backtest.pick.fast", (Integer) fast.getValue());
+            prefs.putInt("backtest.pick.slow", (Integer) slow.getValue());
+        });
     }
 
     /**
@@ -229,53 +322,158 @@ final class BacktestPanel extends JPanel {
         chart.addOverlay(marks);
         chart.setPreferredSize(new Dimension(700, 320));
 
-        JSplitPane left = new JSplitPane(JSplitPane.VERTICAL_SPLIT, chart, tradeTable());
+        JSplitPane rows = new JSplitPane(JSplitPane.VERTICAL_SPLIT, chart, tradeTable());
 
-        left.setResizeWeight(0.62);
-        left.setBorder(BorderFactory.createEmptyBorder());
-        remember(left, "backtest.split.rows", 320);
-
-        JScrollPane quadro = new JScrollPane(result,
-                JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
-                JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        rows.setResizeWeight(0.62);
+        rows.setBorder(BorderFactory.createEmptyBorder());
+        remember(rows, "backtest.split.rows");
 
         quadro.setBorder(BorderFactory.createEmptyBorder());
         quadro.getVerticalScrollBar().setUnitIncrement(16);
 
-        JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, left, quadro);
+        sides.setLeftComponent(rows);
+        sides.setRightComponent(quadro);
 
         // ONE, not zero: the quadro keeps its width and the chart takes every
         // pixel the window gains. A quadro that grew with the window would push
         // the numbers apart and leave the chart no better off.
-        split.setResizeWeight(1.0);
-        split.setBorder(BorderFactory.createEmptyBorder());
-        split.setOneTouchExpandable(true);
-        remember(split, "backtest.split.quadro", -330);
+        sides.setResizeWeight(1.0);
+        sides.setBorder(BorderFactory.createEmptyBorder());
 
-        return split;
+        // AT THE FIRST LAYOUT, and not in an invokeLater. The pane has no width
+        // until it is laid out, and the first version worked the position out
+        // before that: getWidth() was zero, the location came out negative,
+        // Swing clamped it, and the quadro opened over the whole window. A
+        // component listener fires when there IS a width, which is the only
+        // moment the arithmetic means anything.
+        sides.addComponentListener(new java.awt.event.ComponentAdapter() {
+
+            @Override
+            public void componentResized(java.awt.event.ComponentEvent event) {
+                if (!placed && sides.getWidth() > 0) {
+                    placed = true;
+
+                    putTheDividerBack();
+                }
+            }
+        });
+
+        sides.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY,
+                event -> keepTheWidth());
+
+        return sides;
+    }
+
+    /**
+     * Hides the quadro, or brings it back the width it had.
+     *
+     * <p>Written by hand rather than with {@code setOneTouchExpandable}, which
+     * is what was here and is what the reader hit: its two arrows send the
+     * divider to the two <b>extremes</b>, so the click that brings the quadro
+     * back gives it the whole window instead of the width it had. Hiding a
+     * panel and restoring it are not the same gesture as dragging a divider all
+     * the way over, and the built-in control cannot tell them apart.</p>
+     */
+    private void toggleQuadro() {
+        boolean wanted = showQuadro.isSelected();
+
+        quadro.setVisible(wanted);
+        sides.setDividerSize(wanted ? new JSplitPane().getDividerSize() : 0);
+
+        sides.revalidate();
+
+        if (wanted) {
+            javax.swing.SwingUtilities.invokeLater(this::putTheDividerBack);
+        }
+    }
+
+    /**
+     * Where the divider goes, in pixels from the left.
+     *
+     * <p>Computed from the width the pane HAS, and only once it has one. The
+     * first version worked it out inside an {@code invokeLater} that could run
+     * before the pane was laid out: {@code getWidth()} was zero, the location
+     * came out negative, Swing clamped it to nothing, and the quadro opened
+     * over the whole window. That is the same symptom from the other
+     * direction.</p>
+     */
+    private void putTheDividerBack() {
+        int width = sides.getWidth();
+
+        if (width <= 0) {
+            // Not laid out yet. Leaving it alone is right: with no location
+            // set, the split honours the preferred widths, which is where the
+            // quadro wanted to be anyway.
+            return;
+        }
+
+        sides.setDividerLocation(Math.max(LEAST_CHART, width - quadroWidth()));
+    }
+
+    private int quadroWidth() {
+        return Math.max(LEAST_QUADRO,
+                Settings.workspace().getInt("backtest.quadro.width", WANTED_QUADRO));
+    }
+
+    /**
+     * Writes down how wide the quadro is, when that is a width worth keeping.
+     *
+     * <p>Every guard here earned its place. The divider reads {@code -1} until
+     * the pane is laid out, and {@code getWidth() - (-1)} is one pixel WIDER
+     * than the whole pane: stored, it came back as "the quadro wants 1169 of
+     * 1168", the divider was clamped to its minimum, and the quadro filled the
+     * window. That is the defect the reader saw, and it was written by the line
+     * that was supposed to remember his preference.</p>
+     */
+    private void keepTheWidth() {
+        if (!placed || !quadro.isVisible()) {
+            return;
+        }
+
+        int span = sides.getWidth();
+        int where = sides.getDividerLocation();
+
+        if (span <= 0 || where < LEAST_CHART) {
+            return;
+        }
+
+        int width = span - where;
+
+        if (width >= LEAST_QUADRO && width <= span - LEAST_CHART) {
+            Settings.workspace().putInt("backtest.quadro.width", width);
+        }
     }
 
     /**
      * Keeps a divider where the reader left it.
      *
-     * @param fallback where it starts; negative means "that far from the end"
+     * <p>Nothing is written while either side is too small to be a side. That
+     * guard is the other half of the collapse defect: a panel driven to an
+     * extreme wrote the extreme down, so the position survived the restart and
+     * the window came back broken.</p>
+     *
+     * <p>And nothing is set at birth unless something was saved. With no
+     * location, the split honours the preferred sizes of its two halves — which
+     * is exactly the layout wanted, arrived at without any arithmetic that can
+     * run before the pane has a width.</p>
      */
-    private static void remember(JSplitPane split, String key, int fallback) {
+    private void remember(JSplitPane split, String key) {
         Settings prefs = Settings.workspace();
         int saved = prefs.getInt(key, Integer.MIN_VALUE);
 
-        split.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY,
-                event -> prefs.putInt(key, split.getDividerLocation()));
+        split.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, event -> {
+            int where = split.getDividerLocation();
+            int span = split.getOrientation() == JSplitPane.HORIZONTAL_SPLIT
+                    ? split.getWidth() : split.getHeight();
 
-        javax.swing.SwingUtilities.invokeLater(() -> {
-            if (saved != Integer.MIN_VALUE && saved > 0) {
-                split.setDividerLocation(saved);
-            } else if (fallback < 0) {
-                split.setDividerLocation(split.getWidth() + fallback);
-            } else {
-                split.setDividerLocation(fallback);
+            if (quadro.isVisible() && where >= LEAST_CHART && span - where >= LEAST_QUADRO) {
+                prefs.putInt(key, where);
             }
         });
+
+        if (saved > 0) {
+            javax.swing.SwingUtilities.invokeLater(() -> split.setDividerLocation(saved));
+        }
     }
 
     private JScrollPane tradeTable() {
