@@ -45,9 +45,23 @@ O que o vocabulário pode dizer é a **interseção** do que os alvos executam:
      NTSL  ∩  MQL5  ∩  nosso motor
 ```
 
-O NTSL é o mais pobre dos três, e já sabemos onde ele aperta: ordens a mercado,
-inversão feita em **duas** ordens, sem parcial. Está registrado no porte da rede
-para o Profit.
+O NTSL é o mais pobre dos três, e já sabemos onde ele aperta: ordens a mercado e
+inversão feita em **duas** ordens. Está registrado no porte da rede para o
+Profit.
+
+**Corrigido em 12/09/2026: o "sem parcial" que estava escrito aqui é falso.** O
+manual diz que a quantidade é opcional em toda ordem de cobertura e que, dada no
+código, prevalece sobre a aba de Execução; e o `RoboPadraoTendencia` do acervo
+emite `SellToCoverLimit(vAlvoParcial, vQtdParcial)` e
+`SellToCoverLimit(vAlvoAtivo, vPosC - vQtdParcial)` lado a lado, em produção. A
+frase vinha do porte da rede, onde a decisão de usar só ordens a mercado era da
+*rede*, não do NTSL — e virou uma limitação da plataforma sem nunca ter sido uma.
+
+O que o NTSL realmente exige, e que o acervo registra com todas as letras, é
+**um call-site por ordem**: "alternar o tipo/tamanho no MESMO lugar faria o
+Profit cancelar e recriar a ordem a cada passada". Um laço emitindo cinco preços
+diferentes do mesmo ponto do código é exatamente isso. Quem for gerar NTSL tem
+que desenrolar.
 
 Dimensionado ao NTSL, traduzir é mecânico. Dimensionado ao MQL5, algumas
 estratégias simplesmente não portam — e isso se descobre tarde, depois de a

@@ -1,0 +1,706 @@
+// ============================================================================
+// RoboRange90 -- Range 90 + EMA 10 + giro por pullbacks  (NTSL / Profit)
+// ============================================================================
+// O QUE E': o porte para o Profit da estrategia RangeBreakout do endeavour_neo.
+//   Forma um range com os 90 primeiros minutos de RELOGIO de cada pregao, toma
+//   o PRIMEIRO rompimento dele, so do lado para onde a EMA 10 diaria esta
+//   inclinada, entra com 4 contratos, larga metade de cada lote em 0,5R,
+//   acrescenta um lote de 4 a cada pullback confirmado ate 20 simultaneos, e
+//   encerra tudo as 17:45.
+//
+// O QUE NAO TEM, de proposito: o seletor walk-forward. No motor ele decide todo
+//   dia se opera e se o alvo e 1,5R ou 2R, com 24 meses de historico simulado
+//   por tras. Aqui ele OPERA TODO DIA com alvo fixo de 1,5R -- foi assim que
+//   foi pedido, e e a unica parte da estrategia que o NTSL nao alcancaria:
+//   pontuar dois alvos exige rodar uma simulacao aninhada sobre os pregoes
+//   passados, e um robo caminha a serie uma vez so.
+//
+// MODELO DE EXECUCAO NTSL (ler antes de editar):
+//   - begin..end roda 1x por candle E de novo a cada TICK do candle em formacao.
+//   - variaveis do bloco 'var' sao GLOBAIS e PERSISTEM entre os candles.
+//   - SEM FUNCOES: tudo inline. Funcao NTSL nao enxerga global, entao uma
+//     funcao aqui ou nao compila ou mente.
+//   - nao ha 'procedure', nao ha 'div'; divisao inteira e Round(Floor(a/b)) e o
+//     resto e mod(a, b).
+//   - X[i] = i candles atras ; X / X[0] = candle atual ; Time = inteiro HHMM.
+//   - as ordens de COBERTURA sao uma OCO: uma perna executa e as outras morrem.
+//     Nao reemitir uma ordem equivale a cancela-la.
+//   - comentarios em ASCII puro (sem acento) p/ nao quebrar o editor do Profit.
+//
+// O QUE FOI COPIADO DO ACERVO, e nao inventado:
+//   - a guarda de 1x por candle e' ContadorDeCandle() <> vUltCandle, como em
+//     Robo_Mateus_3_1m [F-R90].
+//   - o range de 90 min e' acumulado PARA FRENTE (High[1]/Low[1] do candle que
+//     completou, mais a previa do atual enquanto dentro da janela) e CONGELA
+//     quando a janela fecha -- o mesmo bloco 0r90 daquele robo. Varrer para
+//     tras funcionaria, mas ele ja resolveu isso em producao.
+//   - abertura REAL do dia detectada na virada de data, sem horario fixo:
+//     robusto a pregao tardio e a feriado.
+//   - minutos-do-dia: Round(Floor(Time / 100)) * 60 + mod(Time, 100).
+//   - a posicao e' descoberta comparando BuyPositionQty/SellPositionQty com a
+//     leitura anterior, que e' como o RoboMateus2Novo rastreia entrada.
+//
+// DUAS COISAS QUE ESTE ROBO FAZ DIFERENTE DO MOTOR, e o motivo:
+//
+//   1. ELE NAO SABE QUAIS ORDENS EXECUTARAM. O motor entrega a lista de
+//      execucoes da barra e o livro de lotes se acerta com ela. O NTSL entrega
+//      a POSICAO, e mais nada -- entao aqui o livro e reconciliado por PRECO:
+//      quando a posicao encolhe, quem explica o encolhimento e o nivel que o
+//      candle alcancou. Com stop e parcial alcancaveis no mesmo candle ganha o
+//      STOP, que e o lado conservador e e o mesmo desempate do motor.
+//
+//   2. NO BACKTEST DO PROFIT SAI UM LOTE POR CANDLE. As coberturas sao uma OCO:
+//      uma executa, as outras morrem, e o livro so e reemitido no candle
+//      seguinte. AO VIVO nao e assim -- o bloco roda a cada tick, entao o livro
+//      e reemitido dentro do candle e varios lotes saem um atras do outro, que
+//      e como o motor se comporta no modo tick a tick.
+//
+// CONFERIR ANTES DE CONFIAR:
+//   - CloseD(n) conta DIAS. Se contar dia de calendario em vez de pregao, a EMA
+//     10 repete o fechamento de sexta no sabado e no domingo e a inclinacao sai
+//     de outra serie. Ligue Diagnostico e compare vIncl com a EMA 10 do grafico
+//     diario ANTES de por dinheiro nisso.
+//   - a quantidade das ordens tem de ser multipla do lote do ativo.
+//   - rodar em grafico de 1 MINUTO: a formacao conta minutos de relogio, mas o
+//     rompimento e o pullback leem CANDLE, e em 5 minutos viram outra coisa.
+// ============================================================================
+
+input
+  // --- o range ---
+  MinutosFormacao(90);     // minutos de RELOGIO desde o 1o candle do pregao
+  TickGatilho(5);          // quanto acima da maxima (abaixo da minima) dispara
+  MinutosJanela(30);       // o rompimento tem de vir antes disso, ou o dia morre
+  HoraUltimaEntrada(1730); // e antes desta hora, em HHMM
+
+  // --- o giro ---
+  Lote(4);                 // contratos na entrada e em cada pullback
+  MaximoSimultaneo(20);    // teto de contratos abertos ao mesmo tempo
+  AlvoR(1.5);              // alvo global, em multiplos do risco inicial
+  ParcialR(0.5);           // cada lote larga metade quando anda isto
+  ArmaR(0.25);             // so arma pullback depois de a operacao andar isto
+
+  // --- o filtro e o fim do dia ---
+  PeriodoEmaDia(10);       // a EMA diaria que decide o lado
+  AquecimentoDias(60);     // quantos fechamentos diarios entram na conta
+  HoraEncerra(1745);       // tudo zerado neste horario, aconteca o que acontecer
+
+  // --- diagnostico ---
+  Diagnostico(false);      // plota range, alvo e stop, e loga no console
+
+const
+  // OITO, e casado com os call-sites da emissao la embaixo: cada lote tem o
+  // proprio ponto no codigo de onde o stop e a parcial dele saem, e um lote que
+  // o livro aceitasse alem do oitavo entraria SEM STOP PROPRIO -- pior que nao
+  // entrar. Com Lote(4) e teto 20 cabem cinco, e sobra folga.
+  MAX_LOTES = 8;
+
+var
+  // --- o pregao ---
+  vDataAnterior : float;                   // Date do pregao corrente
+  vUltCandle    : integer;                 // ContadorDeCandle() ja processado
+  vMinAbertura, vMinAgora : integer;       // minutos-do-dia
+
+  // --- o range ---
+  vRangeMax, vRangeMin : float;
+  vRangeConcluido : boolean;
+
+  // --- o dia ---
+  vIncl     : float;                       // inclinacao da EMA 10 diaria
+  vLado     : integer;                     // +1 compra, -1 venda, 0 nenhum
+  vGatilho  : float;
+  vStopDia  : float;
+  vEntrada  : float;
+  vRisco    : float;
+  vAlvo     : float;
+  vEntrou   : boolean;
+  vDesistiu : boolean;
+
+  // --- o pullback ---
+  vArmado     : boolean;
+  vTemExtremo : boolean;
+  vExtremo    : float;                     // extremo do pullback, NORMALIZADO
+  vTemFechAnt : boolean;
+  vFechAnt    : float;                     // fechamento anterior, NORMALIZADO
+  vAdicao     : float;
+  vStopAdicao : float;
+  vTemAdicao  : boolean;
+
+  // --- o livro de lotes ---
+  arrQtd    : array[0..MAX_LOTES] of integer;
+  arrEnt    : array[0..MAX_LOTES] of float;
+  arrStop   : array[0..MAX_LOTES] of float;
+  arrLargou : array[0..MAX_LOTES] of integer;
+  vLotes    : integer;
+
+  // --- auxiliares ---
+  vI, vJ, vQtdReal, vQtdLivro, vSaiu, vCabe : integer;
+  vQual, vLeva, vMetade, vSobra : integer;
+  vAlfa, vAnte, vOntem : float;
+  vFech, vFav, vAdv, vNivel : float;
+  vNovoDia : boolean;
+
+Initialization
+begin
+  vDataAnterior   := 0;
+  vUltCandle      := -1;
+  vRangeConcluido := false;
+  vEntrou         := false;
+  vDesistiu       := true;     // ate o primeiro pregao virar, nao ha o que fazer
+  vLotes          := 0;
+  vLado           := 0;
+end;
+
+// ============================================================================
+begin
+
+  vMinAgora := Round(Floor(Time / 100)) * 60 + mod(Time, 100);
+
+  // ==========================================================================
+  // VIROU O DIA
+  //
+  // Abertura REAL detectada na virada de data, sem horario fixo: robusto a
+  // pregao tardio e a feriado -- o mesmo criterio do bloco 0r90 do
+  // Robo_Mateus_3_1m. ContadorDeCandle() = 1 entra junto porque o primeiro
+  // candle do grafico tambem comeca um pregao.
+  // ==========================================================================
+  vNovoDia := (ContadorDeCandle() = 1) or (Date <> vDataAnterior);
+
+  if vNovoDia then
+  begin
+    vDataAnterior := Date;
+    vMinAbertura  := vMinAgora;
+
+    vRangeMax       := High;
+    vRangeMin       := Low;
+    vRangeConcluido := false;
+
+    vLado     := 0;
+    vGatilho  := 0;
+    vStopDia  := 0;
+    vEntrada  := 0;
+    vRisco    := 0;
+    vAlvo     := 0;
+    vEntrou   := false;
+    vDesistiu := false;
+
+    vArmado     := false;
+    vTemExtremo := false;
+    vExtremo    := 0;
+    vTemFechAnt := false;
+    vFechAnt    := 0;
+    vAdicao     := 0;
+    vStopAdicao := 0;
+    vTemAdicao  := false;
+
+    vLotes := 0;
+
+    for vI := 0 to MAX_LOTES - 1 do
+    begin
+      arrQtd[vI]    := 0;
+      arrEnt[vI]    := 0;
+      arrStop[vI]   := 0;
+      arrLargou[vI] := 0;
+    end;
+
+    // --- a inclinacao da EMA 10 diaria, com SO pregoes encerrados ---
+    //
+    // CloseD(1) e o fechamento de ontem. O de HOJE -- CloseD(0) -- nao entra:
+    // ler o fechamento do proprio dia que se vai operar e o erro que faz toda
+    // estrategia parecer maravilhosa sem nada na tela dizendo por que.
+    //
+    // Semeia no mais antigo e caminha para frente, porque nao ha 'downto' em
+    // lugar nenhum do manual nem do acervo.
+    vAlfa := 2 / (PeriodoEmaDia + 1);
+    vAnte := CloseD(AquecimentoDias);
+
+    for vI := 0 to AquecimentoDias - 3 do
+      vAnte := vAnte + vAlfa * (CloseD(AquecimentoDias - 1 - vI) - vAnte);
+
+    // vAnte e a EMA ate ANTEONTEM. Mais um passo e temos a de ONTEM.
+    vOntem := vAnte + vAlfa * (CloseD(1) - vAnte);
+    vIncl  := vOntem - vAnte;
+
+    if Diagnostico then
+      ConsoleLog("[R90] " + FloatToString(Date, 0) + " abertura=" + FloatToString(Time, 0)
+                 + " incl=" + FloatToString(vIncl, 2));
+  end;
+
+  // ==========================================================================
+  // O RANGE DE 90 MINUTOS
+  //
+  // Acumulado PARA FRENTE e nao varrido para tras: cada candle entra COMPLETO
+  // via High[1]/Low[1] no candle seguinte (sem perder rabo intrabar), e o
+  // parcial do atual entra como previa enquanto a janela esta aberta. Quando a
+  // janela fecha, CONGELA -- e a previa do candle que a fechou nao entra,
+  // porque ele ja esta fora dos 90 minutos.
+  //
+  // Uma vez por candle, guardado por ContadorDeCandle().
+  // ==========================================================================
+  if (ContadorDeCandle() <> vUltCandle) and (not vNovoDia) then
+  begin
+    if not vRangeConcluido then
+    begin
+      if High[1] > vRangeMax then vRangeMax := High[1];
+      if Low[1]  < vRangeMin then vRangeMin := Low[1];
+
+      if vMinAgora < vMinAbertura + MinutosFormacao then
+      begin
+        if High > vRangeMax then vRangeMax := High;
+        if Low  < vRangeMin then vRangeMin := Low;
+      end
+      else
+      begin
+        vRangeConcluido := true;
+
+        if Diagnostico then
+          ConsoleLog("[R90] range concluido em " + FloatToString(Time, 0)
+                     + " max=" + FloatToString(vRangeMax, 0)
+                     + " min=" + FloatToString(vRangeMin, 0));
+      end;
+    end;
+  end;
+
+  // ==========================================================================
+  // A POSICAO REAL, QUE E A VERDADE
+  //
+  // O NTSL nao entrega execucoes; entrega a POSICAO. O robo descobre o que
+  // aconteceu comparando a quantidade com o que o livro dele afirma, que e como
+  // o RoboMateus2Novo rastreia entrada.
+  // ==========================================================================
+  vQtdReal := 0;
+
+  if IsBought then
+    vQtdReal := Round(BuyPositionQty)
+  else if IsSold then
+    vQtdReal := Round(SellPositionQty);
+
+  vQtdLivro := 0;
+
+  for vI := 0 to vLotes - 1 do
+    vQtdLivro := vQtdLivro + arrQtd[vI];
+
+  // --- entrou? --------------------------------------------------------------
+  if (not vEntrou) and (vQtdReal > 0) and (vLado <> 0) then
+  begin
+    vEntrou := true;
+
+    // O preco MEDIO da posicao, que logo apos a primeira execucao E o preco
+    // dela. Pedir o gatilho seria ignorar o gap: o motor tambem executa no pior
+    // entre o gatilho e a abertura.
+    if vLado > 0 then
+      vEntrada := BuyPrice
+    else
+      vEntrada := SellPrice;
+
+    if vLado > 0 then
+      vStopDia := vRangeMin
+    else
+      vStopDia := vRangeMax;
+
+    vRisco := vEntrada - vStopDia;
+
+    if vRisco < 0 then
+      vRisco := 0 - vRisco;
+
+    vAlvo := vEntrada + vLado * AlvoR * vRisco;
+
+    arrQtd[0]    := vQtdReal;
+    arrEnt[0]    := vEntrada;
+    arrStop[0]   := vStopDia;
+    arrLargou[0] := 0;
+    vLotes       := 1;
+    vQtdLivro    := vQtdReal;
+
+    vGatilho := 0;
+
+    if Diagnostico then
+      ConsoleLog("[R90] entrou " + FloatToString(vLado, 0) + " em "
+                 + FloatToString(vEntrada, 0) + " stop=" + FloatToString(vStopDia, 0)
+                 + " R=" + FloatToString(vRisco, 0) + " alvo=" + FloatToString(vAlvo, 0));
+  end;
+
+  // --- a adicao executou? ---------------------------------------------------
+  if vEntrou and (vQtdReal > vQtdLivro) and vTemAdicao and (vLotes < MAX_LOTES) then
+  begin
+    arrQtd[vLotes]    := vQtdReal - vQtdLivro;
+    arrEnt[vLotes]    := vAdicao;
+    arrStop[vLotes]   := vStopAdicao;
+    arrLargou[vLotes] := 0;
+    vLotes            := vLotes + 1;
+    vQtdLivro         := vQtdReal;
+
+    vArmado     := false;
+    vTemExtremo := false;
+    vExtremo    := 0;
+    vTemAdicao  := false;
+    vAdicao     := 0;
+  end;
+
+  // ==========================================================================
+  // ALGUMA COISA SAIU?
+  //
+  // Quem explica o encolhimento e o NIVEL que o candle fechado alcancou, e com
+  // stop e parcial alcancaveis no mesmo candle ganha o stop: e o lado
+  // conservador, e e o mesmo desempate que o motor faz.
+  // ==========================================================================
+  if vEntrou and (vQtdReal < vQtdLivro) then
+  begin
+    vSaiu := vQtdLivro - vQtdReal;
+
+    if vQtdReal = 0 then
+      vLotes := 0
+    else
+    begin
+      // O extremo FAVORAVEL do candle que acabou de fechar.
+      if vLado > 0 then
+        vFav := High[1]
+      else
+        vFav := Low[1];
+
+      // A parcial de um lote e meia posicao dele, num nivel proprio. Se o
+      // extremo favoravel alcancou esse nivel e a conta bate, foi ela.
+      vQual := -1;
+
+      for vI := 0 to vLotes - 1 do
+      begin
+        if (arrLargou[vI] = 0) and (vQual < 0) then
+        begin
+          vNivel  := arrEnt[vI] + vLado * ParcialR * vRisco;
+          vMetade := Round(Floor(arrQtd[vI] / 2));
+
+          if (vMetade = vSaiu)
+             and (((vLado > 0) and (vFav >= vNivel))
+                  or ((vLado < 0) and (vFav <= vNivel))) then
+            vQual := vI;
+        end;
+      end;
+
+      if vQual >= 0 then
+      begin
+        arrQtd[vQual]    := arrQtd[vQual] - vSaiu;
+        arrLargou[vQual] := 1;
+      end
+      else
+      begin
+        // Nao foi parcial: foi stop, ou foi coisa que este robo nao explica.
+        // De qualquer jeito o livro NAO PODE afirmar mais contratos do que
+        // existem -- um livro maior que a posicao passa o resto do dia
+        // emitindo ordem para papel que ja saiu.
+        //
+        // Do lote MAIS NOVO para o mais antigo: os stops sobem com a escada,
+        // porque um pullback so arma depois de a operacao andar, e cada lote
+        // acrescentado fica protegido mais perto do preco que o anterior.
+        // Quando o preco vira, o primeiro a sair e o ultimo que entrou.
+        vSobra := vSaiu;
+        vJ     := vLotes - 1;
+
+        while (vSobra > 0) and (vJ >= 0) do
+        begin
+          vLeva := arrQtd[vJ];
+
+          if vLeva > vSobra then
+            vLeva := vSobra;
+
+          arrQtd[vJ] := arrQtd[vJ] - vLeva;
+          vSobra     := vSobra - vLeva;
+
+          if arrQtd[vJ] <= 0 then
+            vLotes := vJ;
+
+          vJ := vJ - 1;
+        end;
+      end;
+    end;
+
+    vQtdLivro := 0;
+
+    for vI := 0 to vLotes - 1 do
+      vQtdLivro := vQtdLivro + arrQtd[vI];
+  end;
+
+  // --- o dia acabou? --------------------------------------------------------
+  if vEntrou and (vQtdLivro = 0) then
+    vDesistiu := true;
+
+  // ==========================================================================
+  // ENCERRAR NO HORARIO
+  //
+  // Aconteca o que acontecer no resto do pregao. Posicao viva depois disso e
+  // posicao levada para o leilao de fechamento, quando o livro afina e um stop
+  // executa onde der.
+  // ==========================================================================
+  if Time >= HoraEncerra then
+  begin
+    if vQtdReal > 0 then
+      ClosePosition;
+
+    vLotes     := 0;
+    vQtdLivro  := 0;
+    vDesistiu  := true;
+    vGatilho   := 0;
+    vAdicao    := 0;
+    vTemAdicao := false;
+  end;
+
+  // ==========================================================================
+  // A MAQUINA DE ESTADO ANDA UMA VEZ POR CANDLE
+  //
+  // Tudo aqui le o candle que ACABOU DE FECHAR -- indice [1]. O bloco inteiro
+  // roda a cada tick, e um pullback que se armasse a cada tick estaria lendo
+  // ruido e nao um fechamento.
+  // ==========================================================================
+  if (ContadorDeCandle() <> vUltCandle) and vRangeConcluido and (not vDesistiu) then
+  begin
+    if not vEntrou then
+    begin
+      // --- ainda procurando o rompimento ---
+      if (vMinAgora - vMinAbertura - MinutosFormacao >= MinutosJanela)
+         or (Time >= HoraUltimaEntrada) then
+      begin
+        vDesistiu := true;
+        vGatilho  := 0;
+      end
+      else
+      begin
+        // O PRIMEIRO rompimento decide o dia, seja de que lado for. Rompeu
+        // contra a EMA, o dia morre -- e nao fica com o gatilho armado
+        // esperando um segundo rompimento que a estrategia nunca tomaria.
+        if ((High[1] >= vRangeMax + TickGatilho) and (vIncl < 0))
+           or ((Low[1] <= vRangeMin - TickGatilho) and (vIncl > 0)) then
+        begin
+          vDesistiu := true;
+          vGatilho  := 0;
+        end
+        else if vIncl > 0 then
+        begin
+          vLado    := 1;
+          vGatilho := vRangeMax + TickGatilho;
+        end
+        else if vIncl < 0 then
+        begin
+          vLado    := -1;
+          vGatilho := vRangeMin - TickGatilho;
+        end
+        else
+          // Inclinacao zero, ou historico insuficiente: nao opera. Escolher um
+          // lado sem inclinacao seria jogar moeda com o dinheiro dele.
+          vDesistiu := true;
+      end;
+    end
+    else
+    begin
+      // --- posicionado: o pullback ---
+      //
+      // Em preco NORMALIZADO pelo lado, para a mesma conta servir a compra e a
+      // venda: nessa escala toda operacao vencedora anda para cima.
+      vFech := vLado * Close[1];
+
+      if vLado > 0 then
+      begin
+        vFav := vLado * High[1];
+        vAdv := vLado * Low[1];
+      end
+      else
+      begin
+        vFav := vLado * Low[1];
+        vAdv := vLado * High[1];
+      end;
+
+      // Arma quando a operacao ja andou 0,25R E este fechamento veio abaixo do
+      // anterior. Sem o piso, o pullback arma no primeiro fechamento mais baixo
+      // -- que na pratica e o candle seguinte a entrada -- e a estrategia vira
+      // uma maquina de empilhar lote em cima de si mesma.
+      if vTemFechAnt and (vFav - vLado * vEntrada >= ArmaR * vRisco)
+         and (vFech < vFechAnt) then
+      begin
+        vArmado := true;
+
+        if (not vTemExtremo) or (vAdv < vExtremo) then
+        begin
+          vExtremo    := vAdv;
+          vTemExtremo := true;
+        end;
+      end;
+
+      // A ordem descansa no extremo favoravel do candle que ACABOU de fechar:
+      // o nivel ser ultrapassado E a confirmacao, escrita como ordem em vez de
+      // como teste.
+      if vArmado and vTemExtremo and (vQtdLivro < MaximoSimultaneo) then
+      begin
+        vAdicao     := vLado * vFav;
+        vStopAdicao := vLado * vExtremo;
+        vTemAdicao  := true;
+      end
+      else
+      begin
+        vAdicao    := 0;
+        vTemAdicao := false;
+      end;
+
+      vFechAnt    := vFech;
+      vTemFechAnt := true;
+    end;
+  end;
+
+  // A guarda de 1x por candle e' baixada DEPOIS dos dois blocos que a usam. Se
+  // cada um baixasse a sua, o segundo nunca rodaria no mesmo candle.
+  if ContadorDeCandle() <> vUltCandle then
+    vUltCandle := ContadorDeCandle();
+
+  // ==========================================================================
+  // O LIVRO DE ORDENS, REEMITIDO
+  //
+  // No NTSL nao reemitir uma ordem e cancela-la. Entao tudo que a estrategia
+  // ainda quer e pedido de novo, toda passagem.
+  // ==========================================================================
+  if (not vEntrou) and (vGatilho > 0) and (not vDesistiu) then
+  begin
+    if vLado > 0 then
+      BuyStop(vGatilho, vGatilho, Lote)
+    else
+      SellShortStop(vGatilho, vGatilho, Lote);
+  end;
+
+  // --------------------------------------------------------------------------
+  // UM CALL-SITE POR LOTE, e nao um laco.
+  //
+  // Esta e' a regra que o RoboPadraoTendencia registra com todas as letras:
+  // "CALL-SITES SEPARADOS de proposito: alternar o tipo/tamanho no MESMO lugar
+  // faria o Profit cancelar e recriar a ordem a cada passada". Um laco emitindo
+  // cinco precos diferentes do mesmo ponto do codigo e' exatamente isso -- a
+  // corretora receberia cancelamento e recriacao a cada tick, e a ordem perderia
+  // a fila toda vez.
+  //
+  // Desenrolado, o preco de cada linha so muda quando o lote daquela posicao
+  // muda: uma vez quando ele nasce e uma vez quando larga a metade.
+  //
+  // O TETO E' ESTE: oito lotes. Com Lote(4) e MaximoSimultaneo(20) cabem cinco,
+  // e sobra folga. Com Lote(1) e teto 20 o livro quereria vinte, e do nono em
+  // diante o lote fica SEM STOP PROPRIO -- so o alvo global o tira. Se for para
+  // usar lote 1, este bloco precisa crescer junto.
+  // --------------------------------------------------------------------------
+  if vEntrou and (vQtdLivro > 0) and (vLado > 0) then
+  begin
+    if (vLotes > 0) and (arrQtd[0] > 0) then
+      SellToCoverStop(arrStop[0], arrStop[0], arrQtd[0]);
+    if (vLotes > 1) and (arrQtd[1] > 0) then
+      SellToCoverStop(arrStop[1], arrStop[1], arrQtd[1]);
+    if (vLotes > 2) and (arrQtd[2] > 0) then
+      SellToCoverStop(arrStop[2], arrStop[2], arrQtd[2]);
+    if (vLotes > 3) and (arrQtd[3] > 0) then
+      SellToCoverStop(arrStop[3], arrStop[3], arrQtd[3]);
+    if (vLotes > 4) and (arrQtd[4] > 0) then
+      SellToCoverStop(arrStop[4], arrStop[4], arrQtd[4]);
+    if (vLotes > 5) and (arrQtd[5] > 0) then
+      SellToCoverStop(arrStop[5], arrStop[5], arrQtd[5]);
+    if (vLotes > 6) and (arrQtd[6] > 0) then
+      SellToCoverStop(arrStop[6], arrStop[6], arrQtd[6]);
+    if (vLotes > 7) and (arrQtd[7] > 0) then
+      SellToCoverStop(arrStop[7], arrStop[7], arrQtd[7]);
+
+    if (vLotes > 0) and (arrQtd[0] > 0) and (arrLargou[0] = 0)
+       and (Round(Floor(arrQtd[0] / 2)) >= 1) then
+      SellToCoverLimit(arrEnt[0] + ParcialR * vRisco, Round(Floor(arrQtd[0] / 2)));
+    if (vLotes > 1) and (arrQtd[1] > 0) and (arrLargou[1] = 0)
+       and (Round(Floor(arrQtd[1] / 2)) >= 1) then
+      SellToCoverLimit(arrEnt[1] + ParcialR * vRisco, Round(Floor(arrQtd[1] / 2)));
+    if (vLotes > 2) and (arrQtd[2] > 0) and (arrLargou[2] = 0)
+       and (Round(Floor(arrQtd[2] / 2)) >= 1) then
+      SellToCoverLimit(arrEnt[2] + ParcialR * vRisco, Round(Floor(arrQtd[2] / 2)));
+    if (vLotes > 3) and (arrQtd[3] > 0) and (arrLargou[3] = 0)
+       and (Round(Floor(arrQtd[3] / 2)) >= 1) then
+      SellToCoverLimit(arrEnt[3] + ParcialR * vRisco, Round(Floor(arrQtd[3] / 2)));
+    if (vLotes > 4) and (arrQtd[4] > 0) and (arrLargou[4] = 0)
+       and (Round(Floor(arrQtd[4] / 2)) >= 1) then
+      SellToCoverLimit(arrEnt[4] + ParcialR * vRisco, Round(Floor(arrQtd[4] / 2)));
+    if (vLotes > 5) and (arrQtd[5] > 0) and (arrLargou[5] = 0)
+       and (Round(Floor(arrQtd[5] / 2)) >= 1) then
+      SellToCoverLimit(arrEnt[5] + ParcialR * vRisco, Round(Floor(arrQtd[5] / 2)));
+    if (vLotes > 6) and (arrQtd[6] > 0) and (arrLargou[6] = 0)
+       and (Round(Floor(arrQtd[6] / 2)) >= 1) then
+      SellToCoverLimit(arrEnt[6] + ParcialR * vRisco, Round(Floor(arrQtd[6] / 2)));
+    if (vLotes > 7) and (arrQtd[7] > 0) and (arrLargou[7] = 0)
+       and (Round(Floor(arrQtd[7] / 2)) >= 1) then
+      SellToCoverLimit(arrEnt[7] + ParcialR * vRisco, Round(Floor(arrQtd[7] / 2)));
+
+    // O alvo global fecha o que sobrou, de uma vez.
+    SellToCoverLimit(vAlvo, vQtdLivro);
+  end;
+
+  if vEntrou and (vQtdLivro > 0) and (vLado < 0) then
+  begin
+    if (vLotes > 0) and (arrQtd[0] > 0) then
+      BuyToCoverStop(arrStop[0], arrStop[0], arrQtd[0]);
+    if (vLotes > 1) and (arrQtd[1] > 0) then
+      BuyToCoverStop(arrStop[1], arrStop[1], arrQtd[1]);
+    if (vLotes > 2) and (arrQtd[2] > 0) then
+      BuyToCoverStop(arrStop[2], arrStop[2], arrQtd[2]);
+    if (vLotes > 3) and (arrQtd[3] > 0) then
+      BuyToCoverStop(arrStop[3], arrStop[3], arrQtd[3]);
+    if (vLotes > 4) and (arrQtd[4] > 0) then
+      BuyToCoverStop(arrStop[4], arrStop[4], arrQtd[4]);
+    if (vLotes > 5) and (arrQtd[5] > 0) then
+      BuyToCoverStop(arrStop[5], arrStop[5], arrQtd[5]);
+    if (vLotes > 6) and (arrQtd[6] > 0) then
+      BuyToCoverStop(arrStop[6], arrStop[6], arrQtd[6]);
+    if (vLotes > 7) and (arrQtd[7] > 0) then
+      BuyToCoverStop(arrStop[7], arrStop[7], arrQtd[7]);
+
+    if (vLotes > 0) and (arrQtd[0] > 0) and (arrLargou[0] = 0)
+       and (Round(Floor(arrQtd[0] / 2)) >= 1) then
+      BuyToCoverLimit(arrEnt[0] - ParcialR * vRisco, Round(Floor(arrQtd[0] / 2)));
+    if (vLotes > 1) and (arrQtd[1] > 0) and (arrLargou[1] = 0)
+       and (Round(Floor(arrQtd[1] / 2)) >= 1) then
+      BuyToCoverLimit(arrEnt[1] - ParcialR * vRisco, Round(Floor(arrQtd[1] / 2)));
+    if (vLotes > 2) and (arrQtd[2] > 0) and (arrLargou[2] = 0)
+       and (Round(Floor(arrQtd[2] / 2)) >= 1) then
+      BuyToCoverLimit(arrEnt[2] - ParcialR * vRisco, Round(Floor(arrQtd[2] / 2)));
+    if (vLotes > 3) and (arrQtd[3] > 0) and (arrLargou[3] = 0)
+       and (Round(Floor(arrQtd[3] / 2)) >= 1) then
+      BuyToCoverLimit(arrEnt[3] - ParcialR * vRisco, Round(Floor(arrQtd[3] / 2)));
+    if (vLotes > 4) and (arrQtd[4] > 0) and (arrLargou[4] = 0)
+       and (Round(Floor(arrQtd[4] / 2)) >= 1) then
+      BuyToCoverLimit(arrEnt[4] - ParcialR * vRisco, Round(Floor(arrQtd[4] / 2)));
+    if (vLotes > 5) and (arrQtd[5] > 0) and (arrLargou[5] = 0)
+       and (Round(Floor(arrQtd[5] / 2)) >= 1) then
+      BuyToCoverLimit(arrEnt[5] - ParcialR * vRisco, Round(Floor(arrQtd[5] / 2)));
+    if (vLotes > 6) and (arrQtd[6] > 0) and (arrLargou[6] = 0)
+       and (Round(Floor(arrQtd[6] / 2)) >= 1) then
+      BuyToCoverLimit(arrEnt[6] - ParcialR * vRisco, Round(Floor(arrQtd[6] / 2)));
+    if (vLotes > 7) and (arrQtd[7] > 0) and (arrLargou[7] = 0)
+       and (Round(Floor(arrQtd[7] / 2)) >= 1) then
+      BuyToCoverLimit(arrEnt[7] - ParcialR * vRisco, Round(Floor(arrQtd[7] / 2)));
+
+    BuyToCoverLimit(vAlvo, vQtdLivro);
+  end;
+
+  if vEntrou and (vQtdLivro > 0) then
+  begin
+
+    // E a adicao, se houver espaco debaixo do teto.
+    if vTemAdicao and (not vDesistiu) then
+    begin
+      vCabe := MaximoSimultaneo - vQtdLivro;
+
+      if vCabe > Lote then
+        vCabe := Lote;
+
+      if vCabe > 0 then
+      begin
+        if vLado > 0 then
+          BuyStop(vAdicao, vAdicao, vCabe)
+        else
+          SellShortStop(vAdicao, vAdicao, vCabe);
+      end;
+    end;
+  end;
+
+  // --- diagnostico ----------------------------------------------------------
+  if Diagnostico then
+  begin
+    Plot(vRangeMax);
+    Plot2(vRangeMin);
+    Plot3(vAlvo);
+    Plot4(vStopDia);
+  end;
+end;
