@@ -111,11 +111,7 @@ final class BacktestPanel extends JPanel {
 
     private final JComboBox<Scale> scale = new JComboBox<>(SCALES);
 
-    private final JComboBox<String> strategy = new JComboBox<>();
-
-    private final JSpinner fast = new JSpinner(new SpinnerNumberModel(17, 1, 999, 1));
-
-    private final JSpinner slow = new JSpinner(new SpinnerNumberModel(34, 2, 999, 1));
+    private final JComboBox<StrategyKind> strategy = new JComboBox<>();
 
     private final JButton settings = gear();
 
@@ -124,21 +120,32 @@ final class BacktestPanel extends JPanel {
     /**
      * The door to Configurações > Backtest, next to the button that needs it.
      *
-     * <p>The same page the menu opens and the same stored values — this one just
-     * saves the walk. A reader about to press Run is exactly the reader who
-     * wants to check what a round trip is being charged.</p>
+     * <p>THE STRATEGY'S screen, not the backtest's. What a round trip costs and
+     * how many contracts an order gets are the same for every run and live in
+     * Configurações; what a crossing's periods are belongs to the crossing, and
+     * the next strategy will have something else entirely. The gear sits beside
+     * the strategy list because it opens whatever is selected in it.</p>
      */
     private JButton gear() {
         JButton button = new JButton("⚙");
 
-        button.setToolTipText(Messages.get("settings.backtest"));
+        button.setToolTipText(Messages.get("backtest.strategy.settings"));
         button.setFocusable(false);
-        button.addActionListener(e -> br.com.jorge.reis.endeavourneo.ui.settings.SettingsDialog
-                .show(javax.swing.SwingUtilities.getWindowAncestor(this),
-                        java.util.List.of(
-                                new br.com.jorge.reis.endeavourneo.ui.settings.BacktestPage())));
+        button.addActionListener(e -> openStrategySettings());
 
         return button;
+    }
+
+    private void openStrategySettings() {
+        StrategyKind kind = (StrategyKind) strategy.getSelectedItem();
+
+        if (kind == null) {
+            return;
+        }
+
+        br.com.jorge.reis.endeavourneo.ui.settings.SettingsDialog.show(
+                javax.swing.SwingUtilities.getWindowAncestor(this),
+                java.util.List.of(kind.page()));
     }
 
     private final ResultPanel result = new ResultPanel();
@@ -179,7 +186,9 @@ final class BacktestPanel extends JPanel {
 
         setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
-        strategy.addItem(Messages.get("backtest.strategy.crossing"));
+        for (StrategyKind kind : StrategyKind.available()) {
+            strategy.addItem(kind);
+        }
 
         for (SeriesChoice choice : SeriesChoice.available()) {
             series.addItem(choice);
@@ -193,8 +202,7 @@ final class BacktestPanel extends JPanel {
         });
 
         scale.addActionListener(e -> rememberPicks());
-        fast.addChangeListener(e -> rememberPicks());
-        slow.addChangeListener(e -> rememberPicks());
+        strategy.addActionListener(e -> rememberPicks());
 
         followTheSeries();
 
@@ -223,13 +231,9 @@ final class BacktestPanel extends JPanel {
         JPanel second = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
         second.add(new JLabel(Messages.get("backtest.strategy")));
         second.add(strategy);
-        second.add(new JLabel(Messages.get("backtest.fast")));
-        second.add(fast);
-        second.add(new JLabel(Messages.get("backtest.slow")));
-        second.add(slow);
+        second.add(settings);
         second.add(Box.createHorizontalStrut(8));
         second.add(showQuadro);
-        second.add(settings);
         second.add(run);
 
         top.add(first);
@@ -271,8 +275,15 @@ final class BacktestPanel extends JPanel {
             }
         }
 
-        fast.setValue(prefs.getInt("backtest.pick.fast", 17));
-        slow.setValue(prefs.getInt("backtest.pick.slow", 34));
+        String wantedStrategy = prefs.get("backtest.pick.strategy", null);
+
+        for (int i = 0; wantedStrategy != null && i < strategy.getItemCount(); i++) {
+            if (strategy.getItemAt(i).label().equals(wantedStrategy)) {
+                strategy.setSelectedIndex(i);
+
+                break;
+            }
+        }
     }
 
     private void rememberPicks() {
@@ -290,8 +301,11 @@ final class BacktestPanel extends JPanel {
                 prefs.put("backtest.pick.scale", chosen.key());
             }
 
-            prefs.putInt("backtest.pick.fast", (Integer) fast.getValue());
-            prefs.putInt("backtest.pick.slow", (Integer) slow.getValue());
+            StrategyKind kind = (StrategyKind) strategy.getSelectedItem();
+
+            if (kind != null) {
+                prefs.put("backtest.pick.strategy", kind.label());
+            }
         });
     }
 
@@ -357,9 +371,7 @@ final class BacktestPanel extends JPanel {
 
             @Override
             public void componentResized(java.awt.event.ComponentEvent event) {
-                if (!placed && sides.getWidth() > 0) {
-                    placed = true;
-
+                if (!placed) {
                     putTheDividerBack();
                 }
             }
@@ -408,11 +420,16 @@ final class BacktestPanel extends JPanel {
         int width = sides.getWidth();
 
         if (width <= 0) {
-            // Not laid out yet. Leaving it alone is right: with no location
-            // set, the split honours the preferred widths, which is where the
-            // quadro wanted to be anyway.
+            // NOT LAID OUT YET, and the flag stays down. A resize event can
+            // arrive with no width -- a pane inside a collapsed split, a window
+            // opening -- and marking it placed there would spend the one chance
+            // this has to run: the divider would never be set at all, and the
+            // quadro would open over the whole window. Which is the defect this
+            // whole method exists to have fixed.
             return;
         }
+
+        placed = true;
 
         sides.setDividerLocation(Math.max(LEAST_CHART, width - quadroWidth()));
     }
@@ -437,18 +454,19 @@ final class BacktestPanel extends JPanel {
             return;
         }
 
-        int span = sides.getWidth();
-        int where = sides.getDividerLocation();
-
-        if (span <= 0 || where < LEAST_CHART) {
-            return;
-        }
-
-        int width = span - where;
-
-        if (width >= LEAST_QUADRO && width <= span - LEAST_CHART) {
-            Settings.workspace().putInt("backtest.quadro.width", width);
-        }
+        // WRITTEN AS IT COMES. There were two guards here on the way in --
+        // against a span of zero, and against a width outside the two minimums
+        // -- and neither could be made to fire: the divider cannot be dragged
+        // past a component's minimum size, so Swing refuses the absurd drag
+        // before this line ever sees it, and the pane with no width is stopped
+        // by the flag above.
+        //
+        // What protects the screen is the guard on the way OUT, in
+        // quadroWidth() and in putTheDividerBack(), and that one is provable:
+        // a workspace file with a silly number in it still opens a sane window.
+        // Two guards where one can fire is one guard and one decoration.
+        Settings.workspace().putInt("backtest.quadro.width",
+                sides.getWidth() - sides.getDividerLocation());
     }
 
     /**
@@ -542,12 +560,20 @@ final class BacktestPanel extends JPanel {
         int lot = BacktestPreferences.contracts();
         Costs charged = BacktestPreferences.costs();
 
-        // Declarada como Strategy, e nao como a classe concreta: e assim que o
-        // instanceof abaixo quer dizer alguma coisa -- "esta estrategia mostra
-        // o que fez?" -- em vez de ser uma pergunta cuja resposta o compilador
-        // ja sabe. A segunda estrategia que entrar aqui nao muda esta linha.
-        Strategy what = new MovingAverageCrossing(
-                (Integer) fast.getValue(), (Integer) slow.getValue(), lot);
+        StrategyKind kind = (StrategyKind) strategy.getSelectedItem();
+
+        if (kind == null) {
+            result.clear();
+
+            return;
+        }
+
+        // BUILT NOW, from whatever its own screen last saved -- the dialog can
+        // have been through twice since this window opened. And typed as
+        // Strategy, so the instanceof further down means "does this one show
+        // its working?" rather than a question the compiler already knows the
+        // answer to.
+        Strategy what = kind.build();
 
         run.setEnabled(false);
         run.setText(Messages.get("backtest.running"));

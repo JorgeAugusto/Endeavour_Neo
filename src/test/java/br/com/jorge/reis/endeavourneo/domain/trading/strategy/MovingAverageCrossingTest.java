@@ -16,8 +16,10 @@
  * with this program; if not, see <https://www.gnu.org/licenses/>.
  */
 package br.com.jorge.reis.endeavourneo.domain.trading.strategy;
+import br.com.jorge.reis.endeavourneo.domain.trading.strategy.Average;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -167,6 +169,12 @@ class MovingAverageCrossingTest {
         for (java.util.Map.Entry<String, double[]> cada : curvas.entrySet()) {
             assertEquals(serie.size(), cada.getValue().length,
                     cada.getKey() + " nao tem um valor por barra");
+
+            // A ULTIMA BARRA TAMBEM. Um laco que grava ate a penultima tem o
+            // tamanho certo e a ponta vazia, e a ponta e onde o leitor olha
+            // primeiro -- a operacao mais recente.
+            assertTrue(!Double.isNaN(cada.getValue()[serie.size() - 1]),
+                    cada.getKey() + " nao tem valor na ULTIMA barra");
         }
     }
 
@@ -223,6 +231,83 @@ class MovingAverageCrossingTest {
 
         assertEquals(130, longa, "a primeira rodada nao mediu o que devia");
         assertEquals(20, curta, "a curva ficou do tamanho da rodada ANTERIOR");
+    }
+
+    // ----------------------------------------------------- a media simples
+
+    @Test
+    @DisplayName("a media simples e a media mesmo, conferida a mao")
+    void thesimpleAverageIsTheMeanAndTheMeanChecksOut() {
+        // Fechamentos 100, 105, 110, 115, ... (sobe 5 por barra a partir da 1).
+        Closes serie = rampThenFall(1, 40, 0);
+        MovingAverageCrossing estrategia =
+                new MovingAverageCrossing(3, 8, 1, Average.SIMPLE);
+
+        new Backtest(Costs.NONE, 1).run(serie, estrategia);
+
+        double[] rapida = estrategia.curves().get("SMA 3");
+
+        assertNotNull(rapida, "a curva nao veio com o nome da media simples");
+
+        int barra = 20;
+        double mao = (serie.closeAt(barra) + serie.closeAt(barra - 1)
+                + serie.closeAt(barra - 2)) / 3;
+
+        assertEquals(mao, rapida[barra], 1e-9,
+                "a media de tres nao e a media dos tres ultimos fechamentos");
+    }
+
+    @Test
+    @DisplayName("a media simples NAO existe antes de a janela encher")
+    void thesimpleAverageDoesNotExistBeforeItsWindowIsFull() {
+        Closes serie = rampThenFall(1, 40, 0);
+        MovingAverageCrossing estrategia =
+                new MovingAverageCrossing(3, 8, 1, Average.SIMPLE);
+
+        new Backtest(Costs.NONE, 1).run(serie, estrategia);
+
+        double[] lenta = estrategia.curves().get("SMA 8");
+
+        // Uma media de tres fechamentos chamada "a media de oito" anda como
+        // outro indicador e cruza noutro lugar. NaN quebra a linha, que e o
+        // jeito de dizer "aqui ela ainda nao existia".
+        assertTrue(Double.isNaN(lenta[6]), "a media de oito ja existia na barra 6");
+        assertTrue(!Double.isNaN(lenta[7]), "a media de oito nao existia na barra 7");
+    }
+
+    @Test
+    @DisplayName("nao se opera enquanto a media nao existe")
+    void nothingIsTradedWhileTheAverageDoesNotExist() {
+        Closes serie = rampThenFall(1, 40, 0);
+
+        Result result = new Backtest(Costs.NONE, 1)
+                .run(serie, new MovingAverageCrossing(3, 8, 1, Average.SIMPLE));
+
+        // Comparar com NaN e falso dos dois lados, o que se le como "a rapida
+        // esta ABAIXO" e dispara uma venda na primeira barra que tem historico.
+        for (Fill fill : result.fills()) {
+            assertTrue(fill.bar() > 8,
+                    "operou na barra " + fill.bar() + ", antes de a media de oito existir");
+        }
+    }
+
+    @Test
+    @DisplayName("simples e exponencial cruzam em barras DIFERENTES")
+    void thetwoKindsCrossOnDifferentBars() {
+        Closes serie = rampThenFall(10, 40, 60);
+        Backtest backtest = new Backtest(Costs.NONE, 1);
+
+        Result exponencial = backtest.run(serie, new MovingAverageCrossing(3, 8, 1, Average.EXPONENTIAL));
+        Result simples = backtest.run(serie, new MovingAverageCrossing(3, 8, 1, Average.SIMPLE));
+
+        assertTrue(exponencial.count() > 0 && simples.count() > 0,
+                "a serie de teste nao fez os dois operarem");
+
+        // Se dessem a mesma lista de execucoes, a escolha do tipo seria
+        // enfeite -- e o terceiro argumento das medias do NTSL, que decide se
+        // duas implementacoes batem, nao teria razao de existir.
+        assertTrue(!exponencial.fills().equals(simples.fills()),
+                "os dois tipos produziram exatamente as mesmas execucoes");
     }
 
     @Test

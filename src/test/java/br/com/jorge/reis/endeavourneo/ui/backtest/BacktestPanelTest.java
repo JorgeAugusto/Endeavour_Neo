@@ -369,6 +369,137 @@ class BacktestPanelTest {
     }
 
     @Test
+    @DisplayName("uma montagem SEM largura nao gasta a unica chance de colocar o divisor")
+    void alayoutWithNoWidthDoesNotSpendTheOneChanceToPlaceTheDivider() throws Exception {
+        assumeFalse(java.awt.GraphicsEnvironment.isHeadless(), "no graphics environment");
+
+        br.com.jorge.reis.endeavourneo.platform.Settings.useForTest(settings);
+
+        javax.swing.JFrame frame = new javax.swing.JFrame();
+
+        try {
+            javax.swing.SwingUtilities.invokeAndWait(() -> {
+                frame.setContentPane(new BacktestPanel());
+
+                // pack() PRIMEIRO: um frame que nunca foi mostravel nao tem
+                // layout nenhum, e entao nem o passo de largura zero acontece
+                // -- o teste passaria a nao testar nada.
+                frame.pack();
+
+                // SEM LARGURA PRIMEIRO. E o que acontece quando a janela abre
+                // dentro de um divisor recolhido, ou antes de ter sido
+                // dimensionada: o evento de redimensionamento chega com zero.
+                // Marcar "ja coloquei" ali gasta a unica chance, o divisor
+                // nunca e posto, e o quadro abre sobre a janela inteira.
+                frame.setSize(0, 0);
+                frame.doLayout();
+                frame.validate();
+            });
+
+            javax.swing.SwingUtilities.invokeAndWait(() -> {
+                frame.setSize(1_200, 700);
+                frame.doLayout();
+                frame.validate();
+            });
+
+            javax.swing.SwingUtilities.invokeAndWait(() -> { });
+
+            javax.swing.JScrollPane quadro = quadroOf(frame);
+            javax.swing.JSplitPane sides = (javax.swing.JSplitPane) quadro.getParent();
+
+            assertTrue(sides.getDividerLocation() > 300,
+                    "o quadro tomou a janela inteira: divisor em "
+                            + sides.getDividerLocation() + " de " + sides.getWidth());
+        } finally {
+            letGo(frame);
+            br.com.jorge.reis.endeavourneo.platform.Settings.stopUsingTestStore();
+        }
+    }
+
+    @Test
+    @DisplayName("uma largura absurda nao e guardada, e a janela seguinte nasce inteira")
+    void anabsurdWidthIsNotKeptSoTheNextWindowIsBornWhole() throws Exception {
+        assumeFalse(java.awt.GraphicsEnvironment.isHeadless(), "no graphics environment");
+
+        br.com.jorge.reis.endeavourneo.platform.Settings.useForTest(settings);
+
+        javax.swing.JFrame primeira = laidOut();
+
+        try {
+            javax.swing.JSplitPane sides =
+                    (javax.swing.JSplitPane) quadroOf(primeira).getParent();
+
+            // O DIVISOR ARRASTADO ATE O FIM. E o gesto que gravava "o quadro
+            // quer a janela inteira" -- e a janela SEGUINTE nascia assim, que e
+            // o defeito que ele viu. Gravar so o que cabe entre os dois minimos
+            // e o que impede a preferencia de virar uma tela quebrada.
+            javax.swing.SwingUtilities.invokeAndWait(() -> sides.setDividerLocation(0));
+            javax.swing.SwingUtilities.invokeAndWait(() -> { });
+        } finally {
+            letGo(primeira);
+        }
+
+        javax.swing.JFrame segunda = laidOut();
+
+        try {
+            javax.swing.JSplitPane sides =
+                    (javax.swing.JSplitPane) quadroOf(segunda).getParent();
+
+            assertTrue(sides.getDividerLocation() > 300,
+                    "a janela seguinte nasceu com o quadro sobre tudo: divisor em "
+                            + sides.getDividerLocation() + " de " + sides.getWidth());
+        } finally {
+            letGo(segunda);
+            br.com.jorge.reis.endeavourneo.platform.Settings.stopUsingTestStore();
+        }
+    }
+
+    @Test
+    @DisplayName("largura absurda no arquivo ainda abre uma janela inteira")
+    void anabsurdWidthInTheFileStillOpensASaneWindow() throws Exception {
+        assumeFalse(java.awt.GraphicsEnvironment.isHeadless(), "no graphics environment");
+
+        br.com.jorge.reis.endeavourneo.platform.Settings.useForTest(settings);
+
+        // ESCRITO DIRETO NO ARQUIVO, porque e por ai que um numero assim entra:
+        // uma versao anterior que gravava errado, ou alguem que abriu o
+        // workspace. O que segura a tela nao e o que se recusa a gravar -- e o
+        // que se recusa a obedecer na hora de abrir.
+        br.com.jorge.reis.endeavourneo.platform.Settings.workspace()
+                .putInt("backtest.quadro.width", 5_000);
+
+        javax.swing.JFrame frame = laidOut();
+
+        try {
+            javax.swing.JSplitPane sides = (javax.swing.JSplitPane) quadroOf(frame).getParent();
+
+            assertTrue(sides.getDividerLocation() >= 320,
+                    "cinco mil pixels de quadro nao sobraram grafico: divisor em "
+                            + sides.getDividerLocation() + " de " + sides.getWidth());
+        } finally {
+            letGo(frame);
+        }
+
+        // E O OUTRO EXTREMO: cinco pixels de quadro sao uma coluna de numeros
+        // cortados, nao um quadro. O teto sozinho nao segura este lado.
+        br.com.jorge.reis.endeavourneo.platform.Settings.workspace()
+                .putInt("backtest.quadro.width", 5);
+
+        javax.swing.JFrame estreita = laidOut();
+
+        try {
+            javax.swing.JSplitPane sides = (javax.swing.JSplitPane) quadroOf(estreita).getParent();
+            int quadro = sides.getWidth() - sides.getDividerLocation();
+
+            assertTrue(quadro >= 220,
+                    "o quadro abriu com " + quadro + " pixels, que nao da para ler");
+        } finally {
+            letGo(estreita);
+            br.com.jorge.reis.endeavourneo.platform.Settings.stopUsingTestStore();
+        }
+    }
+
+    @Test
     @DisplayName("recolher esconde o quadro; voltar o traz do tamanho que tinha")
     void collapsingHidesItAndBringingItBackKeepsItsWidth() throws Exception {
         assumeFalse(java.awt.GraphicsEnvironment.isHeadless(), "no graphics environment");

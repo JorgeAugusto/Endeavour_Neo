@@ -62,6 +62,22 @@ public final class MovingAverageCrossing implements Strategy, Plotted {
 
     private final int size;
 
+    private final Average kind;
+
+    /**
+     * The last closes, for the simple average.
+     *
+     * <p>Only as many as the slow period needs, and walked rather than kept as
+     * a running sum. Thirty-four additions per bar over six years is five
+     * million operations against a run that already costs more than that in
+     * drawing; a running sum would be faster and would drift, because a
+     * subtraction undone thousands of times does not give back exactly what it
+     * took.</p>
+     */
+    private double[] window = new double[0];
+
+    private int seen;
+
     private double fast = Double.NaN;
 
     private double slow = Double.NaN;
@@ -82,6 +98,16 @@ public final class MovingAverageCrossing implements Strategy, Plotted {
      * @param size        contracts per position
      */
     public MovingAverageCrossing(int fastPeriod, int slowPeriod, int size) {
+        this(fastPeriod, slowPeriod, size, Average.EXPONENTIAL);
+    }
+
+    /**
+     * @param fastPeriod  bars of the fast average, his 17
+     * @param slowPeriod  bars of the slow one, his 34
+     * @param size        contracts per position
+     * @param kind        how both averages are worked out
+     */
+    public MovingAverageCrossing(int fastPeriod, int slowPeriod, int size, Average kind) {
         if (fastPeriod < 1 || slowPeriod <= fastPeriod) {
             throw new IllegalArgumentException(
                     "the fast average has to be faster: " + fastPeriod + " and " + slowPeriod);
@@ -94,6 +120,7 @@ public final class MovingAverageCrossing implements Strategy, Plotted {
         this.fastPeriod = fastPeriod;
         this.slowPeriod = slowPeriod;
         this.size = size;
+        this.kind = kind == null ? Average.EXPONENTIAL : kind;
     }
 
     /** His periods, one contract. */
@@ -110,6 +137,9 @@ public final class MovingAverageCrossing implements Strategy, Plotted {
 
         int bars = series == null ? 0 : series.size();
 
+        window = new double[slowPeriod];
+        seen = 0;
+
         fastLine = new double[bars];
         slowLine = new double[bars];
 
@@ -121,8 +151,8 @@ public final class MovingAverageCrossing implements Strategy, Plotted {
     public Map<String, double[]> curves() {
         Map<String, double[]> lines = new LinkedHashMap<>();
 
-        lines.put("EMA " + fastPeriod, fastLine.clone());
-        lines.put("EMA " + slowPeriod, slowLine.clone());
+        lines.put(kind.label() + " " + fastPeriod, fastLine.clone());
+        lines.put(kind.label() + " " + slowPeriod, slowLine.clone());
 
         return lines;
     }
@@ -131,8 +161,15 @@ public final class MovingAverageCrossing implements Strategy, Plotted {
     public void onBar(Market market, Desk desk) {
         double close = market.close();
 
-        fast = step(fast, close, fastPeriod);
-        slow = step(slow, close, slowPeriod);
+        if (kind == Average.SIMPLE) {
+            remember(close);
+
+            fast = meanOf(fastPeriod);
+            slow = meanOf(slowPeriod);
+        } else {
+            fast = step(fast, close, fastPeriod);
+            slow = step(slow, close, slowPeriod);
+        }
 
         if (market.bar() < fastLine.length) {
             fastLine[market.bar()] = fast;
@@ -145,6 +182,13 @@ public final class MovingAverageCrossing implements Strategy, Plotted {
         if (market.bar() < slowPeriod) {
             return;
         }
+
+        // NO GUARD AGAINST NaN BELOW, and the line above is why: nothing is
+        // decided before bar slowPeriod, and by then the simple average has
+        // seen slowPeriod + 1 closes -- more than its window needs. A guard was
+        // written here for the case, and breaking it on purpose changed no
+        // test, because it could not fire. Removed rather than kept looking
+        // like the thing standing between a NaN and a wrong sale.
 
         boolean nowAbove = fast > slow;
 
@@ -172,6 +216,29 @@ public final class MovingAverageCrossing implements Strategy, Plotted {
         }
     }
 
+    private void remember(double close) {
+        window[seen % window.length] = close;
+        seen++;
+    }
+
+    /**
+     * @param period how many of the last closes to average
+     * @return their mean, or NaN while there are not that many yet
+     */
+    private double meanOf(int period) {
+        if (seen < period) {
+            return Double.NaN;
+        }
+
+        double total = 0;
+
+        for (int back = 0; back < period; back++) {
+            total += window[Math.floorMod(seen - 1 - back, window.length)];
+        }
+
+        return total / period;
+    }
+
     /** @return the exponential average, seeded from the first close it sees */
     private static double step(double average, double close, int period) {
         if (Double.isNaN(average)) {
@@ -185,6 +252,7 @@ public final class MovingAverageCrossing implements Strategy, Plotted {
 
     @Override
     public String toString() {
-        return "cruzamento EMA " + fastPeriod + "/" + slowPeriod + ", " + size + " contrato(s)";
+        return "cruzamento " + kind.label() + " " + fastPeriod + "/" + slowPeriod
+                + ", " + size + " contrato(s)";
     }
 }
