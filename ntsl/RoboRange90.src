@@ -65,6 +65,13 @@
 //     rompimento e o pullback leem CANDLE, e em 5 minutos viram outra coisa.
 // ============================================================================
 
+const
+  // OITO, e casado com os call-sites da emissao la embaixo: cada lote tem o
+  // proprio ponto no codigo de onde o stop e a parcial dele saem, e um lote que
+  // o livro aceitasse alem do oitavo entraria SEM STOP PROPRIO -- pior que nao
+  // entrar. Com Lote(4) e teto 20 cabem cinco, e sobra folga.
+  MAX_LOTES = 8;
+
 input
   // --- o range ---
   MinutosFormacao(90);     // minutos de RELOGIO desde o 1o candle do pregao
@@ -86,13 +93,6 @@ input
 
   // --- diagnostico ---
   Diagnostico(false);      // plota range, alvo e stop, e loga no console
-
-const
-  // OITO, e casado com os call-sites da emissao la embaixo: cada lote tem o
-  // proprio ponto no codigo de onde o stop e a parcial dele saem, e um lote que
-  // o livro aceitasse alem do oitavo entraria SEM STOP PROPRIO -- pior que nao
-  // entrar. Com Lote(4) e teto 20 cabem cinco, e sobra folga.
-  MAX_LOTES = 8;
 
 var
   // --- o pregao ---
