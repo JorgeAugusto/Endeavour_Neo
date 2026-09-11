@@ -19,6 +19,7 @@ package br.com.jorge.reis.endeavourneo.ui.backtest;
 
 import br.com.jorge.reis.endeavourneo.domain.market.Aggregation;
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
+import br.com.jorge.reis.endeavourneo.domain.market.Slice;
 import br.com.jorge.reis.endeavourneo.domain.market.Timeframe;
 import br.com.jorge.reis.endeavourneo.domain.trading.Backtest;
 import br.com.jorge.reis.endeavourneo.domain.trading.Costs;
@@ -111,6 +112,16 @@ final class BacktestPanel extends JPanel {
 
     private final JComboBox<Scale> scale = new JComboBox<>(SCALES);
 
+    private final JComboBox<Slice> slice = new JComboBox<>(Slice.values());
+
+    private final br.com.jorge.reis.endeavourneo.ui.replay.DatePicker from =
+            new br.com.jorge.reis.endeavourneo.ui.replay.DatePicker(null);
+
+    private final br.com.jorge.reis.endeavourneo.ui.replay.DatePicker to =
+            new br.com.jorge.reis.endeavourneo.ui.replay.DatePicker(null);
+
+    private final JLabel between = new JLabel(Messages.get("backtest.between"));
+
     private final JComboBox<StrategyKind> strategy = new JComboBox<>();
 
     private final JButton settings = gear();
@@ -196,15 +207,43 @@ final class BacktestPanel extends JPanel {
 
         restorePicks();
 
+        slice.setRenderer(new javax.swing.DefaultListCellRenderer() {
+
+            private static final long serialVersionUID = 1L;
+
+            @Override
+            public java.awt.Component getListCellRendererComponent(javax.swing.JList<?> list,
+                    Object value, int index, boolean selected, boolean focused) {
+                super.getListCellRendererComponent(list, value, index, selected, focused);
+
+                if (value instanceof Slice which) {
+                    setText(Messages.get(which.key()));
+                }
+
+                return this;
+            }
+        });
+
+        slice.setSelectedItem(Slice.ALL);
+
         series.addActionListener(e -> {
             followTheSeries();
             rememberPicks();
         });
 
+        slice.addActionListener(e -> {
+            followTheSlice();
+            rememberPicks();
+        });
+
+        from.onChange(this::rememberPicks);
+        to.onChange(this::rememberPicks);
+
         scale.addActionListener(e -> rememberPicks());
         strategy.addActionListener(e -> rememberPicks());
 
         followTheSeries();
+        followTheSlice();
 
         run.addActionListener(e -> start());
 
@@ -227,6 +266,11 @@ final class BacktestPanel extends JPanel {
         first.add(series);
         first.add(new JLabel(Messages.get("backtest.scale")));
         first.add(scale);
+        first.add(new JLabel(Messages.get("backtest.slice")));
+        first.add(slice);
+        first.add(between);
+        first.add(from);
+        first.add(to);
 
         JPanel second = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
         second.add(new JLabel(Messages.get("backtest.strategy")));
@@ -275,6 +319,16 @@ final class BacktestPanel extends JPanel {
             }
         }
 
+        String wantedSlice = prefs.get("backtest.pick.slice", null);
+
+        for (Slice each : Slice.values()) {
+            if (each.name().equals(wantedSlice)) {
+                slice.setSelectedItem(each);
+
+                break;
+            }
+        }
+
         String wantedStrategy = prefs.get("backtest.pick.strategy", null);
 
         for (int i = 0; wantedStrategy != null && i < strategy.getItemCount(); i++) {
@@ -306,6 +360,12 @@ final class BacktestPanel extends JPanel {
             if (kind != null) {
                 prefs.put("backtest.pick.strategy", kind.label());
             }
+
+            Slice which = (Slice) slice.getSelectedItem();
+
+            if (which != null) {
+                prefs.put("backtest.pick.slice", which.name());
+            }
         });
     }
 
@@ -324,6 +384,53 @@ final class BacktestPanel extends JPanel {
 
         if (!byTheClock) {
             scale.setSelectedIndex(0);
+        }
+
+        offerTheSessionsOf(chosen);
+    }
+
+    /**
+     * Shows the two date fields only when there is a date to pick.
+     *
+     * <p>Two boxes that do nothing for twelve of the thirteen slices are two
+     * boxes the reader has to learn to ignore.</p>
+     */
+    private void followTheSlice() {
+        boolean byHand = slice.getSelectedItem() == Slice.CHOSEN;
+
+        between.setVisible(byHand);
+        from.setVisible(byHand);
+        to.setVisible(byHand);
+
+        revalidate();
+        repaint();
+    }
+
+    /**
+     * Tells the date fields which days the chosen series actually has.
+     *
+     * <p>So a date that is not a session cannot be typed, and the fields open on
+     * the ends of the series rather than on today — which for a series that
+     * stops in 2026 would be a range covering nothing.</p>
+     */
+    private void offerTheSessionsOf(SeriesChoice chosen) {
+        java.util.NavigableSet<java.time.LocalDate> days = chosen == null
+                ? new java.util.TreeSet<>()
+                : br.com.jorge.reis.endeavourneo.ui.series.Segmentable.sessionsOf(chosen.key());
+
+        from.setSessions(days);
+        to.setSessions(days);
+
+        if (days.isEmpty()) {
+            return;
+        }
+
+        if (from.date() == null || !days.contains(from.date())) {
+            from.setDate(days.first());
+        }
+
+        if (to.date() == null || !days.contains(to.date())) {
+            to.setDate(days.last());
         }
     }
 
@@ -582,7 +689,11 @@ final class BacktestPanel extends JPanel {
 
             @Override
             protected Run doInBackground() throws IOException {
-                PriceSeries bars = chosen.how().apply(picked.open());
+                // THE RECORTE IS CUT BEFORE THE SCALE. Aggregating six years
+                // to five minutes and then throwing away all but a week is six
+                // years of work for a week of bars -- and the last coarse bar of
+                // the cut would be built from minutes the run then never sees.
+                PriceSeries bars = chosen.how().apply(cutTo(picked.open()));
 
                 Result produced = new Backtest(charged, lot).run(bars, what);
 
@@ -631,6 +742,25 @@ final class BacktestPanel extends JPanel {
                 finished.label());
 
         chart.goToEnd();
+    }
+
+    /**
+     * Applies the recorte to the series the reader picked.
+     *
+     * <p>To the series ALREADY cut to its segment, which is what makes the rule
+     * free: a recorte lives inside a segment and never spans two, and there is
+     * no way here to ask for the other thing.</p>
+     */
+    private PriceSeries cutTo(PriceSeries whole) {
+        Slice which = (Slice) slice.getSelectedItem();
+
+        if (which == null) {
+            return whole;
+        }
+
+        return which.handPicked()
+                ? Slice.between(whole, from.date(), to.date(), Timeframe.defaultZone())
+                : which.cut(whole, Timeframe.defaultZone());
     }
 
     /** Says it out loud and empties the quadro, so no stale number is read. */
