@@ -537,6 +537,81 @@ class BacktestTest {
                 "a estrategia nao viu as execucoes da volta: " + quantos);
     }
 
+    /**
+     * Barras de decisao com a hora ditada, para poder repetir um instante.
+     *
+     * <p>{@link Coarse} deriva a hora das barras finas e por isso nunca repete
+     * uma. Um renko repete: varios tijolos podem fechar dentro do mesmo minuto,
+     * e construidos a partir de barras de um minuto todos carregam a hora
+     * daquele minuto.</p>
+     */
+    private record Ditada(long[] hora, double[] preco) implements PriceSeries {
+
+        @Override
+        public int size() {
+            return preco.length;
+        }
+
+        @Override
+        public long timeAt(int index) {
+            return hora[index];
+        }
+
+        @Override
+        public double openAt(int index) {
+            return preco[index];
+        }
+
+        @Override
+        public double highAt(int index) {
+            return preco[index];
+        }
+
+        @Override
+        public double lowAt(int index) {
+            return preco[index];
+        }
+
+        @Override
+        public double closeAt(int index) {
+            return preco[index];
+        }
+    }
+
+    @Test
+    @DisplayName("DUAS DECISOES NO MESMO INSTANTE VIRAM UMA: a primeira nunca e perguntada")
+    void twodecisionBarsSharingAnInstantCollapseIntoOne() {
+        Fine fine = new Fine(
+                new double[] {100, 100, 100, 100, 100, 100, 100, 100},
+                new double[] {100, 100, 100, 100, 100, 100, 100, 100},
+                new double[] {100, 100, 100, 100, 100, 100, 100, 100},
+                new double[] {100, 100, 100, 100, 100, 100, 100, 100});
+
+        // As barras de decisao 1 e 2 fecham no MESMO milissegundo.
+        Ditada ditada = new Ditada(
+                new long[] {0, 60_000, 60_000, 180_000},
+                new double[] {100, 100, 100, 100});
+
+        java.util.List<Integer> perguntadas = new java.util.ArrayList<>();
+
+        new Backtest(Costs.NONE, 1).run(fine, ditada,
+                (market, desk) -> perguntadas.add(market.bar()), null);
+
+        // A BARRA 1 NUNCA APARECE. O motor alinha as duas series por tempo, e
+        // ao alcancar 60.000 ele anda o indice da decisao por TODAS as barras
+        // que carregam esse instante de uma vez -- entao a 1 e atravessada sem
+        // nunca ser o "at" de um fechamento.
+        //
+        // Nao e defeito a corrigir: duas coisas no mesmo instante nao tem entre
+        // si um momento em que agir, e inventar um seria inventar tempo. E o
+        // motivo pelo qual um renko para o backtest se constroi a partir dos
+        // TICKS e nao dos minutos -- ali cada tijolo fecha no tick que o
+        // fechou, e os instantes voltam a ser distintos.
+        assertEquals(java.util.List.of(0, 2, 3), perguntadas,
+                "o motor nao colapsou as barras do mesmo instante como se esperava: "
+                        + perguntadas);
+    }
+
     /** Conta as voltas da estrategia e manda parar quando pedir. */
     private static final class Parador implements Watching {
 

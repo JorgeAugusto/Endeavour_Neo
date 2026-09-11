@@ -126,6 +126,16 @@ public final class Renko implements Aggregation {
      */
     private static final int MOST_BRICKS = 100_000;
 
+    /**
+     * The most slots a pass reserves before it has laid anything.
+     *
+     * <p>A ceiling on a GUESS, not on a result: the arrays double on demand and
+     * a pass may lay any number of bricks. It exists because the guess is
+     * {@code source.size()}, which is sane for bars of time and absurd for
+     * ticks — see the note at the allocation.</p>
+     */
+    private static final int MOST_ROOM = 1 << 16;
+
     private final double brick;
 
     private final int reversal;
@@ -478,7 +488,16 @@ public final class Renko implements Aggregation {
         //
         // And the copy at the end went too: assemble used to walk the four
         // lists into eight arrays, so every brick was written twice.
-        Laid bricks = new Laid(Math.max(16, source.size()));
+        //
+        // THE FIRST GUESS IS CAPPED, and it used to be source.size() flat. That
+        // guess reads as "about one brick per bar", which is true enough of bars
+        // of TIME and wrong by three orders of magnitude of ticks: a month of
+        // synthetic ticks is 16.981.754 of them and lays 13.588 bricks at 11R.
+        // Eight parallel arrays at 57 bytes a slot made the year of ticks ask
+        // for eleven gigabytes before laying a single brick, and it died there.
+        // Laid doubles on demand, so the cap costs a handful of copies and
+        // nothing else.
+        Laid bricks = new Laid(Math.max(16, Math.min(source.size(), MOST_ROOM)));
 
         // The level the last brick closed at. It starts at the first bar's OPEN,
         // which is the one price in a bar that never moves.

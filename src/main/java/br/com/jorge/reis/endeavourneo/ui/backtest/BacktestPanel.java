@@ -19,6 +19,7 @@ package br.com.jorge.reis.endeavourneo.ui.backtest;
 
 import br.com.jorge.reis.endeavourneo.domain.market.Aggregation;
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
+import br.com.jorge.reis.endeavourneo.domain.market.Renko;
 import br.com.jorge.reis.endeavourneo.domain.market.Slice;
 import br.com.jorge.reis.endeavourneo.domain.market.Timeframe;
 import br.com.jorge.reis.endeavourneo.domain.trading.Backtest;
@@ -33,12 +34,14 @@ import br.com.jorge.reis.endeavourneo.platform.Messages;
 import br.com.jorge.reis.endeavourneo.platform.Settings;
 import br.com.jorge.reis.endeavourneo.ui.chart.ChartCanvas;
 import br.com.jorge.reis.endeavourneo.ui.chart.ChartPane;
+import br.com.jorge.reis.endeavourneo.ui.chart.PeriodCatalog;
 
 import java.awt.BorderLayout;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
@@ -96,20 +99,45 @@ final class BacktestPanel extends JPanel {
     /** What it is born at, and what it comes back to until the reader drags it. */
     private static final int WANTED_QUADRO = 330;
 
+    /** The bricks offered, named the way the chart's period box names them. */
+    private static final int[] BRICKS = {3, 4, 5, 6, 11, 21};
+
     /**
      * The scales a run may be read at.
      *
      * <p>The first is "as stored", and it is the default. A series already kept
-     * at five minutes does not need aggregating, and a renko one must not be:
-     * the list is disabled entirely when the series is not measured in time.</p>
+     * at five minutes does not need aggregating, and a series not measured in
+     * time must not be: the list is disabled entirely for one of those.</p>
+     *
+     * <h2>Renko is a scale here, like any other</h2>
+     *
+     * <p>It belongs in this list rather than in a control of its own, because it
+     * answers the same question the others answer — <b>what is a decision
+     * bar</b>. {@link Renko} is an {@link Aggregation} precisely so that it can
+     * stand where a {@link Timeframe} stands.</p>
+     *
+     * <p>Not the chart's renko, though. The period box builds its bricks with
+     * {@code withForming(true)} so the live edge keeps moving while the minute
+     * runs, and a forming brick is one that <b>can still change</b>: asking a
+     * strategy to decide on it is asking it to decide on a bar that has not
+     * closed. {@link Renko#of} leaves that off, which is what a run needs.</p>
      */
-    private static final Scale[] SCALES = {
-            new Scale("backtest.asStored", Aggregation.none()),
-            new Scale("backtest.scale.5m", Timeframe.FIVE_MINUTES),
-            new Scale("backtest.scale.15m", Timeframe.FIFTEEN_MINUTES),
-            new Scale("backtest.scale.30m", Timeframe.THIRTY_MINUTES),
-            new Scale("backtest.scale.1h", Timeframe.ONE_HOUR),
-    };
+    private static final Scale[] SCALES = scales();
+
+    private static Scale[] scales() {
+        List<Scale> made = new ArrayList<>(List.of(
+                Scale.named("backtest.asStored", Aggregation.none()),
+                Scale.named("backtest.scale.5m", Timeframe.FIVE_MINUTES),
+                Scale.named("backtest.scale.15m", Timeframe.FIFTEEN_MINUTES),
+                Scale.named("backtest.scale.30m", Timeframe.THIRTY_MINUTES),
+                Scale.named("backtest.scale.1h", Timeframe.ONE_HOUR)));
+
+        for (int brick : BRICKS) {
+            made.add(Scale.renko(brick));
+        }
+
+        return made.toArray(new Scale[0]);
+    }
 
     private final JComboBox<SeriesChoice> series = new JComboBox<>();
 
@@ -477,7 +505,7 @@ final class BacktestPanel extends JPanel {
         String wantedScale = prefs.get("backtest.pick.scale", null);
 
         for (int i = 0; wantedScale != null && i < scale.getItemCount(); i++) {
-            if (scale.getItemAt(i).key().equals(wantedScale)) {
+            if (scale.getItemAt(i).id().equals(wantedScale)) {
                 scale.setSelectedIndex(i);
 
                 break;
@@ -527,7 +555,7 @@ final class BacktestPanel extends JPanel {
             }
 
             if (chosen != null) {
-                prefs.put("backtest.pick.scale", chosen.key());
+                prefs.put("backtest.pick.scale", chosen.id());
             }
 
             StrategyKind kind = (StrategyKind) strategy.getSelectedItem();
@@ -965,25 +993,42 @@ final class BacktestPanel extends JPanel {
                 // the cut would be built from minutes the run then never sees.
                 PriceSeries cut = cutTo(picked.open());
 
-                // THE SCALE MAKES THE DECISION BARS -- the ones the chart draws
-                // and the ones the strategy reads.
-                PriceSeries decided = chosen.how().apply(cut);
-
                 publish(Messages.get(tickMode
                         ? "backtest.stage.ticks" : "backtest.stage.running"));
 
-                // AND THE TICKS COME FROM THE STORED BARS, not from those. The
-                // path was measured on the shape of a minute; walking one inside
-                // a five-minute bar would be applying those statistics where
-                // they were never measured. This is what lets the chart be read
-                // at any scale while the execution stays what it is.
+                // THE TICKS COME FROM THE STORED BARS, never from the scaled
+                // ones. The path was measured on the shape of a minute; walking
+                // one inside a five-minute bar would be applying those
+                // statistics where they were never measured. This is what lets
+                // the chart be read at any scale while the execution stays what
+                // it is.
                 //
                 // After the recorte, though, and never before it: fifteen
                 // hundred ticks a minute is not a cost to pay for a stretch
                 // nobody asked for.
-                TickLevel.Walked walked = tickMode
+                TickLevel.Walked ticks = tickMode
                         ? TickLevel.of(picked, cut, Timeframe.defaultZone())
-                        : new TickLevel.Walked(decided, false, 0);
+                        : null;
+
+                // THE SCALE MAKES THE DECISION BARS -- the ones the chart draws
+                // and the ones the strategy reads.
+                //
+                // AND A BRICK IS BUILT FROM THE TICKS, where a minute is built
+                // from the stored bars. Not a preference: a renko brick closes
+                // the moment a trade prints past the level, so several of them
+                // can close inside one minute -- and built from minutes they
+                // would all carry that minute's timestamp. The engine lines the
+                // decision series up against the executed one BY TIME, so a
+                // cluster of bricks sharing an instant collapses: the strategy
+                // is never asked on the earlier ones, and the orders of one
+                // would meet the tick of another. Built from the ticks, each
+                // brick closes on the tick that closed it and has that tick's
+                // own instant.
+                PriceSeries decided = chosen.how()
+                        .apply(chosen.isRenko() && ticks != null ? ticks.series() : cut);
+
+                TickLevel.Walked walked = ticks != null
+                        ? ticks : new TickLevel.Walked(decided, false, 0);
 
                 publish(Messages.get("backtest.stage.running"));
 
@@ -1187,12 +1232,59 @@ final class BacktestPanel extends JPanel {
                        boolean tickMode, boolean realTicks, int ticks) {
     }
 
-    /** One entry of the scale list: what it is called, and what it does. */
-    private record Scale(String key, Aggregation how) {
+    /**
+     * One entry of the scale list: what it is called, and what it builds.
+     *
+     * <p>Two ways of being called, because there are two kinds of name here. A
+     * timeframe is translated — "como está", "5 minutos" — so it carries a
+     * bundle key. A brick is not: <b>{@code 11R} is the same word in every
+     * language</b>, and it is the word he types into the chart's period box, so
+     * the two windows have to spell it the same or the same scale reads as two.
+     *
+     * @param key   the bundle key, or null for a scale that names itself
+     * @param code  the literal name, or null for a scale named through the bundle
+     * @param how   what turns the stored bars into decision bars
+     */
+    private record Scale(String key, String code, Aggregation how) {
+
+        static Scale named(String key, Aggregation how) {
+            return new Scale(key, null, how);
+        }
+
+        /** @param brick the brick's NAME, as the chart lists it: 11 is 11R */
+        static Scale renko(int brick) {
+            return new Scale(null, brick + "R",
+                    Renko.of(PeriodCatalog.brickOf(brick)));
+        }
+
+        /** @return whether decision bars here are bricks rather than lengths of time */
+        boolean isRenko() {
+            return how instanceof Renko;
+        }
+
+        /**
+         * @return what remembers this choice across a restart
+         *
+         * <p>Never {@link #toString()}, and never {@link #key()} alone. The
+         * printed name is translated, so a workspace saved in Portuguese would
+         * reopen on the default in English; and the key is null for a brick,
+         * which {@code Preferences.put} refuses and {@code equals} would have
+         * thrown on when reading back.</p>
+         */
+        String id() {
+            return key == null ? code : key;
+        }
 
         @Override
         public String toString() {
-            return Messages.get(key);
+            if (code == null) {
+                return Messages.get(key);
+            }
+
+            // BOTH NUMBERS, as the chart's title carries both: the code is what
+            // he types and will type again, and the height is what a brick
+            // actually measures. Neither alone is enough to pick from a list.
+            return code + " - " + ((Renko) how).label();
         }
     }
 }
