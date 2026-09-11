@@ -17,7 +17,7 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.backtest;
 
-import br.com.jorge.reis.endeavourneo.domain.market.MarketFile;
+import br.com.jorge.reis.endeavourneo.domain.market.Aggregation;
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
 import br.com.jorge.reis.endeavourneo.domain.market.Timeframe;
 import br.com.jorge.reis.endeavourneo.domain.trading.Backtest;
@@ -32,17 +32,12 @@ import java.awt.BorderLayout;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
-import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
-import java.util.stream.Stream;
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
-import javax.swing.JFileChooser;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
@@ -50,11 +45,9 @@ import javax.swing.JSpinner;
 import javax.swing.JSplitPane;
 import javax.swing.JTabbedPane;
 import javax.swing.JTable;
-import javax.swing.JTextField;
 import javax.swing.ListSelectionModel;
 import javax.swing.SpinnerNumberModel;
 import javax.swing.SwingWorker;
-import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.table.DefaultTableCellRenderer;
 
 /**
@@ -85,14 +78,24 @@ final class BacktestPanel extends JPanel {
 
     private static final long serialVersionUID = 1L;
 
-    private static final Timeframe[] SCALES = {
-            Timeframe.ONE_MINUTE, Timeframe.FIVE_MINUTES, Timeframe.FIFTEEN_MINUTES,
-            Timeframe.THIRTY_MINUTES, Timeframe.ONE_HOUR,
+    /**
+     * The scales a run may be read at.
+     *
+     * <p>The first is "as stored", and it is the default. A series already kept
+     * at five minutes does not need aggregating, and a renko one must not be:
+     * the list is disabled entirely when the series is not measured in time.</p>
+     */
+    private static final Scale[] SCALES = {
+            new Scale("backtest.asStored", Aggregation.none()),
+            new Scale("backtest.scale.5m", Timeframe.FIVE_MINUTES),
+            new Scale("backtest.scale.15m", Timeframe.FIFTEEN_MINUTES),
+            new Scale("backtest.scale.30m", Timeframe.THIRTY_MINUTES),
+            new Scale("backtest.scale.1h", Timeframe.ONE_HOUR),
     };
 
-    private final JTextField file = new JTextField(34);
+    private final JComboBox<SeriesChoice> series = new JComboBox<>();
 
-    private final JComboBox<Timeframe> scale = new JComboBox<>(SCALES);
+    private final JComboBox<Scale> scale = new JComboBox<>(SCALES);
 
     private final JComboBox<String> strategy = new JComboBox<>();
 
@@ -133,9 +136,14 @@ final class BacktestPanel extends JPanel {
         setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
         strategy.addItem(Messages.get("backtest.strategy.crossing"));
-        scale.setSelectedItem(Timeframe.FIVE_MINUTES);
 
-        file.setText(firstSeries());
+        for (SeriesChoice choice : SeriesChoice.available()) {
+            series.addItem(choice);
+        }
+
+        series.addActionListener(e -> followTheSeries());
+
+        followTheSeries();
 
         run.addActionListener(e -> start());
 
@@ -151,8 +159,7 @@ final class BacktestPanel extends JPanel {
 
         JPanel first = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
         first.add(new JLabel(Messages.get("backtest.series")));
-        first.add(file);
-        first.add(browse());
+        first.add(series);
         first.add(new JLabel(Messages.get("backtest.scale")));
         first.add(scale);
 
@@ -179,21 +186,22 @@ final class BacktestPanel extends JPanel {
         return top;
     }
 
-    private JButton browse() {
-        JButton button = new JButton("...");
+    /**
+     * Keeps the scale list honest about the series just chosen.
+     *
+     * <p>A renko series has no clock to aggregate by, so the list is disabled
+     * and snapped back to "as stored" — rather than left showing 5m over bars
+     * that are not minutes.</p>
+     */
+    private void followTheSeries() {
+        SeriesChoice chosen = (SeriesChoice) series.getSelectedItem();
+        boolean byTheClock = chosen != null && chosen.measuredInTime();
 
-        button.addActionListener(e -> {
-            JFileChooser chooser = new JFileChooser(new File(file.getText()).getParentFile());
+        scale.setEnabled(byTheClock);
 
-            chooser.setFileFilter(new FileNameExtensionFilter(
-                    Messages.get("backtest.seriesFiles"), "bin"));
-
-            if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
-                file.setText(chooser.getSelectedFile().getAbsolutePath());
-            }
-        });
-
-        return button;
+        if (!byTheClock) {
+            scale.setSelectedIndex(0);
+        }
     }
 
     private JSplitPane body() {
@@ -254,15 +262,15 @@ final class BacktestPanel extends JPanel {
     // ------------------------------------------------------------------ rodar
 
     private void start() {
-        Path path = Path.of(file.getText().trim());
+        SeriesChoice picked = (SeriesChoice) series.getSelectedItem();
 
-        if (!Files.isRegularFile(path)) {
+        if (picked == null) {
             summary.setText(Messages.get("backtest.noSeries"));
 
             return;
         }
 
-        Timeframe chosen = (Timeframe) scale.getSelectedItem();
+        Scale chosen = (Scale) scale.getSelectedItem();
         MovingAverageCrossing what = new MovingAverageCrossing(
                 (Integer) fast.getValue(), (Integer) slow.getValue(), (Integer) contracts.getValue());
         Costs charged = new Costs((Double) cost.getValue());
@@ -274,7 +282,7 @@ final class BacktestPanel extends JPanel {
 
             @Override
             protected Run doInBackground() throws IOException {
-                PriceSeries bars = chosen.apply(MarketFile.read(path));
+                PriceSeries bars = chosen.how().apply(picked.open());
 
                 return new Run(bars, new Backtest(charged, (Integer) contracts.getValue())
                         .run(bars, what));
@@ -355,27 +363,16 @@ final class BacktestPanel extends JPanel {
         }
     }
 
-    /** @return the first series file under {@code data/}, or an empty string */
-    private static String firstSeries() {
-        Path data = Path.of("data");
-
-        if (!Files.isDirectory(data)) {
-            return "";
-        }
-
-        try (Stream<Path> found = Files.walk(data, 4)) {
-            return found.filter(Files::isRegularFile)
-                    .filter(MarketFile::isSeries)
-                    .findFirst()
-                    .map(Path::toAbsolutePath)
-                    .map(Path::toString)
-                    .orElse("");
-        } catch (IOException unreadable) {
-            return "";
-        }
-    }
-
     /** A finished run, and the bars it ran over. */
     private record Run(PriceSeries series, Result result) {
+    }
+
+    /** One entry of the scale list: what it is called, and what it does. */
+    private record Scale(String key, Aggregation how) {
+
+        @Override
+        public String toString() {
+            return Messages.get(key);
+        }
     }
 }
