@@ -17,6 +17,7 @@
  */
 package br.com.jorge.reis.endeavourneo.ui.backtest;
 
+import br.com.jorge.reis.endeavourneo.domain.indicator.Pivots;
 import br.com.jorge.reis.endeavourneo.domain.indicator.Regression;
 import br.com.jorge.reis.endeavourneo.domain.indicator.Stochastic;
 import br.com.jorge.reis.endeavourneo.domain.market.Timeframe;
@@ -69,6 +70,12 @@ final class ChannelFadeKind implements StrategyKind {
 
     private static final String LATCH_ENTRIES = "strategy.fade.latch.entries";
 
+    private static final String FLIP = "strategy.fade.flip";
+
+    private static final String FLIP_WING = "strategy.fade.flip.wing";
+
+    private static final String FLIP_SLIP = "strategy.fade.flip.slip";
+
     /** Per rung: whether it is used, and its two factors in HUNDREDTHS. */
     private static final String RUNG_ON = "strategy.fade.rung.%d.on";
 
@@ -96,7 +103,8 @@ final class ChannelFadeKind implements StrategyKind {
 
     @Override
     public Strategy build() {
-        return new ChannelFade(Timeframe.defaultZone(), ladder(), lot(), latch());
+        return new ChannelFade(Timeframe.defaultZone(), ladder(), lot(),
+                latch(), flip());
     }
 
     @Override
@@ -163,6 +171,20 @@ final class ChannelFadeKind implements StrategyKind {
                 clamp(settings.getInt(LATCH_ENTRIES, 2), 1, 100));
     }
 
+    /** @return the turn stop as saved, or {@link ChannelFade.Flip#off()} */
+    static ChannelFade.Flip flip() {
+        Settings settings = Settings.settings();
+
+        if (!settings.getBoolean(FLIP, false)) {
+            return ChannelFade.Flip.off();
+        }
+
+        return new ChannelFade.Flip(true,
+                clamp(settings.getInt(FLIP_WING, Pivots.WING), 1, 500),
+                clamp(settings.getInt(FLIP_SLIP,
+                        (int) ChannelFade.Flip.SLIP), 0, 100_000));
+    }
+
     private static int clamp(int value, int least, int most) {
         return Math.max(least, Math.min(value, most));
     }
@@ -199,7 +221,17 @@ final class ChannelFadeKind implements StrategyKind {
         private final JSpinner latchReset = new JSpinner(new SpinnerNumberModel(
                 (int) StochasticLatch.Settings.RESET, 0, 100, 1));
 
-        private final JSpinner latchEntries = new JSpinner(new SpinnerNumberModel(2, 1, 100, 1));
+        private final JSpinner latchEntries =
+                new JSpinner(new SpinnerNumberModel(2, 1, 100, 1));
+
+        private final JCheckBox flip =
+                new JCheckBox(Messages.get("strategy.fade.flip"));
+
+        private final JSpinner flipWing =
+                new JSpinner(new SpinnerNumberModel(Pivots.WING, 1, 500, 1));
+
+        private final JSpinner flipSlip = new JSpinner(new SpinnerNumberModel(
+                (int) ChannelFade.Flip.SLIP, 0, 100_000, 5));
 
         private Page() {
             panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
@@ -249,7 +281,22 @@ final class ChannelFadeKind implements StrategyKind {
             panel.add(row("strategy.fade.latch.entries", latchEntries));
             panel.add(hint("strategy.fade.latch.hint"));
 
+            flip.setAlignmentX(Component.LEFT_ALIGNMENT);
+            flip.addActionListener(e -> followTheSwitch());
+
+            panel.add(flip);
+            panel.add(hint("strategy.fade.flip.hint"));
+            panel.add(row("strategy.fade.flip.wing", flipWing));
+            panel.add(row("strategy.fade.flip.slip", flipSlip));
+            panel.add(hint("strategy.fade.flip.slip.hint"));
+
             panel.add(Box.createVerticalGlue());
+        }
+
+        /** O que um interruptor desligado nao usa fica apagado. */
+        private void followTheSwitch() {
+            flipWing.setEnabled(flip.isSelected());
+            flipSlip.setEnabled(flip.isSelected());
         }
 
         private static JPanel row(String key, JComponent control) {
@@ -307,6 +354,13 @@ final class ChannelFadeKind implements StrategyKind {
             latchReset.setValue(settings.getInt(LATCH_RESET,
                     (int) StochasticLatch.Settings.RESET));
             latchEntries.setValue(settings.getInt(LATCH_ENTRIES, 2));
+
+            flip.setSelected(settings.getBoolean(FLIP, false));
+            flipWing.setValue(settings.getInt(FLIP_WING, Pivots.WING));
+            flipSlip.setValue(settings.getInt(FLIP_SLIP,
+                    (int) ChannelFade.Flip.SLIP));
+
+            followTheSwitch();
         }
 
         @Override
@@ -332,6 +386,10 @@ final class ChannelFadeKind implements StrategyKind {
             int reset = (Integer) latchReset.getValue();
             int entries = (Integer) latchEntries.getValue();
 
+            boolean naVirada = flip.isSelected();
+            int asa = (Integer) flipWing.getValue();
+            int folga = (Integer) flipSlip.getValue();
+
             Settings settings = Settings.settings();
 
             settings.hold(() -> {
@@ -351,6 +409,10 @@ final class ChannelFadeKind implements StrategyKind {
                 settings.putInt(LATCH_SELL, sell);
                 settings.putInt(LATCH_RESET, reset);
                 settings.putInt(LATCH_ENTRIES, entries);
+
+                settings.putBoolean(FLIP, naVirada);
+                settings.putInt(FLIP_WING, asa);
+                settings.putInt(FLIP_SLIP, folga);
             });
         }
     }

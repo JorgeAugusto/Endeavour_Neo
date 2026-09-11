@@ -17,6 +17,7 @@
  */
 package br.com.jorge.reis.endeavourneo.domain.trading.strategy;
 
+import br.com.jorge.reis.endeavourneo.domain.indicator.Pivots;
 import br.com.jorge.reis.endeavourneo.domain.indicator.Regression;
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
 import br.com.jorge.reis.endeavourneo.domain.market.Timeframe;
@@ -124,6 +125,79 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
             new Rung(Regression.LONG, 2.0, 1.75),
             new Rung(Regression.LONG, 2.5, 2.0));
 
+    /**
+     * One tick of the mini index. The stop sits one BEYOND the pivot.
+     *
+     * <p>Beyond and not on it: a stop exactly on the low comes out on a touch
+     * that did not break the structure, which is the same argument the pattern
+     * breakout makes about its trigger.</p>
+     */
+    public static final double TICK = 5;
+
+    /**
+     * The stop that appears when both channels turn against an open lot.
+     *
+     * <p>The entry needed both channels agreeing; both agreeing the OTHER way is
+     * the thesis being withdrawn. The position does not leave on that alone — it
+     * waits for the market to draw a level worth leaving beyond: the first pivot
+     * of the zigzag AFTER the turn. A bottom under a long, a top over a short,
+     * and the stop one tick past it.
+     *
+     * <h2>The six bars nobody is watching</h2>
+     *
+     * <p>Between the turn and a confirmed pivot there is no stop at all, and it
+     * is not an oversight. A pivot needs {@code wing} bars on its right before it
+     * is a fact, and the bottom itself takes however long it takes: in the
+     * drawing of this rule it is four bars to the bottom and two more to confirm
+     * it. Anything put in that gap would be a number chosen in a fright rather
+     * than a level the market drew, and the whole point of this stop is that the
+     * market drew it.
+     *
+     * <h2>It does not move afterwards</h2>
+     *
+     * <p>The first pivot after the turn, and that one only. Following later
+     * pivots up would be a trailing stop, which is a different rule with a
+     * different answer, and this one was specified as a level.
+     *
+     * <h2>A stop a gap can skip is not a stop</h2>
+     *
+     * <p>An NTSL stop is a PAIR — a trigger and a limit — and everywhere else in
+     * this project the two are the same number, which is right for an ENTRY: a
+     * bar that opens beyond the trigger is a breakout already gone, and refusing
+     * it is refusing to chase. For a protective stop it is the opposite. Written
+     * that way, a bar that opens below the level triggers the order and then
+     * refuses the fill for being worse than the limit — measured here on a
+     * made-up session: the level was 103.890, the bar opened at 103.845, and the
+     * position rode on to the end of the day.
+     *
+     * <p>So the limit sits {@code slip} points past the trigger, and that number
+     * is what the stop is allowed to cost beyond the level. Past it the fill is
+     * refused again, which is also true of a real stop-limit: this models the
+     * order, it does not pretend the gap away.
+     *
+     * @param on   whether the stop applies
+     * @param wing the zigzag's wing; two is what "zigzag 2" means
+     * @param slip the most, in points, the fill may be worse than the level
+     */
+    public record Flip(boolean on, int wing, double slip) {
+
+        /** Forty ticks. Generous, because refusing a stop is the worse error. */
+        public static final double SLIP = 200;
+
+        public Flip {
+            wing = Math.max(1, wing);
+            slip = slip >= 0 ? slip : SLIP;
+        }
+
+        public static Flip off() {
+            return new Flip(false, Pivots.WING, SLIP);
+        }
+
+        public static Flip standard() {
+            return new Flip(true, Pivots.WING, SLIP);
+        }
+    }
+
     private final ZoneId zone;
 
     private final List<Rung> ladder;
@@ -131,6 +205,8 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
     private final int lot;
 
     private final StochasticLatch latch;
+
+    private final Flip flip;
 
     // ---------------------------------------------------------------- the run
 
@@ -144,6 +220,9 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
 
     /** Each rung's fit, per decision bar, keyed the way {@link #ladder} is. */
     private Map<Integer, Regression.Fit[]> fits;
+
+    /** The pivot that became a fact at each decision bar, or null. */
+    private Pivots.Pivot[] pivots;
 
     // --------------------------------------------------------------- the book
 
@@ -160,12 +239,30 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
     /** Rungs already spent since the latch last armed. */
     private final List<Rung> spent = new ArrayList<>();
 
+    /**
+     * The bar both channels first turned against the open position, or −1.
+     *
+     * <p>On the POSITION and not on a lot: every lot faces the same way, and the
+     * turn is about the market rather than about which rung put a lot on.</p>
+     */
+    private int turned;
+
+    /** Where the flip stop sits once a pivot has set it, or NaN. */
+    private double flipStop;
+
     private double[] entryLine;
 
     private double[] targetLine;
 
     public ChannelFade() {
-        this(null, LADDER, 1, StochasticLatch.Settings.standard());
+        this(null, LADDER, 1, StochasticLatch.Settings.standard(), Flip.standard());
+    }
+
+    /** Without the turn stop: the lot leaves at its target or at the bell. */
+    public ChannelFade(ZoneId zone, List<Rung> ladder, int lot,
+                       StochasticLatch.Settings latch) {
+
+        this(zone, ladder, lot, latch, Flip.off());
     }
 
     /**
@@ -173,14 +270,16 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
      * @param ladder the rungs, in any order; the nearest is chosen each bar
      * @param lot    contracts per rung
      * @param latch  the stochastic filter
+     * @param flip   the stop for when both channels turn against the position
      */
     public ChannelFade(ZoneId zone, List<Rung> ladder, int lot,
-                       StochasticLatch.Settings latch) {
+                       StochasticLatch.Settings latch, Flip flip) {
 
         this.zone = zone == null ? Timeframe.defaultZone() : zone;
         this.ladder = ladder == null || ladder.isEmpty() ? LADDER : List.copyOf(ladder);
         this.lot = Math.max(1, lot);
         this.latch = new StochasticLatch(latch);
+        this.flip = flip == null ? Flip.off() : flip;
     }
 
     @Override
@@ -214,8 +313,15 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
         open.clear();
         spent.clear();
 
+        turned = -1;
+        flipStop = Double.NaN;
+
         latch.start(bars, source);
         fitTheChannels();
+
+        pivots = flip.on()
+                ? new Pivots(flip.wing()).confirmedAt(bars)
+                : new Pivots.Pivot[size];
     }
 
     private static double[] blank(int many) {
@@ -295,6 +401,9 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
             spent.clear();
             latch.clear();
 
+            turned = -1;
+            flipStop = Double.NaN;
+
             if (market.hasPosition()) {
                 desk.closePosition();
             }
@@ -310,6 +419,7 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
             spent.clear();
         }
 
+        watchForTheTurn(bar);
         cover(bar, desk);
         enter(bar, market, desk);
     }
@@ -330,9 +440,23 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
                 continue;
             }
 
-            if (verb.contains("Cover") || verb.contains("Close") || verb.contains("Reverse")) {
+            // THE VERB SAYS WHICH LEG IT WAS, so nothing has to be matched by
+            // price or by size: the target is a *CoverLimit and belongs to one
+            // lot, the turn stop is a *CoverStop and belongs to the position.
+            if (verb.contains("Cover") && verb.contains("Stop")) {
+                open.clear();
+
+                turned = -1;
+                flipStop = Double.NaN;
+            } else if (verb.contains("Cover") || verb.contains("Close")
+                    || verb.contains("Reverse")) {
                 if (!open.isEmpty()) {
                     open.remove(0);
+                }
+
+                if (open.isEmpty()) {
+                    turned = -1;
+                    flipStop = Double.NaN;
                 }
             } else if (verb.startsWith("Buy") || verb.startsWith("SellShort")) {
                 if (resting != null) {
@@ -344,6 +468,47 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
                 }
             }
         }
+    }
+
+    /**
+     * Watches for both channels turning against the position, and then for the
+     * first pivot that gives the stop a level.
+     *
+     * <p>The pivot has to be AFTER the turn — a bottom the market drew while the
+     * channels still pointed up is a bottom of the old thesis, and putting the
+     * stop there would be reading a level out of a market that no longer
+     * exists.</p>
+     */
+    private void watchForTheTurn(int bar) {
+        if (!flip.on() || open.isEmpty()) {
+            return;
+        }
+
+        int side = open.get(0).side();
+
+        if (turned < 0) {
+            if (sideAllowed(bar) == -side) {
+                turned = bar;
+            }
+
+            return;
+        }
+
+        if (!Double.isNaN(flipStop)) {
+            return;
+        }
+
+        Pivots.Pivot now = pivots[bar];
+
+        // A long wants the first BOTTOM; a short wants the first top.
+        if (now == null || now.bar() <= turned || now.top() != (side < 0)) {
+            return;
+        }
+
+        // A CONFIRMED PIVOT HAS NOT BEEN BROKEN -- see Pivots -- so this level
+        // cannot already be behind the price, and there is no case here for a
+        // stop that is violated the moment it is written down.
+        flipStop = now.price() - side * TICK;
     }
 
     /**
@@ -376,6 +541,27 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
             desk.sellToCoverLimit(price, first.quantity());
         } else {
             desk.buyToCoverLimit(price, first.quantity());
+        }
+
+        if (Double.isNaN(flipStop)) {
+            return;
+        }
+
+        // THE WHOLE POSITION, and not this lot. The turn stop is not the rung's
+        // -- the rungs differ in where they came on and where they aim, and the
+        // turn is about the market having changed its mind about all of them.
+        int held = 0;
+
+        for (Lot each : open) {
+            held += each.quantity();
+        }
+
+        double room = flipStop - first.side() * flip.slip();
+
+        if (first.side() > 0) {
+            desk.sellToCoverStop(flipStop, room, held);
+        } else {
+            desk.buyToCoverStop(flipStop, room, held);
         }
     }
 
