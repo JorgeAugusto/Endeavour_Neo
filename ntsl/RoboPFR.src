@@ -1,0 +1,270 @@
+// ============================================================================
+// RoboPFR -- opera TODO preco de fechamento de reversao  (NTSL / Profit)
+// ============================================================================
+// O QUE E': acha o PFR e opera na ponta da propria barra que o formou.
+//
+//   PFR DE ALTA  -> COMPRA no TOPO da barra, STOP no FUNDO dela.
+//   PFR DE BAIXA -> VENDE no FUNDO da barra, STOP no TOPO dela.
+//
+//   O risco de cada operacao e' o TAMANHO da barra do padrao, e o alvo sai
+//   disso: AlvoR vezes esse tamanho. Barra grande, risco grande -- nao ha teto
+//   aqui, de proposito: foi o que foi pedido, e por um filtro de risco maximo
+//   passar a decidir quais PFR sao operados a estrategia deixaria de ser "opera
+//   todos".
+//
+// O QUE E' UM PFR (a mesma definicao do indicador de padroes do endeavour_neo,
+// que veio do PaintBar de origem):
+//
+//   ALTA : a barra faz a MENOR MINIMA das ultimas tres e ainda assim fecha
+//          ACIMA do fechamento anterior e ACIMA da propria abertura. E' rejeicao
+//          de fundo: quem vendeu na minima terminou a barra perdendo.
+//   BAIXA: espelho -- MAIOR MAXIMA das tres, fechando ABAIXO do fechamento
+//          anterior e ABAIXO da propria abertura.
+//
+//   Repare que o fechamento tem de recusar o extremo POR DUAS VIAS: contra o
+//   fechamento anterior E contra a propria abertura. Uma barra que faz minima
+//   nova e fecha em alta mas ABAIXO do fechamento anterior nao e PFR -- e' so
+//   uma barra que caiu menos do que parecia.
+//
+// MODELO DE EXECUCAO NTSL (ler antes de editar):
+//   - begin..end roda 1x por candle E de novo a cada TICK do candle em formacao.
+//   - variaveis do bloco 'var' sao GLOBAIS e PERSISTEM entre os candles.
+//   - a ordem dos blocos e' const, input, var, begin -- nessa ordem, ou o Profit
+//     reclama.
+//   - SEM FUNCOES: funcao NTSL nao enxerga global, entao uma funcao aqui ou nao
+//     compila ou mente. Tudo inline.
+//   - nao ha 'procedure', nao ha 'div'; divisao inteira e Round(Floor(a/b)).
+//   - X[i] = i candles atras ; X / X[0] = candle atual ; Time = inteiro HHMM.
+//   - UM CALL-SITE POR ORDEM: alternar preco ou tamanho no MESMO ponto do codigo
+//     faz o Profit cancelar e recriar a ordem a cada passada. Aqui cada ordem
+//     tem o proprio if, e o preco dela so muda quando o sinal muda.
+//   - as coberturas sao uma OCO: uma perna executa e as outras morrem.
+//   - comentarios em ASCII puro (sem acento) p/ nao quebrar o editor do Profit.
+//
+// DECISOES QUE O PEDIDO NAO COBRIA, e que estao em input para serem trocadas:
+//   - ALVO: AlvoR vezes o risco. Um PFR sem alvo so sai no stop ou no horario.
+//   - VALIDADE: a ordem de entrada descansa CandlesValidade candles e depois e'
+//     cancelada. Sem prazo, um gatilho de tres semanas atras ainda estaria la.
+//   - UMA POSICAO POR VEZ: PFR novo com posicao aberta e' ignorado, inclusive do
+//     lado contrario. Reverter no PFR oposto e' outra estrategia.
+//   - HORARIO: entra ate 17:30 e encerra tudo as 17:45. Posicao viva depois
+//     disso e' posicao levada para o leilao de fechamento, quando o livro afina
+//     e um stop executa onde der.
+// ============================================================================
+
+const
+  LADO_NENHUM = 0;
+  LADO_COMPRA = 1;
+  LADO_VENDA  = -1;
+
+input
+  Lote(1);                 // contratos por operacao
+  AlvoR(1.5);              // alvo, em multiplos do tamanho da barra do padrao
+  FolgaEntrada(0);         // quanto o limite da entrada aceita alem do gatilho
+  FolgaStop(0);            // idem para o stop -- 0 = so executa no preco exato
+  CandlesValidade(1);      // por quantos candles a entrada fica de pe
+  HoraUltimaEntrada(1730); // nenhuma entrada nova a partir daqui, em HHMM
+  HoraEncerra(1745);       // tudo zerado neste horario
+  Diagnostico(false);      // plota os niveis e loga no console
+
+var
+  vUltCandle : integer;    // ContadorDeCandle() ja processado
+
+  // --- o sinal em pe ---
+  vLado     : integer;     // LADO_COMPRA, LADO_VENDA ou LADO_NENHUM
+  vGatilho  : float;       // onde a entrada dispara: topo (ou fundo) do padrao
+  vStopSinal : float;      // o outro extremo da mesma barra
+  vValidade : integer;     // candles que a ordem ainda tem de vida
+
+  // --- a posicao ---
+  vEntrou   : boolean;
+  vLadoPos  : integer;
+  vEntrada  : float;
+  vStopPos  : float;
+  vAlvoPos  : float;
+  vRisco    : float;
+
+  // --- auxiliares ---
+  vQtdReal : integer;
+  vEhAlta, vEhBaixa : boolean;
+
+Initialization
+begin
+  vUltCandle := -1;
+  vLado      := LADO_NENHUM;
+  vValidade  := 0;
+  vEntrou    := false;
+  vLadoPos   := LADO_NENHUM;
+end;
+
+// ============================================================================
+begin
+
+  // ==========================================================================
+  // A POSICAO REAL, QUE E A VERDADE
+  //
+  // O NTSL nao entrega execucoes; entrega a POSICAO. O robo descobre que entrou
+  // comparando a quantidade com o que ele sabia, que e' como o RoboMateus2Novo
+  // rastreia entrada.
+  // ==========================================================================
+  vQtdReal := 0;
+
+  if IsBought then
+    vQtdReal := Round(BuyPositionQty)
+  else if IsSold then
+    vQtdReal := Round(SellPositionQty);
+
+  // --- entrou agora? --------------------------------------------------------
+  if (not vEntrou) and (vQtdReal > 0) and (vLado <> LADO_NENHUM) then
+  begin
+    vEntrou  := true;
+    vLadoPos := vLado;
+
+    // O preco MEDIO da posicao, que logo apos a execucao E o preco dela. Pedir
+    // o gatilho seria ignorar o gap: se a abertura passou do nivel, a ordem
+    // executou la e nao aqui.
+    if vLadoPos = LADO_COMPRA then
+      vEntrada := BuyPrice
+    else
+      vEntrada := SellPrice;
+
+    vStopPos := vStopSinal;
+    vRisco   := vEntrada - vStopPos;
+
+    if vRisco < 0 then
+      vRisco := 0 - vRisco;
+
+    vAlvoPos := vEntrada + vLadoPos * AlvoR * vRisco;
+
+    // O sinal foi consumido: ele virou posicao e nao arma mais nada.
+    vLado     := LADO_NENHUM;
+    vValidade := 0;
+
+    if Diagnostico then
+      ConsoleLog("[PFR] " + FloatToString(Time, 0) + " entrou lado "
+                 + FloatToString(vLadoPos, 0) + " em " + FloatToString(vEntrada, 0)
+                 + " stop " + FloatToString(vStopPos, 0)
+                 + " alvo " + FloatToString(vAlvoPos, 0)
+                 + " risco " + FloatToString(vRisco, 0));
+  end;
+
+  // --- saiu? ----------------------------------------------------------------
+  if vEntrou and (vQtdReal = 0) then
+  begin
+    vEntrou  := false;
+    vLadoPos := LADO_NENHUM;
+    vStopPos := 0;
+    vAlvoPos := 0;
+
+    if Diagnostico then
+      ConsoleLog("[PFR] " + FloatToString(Time, 0) + " saiu");
+  end;
+
+  // ==========================================================================
+  // ENCERRAR NO HORARIO
+  // ==========================================================================
+  if Time >= HoraEncerra then
+  begin
+    if vQtdReal > 0 then
+      ClosePosition;
+
+    vLado     := LADO_NENHUM;
+    vValidade := 0;
+  end;
+
+  // ==========================================================================
+  // O PADRAO, UMA VEZ POR CANDLE
+  //
+  // Le o candle que ACABOU DE FECHAR -- indice [1] -- e os dois antes dele. Um
+  // padrao so existe quando a barra fecha; procurar a cada tick acharia PFR no
+  // candle em formacao, que ainda pode virar qualquer outra coisa.
+  // ==========================================================================
+  if ContadorDeCandle() <> vUltCandle then
+  begin
+    vUltCandle := ContadorDeCandle();
+
+    // A ordem em pe envelhece um candle.
+    if vValidade > 0 then
+    begin
+      vValidade := vValidade - 1;
+
+      if vValidade = 0 then
+        vLado := LADO_NENHUM;
+    end;
+
+    // PFR DE ALTA: menor minima das tres, e o fechamento recusa esse extremo
+    // por duas vias -- contra o fechamento anterior E contra a propria
+    // abertura.
+    vEhAlta := (Low[1] < Low[2]) and (Low[1] < Low[3])
+               and (Close[1] > Close[2]) and (Close[1] > Open[1]);
+
+    vEhBaixa := (High[1] > High[2]) and (High[1] > High[3])
+                and (Close[1] < Close[2]) and (Close[1] < Open[1]);
+
+    // UMA POSICAO POR VEZ, e o horario da entrada respeitado. PFR que aparece
+    // com posicao aberta e' ignorado -- reverter no padrao oposto seria outra
+    // estrategia, e acumular no mesmo lado tambem.
+    if (not vEntrou) and (vQtdReal = 0) and (Time < HoraUltimaEntrada) then
+    begin
+      if vEhAlta then
+      begin
+        vLado      := LADO_COMPRA;
+        vGatilho   := High[1];      // COMPRA NO TOPO da barra do padrao
+        vStopSinal := Low[1];       // e STOP NO FUNDO dela
+        vValidade  := CandlesValidade;
+
+        if Diagnostico then
+          ConsoleLog("[PFR] " + FloatToString(Time, 0) + " PFR de ALTA: compra em "
+                     + FloatToString(vGatilho, 0) + " stop " + FloatToString(vStopSinal, 0));
+      end
+      else if vEhBaixa then
+      begin
+        vLado      := LADO_VENDA;
+        vGatilho   := Low[1];       // VENDE NO FUNDO da barra do padrao
+        vStopSinal := High[1];      // e STOP NO TOPO dela
+        vValidade  := CandlesValidade;
+
+        if Diagnostico then
+          ConsoleLog("[PFR] " + FloatToString(Time, 0) + " PFR de BAIXA: venda em "
+                     + FloatToString(vGatilho, 0) + " stop " + FloatToString(vStopSinal, 0));
+      end;
+    end;
+  end;
+
+  // ==========================================================================
+  // AS ORDENS, REEMITIDAS
+  //
+  // No NTSL nao reemitir uma ordem e' cancela-la. Entao tudo que a estrategia
+  // ainda quer e' pedido de novo, toda passagem -- e cada ordem tem o proprio
+  // call-site, com preco que so muda quando o sinal muda.
+  // ==========================================================================
+
+  // --- a entrada ---
+  if (not vEntrou) and (vLado = LADO_COMPRA) and (vValidade > 0) then
+    BuyStop(vGatilho, vGatilho + FolgaEntrada, Lote);
+
+  if (not vEntrou) and (vLado = LADO_VENDA) and (vValidade > 0) then
+    SellShortStop(vGatilho, vGatilho - FolgaEntrada, Lote);
+
+  // --- o stop ---
+  if vEntrou and (vLadoPos = LADO_COMPRA) and (vStopPos > 0) then
+    SellToCoverStop(vStopPos, vStopPos - FolgaStop, vQtdReal);
+
+  if vEntrou and (vLadoPos = LADO_VENDA) and (vStopPos > 0) then
+    BuyToCoverStop(vStopPos, vStopPos + FolgaStop, vQtdReal);
+
+  // --- o alvo ---
+  if vEntrou and (vLadoPos = LADO_COMPRA) and (vAlvoPos > 0) then
+    SellToCoverLimit(vAlvoPos, vQtdReal);
+
+  if vEntrou and (vLadoPos = LADO_VENDA) and (vAlvoPos > 0) then
+    BuyToCoverLimit(vAlvoPos, vQtdReal);
+
+  // --- diagnostico ----------------------------------------------------------
+  if Diagnostico then
+  begin
+    Plot(vGatilho);
+    Plot2(vStopSinal);
+    Plot3(vAlvoPos);
+  end;
+end;
