@@ -25,7 +25,9 @@ import br.com.jorge.reis.endeavourneo.domain.trading.Plotted;
 import br.com.jorge.reis.endeavourneo.domain.trading.Strategy;
 import br.com.jorge.reis.endeavourneo.domain.trading.order.Desk;
 
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -115,6 +117,21 @@ public final class RangeBreakout implements Strategy, Plotted {
     /** The minutes of clock the range is built from: the 90 of the name. */
     public static final int FORMATION = OpeningRange.FORMATION_MINUTES;
 
+    /**
+     * Everything is out by this time, whatever the session does afterwards.
+     *
+     * <p>The specification's §14 manages to the last candle of the date, which
+     * on the WIN is 18:24 — and a position alive until the last minute of the
+     * day is one held through the closing auction, when the book thins and a
+     * stop is filled wherever it lands. It also <b>reads</b> as an overnight
+     * position on the chart: a band running to 18:24 and the next day's starting
+     * at 10:50 look like one mark.</p>
+     *
+     * <p>17:45, then: late enough that the afternoon is still traded, early
+     * enough to be out before the close does its own thing.</p>
+     */
+    public static final LocalTime CLOSE_AT = LocalTime.of(17, 45);
+
     /** The selector scores a wider window than the strategy trades. */
     static final int SELECTOR_WINDOW = 60;
 
@@ -141,6 +158,8 @@ public final class RangeBreakout implements Strategy, Plotted {
     private final int window;
 
     private final int formation;
+
+    private final LocalTime closeAt;
 
     // ---------------------------------------------------------------- the run
 
@@ -222,11 +241,11 @@ public final class RangeBreakout implements Strategy, Plotted {
     private double[] targetLine;
 
     public RangeBreakout() {
-        this(null, LOT, CAP, ENTRY_WINDOW, FORMATION);
+        this(null, LOT, CAP, ENTRY_WINDOW, FORMATION, CLOSE_AT);
     }
 
     RangeBreakout(ZoneId zone) {
-        this(zone, LOT, CAP, ENTRY_WINDOW, FORMATION);
+        this(zone, LOT, CAP, ENTRY_WINDOW, FORMATION, CLOSE_AT);
     }
 
     /**
@@ -237,6 +256,16 @@ public final class RangeBreakout implements Strategy, Plotted {
      * @param formation minutes of clock the range is built from
      */
     public RangeBreakout(ZoneId zone, int lot, int cap, int window, int formation) {
+        this(zone, lot, cap, window, formation, CLOSE_AT);
+    }
+
+    /**
+     * @param closeAt everything is out by this time of day
+     * @see #RangeBreakout(ZoneId, int, int, int, int)
+     */
+    public RangeBreakout(ZoneId zone, int lot, int cap, int window, int formation,
+                         LocalTime closeAt) {
+        this.closeAt = closeAt == null ? CLOSE_AT : closeAt;
         this.zone = zone == null ? Timeframe.defaultZone() : zone;
         this.lot = Math.max(1, lot);
 
@@ -360,12 +389,16 @@ public final class RangeBreakout implements Strategy, Plotted {
     private void decide(int minute, int day) {
         OpeningRange.Session session = sessions.get(day);
 
-        // THE LAST MINUTE IS DECIDED ON THE ONE BEFORE IT. §14 closes at the
-        // last close; nothing here can execute at a close, so the order goes out
-        // one minute early and fills at that last minute's open. Carrying the
-        // position to the next open instead would hold it overnight, which is
-        // the one thing this strategy never does.
-        if (minute >= session.last() - 1) {
+        // OUT AT 17:45, or at the session's last minute if it ends sooner.
+        //
+        // Both are decided one minute EARLY, because nothing here can execute at
+        // a close: the order goes out at the close of the minute that ends at
+        // the deadline, and fills at the open of the minute that starts on it.
+        // Waiting until the deadline itself would fill a minute after it.
+        LocalTime ends = Instant.ofEpochMilli(minutes.timeAt(minute) + 60_000L)
+                .atZone(zone).toLocalTime();
+
+        if (!ends.isBefore(closeAt) || minute >= session.last() - 1) {
             trigger = Double.NaN;
             adding = Double.NaN;
 

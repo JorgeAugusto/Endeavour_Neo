@@ -86,19 +86,23 @@ class RangeBreakoutTest {
      * alvos. Os fechamentos diários sobem cinquenta pontos por dia, então a
      * inclinação da EMA 10 é positiva e só a compra é permitida.
      */
-    private record Days(int count, Shape[] shapes) implements PriceSeries {
+    private record Days(int count, Shape[] shapes, int perDay) implements PriceSeries {
+
+        private Days(int count, Shape[] shapes) {
+            this(count, shapes, PER_DAY);
+        }
 
         @Override
         public int size() {
-            return count * PER_DAY;
+            return count * perDay;
         }
 
         private int day(int index) {
-            return index / PER_DAY;
+            return index / perDay;
         }
 
         private int minute(int index) {
-            return index % PER_DAY;
+            return index % perDay;
         }
 
         private double base(int index) {
@@ -457,6 +461,44 @@ class RangeBreakoutTest {
         }
 
         assertTrue(adds > 0, "nenhum lote foi acrescentado, entao este teste nao provou nada");
+    }
+
+    @Test
+    @DisplayName("NADA CONTINUA ABERTO DEPOIS DAS 17:45")
+    void nothingIsStillOpenAfterTheDeadline() {
+        // Pregoes longos de verdade -- 560 minutos a partir das 09:00, que vao
+        // ate 18:19 -- porque so assim as 17:45 chegam antes do fim do pregao.
+        // Com os pregoes curtos dos outros testes, o fechamento do dia acontece
+        // pela regra do ultimo minuto e o horario nunca e exercido.
+        PriceSeries series = new Days(60, new Shape[] {Shape.HOLD}, 560);
+        Result result = run(series, RangeBreakout.CAP);
+
+        assertFalse(result.fills().isEmpty(), "nenhuma execucao para julgar");
+
+        int position = 0;
+        int fechou = 0;
+
+        for (Fill fill : result.fills()) {
+            LocalTime when = Instant.ofEpochMilli(series.timeAt(fill.bar()))
+                    .atZone(SP).toLocalTime();
+
+            position += fill.signed();
+
+            // Uma posicao viva depois das 17:45 e uma posicao carregada para o
+            // leilao de fechamento, quando o livro afina e um stop executa onde
+            // der -- e no grafico ela se parece com posicao que virou a noite.
+            if (when.isAfter(RangeBreakout.CLOSE_AT)) {
+                assertEquals(0, position,
+                        "as " + when + " ainda havia " + position + " contratos abertos");
+            }
+
+            if (position == 0 && when.equals(RangeBreakout.CLOSE_AT)) {
+                fechou++;
+            }
+        }
+
+        assertTrue(fechou > 0,
+                "nenhum pregao foi fechado no horario; a regra nao chegou a ser exercida");
     }
 
     @Test

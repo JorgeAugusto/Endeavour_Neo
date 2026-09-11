@@ -26,6 +26,7 @@ import br.com.jorge.reis.endeavourneo.ui.settings.SettingsPage;
 
 import java.awt.Component;
 import java.awt.FlowLayout;
+import java.time.LocalTime;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
@@ -38,7 +39,7 @@ import javax.swing.SpinnerNumberModel;
 /**
  * The Range 90, and the screen that sets it up.
  *
- * <p>Four numbers, and deliberately not more. The target is <b>not</b> here: it
+ * <p>Five controls, and deliberately not more. The target is <b>not</b> here: it
  * is 1,5R or 2R and which of the two is chosen by the walk-forward selector,
  * every morning, out of the sessions before it. Putting it on this screen would
  * offer the reader a decision the strategy takes away from him — and would let
@@ -59,6 +60,20 @@ final class RangeBreakoutKind implements StrategyKind {
 
     private static final String FORMATION = "strategy.range90.formation";
 
+    private static final String CLOSE_AT = "strategy.range90.closeAt";
+
+    /**
+     * The deadline, kept as MINUTES PAST MIDNIGHT.
+     *
+     * <p>Not as "17:45". {@code Settings} stores strings, and a time written as
+     * text has to be parsed back — which means picking a locale and a separator
+     * for a value nobody outside this class ever reads. A whole number of
+     * minutes has one spelling everywhere.</p>
+     */
+    private static int minutesOf(LocalTime when) {
+        return when.getHour() * 60 + when.getMinute();
+    }
+
     @Override
     public String label() {
         return Messages.get("backtest.strategy.range90");
@@ -71,7 +86,8 @@ final class RangeBreakoutKind implements StrategyKind {
 
     @Override
     public Strategy build() {
-        return new RangeBreakout(Timeframe.defaultZone(), lot(), cap(), window(), formation());
+        return new RangeBreakout(Timeframe.defaultZone(), lot(), cap(), window(),
+                formation(), closeAt());
     }
 
     @Override
@@ -100,6 +116,14 @@ final class RangeBreakoutKind implements StrategyKind {
         return clamp(Settings.settings().getInt(FORMATION, RangeBreakout.FORMATION), 1, 600);
     }
 
+    /** @return the time everything is out by, whatever the session does after */
+    static LocalTime closeAt() {
+        int minutes = clamp(Settings.settings()
+                .getInt(CLOSE_AT, minutesOf(RangeBreakout.CLOSE_AT)), 0, 24 * 60 - 1);
+
+        return LocalTime.of(minutes / 60, minutes % 60);
+    }
+
     private static int clamp(int value, int least, int most) {
         return Math.max(least, Math.min(value, most));
     }
@@ -121,13 +145,28 @@ final class RangeBreakoutKind implements StrategyKind {
         private final JSpinner cap =
                 new JSpinner(new SpinnerNumberModel(RangeBreakout.CAP, 1, 1_000, 1));
 
+        /**
+         * The deadline, as a clock.
+         *
+         * <p>A {@code SpinnerDateModel} on {@code MINUTE} rather than a typed
+         * field: there is nothing to validate, nothing to parse, and no way to
+         * leave it saying something that is not a time.</p>
+         */
+        private final JSpinner closeAt =
+                new JSpinner(new javax.swing.SpinnerDateModel(
+                        new java.util.Date(), null, null, java.util.Calendar.MINUTE));
+
         private Page() {
             panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+
+            closeAt.setEditor(new JSpinner.DateEditor(closeAt, "HH:mm"));
 
             panel.add(row("strategy.range90.formation", formation));
             panel.add(hint("strategy.range90.formation.hint"));
             panel.add(row("strategy.range90.window", window));
             panel.add(hint("strategy.range90.window.hint"));
+            panel.add(row("strategy.range90.closeAt", closeAt));
+            panel.add(hint("strategy.range90.closeAt.hint"));
             panel.add(row("strategy.range90.lot", lot));
             panel.add(row("strategy.range90.cap", cap));
             panel.add(hint("strategy.range90.lot.hint"));
@@ -143,6 +182,22 @@ final class RangeBreakoutKind implements StrategyKind {
             row.add(control);
 
             return row;
+        }
+
+        /**
+         * @return that time today, which is all a clock spinner ever shows
+         *
+         * <p>The date half is carried because {@code SpinnerDateModel} deals in
+         * {@code Date} and nothing else; it is never read back.</p>
+         */
+        private static java.util.Date dateOf(LocalTime when) {
+            return java.util.Date.from(when.atDate(java.time.LocalDate.now())
+                    .atZone(java.time.ZoneId.systemDefault()).toInstant());
+        }
+
+        private static LocalTime timeOf(java.util.Date when) {
+            return when.toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalTime()
+                    .withSecond(0).withNano(0);
         }
 
         private static JLabel hint(String key) {
@@ -171,6 +226,7 @@ final class RangeBreakoutKind implements StrategyKind {
             window.setValue(window());
             lot.setValue(lot());
             cap.setValue(cap());
+            closeAt.setValue(dateOf(closeAt()));
         }
 
         @Override
@@ -179,6 +235,7 @@ final class RangeBreakoutKind implements StrategyKind {
             int wantedCap = (Integer) cap.getValue();
             int wantedWindow = (Integer) window.getValue();
             int wantedFormation = (Integer) formation.getValue();
+            int wantedClose = minutesOf(timeOf((java.util.Date) closeAt.getValue()));
 
             Settings settings = Settings.settings();
 
@@ -192,6 +249,7 @@ final class RangeBreakoutKind implements StrategyKind {
                 settings.putInt(CAP, Math.max(wantedCap, wantedLot));
                 settings.putInt(WINDOW, wantedWindow);
                 settings.putInt(FORMATION, wantedFormation);
+                settings.putInt(CLOSE_AT, wantedClose);
             });
         }
     }
