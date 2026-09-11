@@ -204,6 +204,61 @@ class SeriesChoiceTest {
     }
 
     @Test
+    @DisplayName("os dias de um segmento sao SO os dele")
+    void thedaysOfASegmentAreOnlyItsOwn() throws IOException {
+        series("winfull-1m", 10);
+
+        Segmentation.set("winfull-1m", List.of(
+                new Segment("busca", LocalDate.of(2020, 9, 1), LocalDate.of(2020, 9, 3))));
+
+        java.util.NavigableSet<LocalDate> doSegmento =
+                new SeriesChoice("winfull-1m#busca", "").sessions();
+
+        java.util.NavigableSet<LocalDate> daSerie =
+                new SeriesChoice("winfull-1m", "").sessions();
+
+        assertEquals(3, doSegmento.size(), "o segmento ofereceu " + doSegmento.size() + " dias");
+        assertEquals(10, daSerie.size(), "a serie inteira ofereceu " + daSerie.size() + " dias");
+
+        // A PONTA E A DO SEGMENTO, nao a da serie. Um campo que abre no ultimo
+        // dia da serie, com o segmento terminando tres dias antes, abre fora do
+        // que a rodada pode usar.
+        assertEquals(LocalDate.of(2020, 9, 3), doSegmento.last(),
+                "a ultima data do segmento nao e a dele");
+        assertTrue(!doSegmento.contains(LocalDate.of(2020, 9, 8)),
+                "um dia de fora do segmento entrou na lista");
+    }
+
+    @Test
+    @DisplayName("o calendario recusa um dia que o segmento nao tem")
+    void thecalendarRefusesADayTheSegmentDoesNotHave() throws IOException {
+        series("winfull-1m", 10);
+
+        Segmentation.set("winfull-1m", List.of(
+                new Segment("busca", LocalDate.of(2020, 9, 1), LocalDate.of(2020, 9, 3))));
+
+        br.com.jorge.reis.endeavourneo.ui.replay.DatePicker picker =
+                new br.com.jorge.reis.endeavourneo.ui.replay.DatePicker(null);
+
+        picker.setSessions(new SeriesChoice("winfull-1m#busca", "").sessions());
+
+        // Sem esta lista o picker cai no padrao "qualquer dia util" -- e ai ele
+        // oferece dias que o segmento nao contem, e um intervalo digitado a
+        // partir deles cobre nada.
+        assertTrue(picker.accepts(LocalDate.of(2020, 9, 2)), "recusou um dia do proprio segmento");
+        assertTrue(!picker.accepts(LocalDate.of(2020, 9, 8)),
+                "aceitou um dia util que esta fora do segmento");
+    }
+
+    @Test
+    @DisplayName("serie que nao le nao oferece dia nenhum, e nao estoura")
+    void aseriesThatWillNotReadOffersNoDays() {
+        java.util.NavigableSet<LocalDate> nada = new SeriesChoice("nao-existe-1m", "").sessions();
+
+        assertTrue(nada.isEmpty(), "uma serie inexistente ofereceu dias");
+    }
+
+    @Test
     @DisplayName("escala em tempo se agrega; a que nao e tempo, nao")
     void whatIsMeasuredInTimeMayBeAggregated() throws IOException {
         series("winfull-1m", 10);

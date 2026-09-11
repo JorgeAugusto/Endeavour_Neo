@@ -103,6 +103,35 @@ record SeriesChoice(String key, String label) {
     }
 
     /**
+     * The days this entry actually has.
+     *
+     * <p>Of the <b>cut</b> series, not of the series it came from — which is
+     * the whole point. {@code Segmentable.sessionsOf} takes a series name and
+     * would be handed {@code winfull-1m#busca}: it cannot open that, answers
+     * with nothing, and the date fields fall back to "any weekday", offering
+     * days the segment does not contain. Opening through {@link #open()} makes
+     * the segment part of the answer by construction.</p>
+     *
+     * @return every session, in order; empty when the series will not read
+     */
+    java.util.NavigableSet<java.time.LocalDate> sessions() {
+        try {
+            PriceSeries bars = open();
+
+            return bars.size() == 0
+                    ? new java.util.TreeSet<>()
+                    : br.com.jorge.reis.endeavourneo.domain.market.Sessions.of(bars);
+        } catch (IOException unreadable) {
+            // Empty is the right answer -- a series that will not read has no
+            // days to offer -- but said out loud, because "no dates" and "this
+            // file is broken" look identical in a combo box.
+            System.err.println(key + ": the sessions could not be read (" + unreadable + ")");
+
+            return new java.util.TreeSet<>();
+        }
+    }
+
+    /**
      * @return whether this series is stored at a scale made of time
      *
      * <p>A renko series is not, and aggregating one by the clock would bucket

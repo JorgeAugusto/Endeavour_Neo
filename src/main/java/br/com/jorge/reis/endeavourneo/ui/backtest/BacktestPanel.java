@@ -412,17 +412,72 @@ final class BacktestPanel extends JPanel {
     }
 
     /**
-     * Tells the date fields which days the chosen series actually has.
+     * Tells the date fields which days the chosen entry actually has.
      *
-     * <p>So a date that is not a session cannot be typed, and the fields open on
-     * the ends of the series rather than on today — which for a series that
-     * stops in 2026 would be a range covering nothing.</p>
+     * <p>The calendar greys out every day that is not one of them — that part
+     * was already built. What was missing is the list: it was read from the
+     * series NAME, and a segment's name carries a {@code #} that the catalog
+     * cannot open, so the answer was empty and the fields fell back to "any
+     * weekday". They offered days the segment does not contain, and a range
+     * typed from them covered nothing.</p>
+     *
+     * <h2>Off the interface thread</h2>
+     *
+     * <p>The first read of six years of one-minute bars is most of a second.
+     * Done here, that is the window freezing every time the reader opens the
+     * series list — and a window that freezes while you browse is a window you
+     * stop browsing.</p>
+     *
+     * <h2>The answer that arrives last is not always the one wanted</h2>
+     *
+     * <p>Two quick changes start two loads, and they can finish in either
+     * order. Each carries the key it was asked for, and an answer for a series
+     * that is no longer selected is dropped rather than applied.</p>
      */
     private void offerTheSessionsOf(SeriesChoice chosen) {
-        java.util.NavigableSet<java.time.LocalDate> days = chosen == null
-                ? new java.util.TreeSet<>()
-                : br.com.jorge.reis.endeavourneo.ui.series.Segmentable.sessionsOf(chosen.key());
+        if (chosen == null) {
+            offer(new java.util.TreeSet<>());
 
+            return;
+        }
+
+        String asked = chosen.key();
+
+        new SwingWorker<java.util.NavigableSet<java.time.LocalDate>, Void>() {
+
+            @Override
+            protected java.util.NavigableSet<java.time.LocalDate> doInBackground() {
+                return chosen.sessions();
+            }
+
+            @Override
+            protected void done() {
+                SeriesChoice now = (SeriesChoice) series.getSelectedItem();
+
+                if (now == null || !asked.equals(now.key())) {
+                    return;
+                }
+
+                try {
+                    offer(get());
+                } catch (InterruptedException stopped) {
+                    Thread.currentThread().interrupt();
+                } catch (java.util.concurrent.ExecutionException failed) {
+                    offer(new java.util.TreeSet<>());
+                }
+            }
+        }.execute();
+    }
+
+    /**
+     * Hands the days to both fields and puts them on the ends.
+     *
+     * <p>ALWAYS on the ends, and not only when what is typed has gone invalid.
+     * Choosing another series is choosing another stretch of history: leaving a
+     * date from the previous one, valid by coincidence, is how a run silently
+     * covers the wrong months.</p>
+     */
+    private void offer(java.util.NavigableSet<java.time.LocalDate> days) {
         from.setSessions(days);
         to.setSessions(days);
 
@@ -430,13 +485,8 @@ final class BacktestPanel extends JPanel {
             return;
         }
 
-        if (from.date() == null || !days.contains(from.date())) {
-            from.setDate(days.first());
-        }
-
-        if (to.date() == null || !days.contains(to.date())) {
-            to.setDate(days.last());
-        }
+        from.setDate(days.first());
+        to.setDate(days.last());
     }
 
     /**
