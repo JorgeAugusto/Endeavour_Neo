@@ -18,6 +18,7 @@
 package br.com.jorge.reis.endeavourneo.domain.trading;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -497,6 +498,97 @@ class BacktestTest {
         // emitindo ordem para contratos que sairam tres minutos antes.
         assertEquals(java.util.List.of(0, 2), quantos,
                 "a estrategia nao viu as execucoes da volta: " + quantos);
+    }
+
+    /** Conta as voltas da estrategia e manda parar quando pedir. */
+    private static final class Parador implements Watching {
+
+        private final int quando;
+
+        private int avisos;
+
+        private int ultimo;
+
+        private Parador(int quando) {
+            this.quando = quando;
+        }
+
+        @Override
+        public void at(int reached, int bars) {
+            avisos++;
+            ultimo = reached;
+        }
+
+        @Override
+        public boolean cancelled() {
+            return avisos >= quando;
+        }
+    }
+
+    @Test
+    @DisplayName("A VARREDURA PARA QUANDO MANDAM PARAR, e devolve o que tinha")
+    void therunStopsWhenAskedAndGivesBackWhatItHad() {
+        double[] flat = new double[10_000];
+
+        java.util.Arrays.fill(flat, 100);
+
+        Bars bars = new Bars(flat, flat, flat, flat);
+
+        java.util.List<Integer> voltas = new java.util.ArrayList<>();
+        Parador parador = new Parador(3);
+
+        Result result = new Backtest(Costs.NONE, 1)
+                .run(bars, (market, desk) -> voltas.add(market.bar()), parador);
+
+        // PARAR TEM DE SER COOPERATIVO. Java nao tem jeito seguro de matar uma
+        // linha de execucao de fora -- Thread.stop foi aposentado porque solta
+        // travas no meio de uma atualizacao e deixa estado rasgado. Entao o
+        // motor PERGUNTA, e quem nunca pergunta roda ate o fim.
+        assertEquals(3, parador.avisos, "a varredura nao parou no terceiro aviso");
+        assertTrue(voltas.size() < bars.size(),
+                "a estrategia deu todas as " + voltas.size() + " voltas mesmo mandada parar");
+
+        // E DEVOLVE O QUE TINHA, em vez de estourar. A varredura parada nao e
+        // uma varredura com erro: e meia varredura, e quem mandou parar e quem
+        // esta lendo.
+        assertNotNull(result, "a varredura parada nao devolveu resultado nenhum");
+        assertEquals(bars.size(), result.worth().length,
+                "a curva veio com outro tamanho porque a varredura parou");
+    }
+
+    @Test
+    @DisplayName("a barra nao e enchida ate o fim numa varredura que parou")
+    void thebarIsNotFilledToTheEndOnArunThatStopped() {
+        double[] flat = new double[10_000];
+
+        java.util.Arrays.fill(flat, 100);
+
+        Bars bars = new Bars(flat, flat, flat, flat);
+        Parador parador = new Parador(2);
+
+        new Backtest(Costs.NONE, 1).run(bars, (market, desk) -> { }, parador);
+
+        // Encher a barra ate o fim seria dizer que a varredura terminou, que e a
+        // unica coisa que ela nao fez.
+        assertTrue(parador.ultimo < bars.size(),
+                "o ultimo aviso foi o da ultima barra numa varredura que parou");
+    }
+
+    @Test
+    @DisplayName("quem nao pergunta roda ate o fim")
+    void whodoesNotAskRunsToTheEnd() {
+        double[] flat = new double[500];
+
+        java.util.Arrays.fill(flat, 100);
+
+        Bars bars = new Bars(flat, flat, flat, flat);
+
+        java.util.List<Integer> voltas = new java.util.ArrayList<>();
+
+        new Backtest(Costs.NONE, 1).run(bars, (market, desk) -> voltas.add(market.bar()));
+
+        assertEquals(bars.size(), voltas.size(),
+                "uma varredura sem ninguem olhando parou sozinha");
     }
 
     @Test

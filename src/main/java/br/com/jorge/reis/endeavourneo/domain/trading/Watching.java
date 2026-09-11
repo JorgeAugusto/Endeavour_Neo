@@ -60,4 +60,26 @@ public interface Watching {
      * @param bars    how many there are in all; zero for a series with none
      */
     void at(int reached, int bars);
+
+    /**
+     * Asked at the same moments as {@link #at}, and no more often.
+     *
+     * <h2>Stopping has to be cooperative</h2>
+     *
+     * <p>Java has no safe way to stop a thread from outside — {@code
+     * Thread.stop} was deprecated because it releases locks mid-update and
+     * leaves shared state torn. So a run that wants to be stoppable has to ask,
+     * and one that never asks simply runs to the end.</p>
+     *
+     * <p>It is a request and not an order: the engine decides how to unwind, and
+     * what it does is <b>return what it has</b> rather than throw. A partial
+     * result is not a lie as long as whoever asked for the stop is the one
+     * reading it — and that is always the case, because the only way to ask is
+     * to hold this object.</p>
+     *
+     * @return whether somebody asked this run to stop
+     */
+    default boolean cancelled() {
+        return false;
+    }
 }

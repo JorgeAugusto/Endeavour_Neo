@@ -152,6 +152,8 @@ public final class Backtest {
 
         strategy.start(decided);
 
+        boolean stopped = false;
+
         // WHICH DECISION BAR WE ARE INSIDE, walked in step rather than looked up.
         // Both series are in time order, so one cursor answers it for seventeen
         // million bars without an index of seventeen million entries.
@@ -201,6 +203,17 @@ public final class Backtest {
 
             if (bar % every == 0) {
                 told.at(bar + 1, series.size());
+
+                // ASKED WHERE IT IS TOLD, and nowhere else. A hundred and
+                // ninety-four million bars is a minute of walking; asking once a
+                // bar would be a hundred and ninety-four million volatile reads
+                // to answer a question that changes once, and asking only at the
+                // end would be asking after it no longer matters.
+                if (told.cancelled()) {
+                    stopped = true;
+
+                    break;
+                }
             }
         }
 
@@ -208,7 +221,12 @@ public final class Backtest {
         // run of 999 bars reporting every fifth stops at 996, and the bar sits
         // just short of full while the window says it has finished -- which is
         // exactly the moment a reader looks at it.
-        told.at(series.size(), series.size());
+        //
+        // Not after a stop, though: a bar filling to the end would be saying the
+        // run finished, which is the one thing it did not do.
+        if (!stopped) {
+            told.at(series.size(), series.size());
+        }
 
         double last = series.size() == 0 ? Double.NaN : series.closeAt(series.size() - 1);
 

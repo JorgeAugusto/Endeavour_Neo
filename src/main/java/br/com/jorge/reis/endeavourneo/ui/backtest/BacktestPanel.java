@@ -25,6 +25,7 @@ import br.com.jorge.reis.endeavourneo.domain.trading.Backtest;
 import br.com.jorge.reis.endeavourneo.domain.trading.Costs;
 import br.com.jorge.reis.endeavourneo.domain.trading.Metrics;
 import br.com.jorge.reis.endeavourneo.domain.trading.Result;
+import br.com.jorge.reis.endeavourneo.domain.trading.Watching;
 import br.com.jorge.reis.endeavourneo.domain.trading.Strategy;
 import br.com.jorge.reis.endeavourneo.domain.trading.Trade;
 import br.com.jorge.reis.endeavourneo.domain.trading.strategy.MovingAverageCrossing;
@@ -206,6 +207,18 @@ final class BacktestPanel extends JPanel {
     /** What the bar says it is doing, kept so the percentage can join it. */
     private transient String stage;
 
+    /**
+     * Asked by the run, set by the button.
+     *
+     * <p>Volatile because two threads share it and nothing else does: the
+     * interface thread writes it when the reader presses the button, and the
+     * worker reads it a few times a second from inside the engine.</p>
+     */
+    private volatile boolean stopping;
+
+    /** The run in flight, or null when there is none. */
+    private transient SwingWorker<Run, String> worker;
+
     /** The bars on screen: the recorte at the chosen scale. */
     private transient PriceSeries running;
 
@@ -282,7 +295,16 @@ final class BacktestPanel extends JPanel {
         followTheSeries();
         followTheSlice();
 
-        run.addActionListener(e -> start());
+        // ONE BUTTON, TWO STATES. A separate Cancel sitting greyed out most
+        // of the time is a control that spends its life saying nothing; the
+        // button that started the run is the one the hand is already on.
+        run.addActionListener(e -> {
+            if (worker == null) {
+                start();
+            } else {
+                stop();
+            }
+        });
 
         showQuadro.setToolTipText(Messages.get("backtest.quadro.hint"));
         showQuadro.setFocusable(false);
@@ -370,6 +392,30 @@ final class BacktestPanel extends JPanel {
         progress.setIndeterminate(false);
         progress.setValue(percent);
         progress.setString(stage == null ? percent + "%" : stage + " — " + percent + "%");
+    }
+
+    /**
+     * Asks the run to stop, which is all anyone can do.
+     *
+     * <p>Java has no safe way to stop a thread from outside, so the engine asks
+     * — a few times a second — and unwinds itself. The button goes dead in the
+     * meantime rather than saying "Cancelar" to someone who already pressed it.
+     */
+    private void stop() {
+        stopping = true;
+
+        run.setEnabled(false);
+        say(Messages.get("backtest.cancelling"));
+    }
+
+    /** Leaves the bar saying so, instead of quietly emptying it. */
+    private void gaveUp() {
+        stage = null;
+
+        progress.setIndeterminate(false);
+        progress.setValue(0);
+        progress.setStringPainted(true);
+        progress.setString(Messages.get("backtest.cancelled"));
     }
 
     /**
@@ -862,13 +908,14 @@ final class BacktestPanel extends JPanel {
         // answer to.
         Strategy what = kind.build();
 
-        run.setEnabled(false);
-        run.setText(Messages.get("backtest.running"));
+        stopping = false;
+
+        run.setText(Messages.get("backtest.cancel"));
 
         progress.setIndeterminate(true);
         say(Messages.get("backtest.stage.opening"));
 
-        SwingWorker<Run, String> worker = new SwingWorker<>() {
+        worker = new SwingWorker<>() {
 
             @Override
             protected Run doInBackground() throws IOException {
@@ -905,8 +952,19 @@ final class BacktestPanel extends JPanel {
                 // so seventeen million bars move the screen a hundred times and
                 // not seventeen million.
                 Result produced = new Backtest(charged, lot).run(walked.series(), decided,
-                        what, (reached, many) -> setProgress(
-                                (int) Math.min(100L, 100L * reached / Math.max(1, many))));
+                        what, new Watching() {
+
+                            @Override
+                            public void at(int reached, int many) {
+                                setProgress((int) Math.min(100L,
+                                        100L * reached / Math.max(1, many)));
+                            }
+
+                            @Override
+                            public boolean cancelled() {
+                                return stopping;
+                            }
+                        });
 
                 return new Run(decided, walked.series(), produced, picked.label(),
                         what instanceof br.com.jorge.reis.endeavourneo.domain.trading.Plotted shown
@@ -921,8 +979,22 @@ final class BacktestPanel extends JPanel {
 
             @Override
             protected void done() {
+                worker = null;
+
                 run.setEnabled(true);
                 run.setText(Messages.get("backtest.run"));
+
+                if (stopping) {
+                    // WHAT COMES BACK FROM A CANCELLED RUN IS NOT SHOWN. It is
+                    // half a run: the curves stop in the middle, the drawdown is
+                    // of a stretch nobody asked for, and buy-and-hold is of the
+                    // whole one. The chart keeps what it had, and the bar says
+                    // what happened.
+                    gaveUp();
+
+                    return;
+                }
+
                 idle();
 
                 try {
