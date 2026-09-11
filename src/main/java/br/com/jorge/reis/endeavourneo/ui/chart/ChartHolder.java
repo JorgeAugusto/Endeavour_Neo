@@ -132,14 +132,23 @@ public final class ChartHolder {
     private final ChartCanvas canvas = new ChartCanvas();
 
     /**
-     * The canvas and the indicator panes under it, as one component.
+     * The chart itself: the price, the indicator panes under it, and the legend.
      *
-     * <p>Everything that used to place the canvas places this instead. The
-     * chart does not know what is stacked with it, and the two containers a
-     * chart can live in -- docked and floating -- did not have to learn about
-     * indicator panes at all.</p>
+     * <p>Everything that used to place the canvas places this instead. The two
+     * containers a chart can live in -- docked and floating -- never had to
+     * learn about indicator panes at all.</p>
+     *
+     * <p><b>Built here and not assembled here.</b> This class is a WINDOW: it
+     * knows about desktops, internal frames, second monitors and where the
+     * reader left the geometry. The chart inside it is the same object the
+     * backtest window puts in its own layout -- and it used to be four fields
+     * and a method sitting in the middle of the window code, which is exactly
+     * why the backtest could not have one.</p>
      */
-    private final StudyStack body = new StudyStack(canvas);
+    private final ChartPane pane;
+
+    /** The indicator panes, which are the pane's; kept as a field for brevity. */
+    private final StudyStack body;
 
     /**
      * The legend, moved between containers along with the canvas.
@@ -149,6 +158,7 @@ public final class ChartHolder {
      * had hidden.</p>
      */
     private final OverlayLegend legend;
+
 
     /** Instrument and period, inside the chart and below the title bar. */
     private final ChartHeader chartHeader;
@@ -198,7 +208,6 @@ public final class ChartHolder {
             new java.util.LinkedHashMap<>();
 
     /** The layout tabs, below the time axis. Built on first use. */
-    private LayoutBar layoutBar;
 
     private final JDesktopPane desktop;
 
@@ -221,18 +230,11 @@ public final class ChartHolder {
         this.name = name;
         this.label = label == null || label.isBlank() ? name : label;
         this.key = keyOf(name);
-        this.legend = new OverlayLegend(canvas, this.key);
+        this.pane = new ChartPane(canvas, this.key);
+        this.body = pane.studies();
+        this.legend = pane.legend();
         this.chartHeader = new ChartHeader(canvas, this.label, name);
 
-        // The legend reads the overlays off the canvas; nothing else tells it
-        // they are gone. Without this, switching layout leaves the old list on
-        // screen until a stray mouse movement repaints it.
-        canvas.onOverlaysRedrawn(() -> {
-            legend.revalidate();
-            legend.repaint();
-        });
-
-        canvas.onInsertWanted(this::insertIndicator);
         canvas.onSeriesChanged(() -> {
             // Before anything reads them: a study still holding the values of
             // the series before would draw a shape that never happened.
@@ -246,6 +248,13 @@ public final class ChartHolder {
             // reading the same field and disagreeing is worse than one label.
             chartHeader.repaint();
         });
+
+        // THE LEGEND IS TAKEN OUT OF THE PANE and put beside the header, so
+        // the two lines that name the chart sit together above it. The pane is
+        // built with it inside because that is where it belongs for anything
+        // that does not have a header of its own -- the backtest window keeps
+        // it there.
+        pane.remove(legend);
 
         JPanel stack = new JPanel();
 
@@ -409,50 +418,8 @@ public final class ChartHolder {
         return canvas;
     }
 
-    /**
-     * @return the layout bar, built on first use
-     *
-     * <p>It captures the chart's indicators into the selected layout on every
-     * change. Adding an indicator and then having to find a save button is how
-     * work gets lost.</p>
-     */
     private LayoutBar layouts() {
-        if (layoutBar == null) {
-            layoutBar = new LayoutBar(canvas, body, key);
-
-            canvas.onOverlaysChanged(layoutBar::capture);
-
-            // The order of the panes is part of the layout, and it is written
-            // the moment it changes rather than when the chart closes: it is a
-            // deliberate arrangement, not a size that drifted.
-            body.onArrangement(layoutBar::capture);
-        }
-
-        return layoutBar;
-    }
-
-    /**
-     * Asks where an indicator goes, and puts it there.
-     *
-     * <p>Here because this is the one object holding both the price and the
-     * panes: the canvas cannot offer a panel it does not know about, and the
-     * stack cannot offer the price.</p>
-     */
-    private void insertIndicator() {
-        InsertOverlayDialog.Placement placement = InsertOverlayDialog.ask(
-                javax.swing.SwingUtilities.getWindowAncestor(canvas), body.panes());
-
-        if (placement == null) {
-            return;
-        }
-
-        if (placement.onPrice()) {
-            canvas.addOverlay(placement.indicator());
-        } else if (placement.inNewPane()) {
-            body.show(placement.indicator());
-        } else {
-            body.addTo(placement.pane(), placement.indicator());
-        }
+        return pane.layouts();
     }
 
     public boolean isFloating() {
@@ -513,7 +480,7 @@ public final class ChartHolder {
         docked = new JInternalFrame(title(), true, true, true, true);
 
         docked.getContentPane().add(header(), BorderLayout.NORTH);
-        docked.getContentPane().add(body, BorderLayout.CENTER);
+        docked.getContentPane().add(pane, BorderLayout.CENTER);
         docked.getContentPane().add(layouts(), BorderLayout.SOUTH);
         boolean firstInside = countInside() == 0;
         boolean remembered = PREFS.getInt(key + ".width", -1) > 0;
@@ -572,7 +539,7 @@ public final class ChartHolder {
 
         floating.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         floating.getContentPane().add(header(), BorderLayout.NORTH);
-        floating.getContentPane().add(body, BorderLayout.CENTER);
+        floating.getContentPane().add(pane, BorderLayout.CENTER);
         floating.getContentPane().add(layouts(), BorderLayout.SOUTH);
         floating.setSize(restoredSize());
         floating.setLocation(restoredLocation());
@@ -634,9 +601,7 @@ public final class ChartHolder {
     public void close() {
         detachReplay.run();
 
-        if (layoutBar != null) {
-            layoutBar.capture();
-        }
+        pane.captureLayout();
 
         store();
 
@@ -670,7 +635,7 @@ public final class ChartHolder {
         Container content = docked.getContentPane();
 
         content.remove(header);
-        content.remove(body);
+        content.remove(pane);
         content.remove(layouts());
         docked.dispose();
         docked = null;

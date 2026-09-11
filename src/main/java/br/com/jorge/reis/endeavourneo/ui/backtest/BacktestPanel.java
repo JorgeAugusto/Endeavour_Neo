@@ -32,6 +32,7 @@ import br.com.jorge.reis.endeavourneo.domain.trading.strategy.MovingAverageCross
 import br.com.jorge.reis.endeavourneo.platform.Messages;
 import br.com.jorge.reis.endeavourneo.platform.Settings;
 import br.com.jorge.reis.endeavourneo.ui.chart.ChartCanvas;
+import br.com.jorge.reis.endeavourneo.ui.chart.ChartPane;
 
 import java.awt.BorderLayout;
 import java.awt.Component;
@@ -178,6 +179,22 @@ final class BacktestPanel extends JPanel {
     private boolean placed;
 
     private final ChartCanvas chart = new ChartCanvas();
+
+    /**
+     * The chart as a whole, and not just its price.
+     *
+     * <p>It was a bare {@link ChartCanvas}, and that is why a stochastic could
+     * not be inserted here: a study lives in a panel of its OWN under the price,
+     * and there was no stack of panels to put it in. Indicators drawn on the
+     * price went in, indicators with their own scale silently had nowhere to
+     * go.</p>
+     *
+     * <p>The same {@code ChartPane} the chart window uses — not a second
+     * assembly beside it. It carries the studies, the legend, the layout bar and
+     * the way in for new indicators, and it is keyed separately so the backtest
+     * keeps its own layouts rather than sharing a chart window's.</p>
+     */
+    private final ChartPane pane = new ChartPane(chart, "backtest.chart");
 
     private final TradeMarks marks = new TradeMarks();
 
@@ -673,9 +690,17 @@ final class BacktestPanel extends JPanel {
         // da seta que ela explica.
         chart.addOverlay(curves);
         chart.addOverlay(marks);
-        chart.setPreferredSize(new Dimension(700, 320));
+        pane.setPreferredSize(new Dimension(700, 320));
 
-        JSplitPane rows = new JSplitPane(JSplitPane.VERTICAL_SPLIT, chart, tradeTable());
+        JPanel graph = new JPanel(new BorderLayout());
+
+        // The layout bar over the chart, as in the chart window: it is a row of
+        // saved arrangements, and a reader who cannot see which one is on has no
+        // way of knowing why the indicators are what they are.
+        graph.add(pane.layouts(), BorderLayout.NORTH);
+        graph.add(pane, BorderLayout.CENTER);
+
+        JSplitPane rows = new JSplitPane(JSplitPane.VERTICAL_SPLIT, graph, tradeTable());
 
         rows.setResizeWeight(0.62);
         rows.setBorder(BorderFactory.createEmptyBorder());
@@ -1050,6 +1075,11 @@ final class BacktestPanel extends JPanel {
         walked = finished.walked();
 
         chart.setSeries(running);
+
+        // BEFORE ANYTHING READS THEM. A study still holding the values of the
+        // previous run would draw a shape that never happened -- on a chart
+        // whose candles are already the new ones.
+        pane.recalculate();
 
         curves.show(finished.curves());
 
