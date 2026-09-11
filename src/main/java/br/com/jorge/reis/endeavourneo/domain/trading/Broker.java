@@ -118,6 +118,11 @@ final class Broker {
         return List.copyOf(fills);
     }
 
+    /** @return the live list, for {@link Market#filled()} to read the last bar of */
+    List<Fill> liveFills() {
+        return fills;
+    }
+
     int ambiguousBars() {
         return ambiguous;
     }

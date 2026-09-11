@@ -153,6 +153,67 @@ class BacktestTest {
     }
 
     @Test
+    @DisplayName("A ESTRATEGIA LE AS EXECUCOES DA PROPRIA BARRA, e so as dela")
+    void thestrategyReadsTheFillsOfItsOwnBarAndNoOthers() {
+        Bars bars = new Bars(
+                new double[] {100, 107, 120, 130},
+                new double[] {101, 110, 121, 131},
+                new double[] {99, 105, 119, 129},
+                new double[] {100, 108, 120, 130});
+
+        java.util.List<String> seen = new java.util.ArrayList<>();
+
+        run(bars, (market, desk) -> {
+            for (Fill fill : market.filled()) {
+                seen.add(market.bar() + ":" + fill.side() + fill.quantity() + "@" + fill.price());
+            }
+
+            if (market.bar() == 0) {
+                desk.buyAtMarket(2);
+            }
+
+            if (market.bar() == 1) {
+                desk.closePosition();
+            }
+        });
+
+        // Uma estrategia que guarda livro de lotes nao consegue saber, pela
+        // posicao liquida, QUAL lote acabou de fechar. Adivinhar pelos precos
+        // seria refazer os desempates do motor dentro de cada estrategia; uma
+        // mesa de verdade sabe as proprias execucoes.
+        assertEquals(java.util.List.of("1:BUY2@107.0", "2:SELL2@120.0"), seen,
+                "a barra nao entregou exatamente as execucoes dela: " + seen);
+    }
+
+    @Test
+    @DisplayName("as execucoes lidas ja aconteceram: nao ha futuro nelas")
+    void thefillsReadAreOnesThatAlreadyHappened() {
+        Bars bars = new Bars(
+                new double[] {100, 107},
+                new double[] {101, 110},
+                new double[] {99, 105},
+                new double[] {100, 108});
+
+        java.util.List<Integer> quando = new java.util.ArrayList<>();
+
+        run(bars, (market, desk) -> {
+            if (!market.filled().isEmpty()) {
+                quando.add(market.bar());
+            }
+
+            if (market.bar() == 0) {
+                desk.buyAtMarket();
+            }
+        });
+
+        // A ordem foi pedida no fechamento da barra 0 e executou na abertura da
+        // 1. Se a leitura aparecesse na propria barra 0, a estrategia estaria
+        // vendo o resultado de uma ordem que ainda nao foi ao mercado.
+        assertEquals(java.util.List.of(1), quando,
+                "a execucao apareceu numa barra em que ainda nao tinha acontecido: " + quando);
+    }
+
+    @Test
     @DisplayName("a compra limitada executa no limite quando o preco desce ate ele")
     void aBuyLimitFillsAtTheLimit() {
         Bars bars = new Bars(

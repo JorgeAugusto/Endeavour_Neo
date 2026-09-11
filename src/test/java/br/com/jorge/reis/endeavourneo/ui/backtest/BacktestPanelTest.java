@@ -21,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import br.com.jorge.reis.endeavourneo.domain.market.PriceSeries;
@@ -233,6 +234,56 @@ class BacktestPanelTest {
         }
 
         return pairs;
+    }
+
+    /** Todo texto de rotulo do quadro, sem olhar onde ele mora. */
+    private static String allText(java.awt.Container root) {
+        StringBuilder found = new StringBuilder();
+
+        for (java.awt.Component child : root.getComponents()) {
+            if (child instanceof javax.swing.JLabel label && label.getText() != null) {
+                found.append(label.getText()).append('\n');
+            }
+
+            if (child instanceof java.awt.Container deeper) {
+                found.append(allText(deeper));
+            }
+        }
+
+        return found.toString();
+    }
+
+    @Test
+    @DisplayName("UMA RODADA SEM OPERACAO DIZ ISSO, em vez de mostrar zeros")
+    void arunWithNoTradeSaysSoInsteadOfShowingZeros() {
+        br.com.jorge.reis.endeavourneo.platform.Settings.useForTest(settings);
+
+        try {
+            ResultPanel quadro = new ResultPanel();
+
+            quadro.show(Result.empty(), br.com.jorge.reis.endeavourneo.domain.trading.Metrics
+                    .of(Result.empty(), new Waves(2_000)), "WINFULL", "OHLC");
+
+            String aviso = br.com.jorge.reis.endeavourneo.platform.Messages
+                    .get("backtest.wrong.empty");
+
+            // Um quadro de zeros parece uma estrategia que nao ganha nada. E
+            // outra coisa quando ela nem rodou -- a Range 90 num recorte de um
+            // mes nao entra uma vez, porque o seletor dela nao tem historia
+            // dentro daquele trecho.
+            assertTrue(allText(quadro).contains(aviso),
+                    "o quadro nao avisou que nao houve operacao nenhuma");
+
+            Result algo = run();
+
+            quadro.show(algo, br.com.jorge.reis.endeavourneo.domain.trading.Metrics
+                    .of(algo, new Waves(2_000)), "WINFULL", "OHLC");
+
+            assertFalse(allText(quadro).contains(aviso),
+                    "o quadro avisou que nao houve operacao numa rodada que operou");
+        } finally {
+            br.com.jorge.reis.endeavourneo.platform.Settings.stopUsingTestStore();
+        }
     }
 
     @Test

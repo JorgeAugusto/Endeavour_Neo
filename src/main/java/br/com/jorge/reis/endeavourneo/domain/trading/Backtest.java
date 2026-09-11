@@ -77,7 +77,8 @@ public final class Backtest {
     public Result run(PriceSeries series, Strategy strategy) {
         Broker broker = new Broker(costs);
         Desk desk = new Desk(lot);
-        Market market = new Market(series, broker.position(), broker.book());
+        Market market = new Market(series, broker.position(), broker.book(),
+                broker.liveFills());
 
         double[] worth = new double[series.size()];
         int exposed = 0;

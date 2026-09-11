@@ -403,6 +403,15 @@ final class ResultPanel extends JPanel {
             wrong.add(Messages.get("backtest.wrong.holding"));
         }
 
+        // ZERO OPERACOES E UM RESULTADO, e um que engana calado: o quadro fica
+        // cheio de zeros e parece uma estrategia que nao ganha nada, quando o
+        // que houve foi ela nao ter rodado. A Range 90 faz isso o tempo todo num
+        // recorte curto -- o seletor dela precisa de vinte pregoes recentes e
+        // vinte amostras estruturais, e um mes nao tem historia dentro de si.
+        if (result.trades().isEmpty() && result.fills().isEmpty()) {
+            wrong.add(Messages.get("backtest.wrong.empty"));
+        }
+
         warning.setText(wrong.isEmpty()
                 ? Messages.get("backtest.nothingWrong") : "⚠ " + String.join("  ·  ", wrong));
         warning.setForeground(wrong.isEmpty() ? muted() : WARN);

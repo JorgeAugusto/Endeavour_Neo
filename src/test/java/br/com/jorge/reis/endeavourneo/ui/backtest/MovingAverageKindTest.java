@@ -115,15 +115,24 @@ class MovingAverageKindTest {
     }
 
     @Test
-    @DisplayName("a estrategia tem nome, tela e construcao")
-    void thekindOffersTheThreeThingsAStrategyNeeds() {
-        StrategyKind kind = new MovingAverageKind();
+    @DisplayName("TODA estrategia oferecida tem nome, tela e construcao")
+    void everyKindOffersTheThreeThingsAStrategyNeeds() {
+        // A lista toda, e nao so a do cruzamento. Uma estrategia que chega sem
+        // tela propria so aparece quando alguem clica na engrenagem, e ai o que
+        // se ve e uma janela vazia sem nada dizendo o motivo.
+        for (StrategyKind kind : StrategyKind.available()) {
+            assertTrue(kind.label() != null && !kind.label().isBlank(),
+                    "uma estrategia da lista nao tem nome: " + kind.getClass().getSimpleName());
+            assertNotNull(kind.page(), kind.label() + " nao tem tela propria");
+            assertNotNull(kind.build(), kind.label() + " nao se constroi");
+        }
 
-        assertTrue(kind.label() != null && !kind.label().isBlank(), "a estrategia nao tem nome");
-        assertNotNull(kind.page(), "a estrategia nao tem tela propria");
-        assertNotNull(kind.build(), "a estrategia nao se constroi");
+        java.util.List<String> nomes = StrategyKind.available().stream()
+                .map(StrategyKind::label).toList();
 
-        assertEquals(1, StrategyKind.available().size(),
+        assertEquals(java.util.Set.copyOf(nomes).size(), nomes.size(),
+                "duas estrategias dividem o mesmo nome na lista: " + nomes);
+        assertEquals(2, StrategyKind.available().size(),
                 "a lista de estrategias mudou de tamanho e este teste nao soube");
     }
 }

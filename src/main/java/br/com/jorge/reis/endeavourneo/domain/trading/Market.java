@@ -48,12 +48,22 @@ public final class Market {
 
     private final Book book;
 
+    /**
+     * The broker's own list, live.
+     *
+     * <p>Held rather than copied because {@link #filled()} is asked once a bar
+     * by anything that keeps a lot book, and copying a run's whole history to
+     * answer "what happened just now" would grow with the run.</p>
+     */
+    private final java.util.List<Fill> fills;
+
     private int bar;
 
-    Market(PriceSeries series, Position position, Book book) {
+    Market(PriceSeries series, Position position, Book book, java.util.List<Fill> fills) {
         this.series = series;
         this.position = position;
         this.book = book;
+        this.fills = fills;
     }
 
     void at(int bar) {
@@ -61,6 +71,37 @@ public final class Market {
     }
 
     // ------------------------------------------------------------------ price
+
+    /**
+     * The executions that happened on this bar, in the order they filled.
+     *
+     * <p><b>Not a reading NTSL has</b>, and it is here for one reason: a
+     * strategy that keeps a <b>book of lots</b> — each with its own stop and its
+     * own partial — cannot tell from a net position which lot just closed. The
+     * Profit's language has no answer for that because NTSL strategies do not
+     * keep lot books; ours does, and the two ways out were to let the strategy
+     * <b>guess</b> from the prices the bar reached, or to let it ask.</p>
+     *
+     * <p>Guessing means re-deriving the engine's own tie-breaks — stop before
+     * target, nearest the open first — inside every strategy that scales out,
+     * where they would drift from the engine the first time either changed. A
+     * real desk knows its own executions. Asking is the truthful one.</p>
+     *
+     * <p>It cannot leak the future: the loop executes the bar's resting orders
+     * <b>before</b> handing the bar to the strategy, so what is here has already
+     * happened, at prices the strategy asked for at the previous close.</p>
+     *
+     * @return the fills of this bar, oldest first; empty when nothing executed
+     */
+    public java.util.List<Fill> filled() {
+        int from = fills.size();
+
+        while (from > 0 && fills.get(from - 1).bar() == bar) {
+            from--;
+        }
+
+        return java.util.List.copyOf(fills.subList(from, fills.size()));
+    }
 
     /** {@code Open} — this bar's open. */
     public double open() {
