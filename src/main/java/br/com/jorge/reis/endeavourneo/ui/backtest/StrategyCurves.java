@@ -144,6 +144,15 @@ public final class StrategyCurves implements Overlay {
         // avoid.
     }
 
+    /**
+     * @return false: these are the STRATEGY's own lines, drawn because a run
+     *         produced them, and a layout has no business naming them
+     */
+    @Override
+    public boolean partOfLayout() {
+        return false;
+    }
+
     @Override
     public boolean isVisible() {
         return visible;

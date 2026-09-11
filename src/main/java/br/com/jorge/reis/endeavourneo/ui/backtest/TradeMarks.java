@@ -99,6 +99,15 @@ public final class TradeMarks implements Overlay {
 
     private boolean visible = true;
 
+    /**
+     * @return false: these are the RUN's marks, not an indicator the reader
+     *         inserted, so a layout neither saves them nor takes them away
+     */
+    @Override
+    public boolean partOfLayout() {
+        return false;
+    }
+
     /** @param found the operations to draw; the list is copied */
     public void show(List<Trade> found) {
         trades.clear();

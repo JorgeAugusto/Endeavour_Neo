@@ -842,6 +842,18 @@ public final class ChartCanvas extends JComponent {
      * @param replacements the new set; calculated here
      */
     public void setOverlays(java.util.List<Overlay> replacements) {
+        // WHAT THE WINDOW PUT HERE STAYS. A layout is a list of the READER's
+        // indicators; the backtest's marks and curves are the answer being
+        // displayed, and a layout neither stores them nor may remove them.
+        // Clicking a layout used to wipe them off the chart in silence.
+        java.util.List<Overlay> mine = new java.util.ArrayList<>();
+
+        for (Overlay each : overlays) {
+            if (!each.partOfLayout()) {
+                mine.add(each);
+            }
+        }
+
         overlays.clear();
 
         for (Overlay overlay : replacements) {
@@ -857,6 +869,11 @@ public final class ChartCanvas extends JComponent {
             overlay.calculate(series);
             overlays.add(overlay);
         }
+
+        // LAST, so they draw on top: a band behind a trade and a stop line over
+        // an average are the right way round, and they were that way round
+        // before any layout was applied.
+        overlays.addAll(mine);
 
         repaint();
 

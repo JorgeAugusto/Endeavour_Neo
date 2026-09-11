@@ -92,6 +92,32 @@ class BacktestPanelTest {
     }
 
     @Test
+    @DisplayName("AS MARCAS DA RODADA NAO SAO INDICADOR DO LEITOR")
+    void therunsMarksAreNotOneOfThereadersIndicators() {
+        // Um layout e a lista dos indicadores que o LEITOR inseriu, e aplicar um
+        // troca a lista do grafico pela que esta escrita. As marcas de uma
+        // rodada estao no mesmo grafico e nao sao escolha de ninguem: sao a
+        // resposta sendo exibida.
+        //
+        // Sem esta resposta, clicar num layout no backtest apagava a faixa da
+        // operacao, as linhas de entrada, de stop e de saida -- e nada na tela
+        // dizia por que.
+        assertFalse(new TradeMarks().partOfLayout(),
+                "as marcas da rodada se disseram indicador do leitor");
+        assertFalse(new StrategyCurves().partOfLayout(),
+                "as linhas da estrategia se disseram indicador do leitor");
+
+        // E o catalogo nao sabe reconstrui-las, que e a outra metade do motivo:
+        // guarda-las escreveria no layout uma linha que na volta nao vira nada.
+        for (br.com.jorge.reis.endeavourneo.ui.chart.OverlayCatalog.Kind kind
+                : br.com.jorge.reis.endeavourneo.ui.chart.OverlayCatalog.kinds()) {
+
+            assertFalse(kind.nameKey().equals(new TradeMarks().nameKey()),
+                    "as marcas da rodada entraram no catalogo de indicadores");
+        }
+    }
+
+    @Test
     @DisplayName("a operacao chega na linha com os numeros do motor")
     void theTradeReachesTheRowWithTheEnginesNumbers() {
         Result result = run();

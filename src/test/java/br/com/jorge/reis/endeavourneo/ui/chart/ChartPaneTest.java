@@ -91,6 +91,104 @@ class ChartPaneTest {
         assertTrue(holds(pane, OverlayLegend.class), "a legenda nao esta dentro do componente");
     }
 
+    /** Um indicador do leitor: entra e sai com o layout. */
+    private static Overlay chosen(String id) {
+        return new Quiet(id, true);
+    }
+
+    /** Uma marca que a janela pos no grafico: nao e escolha de ninguem. */
+    private static Overlay windows(String id) {
+        return new Quiet(id, false);
+    }
+
+    /**
+     * O minimo que um Overlay precisa ser para este teste.
+     *
+     * <p>Com um NOME proprio, e nao so a bandeira: record compara por valor, e
+     * dois com o mesmo conteudo sao o mesmo objeto para o {@code contains} --
+     * o que fez a primeira versao deste teste dizer que o indicador antigo
+     * sobreviveu ao layout quando quem estava la era o novo.</p>
+     */
+    private record Quiet(String id, boolean mine) implements Overlay {
+
+        @Override
+        public String nameKey() {
+            return "overlay.movingAverage";
+        }
+
+        @Override
+        public java.util.List<Integer> parameters() {
+            return java.util.List.of(9);
+        }
+
+        @Override
+        public java.util.List<java.awt.Color> colours() {
+            return java.util.List.of(java.awt.Color.RED);
+        }
+
+        @Override
+        public double[] valueAt(int bar) {
+            return new double[] {Double.NaN};
+        }
+
+        @Override
+        public void calculate(br.com.jorge.reis.endeavourneo.domain.market.PriceSeries series) {
+            // Nada a calcular: este existe para ser contado, nao desenhado.
+        }
+
+        @Override
+        public boolean isVisible() {
+            return true;
+        }
+
+        @Override
+        public void setVisible(boolean visible) {
+            // Sempre visivel.
+        }
+
+        @Override
+        public boolean fitsOnPrice() {
+            return true;
+        }
+
+        @Override
+        public boolean partOfLayout() {
+            return mine;
+        }
+    }
+
+    @Test
+    @DisplayName("APLICAR UM LAYOUT NAO APAGA AS MARCAS DA JANELA")
+    void applyingAlayoutDoesNotWipeTheWindowsOwnMarks() {
+        ChartCanvas canvas = new ChartCanvas();
+
+        Overlay marks = windows("marcas");
+        Overlay average = chosen("media antiga");
+
+        canvas.addOverlay(marks);
+        canvas.addOverlay(average);
+
+        // Um layout e a lista dos indicadores DO LEITOR. As marcas de uma
+        // rodada de backtest estao no mesmo grafico e nao sao escolha de
+        // ninguem: sao a resposta sendo exibida.
+        Overlay other = chosen("media do layout");
+
+        canvas.setOverlays(java.util.List.of(other));
+
+        assertTrue(canvas.overlays().contains(marks),
+                "aplicar um layout apagou as marcas que a janela pos no grafico");
+        assertTrue(canvas.overlays().contains(other),
+                "o indicador do layout nao entrou");
+        assertTrue(!canvas.overlays().contains(average),
+                "o indicador anterior do leitor sobreviveu ao layout");
+
+        // E POR ULTIMO, para desenharem por cima: uma faixa atras de uma
+        // operacao e uma linha de stop sobre uma media sao a ordem certa, e era
+        // a ordem antes de qualquer layout ser aplicado.
+        assertEquals(marks, canvas.overlays().get(canvas.overlays().size() - 1),
+                "as marcas da janela deixaram de ser as ultimas a desenhar");
+    }
+
     @Test
     @DisplayName("a barra de layouts e construida uma vez, e so quando pedida")
     void thelayoutBarIsBuiltOnceAndOnlyWhenAsked() {

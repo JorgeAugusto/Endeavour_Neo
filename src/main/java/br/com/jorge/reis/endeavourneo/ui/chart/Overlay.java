@@ -139,6 +139,25 @@ public interface Overlay {
     /** @return whether it should be drawn; the show/hide toggle */
     boolean isVisible();
 
+    /**
+     * @return whether this is one of the reader's indicators
+     *
+     * <p>Yes for everything a reader inserts, which is what a saved layout is a
+     * list of: applying a layout replaces the chart's indicators with the ones
+     * written down, and that is the whole point of layouts.
+     *
+     * <p>No for anything the <b>window</b> put on the chart to show its own
+     * result — the backtest's trade marks and its strategy curves. Those are not
+     * choices, they are the answer being displayed, and a layout has no business
+     * naming them: it cannot store them (they are not in the catalog) and it
+     * must not remove them. Before this was asked, clicking a layout in the
+     * backtest window wiped the marks off the chart and there was nothing on
+     * screen saying why.</p>
+     */
+    default boolean partOfLayout() {
+        return true;
+    }
+
     void setVisible(boolean visible);
 
     /**

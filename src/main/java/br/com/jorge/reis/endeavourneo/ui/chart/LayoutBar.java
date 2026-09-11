@@ -131,8 +131,20 @@ public final class LayoutBar extends JComponent {
             return;
         }
 
+        // SO OS INDICADORES DO LEITOR. As marcas de uma rodada de backtest estao
+        // no mesmo grafico e nao sao escolha de ninguem: o catalogo nao sabe
+        // reconstrui-las, entao guarda-las escreveria no layout uma linha que
+        // na volta nao vira nada.
+        List<Overlay> chosen = new java.util.ArrayList<>();
+
+        for (Overlay each : canvas.overlays()) {
+            if (each.partOfLayout()) {
+                chosen.add(each);
+            }
+        }
+
         layouts.set(selected, ChartLayout.of(layouts.get(selected).name(),
-                canvas.overlays(), studies == null ? List.of() : studies.remembered()));
+                chosen, studies == null ? List.of() : studies.remembered()));
 
         ChartLayouts.save(layouts);
     }

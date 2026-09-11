@@ -694,11 +694,12 @@ final class BacktestPanel extends JPanel {
 
         JPanel graph = new JPanel(new BorderLayout());
 
-        // The layout bar over the chart, as in the chart window: it is a row of
-        // saved arrangements, and a reader who cannot see which one is on has no
-        // way of knowing why the indicators are what they are.
-        graph.add(pane.layouts(), BorderLayout.NORTH);
+        // THE LAYOUT BAR UNDERNEATH, which is where the chart window puts it.
+        // Above the chart it sat between the command bar and the price, where
+        // it reads as another row of controls for the run rather than as the
+        // chart's own tabs.
         graph.add(pane, BorderLayout.CENTER);
+        graph.add(pane.layouts(), BorderLayout.SOUTH);
 
         JSplitPane rows = new JSplitPane(JSplitPane.VERTICAL_SPLIT, graph, tradeTable());
 
