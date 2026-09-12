@@ -166,6 +166,21 @@ class ChannelFadeTest {
         return price;
     }
 
+    /**
+     * O pregão em degraus, e depois um TOMBO de uma barra só.
+     *
+     * <p>Fundo o bastante para o preço passar pelos dois alvos dentro da mesma
+     * barra, que é a situação que a escada existe para atender e a única em que
+     * a diferença entre uma perna e várias aparece.</p>
+     */
+    private static double[] pregaoComTombo() {
+        double[] price = pregaoEmDegraus();
+
+        price[PICO + 6] -= 1500;
+
+        return price;
+    }
+
     private static Result run(double[] price, List<ChannelFade.Rung> ladder,
                               StochasticLatch.Settings latch) {
 
@@ -279,6 +294,39 @@ class ChannelFadeTest {
     }
 
     @Test
+    @DisplayName("UMA BARRA QUE VARRE DOIS ALVOS leva os DOIS lotes")
+    void onebarThatSweepsTwoTargetsTakesBothLots() {
+        List<ChannelFade.Rung> escada = List.of(
+                new ChannelFade.Rung(Regression.SHORT, 1.5, 3.0),
+                new ChannelFade.Rung(Regression.SHORT, 2.5, 1.0));
+
+        Result result = run(pregaoComTombo(), escada, VENDE);
+
+        assertEquals(2, aberturas(result).size(),
+                "os dois degraus nao entraram: " + aberturas(result).size());
+
+        // Quantas coberturas por alvo caem em cada barra.
+        java.util.Map<Integer, Integer> porBarra = new java.util.HashMap<>();
+
+        for (Fill fill : result.fills()) {
+            if (fill.verb().contains("Cover") && !fill.verb().contains("Stop")) {
+                porBarra.merge(fill.bar(), fill.quantity(), Integer::sum);
+            }
+        }
+
+        assertFalse(porBarra.isEmpty(), "nenhum alvo executou");
+
+        // AS DUAS PERNAS NA MESMA BARRA. Com uma perna de cada vez o tombo leva
+        // um contrato e o outro so sai na barra seguinte -- ou no sino, se o
+        // canal ja tiver andado. E para isso que a OCO tem varias pernas.
+        int maior = java.util.Collections.max(porBarra.values());
+
+        assertEquals(2, maior,
+                "a barra do tombo levou " + maior + " contrato(s), e nao os dois: "
+                        + porBarra);
+    }
+
+    @Test
     @DisplayName("COM DOIS LOTES NA MAO, quem fica de pe e o alvo MAIS PERTO")
     void withTwoLotsOnItIsTheNearestTargetThatRests() {
         // O degrau de DENTRO entra primeiro e mira LONGE; o de fora entra depois
@@ -314,6 +362,16 @@ class ChannelFadeTest {
                 "a primeira saida levou a mao inteira: " + fechou.get(0).quantity());
 
         assertTrue(fechou.size() > 1, "o segundo lote nunca saiu");
+
+        // E O LOTE QUE FICA E O OUTRO. Fechada a parcial do alvo perto, quem
+        // sobra e o lote de alvo 3,0 -- e ele so sai la embaixo. Fechando o lote
+        // errado, sobraria um cujo alvo o preco ja venceu, e ele sairia na
+        // abertura seguinte -- uma cobertura, e nao o sino.
+        Fill ultima = fechou.get(fechou.size() - 1);
+
+        assertEquals("ClosePosition", ultima.verb(),
+                "a ultima saida foi " + ultima.verb() + " -- quem sobrou tinha alvo"
+                        + " ja vencido, entao o lote fechado na parcial foi o errado");
 
         // E foi o alvo PERTO que executou. Refeita a conta por fora, sobre a
         // barra da decisao.

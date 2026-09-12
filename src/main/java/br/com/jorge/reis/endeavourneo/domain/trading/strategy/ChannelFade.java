@@ -307,16 +307,19 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
     /** The rung whose order is on the book, and which way it faces. */
     private Rung resting;
 
+    /** One lot and the level its target went to the book at. */
+    private record Aimed(Lot lot, double level) { }
+
     /**
-     * Which open lot has its target on the book, or −1.
+     * The targets standing on the book, one per open lot.
      *
      * <p>Written down rather than worked out again when the fill arrives: a
-     * cover fill carries a verb and a price, and by the time it is settled
-     * the channel has moved on to the next bar — so recomputing which lot
-     * was nearest would be asking a different question than the one the
-     * order was sent to answer.</p>
+     * cover fill carries a verb, a price and a size, not the order it came
+     * from, and by the time it is settled the channel has moved on to the
+     * next bar — so recomputing the levels would be asking a different
+     * question than the one the orders were sent to answer.</p>
      */
-    private int covering;
+    private final List<Aimed> aiming = new ArrayList<>();
 
     private int restingSide;
 
@@ -420,8 +423,9 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
         flipStop = Double.NaN;
         guardStop = Double.NaN;
         restingStop = Double.NaN;
-        covering = -1;
         enteredAt = -1;
+
+        aiming.clear();
 
         latch.start(bars, source);
         fitTheChannels();
@@ -601,11 +605,11 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
     /**
      * Keeps the book in step with what executed.
      *
-     * <p>A cover closes the lot whose target was on the book — the nearest
-     * one, and the only one, because the engine treats every cover leg as a
-     * single OCO group: the first to fill cancels the others off the book on
-     * that same bar. Four targets resting would not be four partials; it
-     * would be one partial and three cancellations. An opening fill is the
+     * <p>A cover closes the lot whose target executed, found by the LEVEL the
+     * order went to the book at. A limit fills at its level or better, so a
+     * sell-cover fill sits at or above the level that sent it: the lot to
+     * close is the one with the highest level the fill reached, and the next
+     * fill of the same bar takes the one below it. An opening fill is the
      * rung chosen at the last close, which is recorded rather than
      * recognised.
      */
@@ -622,19 +626,16 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
             // lot, the turn stop is a *CoverStop and belongs to the position.
             if (verb.contains("Cover") && verb.contains("Stop")) {
                 open.clear();
+                aiming.clear();
                 forgetTheStops();
-            } else if (verb.contains("Cover") || verb.contains("Close")
-                    || verb.contains("Reverse")) {
-                // THE ONE WHOSE ORDER WENT, and not the oldest. They are the
-                // same lot only when the ladder has one rung on; with two the
-                // oldest may be the one still waiting.
-                if (covering >= 0 && covering < open.size()) {
-                    open.remove(covering);
-                } else if (!open.isEmpty()) {
-                    open.remove(0);
-                }
-
-                covering = -1;
+            } else if (verb.contains("Close") || verb.contains("Reverse")) {
+                // THE WHOLE MAO, because both of these are the position and
+                // not a leg of it.
+                open.clear();
+                aiming.clear();
+                forgetTheStops();
+            } else if (verb.contains("Cover")) {
+                closeTheLotThatWentAt(fill.price());
 
                 if (open.isEmpty()) {
                     forgetTheStops();
@@ -654,6 +655,50 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
                 }
             }
         }
+    }
+
+    /**
+     * Closes the lot whose target executed at this price.
+     *
+     * <p>A limit never fills worse than its level: a sell-cover fills at or
+     * ABOVE the level it rests at, a buy-cover at or below. So every target the
+     * fill reached is a candidate, and the one that sent it is the last of them
+     * — the highest level for a sell, the lowest for a buy. Taking the closest
+     * first is what makes several fills on one bar land on the right lots: each
+     * takes its own, in the order the price walked over them.</p>
+     *
+     * <p>Nothing matching means a cover nobody here asked for — a ClosePosition
+     * shaped differently, or the day being shut. The oldest lot goes, so the
+     * book cannot drift out of step with the position.</p>
+     */
+    private void closeTheLotThatWentAt(double price) {
+        int found = -1;
+        double best = Double.NaN;
+
+        for (int which = 0; which < aiming.size(); which++) {
+            Aimed each = aiming.get(which);
+            int side = each.lot().side();
+
+            // Reached: for a long exit the fill is at or above the level.
+            if (side * (price - each.level()) < -TICK) {
+                continue;
+            }
+
+            if (found < 0 || side * (each.level() - best) > 0) {
+                found = which;
+                best = each.level();
+            }
+        }
+
+        if (found < 0) {
+            if (!open.isEmpty()) {
+                open.remove(0);
+            }
+
+            return;
+        }
+
+        open.remove(aiming.remove(found).lot());
     }
 
     /**
@@ -747,19 +792,17 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
         int side = open.get(0).side();
         double now = bars.closeAt(bar);
 
-        // THE NEAREST TARGET, and only it. Every lot has its own — the rung
-        // that put it on says where it comes off — but the engine cancels the
-        // other cover legs the moment one fills, so sending four would send
-        // one partial and three cancellations. The nearest is the one the
-        // price would have reached first anyway; the rest get their turn on
-        // the bars after this one leaves.
-        covering = -1;
+        // ONE TARGET PER LOT, all of them on the book at once. The rung that
+        // put a lot on says where it comes off, and the legs of one OCO
+        // compete for the position rather than with each other — so a bar
+        // that walks over three levels takes three lots, which is what a
+        // ladder was for. His own RoboNovo6s LIFO does exactly this: three
+        // SellToCoverLimit in one pass, one per lot of the queue.
+        aiming.clear();
 
-        double price = Double.NaN;
         double best = Double.POSITIVE_INFINITY;
 
-        for (int which = 0; which < open.size(); which++) {
-            Lot lot = open.get(which);
+        for (Lot lot : open) {
             Regression.Fit fit = fitAt(lot.rung(), bar);
 
             if (!fit.known()) {
@@ -771,32 +814,27 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
             // it subtracts.
             double level = fit.line() + lot.side() * lot.rung().target() * fit.sigma();
 
-            // Signed, not absolute: a target the price has already gone past
-            // fills at the open, and counting it as far away would rest the
-            // one behind it instead.
-            double away = lot.side() * (level - now);
+            aiming.add(new Aimed(lot, level));
 
-            if (away >= best) {
-                continue;
+            if (side > 0) {
+                desk.sellToCoverLimit(level, lot.quantity());
+            } else {
+                desk.buyToCoverLimit(level, lot.quantity());
             }
 
-            best = away;
-            covering = which;
-            price = level;
+            // Signed, not absolute: a target the price has already gone past
+            // fills at the open, and counting it as far away would draw the
+            // curve on the one behind it instead.
+            double away = lot.side() * (level - now);
+
+            if (away < best) {
+                best = away;
+                targetLine[bar] = level;
+            }
         }
 
-        if (covering < 0) {
+        if (aiming.isEmpty()) {
             return;
-        }
-
-        targetLine[bar] = price;
-
-        int quantity = open.get(covering).quantity();
-
-        if (side > 0) {
-            desk.sellToCoverLimit(price, quantity);
-        } else {
-            desk.buyToCoverLimit(price, quantity);
         }
 
         double stop = nearestStop(side);
