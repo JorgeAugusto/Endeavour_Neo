@@ -221,21 +221,42 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
      * to be matched to a lot by its PRICE, which is the Range 90's defect all
      * over again.
      *
-     * @param on   whether the stop applies
-     * @param slip the most, in points, the fill may be worse than the level
+     * <h2>Half the levels are on the wrong side, and that is the rule meeting
+     * this strategy</h2>
+     *
+     * <p>Measured on his year: of 4.337 entries, <b>2.210 — 51,0%</b> — come out
+     * with the level ABOVE the buy, by up to 1.460 points. It is not a slip of
+     * the arithmetic, it is what the rule does here. A fade BUYS at the lower
+     * edge of the channel, which is a price below what the market had been
+     * marking; the last two bottoms are therefore above it. A stop above the buy
+     * is no stop at all — it triggers at the next open and the trade is born and
+     * dies paying the round trip.
+     *
+     * <p>The two switches below are the two ways out, and they are switches
+     * rather than a decision because they measure differently and the choice is
+     * his. Counting only the pivots that would actually protect, 4.336 of the
+     * 4.337 entries have two of them, the nearest 124 points away on average.
+     *
+     * @param on         whether the stop applies
+     * @param slip       the most, in points, the fill may be worse than the level
+     * @param onlyArmed  refuse the entry when the level would not protect it
+     * @param fromTheDip take the level from the first pivot AFTER the entry —
+     *                   the bottom of the dip being bought — instead of from the
+     *                   two that came before it
      */
-    public record Guard(boolean on, double slip) {
+    public record Guard(boolean on, double slip, boolean onlyArmed, boolean fromTheDip) {
 
         public Guard {
             slip = slip >= 0 ? slip : Flip.SLIP;
         }
 
         public static Guard off() {
-            return new Guard(false, Flip.SLIP);
+            return new Guard(false, Flip.SLIP, false, false);
         }
 
+        /** The rule as he first stated it, with neither way out switched on. */
         public static Guard standard() {
-            return new Guard(true, Flip.SLIP);
+            return new Guard(true, Flip.SLIP, false, false);
         }
     }
 
@@ -307,6 +328,9 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
 
     /** What the entry stop WOULD be for the order resting now, or NaN. */
     private double restingStop;
+
+    /** The decision bar of the newest entry, for the dip's own pivot; or −1. */
+    private int enteredAt;
 
     private double[] entryLine;
 
@@ -385,6 +409,7 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
         flipStop = Double.NaN;
         guardStop = Double.NaN;
         restingStop = Double.NaN;
+        enteredAt = -1;
 
         latch.start(bars, source);
         fitTheChannels();
@@ -418,6 +443,17 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
         double olderHigh = Double.NaN;
 
         for (int bar = 0; bar < size; bar++) {
+            // NADA ATRAVESSA O PREGAO, e isto vazava: o fundo de ontem, depois
+            // do salto da noite, nao e um nivel de hoje -- e em 1,6% das
+            // entradas do ano dele era exatamente esse o nivel usado. Todo o
+            // resto desta estrategia ja respeitava a virada.
+            if (bar > 0 && session[bar] != session[bar - 1]) {
+                newestLow = Double.NaN;
+                olderLow = Double.NaN;
+                newestHigh = Double.NaN;
+                olderHigh = Double.NaN;
+            }
+
             Pivots.Pivot now = pivots[bar];
 
             if (now != null) {
@@ -495,6 +531,7 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
         turned = -1;
         flipStop = Double.NaN;
         guardStop = Double.NaN;
+        enteredAt = -1;
     }
 
     private Regression.Fit fitAt(Rung rung, int bar) {
@@ -524,9 +561,8 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
             spent.clear();
             latch.clear();
 
-            turned = -1;
-            flipStop = Double.NaN;
-            guardStop = Double.NaN;
+            forgetTheStops();
+
             restingStop = Double.NaN;
 
             if (market.hasPosition()) {
@@ -545,6 +581,7 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
         }
 
         watchForTheTurn(bar);
+        watchForTheDip(bar);
         cover(bar, desk);
         enter(bar, market, desk);
     }
@@ -590,6 +627,7 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
                     // further out and brought the bottoms from out there; the
                     // position widened, so its stop widens with it.
                     guardStop = restingStop;
+                    enteredAt = fill.bar();
                     resting = null;
                 }
             }
@@ -635,6 +673,40 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
         // cannot already be behind the price, and there is no case here for a
         // stop that is violated the moment it is written down.
         flipStop = now.price() - side * TICK;
+    }
+
+    /**
+     * Takes the level from the dip the position was bought into.
+     *
+     * <p>The first pivot of the right kind CONFIRMED after the entry, which on a
+     * fade is the bottom of the dip the limit was sitting in. It is the level
+     * the rule wants and the one the two earlier bottoms cannot give: those are
+     * above the entry, because the entry is below where the market had been.
+     *
+     * <p>The price of it is the same gap the turn stop has — a pivot is a fact
+     * {@code wing} bars after it happens, so the position carries no level of
+     * its own until then.
+     */
+    private void watchForTheDip(int bar) {
+        if (!guard.on() || !guard.fromTheDip() || open.isEmpty()) {
+            return;
+        }
+
+        if (!Double.isNaN(guardStop) || bar <= enteredAt) {
+            return;
+        }
+
+        Pivots.Pivot now = pivots[bar];
+        int side = open.get(0).side();
+
+        // CONFIRMED after the entry, and the pivot's own bar is not asked
+        // about: the low of the dip is usually a bar or two BEFORE the fill,
+        // and it is still the dip that was bought.
+        if (now == null || now.top() != (side < 0)) {
+            return;
+        }
+
+        guardStop = now.price() - side * TICK;
     }
 
     /**
@@ -739,7 +811,7 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
         // level attached to it.
         double beyond = side > 0 ? underTwoBottoms[bar] : overTwoTops[bar];
 
-        if (guard.on() && Double.isNaN(beyond)) {
+        if (guard.on() && !guard.fromTheDip() && Double.isNaN(beyond)) {
             return;
         }
 
@@ -779,9 +851,20 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
             return;
         }
 
+        // ONLY WHEN IT PROTECTS. Compared against the LEVEL the order rests at
+        // and not against a fill nobody has yet -- and the level is the
+        // optimistic end of it, because a limit can fill better, which for a buy
+        // means lower, which only puts the stop further above.
+        boolean protects = side > 0 ? beyond < level : beyond > level;
+
+        if (guard.on() && guard.onlyArmed() && !(protects && !Double.isNaN(beyond))) {
+            return;
+        }
+
         resting = nearest;
         restingSide = side;
-        restingStop = guard.on() ? beyond - side * TICK : Double.NaN;
+        restingStop = guard.on() && !guard.fromTheDip()
+                ? beyond - side * TICK : Double.NaN;
         entryLine[bar] = level;
 
         int many = lot;

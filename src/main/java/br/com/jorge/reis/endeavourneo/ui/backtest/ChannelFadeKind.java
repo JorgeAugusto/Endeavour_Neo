@@ -78,6 +78,10 @@ final class ChannelFadeKind implements StrategyKind {
 
     private static final String GUARD = "strategy.fade.guard";
 
+    private static final String GUARD_ARMED = "strategy.fade.guard.armed";
+
+    private static final String GUARD_DIP = "strategy.fade.guard.dip";
+
     /** Per rung: whether it is used, and its two factors in HUNDREDTHS. */
     private static final String RUNG_ON = "strategy.fade.rung.%d.on";
 
@@ -197,9 +201,13 @@ final class ChannelFadeKind implements StrategyKind {
     static ChannelFade.Guard guard() {
         Settings settings = Settings.settings();
 
-        return settings.getBoolean(GUARD, false)
-                ? new ChannelFade.Guard(true, flipSlip())
-                : ChannelFade.Guard.off();
+        if (!settings.getBoolean(GUARD, false)) {
+            return ChannelFade.Guard.off();
+        }
+
+        return new ChannelFade.Guard(true, flipSlip(),
+                settings.getBoolean(GUARD_ARMED, false),
+                settings.getBoolean(GUARD_DIP, false));
     }
 
     private static double flipSlip() {
@@ -248,6 +256,12 @@ final class ChannelFadeKind implements StrategyKind {
 
         private final JCheckBox guard =
                 new JCheckBox(Messages.get("strategy.fade.guard"));
+
+        private final JCheckBox guardArmed =
+                new JCheckBox(Messages.get("strategy.fade.guard.armed"));
+
+        private final JCheckBox guardDip =
+                new JCheckBox(Messages.get("strategy.fade.guard.dip"));
 
         private final JCheckBox flip =
                 new JCheckBox(Messages.get("strategy.fade.flip"));
@@ -307,9 +321,17 @@ final class ChannelFadeKind implements StrategyKind {
             panel.add(hint("strategy.fade.latch.hint"));
 
             guard.setAlignmentX(Component.LEFT_ALIGNMENT);
+            guard.addActionListener(e -> followTheSwitch());
+            guardArmed.setAlignmentX(Component.LEFT_ALIGNMENT);
+            guardDip.setAlignmentX(Component.LEFT_ALIGNMENT);
 
             panel.add(guard);
             panel.add(hint("strategy.fade.guard.hint"));
+            panel.add(hint("strategy.fade.guard.wrongside.hint"));
+            panel.add(guardArmed);
+            panel.add(hint("strategy.fade.guard.armed.hint"));
+            panel.add(guardDip);
+            panel.add(hint("strategy.fade.guard.dip.hint"));
 
             flip.setAlignmentX(Component.LEFT_ALIGNMENT);
             flip.addActionListener(e -> followTheSwitch());
@@ -325,6 +347,9 @@ final class ChannelFadeKind implements StrategyKind {
 
         /** O que um interruptor desligado nao usa fica apagado. */
         private void followTheSwitch() {
+            guardArmed.setEnabled(guard.isSelected());
+            guardDip.setEnabled(guard.isSelected());
+
             flipWing.setEnabled(flip.isSelected());
             flipSlip.setEnabled(flip.isSelected());
         }
@@ -386,6 +411,8 @@ final class ChannelFadeKind implements StrategyKind {
             latchEntries.setValue(settings.getInt(LATCH_ENTRIES, 2));
 
             guard.setSelected(settings.getBoolean(GUARD, false));
+            guardArmed.setSelected(settings.getBoolean(GUARD_ARMED, false));
+            guardDip.setSelected(settings.getBoolean(GUARD_DIP, false));
             flip.setSelected(settings.getBoolean(FLIP, false));
             flipWing.setValue(settings.getInt(FLIP_WING, Pivots.WING));
             flipSlip.setValue(settings.getInt(FLIP_SLIP,
@@ -418,6 +445,8 @@ final class ChannelFadeKind implements StrategyKind {
             int entries = (Integer) latchEntries.getValue();
 
             boolean naEntrada = guard.isSelected();
+            boolean soQuandoProtege = guardArmed.isSelected();
+            boolean peloMergulho = guardDip.isSelected();
             boolean naVirada = flip.isSelected();
             int asa = (Integer) flipWing.getValue();
             int folga = (Integer) flipSlip.getValue();
@@ -443,6 +472,8 @@ final class ChannelFadeKind implements StrategyKind {
                 settings.putInt(LATCH_ENTRIES, entries);
 
                 settings.putBoolean(GUARD, naEntrada);
+                settings.putBoolean(GUARD_ARMED, soQuandoProtege);
+                settings.putBoolean(GUARD_DIP, peloMergulho);
                 settings.putBoolean(FLIP, naVirada);
                 settings.putInt(FLIP_WING, asa);
                 settings.putInt(FLIP_SLIP, folga);
