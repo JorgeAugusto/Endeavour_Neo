@@ -110,24 +110,25 @@ final class Book {
      * 90 collapsed on it with a lot whose stop was never set, and the crossing
      * turned 65 operations of a week into 136.455.</p>
      *
-     * <p>The cover legs go together because the manual says they are one OCO:
-     * "cover orders are always sent as OCO orders, so you do not need to worry
-     * about managing and cancelling eventual cover orders that could remain open
-     * after the execution of only one of the exit legs". One leg fills, the rest
-     * are gone, and the strategy asks again at its next turn for whatever still
-     * fits the smaller position.</p>
+     * <p>The cover legs go together only when the POSITION ended: that is the
+     * leftover the manual promises nobody has to cancel — "eventuais ordens de
+     * cobertura que poderiam ficar abertas após a execução de apenas uma das
+     * pernas de saída". While contracts remain, so do the legs standing over
+     * them; the same page tells the programmer to manage the quantity of each
+     * order when holding more than one lot, which is only possible if they all
+     * stay live. See the note on {@code Broker} for the whole passage.</p>
      *
      * @param executed the very instances that filled, compared by identity: two
      *        orders that are equal but were asked for separately are two orders
-     * @param covered  whether one of them was a cover, which kills the others
+     * @param closed   whether the position went flat, which clears every cover
      */
-    void filled(List<Order> executed, boolean covered) {
+    void filled(List<Order> executed, boolean closed) {
         resting.removeIf(instruction -> {
             if (!(instruction instanceof Order order)) {
                 return false;
             }
 
-            if (covered && order.covers()) {
+            if (closed && order.covers()) {
                 return true;
             }
 

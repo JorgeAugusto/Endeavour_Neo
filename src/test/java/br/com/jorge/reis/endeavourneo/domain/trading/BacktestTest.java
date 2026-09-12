@@ -387,8 +387,8 @@ class BacktestTest {
     }
 
     @Test
-    @DisplayName("A PERNA DA OCO QUE EXECUTA MATA AS OUTRAS ate a proxima volta")
-    void oneOCOlegFillingKillsTheOthersUntilTheNextTurn() {
+    @DisplayName("O STOP SOBREVIVE A PARCIAL, e cobre o que sobrou")
+    void theStopOutlivesThePartialAndCoversWhatIsLeft() {
         // Comprado em QUATRO, com stop de quatro e alvo parcial de dois. O alvo
         // e alcancado na primeira barra fina da volta e o stop na segunda --
         // separados de proposito, porque com os dois na mesma barra o desempate
@@ -416,19 +416,25 @@ class BacktestTest {
             }
         }, null);
 
-        // O manual: as coberturas sao mandadas como OCO, "de modo que voce nao
-        // precisa se preocupar em gerenciar e cancelar eventuais ordens de
-        // cobertura que possam permanecer abertas apos a execucao de apenas uma
-        // das pernas de saida". Uma perna executa, as outras morrem -- e morrem
-        // ATE A PROXIMA VOLTA, nao ate a proxima barra fina.
+        // A PARCIAL NAO DESARMA O STOP. A perna do alvo executa e sai do livro;
+        // a do stop continua de pe sobre os dois contratos que ficaram, e leva
+        // os dois na barra fina seguinte. Tres execucoes ao todo, e nada
+        // atravessa a volta sem protecao.
         //
-        // Sem isso: a parcial sai com dois, e o stop que sobrou no livro leva os
-        // outros dois um preco depois, fechando o dia por uma ordem que a
-        // estrategia nunca reautorizou.
-        assertEquals(2, result.fills().size(),
-                "a OCO deixou executar mais de uma perna: " + result.fills().size());
-        assertEquals(2, result.openAtTheEnd(),
-                "a posicao devia ter sobrado em dois contratos");
+        // Matar o stop aqui deixaria a posicao NUA ate o proximo fechamento de
+        // decisao -- e uma posicao descoberta e a unica coisa que um stop existe
+        // para impedir. A frase do manual sobre nao precisar cancelar sobra fala
+        // da sobra de uma posicao FECHADA.
+        assertEquals(3, result.fills().size(),
+                "esperava entrada, parcial e stop: " + result.fills().size());
+        assertEquals(0, result.openAtTheEnd(),
+                "o stop nao levou os dois contratos que sobraram");
+
+        assertEquals("SellToCoverStop", result.fills().get(2).verb(),
+                "a ultima execucao nao foi o stop: " + result.fills().get(2).verb());
+        assertEquals(2, result.fills().get(2).quantity(),
+                "o stop levou " + result.fills().get(2).quantity()
+                        + " contratos, e nao os dois que restavam");
     }
 
     @Test
@@ -934,8 +940,8 @@ class BacktestTest {
     // ------------------------------------------------------------------- OCO
 
     @Test
-    @DisplayName("as coberturas sao uma OCO: no maximo uma executa por barra")
-    void theCoversAreOneOcoSoOnlyOneFillsPerBar() {
+    @DisplayName("TODA PERNA ALCANCADA EXECUTA: a OCO tem varias, nao uma")
+    void everyLegTheBarReachedFills() {
         Bars bars = new Bars(
                 new double[] {100, 100, 100},
                 new double[] {101, 120, 120},
@@ -951,12 +957,89 @@ class BacktestTest {
             }
         });
 
-        // A barra 2 alcanca os dois alvos. A OCO deixa um so: o outro morre, e
-        // a estrategia o reapregoa no fechamento seguinte se ainda quiser.
+        // A barra 2 alcanca os dois alvos, e os dois executam: o manual manda o
+        // programador "gerenciar a quantidade de cada ordem caso voce esteja
+        // posicionado em mais de um lote", o que so quer dizer alguma coisa se
+        // cada perna puder executar. Uma escada de saida precisa disso -- o
+        // RoboNovo6s CANONICO LIFO apregoa tres SellToCoverLimit de uma vez.
         long covers = result.fills().stream().filter(f -> f.side() == Side.SELL).count();
 
-        assertEquals(1, covers, "as duas pernas da OCO executaram na mesma barra");
-        assertEquals(2, result.openAtTheEnd(), "sobrou posicao diferente de dois contratos");
+        assertEquals(2, covers, "as duas pernas alcancadas nao executaram as duas");
+        assertEquals(0, result.openAtTheEnd(), "sobrou posicao com os dois alvos batidos");
+    }
+
+    @Test
+    @DisplayName("FECHOU A POSICAO, MORREU A SOBRA: nada cobre o lote seguinte")
+    void whenThePositionClosesTheLeftoverLegsDieWithIt() {
+        // Comprado em quatro, com stop de quatro, alvo de dois que o preco nao
+        // alcanca, e uma entrada de rompimento ainda de pe. O stop leva os
+        // quatro na barra fina 8; a entrada abre UM lote novo na 9; e na 10 o
+        // preco passa pelo alvo velho.
+        //
+        // Esse alvo e sobra de uma posicao que ja acabou. Se ele ficar no livro,
+        // cobre um lote que a estrategia nunca mandou cobrir -- e a volta acaba
+        // zerada por uma ordem de outra operacao. E a sobra de que o manual fala.
+        Fine fine = new Fine(
+                new double[] {100, 100, 100, 100, 100, 100, 100, 100,
+                        100, 100, 100, 100, 100, 100, 100, 100},
+                new double[] {100, 100, 100, 100, 100, 100, 100, 100,
+                        100, 160, 140, 100, 100, 100, 100, 100},
+                new double[] {100, 100, 100, 100, 100, 100, 100, 100,
+                        60, 100, 100, 100, 100, 100, 100, 100},
+                new double[] {100, 100, 100, 100, 100, 100, 100, 100,
+                        100, 100, 100, 100, 100, 100, 100, 100});
+
+        Coarse coarse = new Coarse(fine);
+
+        Result result = new Backtest(Costs.NONE, 1).run(fine, coarse, (market, desk) -> {
+            if (market.bar() == 0) {
+                desk.buyAtMarket(4);
+            }
+
+            if (market.bar() == 1) {
+                desk.sellToCoverStop(80, 80, 4);
+                desk.sellToCoverLimit(130, 2);
+                desk.buyStop(150, 150, 1);
+            }
+        }, null);
+
+        assertEquals(1, result.openAtTheEnd(),
+                "o lote novo nao sobreviveu: a sobra da posicao anterior cobriu ele");
+    }
+
+    @Test
+    @DisplayName("E NENHUMA PERNA CAVA ALEM DA POSICAO: duas de dois sobre dois")
+    void andNolegDigsPastThePosition() {
+        Bars bars = new Bars(
+                new double[] {100, 100, 100},
+                new double[] {101, 120, 120},
+                new double[] {99, 99, 99},
+                new double[] {100, 110, 110});
+
+        Result result = run(bars, (market, desk) -> {
+            if (market.bar() == 0) {
+                desk.buyAtMarket(2);
+            } else if (market.bar() == 1) {
+                desk.sellToCoverLimit(105, 2);
+                desk.sellToCoverLimit(110, 2);
+            }
+        });
+
+        // Duas pernas de dois contratos sobre uma posicao de dois. Agora que as
+        // pernas nao se matam, e SO a aritmetica da posicao que impede a segunda
+        // de cavar um vendido de dois: "ordens de cobertura nunca irao inverter
+        // a sua posicao". Sem isso a estrategia inverteria por engano, e o dia
+        // terminaria vendido numa ordem que ninguem pediu.
+        int sold = 0;
+
+        for (Fill fill : result.fills()) {
+            if (fill.side() == Side.SELL) {
+                sold += fill.quantity();
+            }
+        }
+
+        assertEquals(2, sold, "as pernas venderam " + sold + " sobre uma posicao de dois");
+        assertEquals(0, result.openAtTheEnd(), "a posicao nao terminou zerada");
     }
 
     @Test

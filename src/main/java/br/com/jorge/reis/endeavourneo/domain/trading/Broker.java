@@ -45,14 +45,35 @@ import java.util.List;
  *       reached first" is the least invented ordering available.</li>
  * </ol>
  *
- * <h2>Cover orders are one OCO, so at most one fills per bar</h2>
+ * <h2>The covers are ONE OCO of SEVERAL LEGS, and every leg can fill</h2>
  *
- * <p>The manual: cover orders "are always sent as OCO orders, so you do not need
- * to worry about managing and cancelling eventual cover orders that could remain
- * open after the execution of only one of the exit legs". One leg fills, the
- * rest die — and the strategy re-emits what it still wants at the next close.
- * That is how a partial exit works: the first target fills, the OCO clears, and
- * next bar the code asks again for the targets that fit the smaller position.</p>
+ * <p>The engine read the manual's "you do not need to worry about managing and
+ * cancelling eventual cover orders that could remain open after the execution of
+ * only one of the exit legs" as "at most one cover fills per bar". That is the
+ * wrong half of the page. The next paragraph says the other half: cover orders
+ * are sent or updated at every change of candle, and <b>"cabe ao usuário
+ * gerenciar a quantidade de cada ordem caso você esteja posicionado em mais de
+ * um lote para cobrir corretamente a exposição ao mercado"</b> — which only
+ * means anything if several legs rest and each one can fill. An OCO whose first
+ * leg killed the rest would make managing their quantities pointless.</p>
+ *
+ * <p>His own production robot settles it:
+ * {@code RoboNovo6s_SO_UM_LADO_CANONICO_LIFO} sends three
+ * {@code SellToCoverLimit} in one pass, at three prices with three quantities,
+ * one per lot of the ladder. Under the old rule that robot would exit one lot
+ * and cancel the other two.</p>
+ *
+ * <p>So the legs compete for the POSITION and not with each other: each one
+ * takes what is left ({@code allowed}), and when nothing is left the rest are
+ * ignored and swept off the book. That is what "you do not need to cancel the
+ * leftovers" buys you — the leftovers of a position that is <i>closed</i>.</p>
+ *
+ * <p>A protective stop therefore <b>survives a partial</b>. Long four with a
+ * stop for four and a target for two: the target fills, and the stop is still
+ * standing over the two that remain. Killing it there would leave the position
+ * naked until the next close, which is the one thing a stop exists to prevent.
+ * Covers can never run away — {@code allowed} clamps every one of them to the
+ * position, so there is no machine gun here, only on the entry side.</p>
  *
  * <h2>When the stop and the target are both reachable, the stop wins</h2>
  *
@@ -199,21 +220,21 @@ final class Broker {
         List<Order> done = new ArrayList<>();
 
         for (Reached candidate : theStopFirst(reached)) {
-            if (candidate.order().covers()) {
-                if (covered) {
-                    continue;   // the OCO already fired; the other legs are gone
-                }
-
-                covered = true;
+            // EACH LEG TAKES WHAT IS LEFT. The stop went to the front, so if
+            // it was reachable it has already taken the whole position and
+            // every target below finds nothing to cover and is ignored -- the
+            // conservative tie-break, kept, and now as a consequence of the
+            // arithmetic instead of a flag.
+            if (execute(candidate.order(), bar, candidate.price())) {
+                done.add(candidate.order());
+                covered |= candidate.order().covers();
             }
-
-            execute(candidate.order(), bar, candidate.price());
-            done.add(candidate.order());
         }
 
         // AND OFF THE BOOK THEY GO. An order that filled is not an order any
-        // more, and the cover legs die with whichever of them fired.
-        book.filled(done, covered);
+        // more, and a position that CLOSED takes its whole OCO with it --
+        // which is the leftover the manual promises nobody has to cancel.
+        book.filled(done, covered && position.flat());
     }
 
     /**
@@ -262,14 +283,17 @@ final class Broker {
 
     // -------------------------------------------------------------- executing
 
-    private void execute(Order order, int bar, double price) {
+    /** @return whether it actually produced a fill */
+    private boolean execute(Order order, int bar, double price) {
         int quantity = allowed(order);
 
         if (quantity < 1) {
-            return;   // a cover with nothing to cover: ignored, as NTSL ignores it
+            return false;   // a cover with nothing to cover: ignored, as NTSL ignores it
         }
 
         record(new Fill(bar, order.side(), price, quantity, order.verb()));
+
+        return true;
     }
 
     /**
