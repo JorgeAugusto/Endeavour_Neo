@@ -141,15 +141,46 @@ class ChannelFadeTest {
         return price;
     }
 
-    private static Result run(List<ChannelFade.Rung> ladder,
+    /**
+     * O mesmo pregão, com o estição subindo em DEGRAUS em vez de um salto só.
+     *
+     * <p>Um salto único põe o preço além das duas bordas na mesma barra, e aí só
+     * um degrau da escada entra: o segundo nível fica <b>abaixo</b> do preço, e
+     * um limite ali executaria na hora a um preço que a tese nunca pediu — então
+     * {@code enter} o descarta, com razão. Subindo aos poucos o preço cruza uma
+     * borda, respira, e cruza a seguinte: é a única forma de ter dois lotes na
+     * mão para comparar os alvos deles.</p>
+     */
+    private static double[] pregaoEmDegraus() {
+        double[] price = pregao();
+
+        for (int bar = PICO; bar < PICO + 6; bar++) {
+            // Desfaz o salto plano e põe a rampa no lugar dele.
+            if (bar < PICO + 3) {
+                price[bar] -= 600;
+            }
+
+            price[bar] += 150.0 * (bar - PICO + 1);
+        }
+
+        return price;
+    }
+
+    private static Result run(double[] price, List<ChannelFade.Rung> ladder,
                               StochasticLatch.Settings latch) {
 
-        PriceSeries bars = new Bars(pregao());
+        PriceSeries bars = new Bars(price);
         ChannelFade what = new ChannelFade(SP, ladder, 1, latch);
 
         what.sourcedFrom(bars);
 
         return new Backtest(Costs.NONE, 1).run(bars, bars, what, null);
+    }
+
+    private static Result run(List<ChannelFade.Rung> ladder,
+                              StochasticLatch.Settings latch) {
+
+        return run(pregao(), ladder, latch);
     }
 
     private static List<ChannelFade.Rung> umDegrau(int periodo, double entrada, double alvo) {
@@ -245,6 +276,57 @@ class ChannelFadeTest {
         assertTrue(comDois.price() <= fit.at(-2.0) + 1e-6,
                 "a cobertura pagou acima da borda de baixo: " + comDois.price()
                         + " contra " + fit.at(-2.0));
+    }
+
+    @Test
+    @DisplayName("COM DOIS LOTES NA MAO, quem fica de pe e o alvo MAIS PERTO")
+    void withTwoLotsOnItIsTheNearestTargetThatRests() {
+        // O degrau de DENTRO entra primeiro e mira LONGE; o de fora entra depois
+        // e mira PERTO. Assim o lote mais antigo -- o unico que tinha ordem de pe
+        // -- e justamente aquele que o preco nao alcanca, e uma escada que era
+        // para sair em pedacos sai inteira, no sino ou no stop.
+        List<ChannelFade.Rung> escada = List.of(
+                new ChannelFade.Rung(Regression.SHORT, 1.5, 3.0),
+                new ChannelFade.Rung(Regression.SHORT, 2.5, 1.0));
+
+        Result result = run(pregaoEmDegraus(), escada, VENDE);
+
+        assertEquals(2, aberturas(result).size(),
+                "os dois degraus nao entraram: " + aberturas(result).size());
+
+        List<Fill> fechou = new ArrayList<>();
+
+        for (Fill fill : result.fills()) {
+            if (fill.verb().contains("Cover") || fill.verb().contains("Close")) {
+                fechou.add(fill);
+            }
+        }
+
+        assertFalse(fechou.isEmpty(), "nao fechou nada");
+
+        // UMA PARCIAL, e nao o pacote todo de uma vez. O alvo de 1,0 esta ao
+        // alcance e o de 3,0 nao: com o alvo certo de pe um contrato sai pelo
+        // alvo, e o outro fica.
+        assertEquals("BuyToCoverLimit", fechou.get(0).verb(),
+                "a primeira saida nao foi pelo alvo: " + fechou.get(0).verb());
+
+        assertEquals(1, fechou.get(0).quantity(),
+                "a primeira saida levou a mao inteira: " + fechou.get(0).quantity());
+
+        assertTrue(fechou.size() > 1, "o segundo lote nunca saiu");
+
+        // E foi o alvo PERTO que executou. Refeita a conta por fora, sobre a
+        // barra da decisao.
+        Regression.Fit fit = new Regression(Regression.SHORT)
+                .at(new Bars(pregaoEmDegraus()), fechou.get(0).bar() - 1);
+
+        assertTrue(fechou.get(0).price() <= fit.at(-1.0) + 1e-6,
+                "a parcial pagou acima da borda de 1,0: " + fechou.get(0).price()
+                        + " contra " + fit.at(-1.0));
+
+        assertTrue(fechou.get(0).price() > fit.at(-3.0),
+                "a parcial saiu no alvo de 3,0, o do lote velho: "
+                        + fechou.get(0).price() + " contra " + fit.at(-3.0));
     }
 
     @Test
