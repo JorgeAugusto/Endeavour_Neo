@@ -299,6 +299,20 @@ final class BacktestPanel extends JPanel {
 
     private final JSplitPane sides = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
 
+    /**
+     * The run that is on screen, kept for the export.
+     *
+     * <p>Everything else the window needs from a finished run it copies
+     * into the table, the chart and the quadro. The file needs the run
+     * ITSELF -- every fill of every trade, plus which series and scale
+     * produced it -- and reassembling that from three widgets afterwards
+     * would be three chances to write down a number that was never in the
+     * result.</p>
+     */
+    private transient Run onScreen;
+
+    private final JButton save = new JButton(Messages.get("backtest.save"));
+
     private final JToggleButton showQuadro =
             new JToggleButton(Messages.get("backtest.quadro"), true);
 
@@ -450,6 +464,11 @@ final class BacktestPanel extends JPanel {
             }
         });
 
+        save.setToolTipText(Messages.get("backtest.save.hint"));
+        save.setFocusable(false);
+        save.setEnabled(false);
+        save.addActionListener(e -> saveTheExecutions());
+
         showQuadro.setToolTipText(Messages.get("backtest.quadro.hint"));
         showQuadro.setFocusable(false);
         showQuadro.addActionListener(e -> toggleQuadro());
@@ -486,6 +505,7 @@ final class BacktestPanel extends JPanel {
         second.add(settings);
         second.add(Box.createHorizontalStrut(8));
         second.add(showQuadro);
+        second.add(save);
         second.add(run);
 
         top.add(first);
@@ -863,6 +883,79 @@ final class BacktestPanel extends JPanel {
     }
 
     /**
+     * Writes every execution of the run on screen to a file.
+     *
+     * <p>A chooser and not a fixed folder: the file is made to be compared
+     * with another one, and where he keeps those is his business. The name
+     * it opens with carries the strategy and the day, so two exports of
+     * different runs do not land on top of each other by default.</p>
+     */
+    private void saveTheExecutions() {
+        if (onScreen == null || onScreen.result().trades().isEmpty()) {
+            return;
+        }
+
+        javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
+
+        chooser.setDialogTitle(Messages.get("backtest.save"));
+        chooser.setSelectedFile(new java.io.File(suggestedName()));
+
+        if (chooser.showSaveDialog(this) != javax.swing.JFileChooser.APPROVE_OPTION) {
+            return;
+        }
+
+        java.nio.file.Path where = chooser.getSelectedFile().toPath();
+
+        try {
+            java.nio.file.Files.writeString(where,
+                    br.com.jorge.reis.endeavourneo.domain.trading.Executions.of(
+                            onScreen.result(), onScreen.series(),
+                            Timeframe.defaultZone(),
+                            BacktestPreferences.pointValue(), describeTheRun()),
+                    java.nio.charset.StandardCharsets.UTF_8);
+
+            say(Messages.get("backtest.save.done", where.getFileName().toString()));
+        } catch (java.io.IOException failed) {
+            // SAID ON THE SCREEN and not only on the console: he asked for a
+            // file, and a file that silently did not appear is worse than an
+            // error he can read.
+            JOptionPane.showMessageDialog(this,
+                    Messages.get("backtest.save.failed", failed.getMessage()),
+                    Messages.get("backtest.save"), JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private String suggestedName() {
+        StrategyKind kind = (StrategyKind) strategy.getSelectedItem();
+
+        return ("execucoes-" + (kind == null ? "rodada" : kind.label()) + "-"
+                + java.time.LocalDate.now() + ".csv")
+                .replaceAll("[^A-Za-z0-9.\\-]+", "-").toLowerCase(java.util.Locale.ROOT);
+    }
+
+    /** The run in words, for the comment block at the top of the file. */
+    private List<String> describeTheRun() {
+        SeriesChoice picked = (SeriesChoice) series.getSelectedItem();
+        Scale chosen = (Scale) scale.getSelectedItem();
+        StrategyKind kind = (StrategyKind) strategy.getSelectedItem();
+
+        return List.of(
+                "endeavour_neo -- execucoes de um backtest",
+                "gerado=" + java.time.LocalDateTime.now(),
+                "serie=" + (picked == null ? "?" : picked.label())
+                        + "  escala=" + (chosen == null ? "?" : chosen)
+                        + "  execucao=" + how.getSelectedItem()
+                        + "  recorte=" + slice.getSelectedItem(),
+                "estrategia=" + (kind == null ? "?" : kind.label())
+                        + "  contratos=" + BacktestPreferences.contracts()
+                        + "  custo=" + BacktestPreferences.costs(),
+                "barras=" + onScreen.series().size()
+                        + "  operacoes=" + onScreen.result().count()
+                        + "  giros=" + onScreen.result().contractsTurned(),
+                "pontos e reais sao do GIRO, medidos contra a media do que estava aberto");
+    }
+
+    /**
      * Hides the quadro, or brings it back the width it had.
      *
      * <p>Written by hand rather than with {@code setOneTouchExpandable}, which
@@ -1216,6 +1309,9 @@ final class BacktestPanel extends JPanel {
 
     private void show(Run finished) {
         running = finished.series();
+        onScreen = finished;
+
+        save.setEnabled(!finished.result().trades().isEmpty());
 
         Result result = finished.result();
         List<Trade> trades = result.trades();
