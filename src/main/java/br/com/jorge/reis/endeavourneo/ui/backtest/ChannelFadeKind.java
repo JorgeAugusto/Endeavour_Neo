@@ -76,6 +76,8 @@ final class ChannelFadeKind implements StrategyKind {
 
     private static final String FLIP_SLIP = "strategy.fade.flip.slip";
 
+    private static final String GUARD = "strategy.fade.guard";
+
     /** Per rung: whether it is used, and its two factors in HUNDREDTHS. */
     private static final String RUNG_ON = "strategy.fade.rung.%d.on";
 
@@ -104,7 +106,7 @@ final class ChannelFadeKind implements StrategyKind {
     @Override
     public Strategy build() {
         return new ChannelFade(Timeframe.defaultZone(), ladder(), lot(),
-                latch(), flip());
+                latch(), flip(), guard());
     }
 
     @Override
@@ -181,8 +183,28 @@ final class ChannelFadeKind implements StrategyKind {
 
         return new ChannelFade.Flip(true,
                 clamp(settings.getInt(FLIP_WING, Pivots.WING), 1, 500),
-                clamp(settings.getInt(FLIP_SLIP,
-                        (int) ChannelFade.Flip.SLIP), 0, 100_000));
+                flipSlip());
+    }
+
+    /**
+     * @return the entry stop as saved, or {@link ChannelFade.Guard#off()}
+     *
+     * <p>It shares the turn stop's slippage rather than carrying its own:
+     * the two are the same order in the end -- only the nearer of them ever
+     * rests -- so two numbers for how far it may fill would be two numbers
+     * for one thing.</p>
+     */
+    static ChannelFade.Guard guard() {
+        Settings settings = Settings.settings();
+
+        return settings.getBoolean(GUARD, false)
+                ? new ChannelFade.Guard(true, flipSlip())
+                : ChannelFade.Guard.off();
+    }
+
+    private static double flipSlip() {
+        return clamp(Settings.settings().getInt(FLIP_SLIP,
+                (int) ChannelFade.Flip.SLIP), 0, 100_000);
     }
 
     private static int clamp(int value, int least, int most) {
@@ -223,6 +245,9 @@ final class ChannelFadeKind implements StrategyKind {
 
         private final JSpinner latchEntries =
                 new JSpinner(new SpinnerNumberModel(2, 1, 100, 1));
+
+        private final JCheckBox guard =
+                new JCheckBox(Messages.get("strategy.fade.guard"));
 
         private final JCheckBox flip =
                 new JCheckBox(Messages.get("strategy.fade.flip"));
@@ -280,6 +305,11 @@ final class ChannelFadeKind implements StrategyKind {
             panel.add(row("strategy.fade.latch.reset", latchReset));
             panel.add(row("strategy.fade.latch.entries", latchEntries));
             panel.add(hint("strategy.fade.latch.hint"));
+
+            guard.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+            panel.add(guard);
+            panel.add(hint("strategy.fade.guard.hint"));
 
             flip.setAlignmentX(Component.LEFT_ALIGNMENT);
             flip.addActionListener(e -> followTheSwitch());
@@ -355,6 +385,7 @@ final class ChannelFadeKind implements StrategyKind {
                     (int) StochasticLatch.Settings.RESET));
             latchEntries.setValue(settings.getInt(LATCH_ENTRIES, 2));
 
+            guard.setSelected(settings.getBoolean(GUARD, false));
             flip.setSelected(settings.getBoolean(FLIP, false));
             flipWing.setValue(settings.getInt(FLIP_WING, Pivots.WING));
             flipSlip.setValue(settings.getInt(FLIP_SLIP,
@@ -386,6 +417,7 @@ final class ChannelFadeKind implements StrategyKind {
             int reset = (Integer) latchReset.getValue();
             int entries = (Integer) latchEntries.getValue();
 
+            boolean naEntrada = guard.isSelected();
             boolean naVirada = flip.isSelected();
             int asa = (Integer) flipWing.getValue();
             int folga = (Integer) flipSlip.getValue();
@@ -410,6 +442,7 @@ final class ChannelFadeKind implements StrategyKind {
                 settings.putInt(LATCH_RESET, reset);
                 settings.putInt(LATCH_ENTRIES, entries);
 
+                settings.putBoolean(GUARD, naEntrada);
                 settings.putBoolean(FLIP, naVirada);
                 settings.putInt(FLIP_WING, asa);
                 settings.putInt(FLIP_SLIP, folga);

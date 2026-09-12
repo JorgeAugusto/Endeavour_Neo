@@ -198,6 +198,47 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
         }
     }
 
+    /**
+     * The stop the position is born with, read off the zigzag at the entry.
+     *
+     * <p>Of the <b>two</b> most recent bottoms a buy can see when it goes on,
+     * the LOWER one, and the stop a tick under it. Two and not one because one
+     * bottom is a level the market touched once; two that agree is a level it
+     * came back to, and the lower of them is the one that has actually held.
+     *
+     * <h2>No two bottoms, no entry</h2>
+     *
+     * <p>Not "enter without a stop": the entry is refused. It costs the trades
+     * at the start of every recorte and of every session, and that is the price
+     * of never carrying a position whose risk has no level attached to it.
+     *
+     * <h2>One level for the position, re-read at every entry</h2>
+     *
+     * <p>The second rung goes on further out and brings the bottoms from out
+     * there, so the level moves to its — which is wider, because averaging in
+     * widened the position. Per-lot stops were the alternative and they cannot
+     * be told apart: two resting stops carry the same verb, so a fill would have
+     * to be matched to a lot by its PRICE, which is the Range 90's defect all
+     * over again.
+     *
+     * @param on   whether the stop applies
+     * @param slip the most, in points, the fill may be worse than the level
+     */
+    public record Guard(boolean on, double slip) {
+
+        public Guard {
+            slip = slip >= 0 ? slip : Flip.SLIP;
+        }
+
+        public static Guard off() {
+            return new Guard(false, Flip.SLIP);
+        }
+
+        public static Guard standard() {
+            return new Guard(true, Flip.SLIP);
+        }
+    }
+
     private final ZoneId zone;
 
     private final List<Rung> ladder;
@@ -207,6 +248,8 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
     private final StochasticLatch latch;
 
     private final Flip flip;
+
+    private final Guard guard;
 
     // ---------------------------------------------------------------- the run
 
@@ -223,6 +266,15 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
 
     /** The pivot that became a fact at each decision bar, or null. */
     private Pivots.Pivot[] pivots;
+
+    /**
+     * The level a buy would stop under at each bar — the lower of the two most
+     * recent confirmed bottoms — and the mirror for a sell. NaN where there are
+     * not two yet.
+     */
+    private double[] underTwoBottoms;
+
+    private double[] overTwoTops;
 
     // --------------------------------------------------------------- the book
 
@@ -250,19 +302,33 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
     /** Where the flip stop sits once a pivot has set it, or NaN. */
     private double flipStop;
 
+    /** Where the entry stop sits, read at the newest entry, or NaN. */
+    private double guardStop;
+
+    /** What the entry stop WOULD be for the order resting now, or NaN. */
+    private double restingStop;
+
     private double[] entryLine;
 
     private double[] targetLine;
 
     public ChannelFade() {
-        this(null, LADDER, 1, StochasticLatch.Settings.standard(), Flip.standard());
+        this(null, LADDER, 1, StochasticLatch.Settings.standard(),
+                Flip.standard(), Guard.standard());
     }
 
-    /** Without the turn stop: the lot leaves at its target or at the bell. */
+    /** Without either stop: the lot leaves at its target or at the bell. */
     public ChannelFade(ZoneId zone, List<Rung> ladder, int lot,
                        StochasticLatch.Settings latch) {
 
-        this(zone, ladder, lot, latch, Flip.off());
+        this(zone, ladder, lot, latch, Flip.off(), Guard.off());
+    }
+
+    /** With the turn stop only. */
+    public ChannelFade(ZoneId zone, List<Rung> ladder, int lot,
+                       StochasticLatch.Settings latch, Flip flip) {
+
+        this(zone, ladder, lot, latch, flip, Guard.off());
     }
 
     /**
@@ -271,15 +337,17 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
      * @param lot    contracts per rung
      * @param latch  the stochastic filter
      * @param flip   the stop for when both channels turn against the position
+     * @param guard  the stop read off the zigzag at the entry
      */
     public ChannelFade(ZoneId zone, List<Rung> ladder, int lot,
-                       StochasticLatch.Settings latch, Flip flip) {
+                       StochasticLatch.Settings latch, Flip flip, Guard guard) {
 
         this.zone = zone == null ? Timeframe.defaultZone() : zone;
         this.ladder = ladder == null || ladder.isEmpty() ? LADDER : List.copyOf(ladder);
         this.lot = Math.max(1, lot);
         this.latch = new StochasticLatch(latch);
         this.flip = flip == null ? Flip.off() : flip;
+        this.guard = guard == null ? Guard.off() : guard;
     }
 
     @Override
@@ -315,13 +383,61 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
 
         turned = -1;
         flipStop = Double.NaN;
+        guardStop = Double.NaN;
+        restingStop = Double.NaN;
 
         latch.start(bars, source);
         fitTheChannels();
 
-        pivots = flip.on()
+        // ONE ZIGZAG for both stops, and its wing lives on Flip because that is
+        // where it arrived first. Two wings would be two zigzags, and the chart
+        // draws one.
+        pivots = flip.on() || guard.on()
                 ? new Pivots(flip.wing()).confirmedAt(bars)
                 : new Pivots.Pivot[size];
+
+        rememberTheLastTwo();
+    }
+
+    /**
+     * Works out, for every bar, the level each side would stop beyond.
+     *
+     * <p>The lower of the two most recent confirmed bottoms, and the higher of
+     * the two most recent tops. Walked forwards once rather than searched
+     * backwards per bar, and — the part that matters — a pivot is absorbed on
+     * the bar that CONFIRMED it, so the answer at any bar is made only of
+     * pivots that were facts by then.</p>
+     */
+    private void rememberTheLastTwo() {
+        underTwoBottoms = blank(size);
+        overTwoTops = blank(size);
+
+        double newestLow = Double.NaN;
+        double olderLow = Double.NaN;
+        double newestHigh = Double.NaN;
+        double olderHigh = Double.NaN;
+
+        for (int bar = 0; bar < size; bar++) {
+            Pivots.Pivot now = pivots[bar];
+
+            if (now != null) {
+                if (now.top()) {
+                    olderHigh = newestHigh;
+                    newestHigh = now.price();
+                } else {
+                    olderLow = newestLow;
+                    newestLow = now.price();
+                }
+            }
+
+            if (!Double.isNaN(olderLow)) {
+                underTwoBottoms[bar] = Math.min(newestLow, olderLow);
+            }
+
+            if (!Double.isNaN(olderHigh)) {
+                overTwoTops[bar] = Math.max(newestHigh, olderHigh);
+            }
+        }
     }
 
     private static double[] blank(int many) {
@@ -374,6 +490,13 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
         }
     }
 
+    /** Both stops, and the turn that armed one of them, forgotten together. */
+    private void forgetTheStops() {
+        turned = -1;
+        flipStop = Double.NaN;
+        guardStop = Double.NaN;
+    }
+
     private Regression.Fit fitAt(Rung rung, int bar) {
         Regression.Fit[] perBar = fits.get(rung.period());
 
@@ -403,6 +526,8 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
 
             turned = -1;
             flipStop = Double.NaN;
+            guardStop = Double.NaN;
+            restingStop = Double.NaN;
 
             if (market.hasPosition()) {
                 desk.closePosition();
@@ -445,9 +570,7 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
             // lot, the turn stop is a *CoverStop and belongs to the position.
             if (verb.contains("Cover") && verb.contains("Stop")) {
                 open.clear();
-
-                turned = -1;
-                flipStop = Double.NaN;
+                forgetTheStops();
             } else if (verb.contains("Cover") || verb.contains("Close")
                     || verb.contains("Reverse")) {
                 if (!open.isEmpty()) {
@@ -455,8 +578,7 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
                 }
 
                 if (open.isEmpty()) {
-                    turned = -1;
-                    flipStop = Double.NaN;
+                    forgetTheStops();
                 }
             } else if (verb.startsWith("Buy") || verb.startsWith("SellShort")) {
                 if (resting != null) {
@@ -464,6 +586,10 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
                     spent.add(resting);
                     latch.spend(restingSide);
 
+                    // THE NEWEST ENTRY OWNS THE LEVEL. The second rung went on
+                    // further out and brought the bottoms from out there; the
+                    // position widened, so its stop widens with it.
+                    guardStop = restingStop;
                     resting = null;
                 }
             }
@@ -543,26 +669,51 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
             desk.buyToCoverLimit(price, first.quantity());
         }
 
-        if (Double.isNaN(flipStop)) {
+        double stop = nearestStop(first.side());
+
+        if (Double.isNaN(stop)) {
             return;
         }
 
-        // THE WHOLE POSITION, and not this lot. The turn stop is not the rung's
-        // -- the rungs differ in where they came on and where they aim, and the
-        // turn is about the market having changed its mind about all of them.
+        // THE WHOLE POSITION, and not this lot. Neither stop is a rung's -- the
+        // rungs differ in where they came on and where they aim, and both of
+        // these are about the trade as a whole being wrong.
         int held = 0;
 
         for (Lot each : open) {
             held += each.quantity();
         }
 
-        double room = flipStop - first.side() * flip.slip();
+        double room = stop - first.side() * flip.slip();
 
         if (first.side() > 0) {
-            desk.sellToCoverStop(flipStop, room, held);
+            desk.sellToCoverStop(stop, room, held);
         } else {
-            desk.buyToCoverStop(flipStop, room, held);
+            desk.buyToCoverStop(stop, room, held);
         }
+    }
+
+    /**
+     * @param side which way the position faces
+     * @return whichever of the two stops the price reaches first, or NaN
+     *
+     * <p>ONE order for both, and it has to be one: two resting stops carry the
+     * same verb, so a fill could not be told apart and the book would have to
+     * guess which of them went. The nearer is the one that would have fired
+     * first anyway, and either firing ends the trade — so nothing is lost by
+     * sending only it.</p>
+     */
+    private double nearestStop(int side) {
+        if (Double.isNaN(flipStop)) {
+            return guardStop;
+        }
+
+        if (Double.isNaN(guardStop)) {
+            return flipStop;
+        }
+
+        // Under a long both sit below the price, and the HIGHER is the nearer.
+        return side > 0 ? Math.max(flipStop, guardStop) : Math.min(flipStop, guardStop);
     }
 
     /**
@@ -574,10 +725,21 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
      */
     private void enter(int bar, Market market, Desk desk) {
         resting = null;
+        restingStop = Double.NaN;
 
         int side = sideAllowed(bar);
 
         if (side == 0 || latch.credit(side) <= 0) {
+            return;
+        }
+
+        // NO TWO PIVOTS, NO ENTRY -- and not "enter without a stop". It costs
+        // the trades at the start of every recorte and of every session, and
+        // that is the price of never carrying a position whose risk has no
+        // level attached to it.
+        double beyond = side > 0 ? underTwoBottoms[bar] : overTwoTops[bar];
+
+        if (guard.on() && Double.isNaN(beyond)) {
             return;
         }
 
@@ -619,6 +781,7 @@ public final class ChannelFade implements Strategy, Plotted, Sourced {
 
         resting = nearest;
         restingSide = side;
+        restingStop = guard.on() ? beyond - side * TICK : Double.NaN;
         entryLine[bar] = level;
 
         int many = lot;
