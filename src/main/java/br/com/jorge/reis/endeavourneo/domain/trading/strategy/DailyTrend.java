@@ -49,6 +49,17 @@ final class DailyTrend {
     /** Fewer closes than this and the average is still finding its feet. */
     static final int WARM_UP = 10;
 
+    /**
+     * The least warm-up the shape itself needs: the slope reads t−1 and t−2.
+     *
+     * <p>The EMA is seeded on the first close and has a value from the first
+     * session, so a slope exists from the third. It is a <b>noisy</b> slope —
+     * ten sessions is what makes it mean something — and this floor is not an
+     * opinion that it does. It is the point below which there is no slope at
+     * all, offered for the runs where the alternative is not trading.</p>
+     */
+    static final int LEAST_WARM_UP = 1;
+
     private DailyTrend() {
         throw new AssertionError("Utility class must not be instantiated");
     }
@@ -60,6 +71,22 @@ final class DailyTrend {
      *         "flat, or not enough history" — and zero means do not trade
      */
     static int[] directions(PriceSeries series, List<OpeningRange.Session> sessions) {
+        return directions(series, sessions, WARM_UP);
+    }
+
+    /**
+     * @param warmUp closes to let go by before the slope is trusted
+     * @see #directions(PriceSeries, List)
+     *
+     * <p>The warm-up is counted from the start of the SERIES the strategy was
+     * given, and a recorte is a series of its own: a week of it holds five
+     * sessions, all five fall inside a ten-session warm-up, and the filter
+     * refuses every one of them. Nothing on the screen says that — the run
+     * comes back with no operations and the strategy looks broken.</p>
+     */
+    static int[] directions(PriceSeries series, List<OpeningRange.Session> sessions,
+                            int warmUp) {
+
         int[] leaning = new int[sessions.size()];
 
         double[] average = new double[sessions.size()];
@@ -75,7 +102,7 @@ final class DailyTrend {
 
         for (int day = 0; day < sessions.size(); day++) {
             // t-1 and t-2, and the warm-up counted from the start of the series.
-            if (day < WARM_UP + 1) {
+            if (day < Math.max(LEAST_WARM_UP, warmUp) + 1) {
                 continue;
             }
 

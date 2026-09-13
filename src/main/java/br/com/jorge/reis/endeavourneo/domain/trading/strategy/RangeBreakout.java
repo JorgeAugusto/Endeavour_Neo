@@ -322,7 +322,20 @@ public final class RangeBreakout implements Strategy, Plotted {
         candles = series == null ? PriceSeries.empty() : series;
         bars = candles.size();
         sessions = OpeningRange.of(candles, zone, formation);
-        leaning = DailyTrend.directions(candles, sessions);
+        // THE SAME SWITCH TURNS OFF BOTH WARM-UPS. The selector is one thing
+        // that refuses a day; the daily average is the other, and it refuses
+        // every session until it has eleven of them. A box that says "trade
+        // every session" and leaves the second one standing is a box that
+        // does nothing at all on any recorte shorter than a fortnight -- which
+        // is exactly where somebody would reach for it.
+        //
+        // The average still CHOOSES THE SIDE; only the wait is gone. Taking
+        // it out of that job as well would leave the day with no side to rest
+        // its entry stop on before the break, and the two ways out of that --
+        // two stops resting, or entering at the open after the break -- are a
+        // reversal waiting to happen and a different strategy, in that order.
+        leaning = DailyTrend.directions(candles, sessions,
+                selecting ? DailyTrend.WARM_UP : DailyTrend.LEAST_WARM_UP);
         sessionOfBar = new int[bars];
 
         Arrays.fill(sessionOfBar, -1);

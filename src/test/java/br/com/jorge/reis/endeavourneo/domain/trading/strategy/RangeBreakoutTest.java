@@ -319,6 +319,24 @@ class RangeBreakoutTest {
     }
 
     @Test
+    @DisplayName("UMA SEMANA DE RECORTE OPERA com a selecao desligada")
+    void aweekOfRecorteTradesWithTheSelectorOff() {
+        // Cinco pregoes, que e o que um recorte de UMA SEMANA entrega. Com a
+        // selecao ligada nenhum deles opera, e por DOIS motivos somados: o
+        // seletor quer vinte pregoes recentes, e a media diaria recusa tudo
+        // antes do decimo primeiro. Desligar so o seletor deixava a segunda
+        // trava de pe, e a tela voltava sem operacao nenhuma dizendo apenas
+        // que a estrategia nao entrou.
+        PriceSeries series = new Days(5, new Shape[] {Shape.UP});
+
+        assertTrue(runFixed(series, 1.5).count() > 0,
+                "cinco pregoes com a selecao desligada, e mesmo assim nao operou nada");
+
+        assertEquals(0, run(series, RangeBreakout.CAP).count(),
+                "com a selecao ligada cinco pregoes nao podiam dar operacao");
+    }
+
+    @Test
     @DisplayName("SEM SELECAO TODO PREGAO VALE, ate os que nao tinham historico")
     void withoutTheSelectorEverySessionCounts() {
         PriceSeries series = new Days(60, new Shape[] {Shape.UP});
