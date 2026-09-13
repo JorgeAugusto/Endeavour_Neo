@@ -136,6 +136,23 @@ public final class StochasticLatch {
      * @param source  the bars as stored, which the minutes come from
      */
     public void start(PriceSeries decided, PriceSeries source) {
+        start(decided, source, 1);
+    }
+
+    /**
+     * @param minutes the scale the stochastic itself is read on
+     * @see #start(PriceSeries, PriceSeries)
+     *
+     * <p>One minute was hard-coded here, and it was the right default and the
+     * wrong ceiling: a strategy that wants the stochastic of TWO minutes and
+     * the one of FIVE at the same time needs two latches reading two scales,
+     * and neither of them is the minute.</p>
+     *
+     * <p>The rule about the look-ahead is unchanged and is what makes any scale
+     * safe: every bar used is INSIDE the decision bar it is filed under, so by
+     * the time the strategy is asked, all of them have happened.</p>
+     */
+    public void start(PriceSeries decided, PriceSeries source, int minutes) {
         int size = decided == null ? 0 : decided.size();
 
         buyEvent = new int[size];
@@ -147,16 +164,17 @@ public final class StochasticLatch {
             return;
         }
 
-        PriceSeries minutes = Timeframe.ONE_MINUTE.apply(source == null ? decided : source);
+        PriceSeries folded = Timeframe.ofMinutes(Math.max(1, minutes))
+                .apply(source == null ? decided : source);
         double[] slow = new Stochastic(settings.period(), settings.average())
-                .over(minutes).slow();
+                .over(folded).slow();
 
         int at = 0;
         boolean wasLow = false;
         boolean wasHigh = false;
 
-        for (int minute = 0; minute < minutes.size(); minute++) {
-            while (at + 1 < size && minutes.timeAt(minute) >= decided.timeAt(at + 1)) {
+        for (int minute = 0; minute < folded.size(); minute++) {
+            while (at + 1 < size && folded.timeAt(minute) >= decided.timeAt(at + 1)) {
                 at++;
             }
 
