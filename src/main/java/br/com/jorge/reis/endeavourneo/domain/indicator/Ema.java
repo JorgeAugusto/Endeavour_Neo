@@ -52,24 +52,68 @@ public record Ema(int period) {
      */
     public double[] over(PriceSeries bars) {
         int size = bars == null ? 0 : bars.size();
-        double[] made = new double[size];
-        double seed = 0.0;
+        double[] closes = new double[size];
 
         for (int i = 0; i < size; i++) {
-            if (i < period - 1) {
-                seed += bars.closeAt(i);
-                // NaN and never zero: an average of seventeen has nothing to say
-                // at bar three, and zero read as a price is a trend pointing
-                // violently down.
-                made[i] = Double.NaN;
-            } else if (i == period - 1) {
-                seed += bars.closeAt(i);
-                made[i] = seed / period;
-            } else {
-                double weight = 2.0 / (period + 1.0);
+            closes[i] = bars.closeAt(i);
+        }
 
-                made[i] = bars.closeAt(i) * weight + made[i - 1] * (1 - weight);
+        return over(closes);
+    }
+
+    /**
+     * @param values any series, not only prices
+     * @return one value per point; the warm-up is {@link Double#NaN}
+     *
+     * <p>The average of a <b>derived</b> series — a rate of change, another
+     * average — which is what the NTSL's {@code MediaExp(periodo, serie)}
+     * accepts and what a double smoothing like the PMO is made of. Without it
+     * every such indicator would have to carry its own copy of the recurrence,
+     * and the copies drift.</p>
+     *
+     * <h2>NaN at the front is warm-up, not a hole</h2>
+     *
+     * <p>A derived series begins later than the bars do: a rate of change over
+     * five has nothing to say on bar two. Those NaN are skipped and the window
+     * simply starts where the numbers start — the alternative, feeding a zero
+     * in, is what the NTSL original does when its guard fails, and it drags the
+     * first hundred values towards zero for no reason anybody would recognise.
+     *
+     * <p>A NaN in the MIDDLE is a different thing and is not handled: from
+     * there on the recurrence has no previous value and the rest comes back
+     * NaN. None of the series this is used on have one, and inventing a rule
+     * for a case that does not occur would be a rule nobody could check.</p>
+     */
+    public double[] over(double[] values) {
+        int size = values == null ? 0 : values.length;
+        double[] made = new double[size];
+        double seed = 0.0;
+        int counted = 0;
+
+        for (int i = 0; i < size; i++) {
+            // NaN and never zero: an average of seventeen has nothing to say at
+            // bar three, and zero read as a price is a trend pointing violently
+            // down.
+            made[i] = Double.NaN;
+
+            if (Double.isNaN(values[i])) {
+                continue;
             }
+
+            if (counted < period) {
+                seed += values[i];
+                counted++;
+
+                if (counted == period) {
+                    made[i] = seed / period;
+                }
+
+                continue;
+            }
+
+            double weight = 2.0 / (period + 1.0);
+
+            made[i] = values[i] * weight + made[i - 1] * (1 - weight);
         }
 
         return made;
