@@ -30,6 +30,7 @@ import java.time.LocalTime;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
+import javax.swing.JCheckBox;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -39,12 +40,18 @@ import javax.swing.SpinnerNumberModel;
 /**
  * The Range 90, and the screen that sets it up.
  *
- * <p>Five controls, and deliberately not more. The target is <b>not</b> here: it
- * is 1,5R or 2R and which of the two is chosen by the walk-forward selector,
- * every morning, out of the sessions before it. Putting it on this screen would
- * offer the reader a decision the strategy takes away from him — and would let
- * him pick the target after seeing the result, which is the whole thing the
- * selector exists to prevent.</p>
+ * <p>The target used to be off this screen on purpose: it is 1,5R or 2R and the
+ * walk-forward selector chooses between them every morning out of the sessions
+ * before it, so offering the number here would let the reader pick it after
+ * seeing the result — the one thing the selector exists to prevent.</p>
+ *
+ * <p>It is here now, and behind the switch that says why. <b>Turning the
+ * selector off makes every session that breaks a traded session, at one fixed
+ * target</b> — which is a different strategy, not a tuned one. §6 exists
+ * because the range operated blind lost money on this series, so a curve read
+ * with the box ticked is a curve of the range WITHOUT its only filter, and a
+ * target chosen by looking at that curve is chosen in hindsight. The controls
+ * are here to let that be seen, not to be left switched off.</p>
  *
  * <p>The contracts of the {@code Backtest} tab of the settings do not reach this
  * strategy either. This one sizes itself: four to start and four per pullback up
@@ -61,6 +68,19 @@ final class RangeBreakoutKind implements StrategyKind {
     private static final String FORMATION = "strategy.range90.formation";
 
     private static final String CLOSE_AT = "strategy.range90.closeAt";
+
+    private static final String EVERY_DAY = "strategy.range90.everyDay";
+
+    /**
+     * The fixed target in HUNDREDTHS of R.
+     *
+     * <p>{@link Settings} stores whole numbers, and 1,5 is not one. Hundredths
+     * rather than tenths so that a quarter of R — which is what {@code ARM_R}
+     * already deals in — can be written without a rounding of its own.</p>
+     */
+    private static final String TARGET = "strategy.range90.target";
+
+    private static final int HUNDREDTHS = 100;
 
     /**
      * The deadline, kept as MINUTES PAST MIDNIGHT.
@@ -87,7 +107,7 @@ final class RangeBreakoutKind implements StrategyKind {
     @Override
     public Strategy build() {
         return new RangeBreakout(Timeframe.defaultZone(), lot(), cap(), window(),
-                formation(), closeAt());
+                formation(), closeAt(), !everyDay(), target());
     }
 
     @Override
@@ -124,6 +144,18 @@ final class RangeBreakoutKind implements StrategyKind {
         return LocalTime.of(minutes / 60, minutes % 60);
     }
 
+    /** @return whether the selector is off, and every session that breaks is taken */
+    static boolean everyDay() {
+        return Settings.settings().getBoolean(EVERY_DAY, false);
+    }
+
+    /** @return the fixed target in R, used only while {@link #everyDay()} */
+    static double target() {
+        return clamp(Settings.settings().getInt(TARGET,
+                (int) Math.round(RangeBreakout.TARGET * HUNDREDTHS)),
+                1, 100 * HUNDREDTHS) / (double) HUNDREDTHS;
+    }
+
     private static int clamp(int value, int least, int most) {
         return Math.max(least, Math.min(value, most));
     }
@@ -144,6 +176,19 @@ final class RangeBreakoutKind implements StrategyKind {
 
         private final JSpinner cap =
                 new JSpinner(new SpinnerNumberModel(RangeBreakout.CAP, 1, 1_000, 1));
+
+        private final JCheckBox everyDay =
+                new JCheckBox(Messages.get("strategy.range90.everyDay"));
+
+        /**
+         * The fixed target, in R.
+         *
+         * <p>A quarter of R per click: the strategy already measures the arm
+         * and the partial in quarters, so the target moving in the same step
+         * keeps every number on this screen on one grid.</p>
+         */
+        private final JSpinner target = new JSpinner(
+                new SpinnerNumberModel(RangeBreakout.TARGET, 0.25, 100.0, 0.25));
 
         /**
          * The deadline, as a clock.
@@ -170,15 +215,30 @@ final class RangeBreakoutKind implements StrategyKind {
             panel.add(row("strategy.range90.lot", lot));
             panel.add(row("strategy.range90.cap", cap));
             panel.add(hint("strategy.range90.lot.hint"));
+
+            panel.add(row("strategy.range90.everyDay", everyDay));
+            panel.add(hint("strategy.range90.everyDay.hint"));
+            panel.add(row("strategy.range90.target", target));
             panel.add(hint("strategy.range90.target.hint"));
             panel.add(Box.createVerticalGlue());
+
+            // THE TARGET ONLY MEANS SOMETHING WITH THE SELECTOR OFF. Left
+            // enabled it would read as the target of every run, and a reader
+            // who sets it to 2,0 and gets 1,5 trades would be right to think
+            // the screen lied to him.
+            everyDay.addActionListener(event -> target.setEnabled(everyDay.isSelected()));
         }
 
         private static JPanel row(String key, JComponent control) {
             JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
 
             row.setAlignmentX(Component.LEFT_ALIGNMENT);
-            row.add(new JLabel(Messages.get(key)));
+            // A CHECKBOX CARRIES ITS OWN LABEL, and a second one beside it
+            // reads as two different settings on one line.
+            if (!(control instanceof JCheckBox)) {
+                row.add(new JLabel(Messages.get(key)));
+            }
+
             row.add(control);
 
             return row;
@@ -227,6 +287,9 @@ final class RangeBreakoutKind implements StrategyKind {
             lot.setValue(lot());
             cap.setValue(cap());
             closeAt.setValue(dateOf(closeAt()));
+            everyDay.setSelected(everyDay());
+            target.setValue(target());
+            target.setEnabled(everyDay());
         }
 
         @Override
@@ -236,6 +299,9 @@ final class RangeBreakoutKind implements StrategyKind {
             int wantedWindow = (Integer) window.getValue();
             int wantedFormation = (Integer) formation.getValue();
             int wantedClose = minutesOf(timeOf((java.util.Date) closeAt.getValue()));
+            boolean wantedEveryDay = everyDay.isSelected();
+            int wantedTarget = (int) Math.round(
+                    ((Number) target.getValue()).doubleValue() * HUNDREDTHS);
 
             Settings settings = Settings.settings();
 
@@ -250,6 +316,8 @@ final class RangeBreakoutKind implements StrategyKind {
                 settings.putInt(WINDOW, wantedWindow);
                 settings.putInt(FORMATION, wantedFormation);
                 settings.putInt(CLOSE_AT, wantedClose);
+                settings.putBoolean(EVERY_DAY, wantedEveryDay);
+                settings.putInt(TARGET, Math.max(1, wantedTarget));
             });
         }
     }

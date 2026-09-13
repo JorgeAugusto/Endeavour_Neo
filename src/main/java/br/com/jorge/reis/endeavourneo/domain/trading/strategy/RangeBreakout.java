@@ -116,8 +116,11 @@ public final class RangeBreakout implements Strategy, Plotted {
     /** How far a lot must run before it sheds half of itself. */
     static final double PARTIAL_R = 0.5;
 
+    /** What a fixed target is when nobody has chosen one: the nearer of the two. */
+    public static final double TARGET = 1.5;
+
     /** The only two targets the selector is allowed to choose between. */
-    static final double[] TARGETS = {1.5, 2.0};
+    static final double[] TARGETS = {TARGET, 2.0};
 
     /** The break must come sooner than this for the day to be taken. */
     public static final int ENTRY_WINDOW = 30;
@@ -168,6 +171,12 @@ public final class RangeBreakout implements Strategy, Plotted {
     private final int formation;
 
     private final LocalTime closeAt;
+
+    /** Whether the walk-forward selector decides the day and the target. */
+    private final boolean selecting;
+
+    /** The target used when it does not, in R. */
+    private final double fixedTarget;
 
     // ---------------------------------------------------------------- the run
 
@@ -272,6 +281,29 @@ public final class RangeBreakout implements Strategy, Plotted {
      */
     public RangeBreakout(ZoneId zone, int lot, int cap, int window, int formation,
                          LocalTime closeAt) {
+        this(zone, lot, cap, window, formation, closeAt, true, TARGET);
+    }
+
+    /**
+     * @param selecting whether the selector decides the day and the target
+     * @param target    the target in R when it does not, at least a tick of one
+     * @see #RangeBreakout(ZoneId, int, int, int, int)
+     *
+     * <p>With the selector OFF every session that breaks is traded, at one
+     * fixed target. That is a different animal and the reader has to know it:
+     * the selector is the only thing in the strategy that ever refuses a day,
+     * and §6 of the specification exists because the range operated blind lost
+     * money on this series. Switching it off is how you SEE that — it is not a
+     * setting to leave off and then read the curve as a result.</p>
+     */
+    public RangeBreakout(ZoneId zone, int lot, int cap, int window, int formation,
+                         LocalTime closeAt, boolean selecting, double target) {
+        this.selecting = selecting;
+
+        // A TARGET OF ZERO IS AN EXIT AT THE ENTRY, and a negative one is an
+        // exit behind it -- both of them trades that close the instant they
+        // open. The floor keeps the screen from being able to say that.
+        this.fixedTarget = Double.isNaN(target) || target <= 0 ? TARGET : target;
         this.closeAt = closeAt == null ? CLOSE_AT : closeAt;
         this.zone = zone == null ? Timeframe.defaultZone() : zone;
         this.lot = Math.max(1, lot);
@@ -719,6 +751,19 @@ public final class RangeBreakout implements Strategy, Plotted {
     private double[] choose() {
         int many = sessions.size();
         double[] picked = new double[many];
+
+        // WITH THE SELECTOR OFF, EVERY SESSION IS AUTHORISED, at the one
+        // target that was set. Written as a full array rather than as a test
+        // further down so that everything reading `authorised` -- the refusal
+        // at the open, the target when a lot goes on, the curve on the chart
+        // -- keeps reading exactly one thing. A second source for "which
+        // target" is how the drawing and the fill start disagreeing.
+        if (!selecting) {
+            Arrays.fill(picked, fixedTarget);
+
+            return picked;
+        }
+
         double[][] hypothetical = new double[TARGETS.length][many];
         boolean[] eligible = new boolean[many];
 

@@ -215,6 +215,14 @@ class RangeBreakoutTest {
                         RangeBreakout.ENTRY_WINDOW, FORMATION));
     }
 
+    /** O mesmo pregao, com o seletor DESLIGADO e um alvo fixo. */
+    private static Result runFixed(PriceSeries series, double target) {
+        return new Backtest(Costs.NONE, RangeBreakout.LOT).run(series,
+                new RangeBreakout(SP, RangeBreakout.LOT, RangeBreakout.CAP,
+                        RangeBreakout.ENTRY_WINDOW, FORMATION, RangeBreakout.CLOSE_AT,
+                        false, target));
+    }
+
     private static LocalDate dayOf(PriceSeries series, Fill fill) {
         return Instant.ofEpochMilli(series.timeAt(fill.bar())).atZone(SP).toLocalDate();
     }
@@ -311,12 +319,63 @@ class RangeBreakoutTest {
     }
 
     @Test
+    @DisplayName("SEM SELECAO TODO PREGAO VALE, ate os que nao tinham historico")
+    void withoutTheSelectorEverySessionCounts() {
+        PriceSeries series = new Days(60, new Shape[] {Shape.UP});
+
+        RangeBreakout strategy = new RangeBreakout(SP, RangeBreakout.LOT,
+                RangeBreakout.CAP, RangeBreakout.ENTRY_WINDOW, FORMATION,
+                RangeBreakout.CLOSE_AT, false, 3.0);
+
+        strategy.start(series);
+
+        // Os mesmos dois pregoes que o seletor recusa por falta de historico --
+        // o decimo e o trigesimo -- passam a valer, e valem pelo alvo que foi
+        // escolhido na tela, nao por um dos dois que o seletor conhece.
+        assertEquals(3.0, strategy.targetFor(10), 0.0,
+                "o decimo pregao continuou recusado com o seletor desligado");
+        assertEquals(3.0, strategy.targetFor(30), 0.0,
+                "o trigesimo pregao continuou recusado com o seletor desligado");
+        assertEquals(3.0, strategy.targetFor(50), 0.0,
+                "o quinquagesimo saiu com o alvo do seletor, e nao com o fixo");
+    }
+
+    @Test
+    @DisplayName("O ALVO FIXO DECIDE A SAIDA: com 3,0R sai mais longe que com 1,5R")
+    void thefixedTargetDecidesWhereItLeaves() {
+        PriceSeries series = new Days(60, new Shape[] {Shape.UP});
+
+        Result perto = runFixed(series, 1.5);
+        Result longe = runFixed(series, 3.0);
+
+        assertFalse(perto.fills().isEmpty(), "a rodada de 1,5R nao executou nada");
+        assertFalse(longe.fills().isEmpty(), "a rodada de 3,0R nao executou nada");
+
+        // O UP sobe ate bater o alvo, entao o alvo mais longe sai mais caro. Se o
+        // numero da tela nao chegasse na ordem, as duas rodadas sairiam no mesmo
+        // preco -- e e exatamente isso que um campo desligado do dominio faz.
+        assertTrue(maiorPreco(longe) > maiorPreco(perto),
+                "a rodada de 3,0R nao saiu mais longe que a de 1,5R: "
+                        + maiorPreco(longe) + " contra " + maiorPreco(perto));
+    }
+
+    private static double maiorPreco(Result result) {
+        double most = Double.NEGATIVE_INFINITY;
+
+        for (Fill fill : result.fills()) {
+            most = Math.max(most, fill.price());
+        }
+
+        return most;
+    }
+
+    @Test
     @DisplayName("O DIA ACABA QUANDO A POSICAO ACABA, mesmo com o alvo saindo em gap")
     void thedayEndsWhenThePositionDoes() {
-        // GAP: a parcial e o alvo ficam alcancaveis no MESMO minuto. As
-        // coberturas sao uma OCO, entao a parcial executa e a perna do alvo
-        // morre; o minuto seguinte abre ja acima do alvo, e a ordem reemitida
-        // executa NA ABERTURA -- longe do nivel pedido.
+        // GAP: a parcial e o alvo ficam alcancaveis no MESMO minuto, e as duas
+        // pernas executam -- a OCO tem varias e cada uma leva o que sobrou da
+        // posicao. O preco pedido nao e o preco pago: a barra abre por cima dos
+        // dois niveis e um limite executa no melhor entre o nivel e a abertura.
         //
         // Reconhecer o alvo pelo preco fazia o livro nao entender essa saida,
         // ficar com lotes fantasmas, e seguir o pregao inteiro armando pullback
