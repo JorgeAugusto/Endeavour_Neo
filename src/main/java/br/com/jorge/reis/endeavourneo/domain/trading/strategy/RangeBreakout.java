@@ -178,6 +178,9 @@ public final class RangeBreakout implements Strategy, Plotted {
     /** The target used when it does not, in R. */
     private final double fixedTarget;
 
+    /** Whether the daily average filters the day and chooses its side. */
+    private final boolean trending;
+
     // ---------------------------------------------------------------- the run
 
     /** The decision bars, at whatever scale the reader is looking at. */
@@ -281,12 +284,13 @@ public final class RangeBreakout implements Strategy, Plotted {
      */
     public RangeBreakout(ZoneId zone, int lot, int cap, int window, int formation,
                          LocalTime closeAt) {
-        this(zone, lot, cap, window, formation, closeAt, true, TARGET);
+        this(zone, lot, cap, window, formation, closeAt, true, TARGET, true);
     }
 
     /**
      * @param selecting whether the selector decides the day and the target
      * @param target    the target in R when it does not, at least a tick of one
+     * @param trending  whether the daily average filters the day and picks its side
      * @see #RangeBreakout(ZoneId, int, int, int, int)
      *
      * <p>With the selector OFF every session that breaks is traded, at one
@@ -297,8 +301,11 @@ public final class RangeBreakout implements Strategy, Plotted {
      * setting to leave off and then read the curve as a result.</p>
      */
     public RangeBreakout(ZoneId zone, int lot, int cap, int window, int formation,
-                         LocalTime closeAt, boolean selecting, double target) {
+                         LocalTime closeAt, boolean selecting, double target,
+                         boolean trending) {
+
         this.selecting = selecting;
+        this.trending = trending;
 
         // A TARGET OF ZERO IS AN EXIT AT THE ENTRY, and a negative one is an
         // exit behind it -- both of them trades that close the instant they
@@ -412,7 +419,7 @@ public final class RangeBreakout implements Strategy, Plotted {
         entry = Double.NaN;
         target = Double.NaN;
         entered = false;
-        refused = Double.isNaN(authorised[day]) || leaning[day] == 0;
+        refused = Double.isNaN(authorised[day]) || (trending && leaning[day] == 0);
         armed = false;
         pullbackExtreme = Double.NaN;
         previousClose = Double.NaN;
@@ -512,9 +519,37 @@ public final class RangeBreakout implements Strategy, Plotted {
             return;
         }
 
-        int wanted = leaning[today];
         double up = session.high() + OpeningRange.TICK;
         double down = session.low() - OpeningRange.TICK;
+
+        if (!trending) {
+            // WITHOUT THE AVERAGE, THE GEOMETRY PICKS THE SIDE -- and one side,
+            // recomputed every candle. Arming both would be the honest reading
+            // of "either break counts", and it is not available: two entry
+            // stops on the book fill one after the other inside the same
+            // decision bar and the day changes sides in the middle of itself.
+            // His own robots never do it -- RoboTNO emits one of vEmitiuC and
+            // vEmitiuV, and RoboPadraoTendencia writes "setup UNICO" beside the
+            // line that clears the other one.
+            //
+            // So: the half of the range the price is in. Above the middle the
+            // upper edge is the one it is walking towards, below it the lower.
+            // It is read again at every close, so the armed side follows the
+            // price around inside the range.
+            //
+            // THE COST IS A BREAK THAT COMES FROM THE OTHER HALF IN ONE MOVE:
+            // the wrong edge was armed, and the re-arm at the next close finds
+            // the level already behind the price -- where a stop whose limit
+            // sits on its trigger does not fill at all.
+            double middle = (session.high() + session.low()) / 2;
+
+            side = candles.closeAt(bar) >= middle ? 1 : -1;
+            trigger = side > 0 ? up : down;
+
+            return;
+        }
+
+        int wanted = leaning[today];
 
         // The FIRST break decides the day, whichever side it was on. A break
         // against the EMA kills the day rather than leaving the trigger armed

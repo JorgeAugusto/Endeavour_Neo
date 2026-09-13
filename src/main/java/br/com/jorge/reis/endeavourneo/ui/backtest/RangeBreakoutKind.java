@@ -71,6 +71,8 @@ final class RangeBreakoutKind implements StrategyKind {
 
     private static final String EVERY_DAY = "strategy.range90.everyDay";
 
+    private static final String TREND = "strategy.range90.trend";
+
     /**
      * The fixed target in HUNDREDTHS of R.
      *
@@ -107,7 +109,7 @@ final class RangeBreakoutKind implements StrategyKind {
     @Override
     public Strategy build() {
         return new RangeBreakout(Timeframe.defaultZone(), lot(), cap(), window(),
-                formation(), closeAt(), !everyDay(), target());
+                formation(), closeAt(), !everyDay(), target(), trend());
     }
 
     @Override
@@ -144,6 +146,17 @@ final class RangeBreakoutKind implements StrategyKind {
         return LocalTime.of(minutes / 60, minutes % 60);
     }
 
+    /**
+     * @return whether the daily average filters the day and chooses its side
+     *
+     * <p>OFF by default, and that is a decision rather than an oversight: the
+     * filter is in the specification, and every Range 90 number ever published
+     * here was measured with it ON.</p>
+     */
+    static boolean trend() {
+        return Settings.settings().getBoolean(TREND, false);
+    }
+
     /** @return whether the selector is off, and every session that breaks is taken */
     static boolean everyDay() {
         return Settings.settings().getBoolean(EVERY_DAY, false);
@@ -176,6 +189,9 @@ final class RangeBreakoutKind implements StrategyKind {
 
         private final JSpinner cap =
                 new JSpinner(new SpinnerNumberModel(RangeBreakout.CAP, 1, 1_000, 1));
+
+        private final JCheckBox trend =
+                new JCheckBox(Messages.get("strategy.range90.trend"));
 
         private final JCheckBox everyDay =
                 new JCheckBox(Messages.get("strategy.range90.everyDay"));
@@ -216,6 +232,8 @@ final class RangeBreakoutKind implements StrategyKind {
             panel.add(row("strategy.range90.cap", cap));
             panel.add(hint("strategy.range90.lot.hint"));
 
+            panel.add(row("strategy.range90.trend", trend));
+            panel.add(hint("strategy.range90.trend.hint"));
             panel.add(row("strategy.range90.everyDay", everyDay));
             panel.add(hint("strategy.range90.everyDay.hint"));
             panel.add(row("strategy.range90.target", target));
@@ -287,6 +305,7 @@ final class RangeBreakoutKind implements StrategyKind {
             lot.setValue(lot());
             cap.setValue(cap());
             closeAt.setValue(dateOf(closeAt()));
+            trend.setSelected(trend());
             everyDay.setSelected(everyDay());
             target.setValue(target());
             target.setEnabled(everyDay());
@@ -300,6 +319,7 @@ final class RangeBreakoutKind implements StrategyKind {
             int wantedFormation = (Integer) formation.getValue();
             int wantedClose = minutesOf(timeOf((java.util.Date) closeAt.getValue()));
             boolean wantedEveryDay = everyDay.isSelected();
+            boolean wantedTrend = trend.isSelected();
             int wantedTarget = (int) Math.round(
                     ((Number) target.getValue()).doubleValue() * HUNDREDTHS);
 
@@ -317,6 +337,7 @@ final class RangeBreakoutKind implements StrategyKind {
                 settings.putInt(FORMATION, wantedFormation);
                 settings.putInt(CLOSE_AT, wantedClose);
                 settings.putBoolean(EVERY_DAY, wantedEveryDay);
+                settings.putBoolean(TREND, wantedTrend);
                 settings.putInt(TARGET, Math.max(1, wantedTarget));
             });
         }

@@ -26,6 +26,7 @@ import br.com.jorge.reis.endeavourneo.domain.trading.Backtest;
 import br.com.jorge.reis.endeavourneo.domain.trading.Costs;
 import br.com.jorge.reis.endeavourneo.domain.trading.Fill;
 import br.com.jorge.reis.endeavourneo.domain.trading.Result;
+import br.com.jorge.reis.endeavourneo.domain.trading.order.Side;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -71,12 +72,15 @@ class RangeBreakoutTest {
      *   <li>{@code HOLD} rompe e sobe devagar, sem pullback e <b>sem alcançar o
      *       alvo</b> — é o único que chega vivo no fim do pregão, e por isso o
      *       único que prova que nada atravessa a noite;</li>
+     *   <li>{@code DOWN} desce em linha reta a partir da formação, e é o único
+     *       que fecha na metade de BAIXO do range — é nele que a regra da
+     *       metade tem de escolher a venda;</li>
      *   <li>{@code GAP} salta de uma vez por cima da parcial e do alvo, o que
      *       faz a parcial matar a OCO e o alvo executar no minuto seguinte
      *       <b>na abertura</b>, longe do nível pedido.</li>
      * </ul>
      */
-    private enum Shape { UP, QUIET, LATE, HOLD, GAP }
+    private enum Shape { UP, DOWN, QUIET, LATE, HOLD, GAP }
 
     /**
      * Pregões de 150 minutos a partir de 02/01/2024, um por dia útil.
@@ -163,6 +167,14 @@ class RangeBreakoutTest {
                 return 200;
             }
 
+            if (shape == Shape.DOWN) {
+                // Desce reto. Sem ziguezague de proposito: aqui o que esta
+                // sendo medido e de que lado o gatilho fica, e um caminho que
+                // cruza a metade do range para cima e para baixo mediria a
+                // regra contra ela mesma.
+                return 100 - Math.min(after, 20) * 40;
+            }
+
             if (shape == Shape.HOLD) {
                 // Sobe devagar e para bem abaixo do alvo de 2R, que fica em 1215.
                 return 400 + Math.min(after, 10) * 40;
@@ -215,12 +227,22 @@ class RangeBreakoutTest {
                         RangeBreakout.ENTRY_WINDOW, FORMATION));
     }
 
-    /** O mesmo pregao, com o seletor DESLIGADO e um alvo fixo. */
+    /**
+     * O mesmo pregao, com o seletor DESLIGADO e um alvo fixo.
+     *
+     * <p>Com o filtro de tendencia LIGADO, que nao e mais o padrao: estes testes
+     * sao sobre o seletor e sobre o alvo, e passar os dois interruptores de uma
+     * vez faria cada um deles medir duas coisas.</p>
+     */
     private static Result runFixed(PriceSeries series, double target) {
+        return runFixed(series, target, true);
+    }
+
+    private static Result runFixed(PriceSeries series, double target, boolean trending) {
         return new Backtest(Costs.NONE, RangeBreakout.LOT).run(series,
                 new RangeBreakout(SP, RangeBreakout.LOT, RangeBreakout.CAP,
                         RangeBreakout.ENTRY_WINDOW, FORMATION, RangeBreakout.CLOSE_AT,
-                        false, target));
+                        false, target, trending));
     }
 
     private static LocalDate dayOf(PriceSeries series, Fill fill) {
@@ -319,6 +341,30 @@ class RangeBreakoutTest {
     }
 
     @Test
+    @DisplayName("SEM A MEDIA, A METADE DO RANGE escolhe o lado")
+    void withoutTheAverageTheHalfOfTheRangePicksTheSide() {
+        // Com o filtro desligado ninguem consulta a media: o lado sai da metade
+        // do range em que o preco esta no fechamento. Entao os primeiros dias do
+        // recorte -- que a media deixa sem lado por precisar de t-1 e t-2 --
+        // passam a operar.
+        PriceSeries sobe = new Days(5, new Shape[] {Shape.UP});
+
+        assertTrue(runFixed(sobe, 1.5, false).count()
+                        > runFixed(sobe, 1.5, true).count(),
+                "desligar a media nao liberou pregao nenhum");
+
+        // E O LADO E O DA METADE, nao um lado fixo. Num pregao que CAI o preco
+        // fecha na metade de baixo e o gatilho tem de ficar na borda de baixo;
+        // com um lado fixo comprado ele esperaria uma borda de cima que este
+        // pregao nunca alcanca, e nada operaria.
+        Result cai = runFixed(new Days(5, new Shape[] {Shape.DOWN}), 1.5, false);
+
+        assertFalse(cai.trades().isEmpty(), "o pregao de queda nao operou nada");
+        assertEquals(Side.SELL, cai.trades().get(0).side(),
+                "a operacao de um pregao que so cai nao foi vendida");
+    }
+
+    @Test
     @DisplayName("UMA SEMANA DE RECORTE OPERA com a selecao desligada")
     void aweekOfRecorteTradesWithTheSelectorOff() {
         // Cinco pregoes, que e o que um recorte de UMA SEMANA entrega. Com a
@@ -343,7 +389,7 @@ class RangeBreakoutTest {
 
         RangeBreakout strategy = new RangeBreakout(SP, RangeBreakout.LOT,
                 RangeBreakout.CAP, RangeBreakout.ENTRY_WINDOW, FORMATION,
-                RangeBreakout.CLOSE_AT, false, 3.0);
+                RangeBreakout.CLOSE_AT, false, 3.0, true);
 
         strategy.start(series);
 
