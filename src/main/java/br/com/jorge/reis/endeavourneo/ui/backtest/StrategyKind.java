@@ -56,6 +56,7 @@ interface StrategyKind {
     /** @return every strategy the backtest offers, in the order it offers them */
     static List<StrategyKind> available() {
         return List.of(new MovingAverageKind(), new RangeBreakoutKind(),
-                new PatternBreakoutKind(), new ChannelFadeKind());
+                new PatternBreakoutKind(), new ChannelFadeKind(),
+                new MomentumCrossKind());
     }
 }
