@@ -216,6 +216,22 @@ public final class OverlayCatalog {
             // sinal. A escala e a janela do desvio ficam no dialogo -- elas
             // mudam a ALTURA do desenho e a largura das bandas, nunca onde o
             // cruzamento acontece, entao nao distinguem nada.
+            // A OUTRA METADE DO TNO, a que fica NO PRECO. O indicador do
+            // Profit desenha nos dois lugares ao mesmo tempo: as duas linhas
+            // no painel e a cor das barras mais a bolinha no grafico de preco.
+            // Aqui um overlay mora em uma superficie so, entao o porte sao
+            // duas entradas -- e esta e a que se olha.
+            new Kind("overlay.pmoBars",
+                    List.of(br.com.jorge.reis.endeavourneo.ui.chart.study.pmo.PriceMomentum.CHANGE,
+                            br.com.jorge.reis.endeavourneo.ui.chart.study.pmo.PriceMomentum.FIRST,
+                            br.com.jorge.reis.endeavourneo.ui.chart.study.pmo.PriceMomentum.SECOND,
+                            br.com.jorge.reis.endeavourneo.ui.chart.study.pmo.PriceMomentum.SIGNAL), 1, 5_000,
+                    numbers -> new br.com.jorge.reis.endeavourneo.ui.chart.overlay.MomentumBars(
+                            at(numbers, 0, br.com.jorge.reis.endeavourneo.ui.chart.study.pmo.PriceMomentum.CHANGE),
+                            at(numbers, 1, br.com.jorge.reis.endeavourneo.ui.chart.study.pmo.PriceMomentum.FIRST),
+                            at(numbers, 2, br.com.jorge.reis.endeavourneo.ui.chart.study.pmo.PriceMomentum.SECOND),
+                            at(numbers, 3, br.com.jorge.reis.endeavourneo.ui.chart.study.pmo.PriceMomentum.SIGNAL))),
+
             new Kind("study.pmo",
                     List.of(br.com.jorge.reis.endeavourneo.ui.chart.study.pmo.PriceMomentum.CHANGE,
                             br.com.jorge.reis.endeavourneo.ui.chart.study.pmo.PriceMomentum.FIRST,
