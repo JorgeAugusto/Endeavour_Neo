@@ -209,7 +209,29 @@ public final class OverlayCatalog {
                                     .SlowStochastic.AVERAGE), 1, 2_000,
                     numbers -> new br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic
                             .SlowStochastic(first(numbers, br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic.SlowStochastic.PERIOD),
-                                    second(numbers, br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic.SlowStochastic.AVERAGE))));
+                                    second(numbers, br.com.jorge.reis.endeavourneo.ui.chart.study.stochastic.SlowStochastic.AVERAGE))),
+
+            // OS QUATRO PERIODOS, porque sao eles que distinguem um PMO de
+            // outro na mesma tela: a taxa de variacao, as duas suavizacoes e o
+            // sinal. A escala e a janela do desvio ficam no dialogo -- elas
+            // mudam a ALTURA do desenho e a largura das bandas, nunca onde o
+            // cruzamento acontece, entao nao distinguem nada.
+            new Kind("study.pmo",
+                    List.of(br.com.jorge.reis.endeavourneo.ui.chart.study.pmo.PriceMomentum.CHANGE,
+                            br.com.jorge.reis.endeavourneo.ui.chart.study.pmo.PriceMomentum.FIRST,
+                            br.com.jorge.reis.endeavourneo.ui.chart.study.pmo.PriceMomentum.SECOND,
+                            br.com.jorge.reis.endeavourneo.ui.chart.study.pmo.PriceMomentum.SIGNAL), 1, 5_000,
+                    numbers -> new br.com.jorge.reis.endeavourneo.ui.chart.study.pmo.PriceMomentum(
+                            at(numbers, 0, br.com.jorge.reis.endeavourneo.ui.chart.study.pmo.PriceMomentum.CHANGE),
+                            at(numbers, 1, br.com.jorge.reis.endeavourneo.ui.chart.study.pmo.PriceMomentum.FIRST),
+                            at(numbers, 2, br.com.jorge.reis.endeavourneo.ui.chart.study.pmo.PriceMomentum.SECOND),
+                            at(numbers, 3, br.com.jorge.reis.endeavourneo.ui.chart.study.pmo.PriceMomentum.SIGNAL))));
+
+    /** O n-esimo parametro, ou o de fabrica -- um indicador de quatro nao cabe
+     *  em first/second, e numerar cada um daria first, second, third, fourth. */
+    private static int at(int[] numbers, int index, int fallback) {
+        return index < numbers.length ? numbers[index] : fallback;
+    }
 
     private static int first(int[] numbers, int fallback) {
         return numbers.length > 0 ? numbers[0] : fallback;
