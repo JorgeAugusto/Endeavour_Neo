@@ -23,6 +23,7 @@ import br.com.jorge.reis.endeavourneo.domain.market.Timeframe;
 import br.com.jorge.reis.endeavourneo.domain.trading.Fill;
 import br.com.jorge.reis.endeavourneo.domain.trading.Market;
 import br.com.jorge.reis.endeavourneo.domain.trading.Plotted;
+import br.com.jorge.reis.endeavourneo.domain.trading.Sourced;
 import br.com.jorge.reis.endeavourneo.domain.trading.Strategy;
 import br.com.jorge.reis.endeavourneo.domain.trading.order.Desk;
 
@@ -51,6 +52,21 @@ import java.util.Map;
  *   <li>a signal arriving while positioned <b>reverses</b>: the position is
  *       closed and the new one opened, in that order.</li>
  * </ul>
+ *
+ * <h2>The gate, when it is switched on</h2>
+ *
+ * <p>Off by default, and when on the only side traded is the one BOTH opening
+ * ranges agree about — see {@link RangeGate}. A crossing against the gate does
+ * not enter.
+ *
+ * <p><b>But it still CLOSES.</b> A contrary crossing is this strategy's own
+ * exit rule, and suppressing it would leave a position with nothing to end it
+ * but the stop or the target — which is a third strategy, not this one with a
+ * filter. So the gate refuses the opening and lets the closing through.
+ *
+ * <p>The gate's own measurement is in {@link RangeGate}: one of the two ranges
+ * was refused for this very job by the project's own reading of it. The switch
+ * exists so the two can be compared; it is not a recommendation.</p>
  *
  * <h2>On the chart's own scale, and nothing else</h2>
  *
@@ -83,7 +99,7 @@ import java.util.Map;
  * the chart showed, and a 2R target computed from the close would be much less
  * than twice what was actually on the table.
  */
-public final class MomentumCross implements Strategy, Plotted {
+public final class MomentumCross implements Strategy, Plotted, Sourced {
 
     /** Two R, as asked. */
     public static final double REWARD = 2.0;
@@ -110,7 +126,16 @@ public final class MomentumCross implements Strategy, Plotted {
 
     private final double slip;
 
+    /** Whether only the side both opening ranges agree on may be traded. */
+    private final boolean gated;
+
     private PriceSeries bars = PriceSeries.empty();
+
+    /** The bars as stored, which the ranges are read from. */
+    private PriceSeries source;
+
+    /** Which way both ranges agree, per bar, or zero — empty while ungated. */
+    private int[] gate = new int[0];
 
     private int size;
 
@@ -134,6 +159,9 @@ public final class MomentumCross implements Strategy, Plotted {
     /** The stop that order's fill will inherit. */
     private double wantedStop = Double.NaN;
 
+    /** A crossing the gate refused: it closes what is open and opens nothing. */
+    private boolean closeOnly;
+
     private double[] entryLine;
 
     private double[] stopLine;
@@ -141,11 +169,15 @@ public final class MomentumCross implements Strategy, Plotted {
     private double[] targetLine;
 
     public MomentumCross() {
-        this(null, Pmo.standard(), 1, REWARD, SLIP);
+        this(null, Pmo.standard(), 1, REWARD, SLIP, false);
     }
 
     public MomentumCross(ZoneId zone, Pmo pmo, int lot) {
-        this(zone, pmo, lot, REWARD, SLIP);
+        this(zone, pmo, lot, REWARD, SLIP, false);
+    }
+
+    public MomentumCross(ZoneId zone, Pmo pmo, int lot, double reward, double slip) {
+        this(zone, pmo, lot, reward, slip, false);
     }
 
     /**
@@ -154,13 +186,22 @@ public final class MomentumCross implements Strategy, Plotted {
      * @param lot    contracts per entry
      * @param reward the target, in multiples of the risk
      * @param slip   how far past its trigger the stop may still fill
+     * @param gated  whether only the side both opening ranges agree on is traded
      */
-    public MomentumCross(ZoneId zone, Pmo pmo, int lot, double reward, double slip) {
+    public MomentumCross(ZoneId zone, Pmo pmo, int lot, double reward, double slip,
+                         boolean gated) {
+
+        this.gated = gated;
         this.zone = zone == null ? Timeframe.defaultZone() : zone;
         this.pmo = pmo == null ? Pmo.standard() : pmo;
         this.lot = Math.max(1, lot);
         this.reward = reward > 0 ? reward : REWARD;
         this.slip = Math.max(0, slip);
+    }
+
+    @Override
+    public void sourcedFrom(PriceSeries stored) {
+        source = stored;
     }
 
     @Override
@@ -190,6 +231,11 @@ public final class MomentumCross implements Strategy, Plotted {
         // reasonable time.
         crossing = Pmo.crossings(pmo.over(bars));
 
+        // THE GATE IS BUILT ONCE, and only when it is asked for: it folds the
+        // stored bars to five minutes and walks two more indicators, which is
+        // work nobody switched on should pay for.
+        gate = gated ? RangeGate.of(bars, source, zone) : new int[size];
+
         entryLine = blank(size);
         stopLine = blank(size);
         targetLine = blank(size);
@@ -197,6 +243,7 @@ public final class MomentumCross implements Strategy, Plotted {
         side = 0;
         wanted = 0;
         wantedStop = Double.NaN;
+        closeOnly = false;
         stop = Double.NaN;
         target = Double.NaN;
     }
@@ -229,6 +276,7 @@ public final class MomentumCross implements Strategy, Plotted {
         if (closing) {
             wanted = 0;
             wantedStop = Double.NaN;
+            closeOnly = false;
 
             if (market.hasPosition()) {
                 desk.closePosition();
@@ -239,13 +287,24 @@ public final class MomentumCross implements Strategy, Plotted {
             return;
         }
 
-        if (bar < crossing.length && crossing[bar] != 0) {
+        // THE GATE REFUSES THE OPENING, never the closing. A crossing against
+        // it is still this strategy's exit rule, and a position with no exit but
+        // the stop and the target would be a third strategy.
+        boolean allowed = !gated || crossing[bar] == gate[bar];
+
+        if (bar < crossing.length && crossing[bar] != 0 && (allowed || side != 0)) {
             // THE STOP IS THIS CANDLE'S EXTREME, read here and carried into the
             // trade. Read at the fill instead it would be the extreme of the
             // NEXT bar -- a different level, and one the signal never pointed
             // at.
-            wanted = crossing[bar];
+            wanted = allowed ? crossing[bar] : 0;
             wantedStop = wanted > 0 ? bars.lowAt(bar) : bars.highAt(bar);
+
+            // REFUSED, BUT NOT IGNORED: with a position on, a crossing the gate
+            // will not open still ends what is open.
+            if (!allowed) {
+                closeOnly = true;
+            }
         }
 
         draw(bar);
@@ -306,6 +365,17 @@ public final class MomentumCross implements Strategy, Plotted {
     private void emit(Market market, Desk desk) {
         int many = Math.abs(market.buyPositionQty() - market.sellPositionQty());
         boolean holding = side != 0 && many > 0;
+
+        if (holding && closeOnly) {
+            // O SINAL CONTRARIO RECUSADO PELA PORTA: fecha e nao abre nada.
+            desk.closePosition();
+
+            closeOnly = false;
+
+            return;
+        }
+
+        closeOnly = false;
 
         if (holding && wanted != 0 && wanted != side) {
             // THE INVERSION, IN TWO ORDERS: close, then open. Both are market

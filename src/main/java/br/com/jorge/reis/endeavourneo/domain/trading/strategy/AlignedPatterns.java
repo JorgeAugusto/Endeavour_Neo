@@ -106,7 +106,7 @@ public final class AlignedPatterns implements Strategy, Plotted, Sourced {
     public static final double SLIP = 200;
 
     /** The clock range's formation, in minutes: the ninety of the name. */
-    public static final int FORMATION = 90;
+    public static final int FORMATION = RangeGate.FORMATION;
 
     /** Entries a latch hands out each time it arms. */
     public static final int PER_ARMING = 2;
@@ -280,62 +280,8 @@ public final class AlignedPatterns implements Strategy, Plotted, Sourced {
         return made;
     }
 
-    /**
-     * Works out, once, which days have both ranges pointing the same way.
-     *
-     * <p>Both must be broken and they must agree. A day where only one of them
-     * has spoken has no side, and a day where they disagree has two — which is
-     * the same as none.</p>
-     */
     private void buildTheGate(PriceSeries stored) {
-        gate = new int[size];
-
-        PriceSeries five = Timeframe.ofMinutes(OpeningImpulse.MINUTES).apply(stored, zone);
-        OpeningImpulse impulse = OpeningImpulse.standard();
-        int[] fight = impulse.brokenAt(bars, impulse.of(five, zone), zone);
-
-        List<OpeningRange.Session> sessions = OpeningRange.of(five, zone, FORMATION);
-        int[] clock = brokeTheClockRange(sessions, five);
-
-        for (int bar = 0; bar < size; bar++) {
-            if (fight[bar] != 0 && fight[bar] == clock[bar]) {
-                gate[bar] = fight[bar];
-            }
-        }
-    }
-
-    /**
-     * The ninety-minute range's first break, latched, spread onto the run's bars.
-     *
-     * <p>Computed on five-minute candles and then spread by
-     * {@link LastClosed}, so the answer at a decision bar is what a COMPLETED
-     * five-minute candle had said — never one still forming.</p>
-     */
-    private int[] brokeTheClockRange(List<OpeningRange.Session> sessions, PriceSeries five) {
-        double[] onFive = new double[five.size()];
-
-        // THE SESSION ALREADY KNOWS. OpeningRange records the FIRST break --
-        // which bar and which side -- and it is audited code with tests of its
-        // own. Working it out again here would be a second implementation of
-        // one rule, and the two would drift in silence.
-        for (OpeningRange.Session each : sessions) {
-            if (each.side() == 0 || each.breakBar() < 0) {
-                continue;
-            }
-
-            for (int bar = each.breakBar(); bar <= each.last() && bar < five.size(); bar++) {
-                onFive[bar] = each.side();
-            }
-        }
-
-        double[] spread = LastClosed.spread(bars, five, onFive);
-        int[] made = new int[size];
-
-        for (int bar = 0; bar < size; bar++) {
-            made[bar] = Double.isNaN(spread[bar]) ? 0 : (int) Math.round(spread[bar]);
-        }
-
-        return made;
+        gate = RangeGate.of(bars, stored, zone);
     }
 
     /** Works out, once, every pattern of every trigger and where it would trade. */

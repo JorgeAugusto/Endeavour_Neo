@@ -62,6 +62,8 @@ final class MomentumCrossKind implements StrategyKind {
 
     private static final String SLIP = "strategy.tno.slip";
 
+    private static final String GATE = "strategy.tno.gate";
+
     @Override
     public String label() {
         return Messages.get("backtest.strategy.tno");
@@ -76,7 +78,7 @@ final class MomentumCrossKind implements StrategyKind {
     public Strategy build() {
         return new MomentumCross(Timeframe.defaultZone(),
                 new Pmo(change(), first(), second(), signal(), Pmo.SCALE),
-                lot(), MomentumCross.REWARD, slip());
+                lot(), MomentumCross.REWARD, slip(), gate());
     }
 
     @Override
@@ -110,6 +112,17 @@ final class MomentumCrossKind implements StrategyKind {
         return clamp(Settings.settings().getInt(SLIP, (int) MomentumCross.SLIP), 0, 100_000);
     }
 
+    /**
+     * @return whether only the side both opening ranges agree on is traded
+     *
+     * <p>OFF by default, and that matters: every TNO number already published
+     * here was measured without it. Turning it on is a different strategy, not
+     * a tuned one.</p>
+     */
+    static boolean gate() {
+        return Settings.settings().getBoolean(GATE, false);
+    }
+
     private static int clamp(int value, int least, int most) {
         return Math.max(least, Math.min(value, most));
     }
@@ -134,6 +147,9 @@ final class MomentumCrossKind implements StrategyKind {
         private final JSpinner lot =
                 new JSpinner(new SpinnerNumberModel(1, 1, 100, 1));
 
+        private final javax.swing.JCheckBox gate =
+                new javax.swing.JCheckBox(Messages.get("strategy.tno.gate"));
+
         private final JSpinner slip = new JSpinner(
                 new SpinnerNumberModel((int) MomentumCross.SLIP, 0, 100_000, 5));
 
@@ -148,6 +164,8 @@ final class MomentumCrossKind implements StrategyKind {
             panel.add(row("strategy.tno.lot", lot));
             panel.add(row("strategy.tno.slip", slip));
             panel.add(hint("strategy.tno.slip.hint"));
+            panel.add(row("strategy.tno.gate", gate));
+            panel.add(hint("strategy.tno.gate.hint"));
             panel.add(hint("strategy.tno.rule.hint"));
             panel.add(Box.createVerticalGlue());
         }
@@ -156,7 +174,12 @@ final class MomentumCrossKind implements StrategyKind {
             JPanel made = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
 
             made.setAlignmentX(Component.LEFT_ALIGNMENT);
-            made.add(new JLabel(Messages.get(key)));
+            // Uma caixa carrega o proprio rotulo; um segundo ao lado dela le
+            // como duas configuracoes na mesma linha.
+            if (!(control instanceof javax.swing.JCheckBox)) {
+                made.add(new JLabel(Messages.get(key)));
+            }
+
             made.add(control);
 
             return made;
@@ -190,6 +213,7 @@ final class MomentumCrossKind implements StrategyKind {
             signal.setValue(signal());
             lot.setValue(lot());
             slip.setValue((int) slip());
+            gate.setSelected(gate());
         }
 
         @Override
@@ -200,6 +224,7 @@ final class MomentumCrossKind implements StrategyKind {
             int wantedSignal = (Integer) signal.getValue();
             int wantedLot = (Integer) lot.getValue();
             int wantedSlip = (Integer) slip.getValue();
+            boolean wantedGate = gate.isSelected();
 
             Settings settings = Settings.settings();
 
@@ -210,6 +235,7 @@ final class MomentumCrossKind implements StrategyKind {
                 settings.putInt(SIGNAL, wantedSignal);
                 settings.putInt(LOT, wantedLot);
                 settings.putInt(SLIP, wantedSlip);
+                settings.putBoolean(GATE, wantedGate);
             });
         }
     }

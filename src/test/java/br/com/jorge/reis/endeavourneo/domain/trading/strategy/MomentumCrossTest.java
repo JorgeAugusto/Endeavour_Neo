@@ -439,6 +439,137 @@ class MomentumCrossTest {
     }
 
     @Test
+    @DisplayName("COM A PORTA LIGADA so entra a favor dos dois ranges")
+    void gatedItOnlyEntersWithBothRanges() {
+        // Um pregao de verdade nao cabe numa onda de seno: a porta precisa de um
+        // range de noventa minutos E de uma primeira briga, e as duas saem das
+        // barras de 1m. Entao esta fixture e de MINUTOS, com ruido semeado.
+        Minutos minutos = new Minutos(ruido(6_000, 3), 400);
+
+        MomentumCross comPorta = new MomentumCross(SP, RAPIDO, 1,
+                MomentumCross.REWARD, MomentumCross.SLIP, true);
+        MomentumCross semPorta = new MomentumCross(SP, RAPIDO, 1,
+                MomentumCross.REWARD, MomentumCross.SLIP, false);
+
+        comPorta.sourcedFrom(minutos);
+        semPorta.sourcedFrom(minutos);
+
+        Result filtrado = new Backtest(Costs.NONE, 1).run(minutos, minutos, comPorta, null);
+        Result solto = new Backtest(Costs.NONE, 1).run(minutos, minutos, semPorta, null);
+
+        assertTrue(solto.count() > 0, "nem sem porta operou, entao nada foi filtrado");
+        assertTrue(filtrado.count() < solto.count(),
+                "a porta nao cortou operacao nenhuma: " + filtrado.count()
+                        + " contra " + solto.count());
+
+        // E O QUE SOBROU ESTA DO LADO DA PORTA. O gabarito e refeito aqui e nao
+        // lido do produto -- um gabarito que sai de quem esta sendo testado nao
+        // e gabarito.
+        int[] porta = portaPorFora(minutos);
+
+        for (Fill fill : filtrado.fills()) {
+            if (fill.verb().contains("Cover") || fill.verb().contains("Close")) {
+                continue;
+            }
+
+            int lado = porta[fill.bar() - 1];
+
+            assertTrue(lado != 0,
+                    "abriu na barra " + fill.bar() + " com os ranges em desacordo");
+
+            assertEquals(lado > 0 ? Side.BUY : Side.SELL, fill.side(),
+                    "abriu contra os dois ranges na barra " + fill.bar());
+        }
+    }
+
+    /** Os dois ranges refeitos do zero, sem passar pela estrategia. */
+    private static int[] portaPorFora(PriceSeries minutos) {
+        br.com.jorge.reis.endeavourneo.domain.market.PriceSeries cinco =
+                br.com.jorge.reis.endeavourneo.domain.market.Timeframe.ofMinutes(
+                        br.com.jorge.reis.endeavourneo.domain.indicator
+                                .OpeningImpulse.MINUTES).apply(minutos, SP);
+
+        br.com.jorge.reis.endeavourneo.domain.indicator.OpeningImpulse impulso =
+                br.com.jorge.reis.endeavourneo.domain.indicator.OpeningImpulse.standard();
+
+        int[] briga = impulso.brokenAt(minutos, impulso.of(cinco, SP), SP);
+        double[] noRelogio = new double[cinco.size()];
+
+        for (OpeningRange.Session each : OpeningRange.of(cinco, SP, RangeGate.FORMATION)) {
+            if (each.side() == 0 || each.breakBar() < 0) {
+                continue;
+            }
+
+            for (int bar = each.breakBar(); bar <= each.last() && bar < cinco.size(); bar++) {
+                noRelogio[bar] = each.side();
+            }
+        }
+
+        double[] espalhado = br.com.jorge.reis.endeavourneo.domain.indicator.LastClosed
+                .spread(minutos, cinco, noRelogio);
+
+        int[] made = new int[minutos.size()];
+
+        for (int bar = 0; bar < made.length; bar++) {
+            int relogio = Double.isNaN(espalhado[bar]) ? 0 : (int) Math.round(espalhado[bar]);
+
+            made[bar] = briga[bar] != 0 && briga[bar] == relogio ? briga[bar] : 0;
+        }
+
+        return made;
+    }
+
+    /** Barras de um minuto com ruido reprodutivel, para os ranges existirem. */
+    private record Minutos(double[] price, int perDay) implements PriceSeries {
+
+        @Override
+        public int size() {
+            return price.length;
+        }
+
+        @Override
+        public long timeAt(int index) {
+            LocalDate day = LocalDate.of(2025, 1, 6).plusDays(index / perDay);
+
+            return ZonedDateTime.of(day, LocalTime.of(9, 0), SP).toInstant().toEpochMilli()
+                    + (index % perDay) * 60_000L;
+        }
+
+        @Override
+        public double openAt(int index) {
+            return index % perDay == 0 ? price[index] : price[index - 1];
+        }
+
+        @Override
+        public double highAt(int index) {
+            return Math.max(openAt(index), price[index]) + 25;
+        }
+
+        @Override
+        public double lowAt(int index) {
+            return Math.min(openAt(index), price[index]) - 25;
+        }
+
+        @Override
+        public double closeAt(int index) {
+            return price[index];
+        }
+    }
+
+    private static double[] ruido(int count, long seed) {
+        double[] made = new double[count];
+        java.util.Random random = new java.util.Random(seed);
+        double now = 100_000;
+
+        for (int i = 0; i < count; i++) {
+            now += random.nextGaussian() * 60;
+            made[i] = Math.round(now / 5) * 5;
+        }
+
+        return made;
+    }
+
+    @Test
     @DisplayName("SEM CRUZAMENTO NAO OPERA, nem com barras de sobra")
     void withoutAcrossingNothingTrades() {
         // Preco estritamente crescente: o PMO sobe e nunca volta, entao a linha
