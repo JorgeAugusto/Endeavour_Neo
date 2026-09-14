@@ -21,6 +21,7 @@ import br.com.jorge.reis.endeavourneo.domain.indicator.Pmo;
 import br.com.jorge.reis.endeavourneo.domain.market.Timeframe;
 import br.com.jorge.reis.endeavourneo.domain.trading.Strategy;
 import br.com.jorge.reis.endeavourneo.domain.trading.strategy.MomentumCross;
+import br.com.jorge.reis.endeavourneo.domain.trading.strategy.RangeGate.Mode;
 import br.com.jorge.reis.endeavourneo.platform.Messages;
 import br.com.jorge.reis.endeavourneo.platform.Settings;
 import br.com.jorge.reis.endeavourneo.ui.settings.SettingsPage;
@@ -78,7 +79,7 @@ final class MomentumCrossKind implements StrategyKind {
     public Strategy build() {
         return new MomentumCross(Timeframe.defaultZone(),
                 new Pmo(change(), first(), second(), signal(), Pmo.SCALE),
-                lot(), MomentumCross.REWARD, slip(), gate());
+                lot(), MomentumCross.REWARD, slip(), gate() ? Mode.BOTH : Mode.OFF);
     }
 
     @Override

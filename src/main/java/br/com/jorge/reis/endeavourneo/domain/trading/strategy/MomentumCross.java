@@ -53,6 +53,20 @@ import java.util.Map;
  *       closed and the new one opened, in that order.</li>
  * </ul>
  *
+ * <h2>Doubling, when it is switched on</h2>
+ *
+ * <p>The lot doubles after every losing trade and goes back to one after a
+ * winning one — {@code PatternBreakout} carries the same module and this is the
+ * same record. The sequence dies with the session: a run of losses that ends
+ * the afternoon holding eight would otherwise open tomorrow holding sixteen,
+ * against a market that gapped overnight and owes yesterday nothing.
+ *
+ * <p><b>It changes the risk and not the edge.</b> Doubling does not make a
+ * losing signal win; it makes the same signal bet more after each loss, which
+ * moves the drawdown by a factor of two per step and leaves the expectancy per
+ * contract exactly where it was. Read the drawdown of anything measured with
+ * this on before reading its total.
+ *
  * <h2>The gate, when it is switched on</h2>
  *
  * <p>Off by default, and when on the only side traded is the one BOTH opening
@@ -116,6 +130,31 @@ public final class MomentumCross implements Strategy, Plotted, Sourced {
      */
     public static final double SLIP = 200;
 
+    /**
+     * Doubling the lot after a loss, and how many times it may.
+     *
+     * @param on   whether the module is on at all
+     * @param most how many times the lot may double; N=3 gives 1, 2, 4, 8
+     *
+     * <p>A module that is off doubles nothing and says so in the ONE number
+     * that decides it: {@code most} is zeroed, so the lot cannot move and there
+     * is no second guard to keep in step with this one. The same shape
+     * {@code PatternBreakout} uses, for the same reason.</p>
+     */
+    public record Doubling(boolean on, int most) {
+
+        /** Past this the lot is astronomical and the cap is the only thing left. */
+        public static final int CEILING = 20;
+
+        public Doubling {
+            most = on ? Math.max(0, Math.min(most, CEILING)) : 0;
+        }
+
+        public static Doubling off() {
+            return new Doubling(false, 0);
+        }
+    }
+
     private final ZoneId zone;
 
     private final Pmo pmo;
@@ -126,8 +165,16 @@ public final class MomentumCross implements Strategy, Plotted, Sourced {
 
     private final double slip;
 
-    /** Whether only the side both opening ranges agree on may be traded. */
-    private final boolean gated;
+    /** Which opening ranges have to agree before a side may be traded. */
+    private final RangeGate.Mode mode;
+
+    private final Doubling doubling;
+
+    /** How many times the lot has doubled since the last winner. */
+    private int doublings;
+
+    /** What the open position cost, so a closing fill can be judged. */
+    private double entered = Double.NaN;
 
     private PriceSeries bars = PriceSeries.empty();
 
@@ -169,15 +216,15 @@ public final class MomentumCross implements Strategy, Plotted, Sourced {
     private double[] targetLine;
 
     public MomentumCross() {
-        this(null, Pmo.standard(), 1, REWARD, SLIP, false);
+        this(null, Pmo.standard(), 1, REWARD, SLIP, RangeGate.Mode.OFF, Doubling.off());
     }
 
     public MomentumCross(ZoneId zone, Pmo pmo, int lot) {
-        this(zone, pmo, lot, REWARD, SLIP, false);
+        this(zone, pmo, lot, REWARD, SLIP, RangeGate.Mode.OFF, Doubling.off());
     }
 
     public MomentumCross(ZoneId zone, Pmo pmo, int lot, double reward, double slip) {
-        this(zone, pmo, lot, reward, slip, false);
+        this(zone, pmo, lot, reward, slip, RangeGate.Mode.OFF, Doubling.off());
     }
 
     /**
@@ -186,12 +233,21 @@ public final class MomentumCross implements Strategy, Plotted, Sourced {
      * @param lot    contracts per entry
      * @param reward the target, in multiples of the risk
      * @param slip   how far past its trigger the stop may still fill
-     * @param gated  whether only the side both opening ranges agree on is traded
+     * @param gate   which opening ranges have to agree before a side is traded
+     * @param doubling whether the lot doubles after a loss, and how far
      */
     public MomentumCross(ZoneId zone, Pmo pmo, int lot, double reward, double slip,
-                         boolean gated) {
+                         RangeGate.Mode gate) {
 
-        this.gated = gated;
+        this(zone, pmo, lot, reward, slip, gate, Doubling.off());
+    }
+
+    /** @see #MomentumCross(ZoneId, Pmo, int, double, double, RangeGate.Mode) */
+    public MomentumCross(ZoneId zone, Pmo pmo, int lot, double reward, double slip,
+                         RangeGate.Mode gate, Doubling doubling) {
+
+        this.doubling = doubling == null ? Doubling.off() : doubling;
+        this.mode = gate == null ? RangeGate.Mode.OFF : gate;
         this.zone = zone == null ? Timeframe.defaultZone() : zone;
         this.pmo = pmo == null ? Pmo.standard() : pmo;
         this.lot = Math.max(1, lot);
@@ -234,7 +290,7 @@ public final class MomentumCross implements Strategy, Plotted, Sourced {
         // THE GATE IS BUILT ONCE, and only when it is asked for: it folds the
         // stored bars to five minutes and walks two more indicators, which is
         // work nobody switched on should pay for.
-        gate = gated ? RangeGate.of(bars, source, zone) : new int[size];
+        gate = RangeGate.of(bars, source, zone, mode);
 
         entryLine = blank(size);
         stopLine = blank(size);
@@ -244,6 +300,8 @@ public final class MomentumCross implements Strategy, Plotted, Sourced {
         wanted = 0;
         wantedStop = Double.NaN;
         closeOnly = false;
+        doublings = 0;
+        entered = Double.NaN;
         stop = Double.NaN;
         target = Double.NaN;
     }
@@ -278,6 +336,11 @@ public final class MomentumCross implements Strategy, Plotted, Sourced {
             wantedStop = Double.NaN;
             closeOnly = false;
 
+            // A SEQUENCIA MORRE COM O PREGAO. Uma sequencia de perdas que fecha
+            // a tarde com oito contratos abriria amanha com dezesseis, contra um
+            // mercado que deu gap na noite e nao deve nada a ontem.
+            doublings = 0;
+
             if (market.hasPosition()) {
                 desk.closePosition();
             } else {
@@ -290,7 +353,7 @@ public final class MomentumCross implements Strategy, Plotted, Sourced {
         // THE GATE REFUSES THE OPENING, never the closing. A crossing against
         // it is still this strategy's exit rule, and a position with no exit but
         // the stop and the target would be a third strategy.
-        boolean allowed = !gated || crossing[bar] == gate[bar];
+        boolean allowed = mode == RangeGate.Mode.OFF || crossing[bar] == gate[bar];
 
         if (bar < crossing.length && crossing[bar] != 0 && (allowed || side != 0)) {
             // THE STOP IS THIS CANDLE'S EXTREME, read here and carried into the
@@ -328,6 +391,7 @@ public final class MomentumCross implements Strategy, Plotted, Sourced {
             }
 
             if (verb.contains("Cover") || verb.contains("Close")) {
+                count(fill.price());
                 forget();
             } else if (verb.startsWith("Buy") || verb.startsWith("SellShort")) {
                 opened(fill, verb.startsWith("Buy") ? 1 : -1);
@@ -335,8 +399,36 @@ public final class MomentumCross implements Strategy, Plotted, Sourced {
         }
     }
 
+    /**
+     * Counts the trade that has just ended, for the doubling.
+     *
+     * <p>No check of {@code doubling.on()} here, on purpose: a module that is
+     * off has {@code most() == 0} by construction, so the count cannot leave
+     * zero. A second guard saying the same thing is one that can be edited out
+     * of step with the first.</p>
+     */
+    private void count(double left) {
+        if (Double.isNaN(entered) || side == 0) {
+            return;
+        }
+
+        double points = side * (left - entered);
+
+        if (points < 0) {
+            doublings = Math.min(doublings + 1, doubling.most());
+        } else if (points > 0) {
+            doublings = 0;
+        }
+    }
+
+    /** @return contracts for the next entry: the lot, doubled once per loss */
+    private int lotNow() {
+        return lot << Math.min(doublings, Doubling.CEILING);
+    }
+
     private void opened(Fill fill, int which) {
         side = which;
+        entered = fill.price();
         stop = wantedStop;
         wantedStop = Double.NaN;
 
@@ -358,6 +450,7 @@ public final class MomentumCross implements Strategy, Plotted, Sourced {
 
     private void forget() {
         side = 0;
+        entered = Double.NaN;
         stop = Double.NaN;
         target = Double.NaN;
     }
@@ -385,9 +478,9 @@ public final class MomentumCross implements Strategy, Plotted, Sourced {
             desk.closePosition();
 
             if (wanted > 0) {
-                desk.buyAtMarket(lot);
+                desk.buyAtMarket(lotNow());
             } else {
-                desk.sellShortAtMarket(lot);
+                desk.sellShortAtMarket(lotNow());
             }
 
             wanted = 0;
@@ -419,9 +512,9 @@ public final class MomentumCross implements Strategy, Plotted, Sourced {
 
         if (wanted != 0) {
             if (wanted > 0) {
-                desk.buyAtMarket(lot);
+                desk.buyAtMarket(lotNow());
             } else {
-                desk.sellShortAtMarket(lot);
+                desk.sellShortAtMarket(lotNow());
             }
 
             // SENT ONCE. A market order does not rest -- it goes at the next

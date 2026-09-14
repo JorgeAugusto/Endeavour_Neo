@@ -63,10 +63,32 @@ import java.util.List;
  * refused use for the other. Whatever is measured with it on must be read
  * knowing that.
  */
-final class RangeGate {
+public final class RangeGate {
 
     /** The clock range's formation, in minutes: the ninety of the name. */
-    static final int FORMATION = 90;
+    public static final int FORMATION = 90;
+
+    /**
+     * Which of the two ranges have to agree.
+     *
+     * <p>Four modes and not a boolean, because the question "which half of the
+     * gate is doing the work" is the first one anybody asks of a filter made of
+     * two things, and a boolean cannot answer it.</p>
+     */
+    public enum Mode {
+
+        /** No gate: both sides are traded. */
+        OFF,
+
+        /** Both ranges broken and pointing the same way. */
+        BOTH,
+
+        /** Only the ninety-minute clock range — the one the measurement refused. */
+        CLOCK,
+
+        /** Only the first fight — the definition the measurement approved. */
+        FIGHT
+    }
 
     private RangeGate() {
         throw new AssertionError("Utility class must not be instantiated");
@@ -79,11 +101,20 @@ final class RangeGate {
      * @return per decision bar: {@code +1} when both ranges point up,
      *         {@code -1} down, {@code 0} while they do not agree
      */
-    static int[] of(PriceSeries decided, PriceSeries stored, ZoneId zone) {
+    public static int[] of(PriceSeries decided, PriceSeries stored, ZoneId zone) {
+        return of(decided, stored, zone, Mode.BOTH);
+    }
+
+    /**
+     * @param mode which of the two ranges have to agree
+     * @see #of(PriceSeries, PriceSeries, ZoneId)
+     */
+    public static int[] of(PriceSeries decided, PriceSeries stored, ZoneId zone,
+                           Mode mode) {
         int size = decided == null ? 0 : decided.size();
         int[] made = new int[size];
 
-        if (size == 0) {
+        if (size == 0 || mode == null || mode == Mode.OFF) {
             return made;
         }
 
@@ -91,13 +122,21 @@ final class RangeGate {
                 .apply(stored == null ? decided : stored, zone);
 
         OpeningImpulse impulse = OpeningImpulse.standard();
-        int[] fight = impulse.brokenAt(decided, impulse.of(five, zone), zone);
-        int[] clock = brokeTheClockRange(decided, five, zone);
+        int[] fight = mode == Mode.CLOCK
+                ? null : impulse.brokenAt(decided, impulse.of(five, zone), zone);
+        int[] clock = mode == Mode.FIGHT
+                ? null : brokeTheClockRange(decided, five, zone);
 
+        // ONLY WHAT THE MODE ASKED FOR IS COMPUTED. Folding to five minutes and
+        // walking an indicator over six years is not work to do for an answer
+        // nobody reads.
         for (int bar = 0; bar < size; bar++) {
-            if (fight[bar] != 0 && fight[bar] == clock[bar]) {
-                made[bar] = fight[bar];
-            }
+            made[bar] = switch (mode) {
+                case CLOCK -> clock[bar];
+                case FIGHT -> fight[bar];
+                case BOTH -> fight[bar] != 0 && fight[bar] == clock[bar] ? fight[bar] : 0;
+                default -> 0;
+            };
         }
 
         return made;

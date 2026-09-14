@@ -439,6 +439,105 @@ class MomentumCrossTest {
     }
 
     @Test
+    @DisplayName("A MAO DOBRA A CADA STOP e volta a um no primeiro ganho")
+    void thelotDoublesAfterEachLossAndResetsOnAwin() {
+        Bars bars = Bars.wave(400);
+
+        MomentumCross simples = new MomentumCross(SP, RAPIDO, 1);
+        MomentumCross dobrando = new MomentumCross(SP, RAPIDO, 1,
+                MomentumCross.REWARD, MomentumCross.SLIP, RangeGate.Mode.OFF,
+                new MomentumCross.Doubling(true, 4));
+
+        Result liso = new Backtest(Costs.NONE, 1).run(bars, simples);
+        Result dobrado = new Backtest(Costs.NONE, 1).run(bars, dobrando);
+
+        assertEquals(liso.count(), dobrado.count(),
+                "a dobra mudou QUAIS operacoes acontecem, e ela so muda o TAMANHO");
+
+        // A DOBRA MOVE O TAMANHO, NAO O SINAL. As mesmas operacoes, nas mesmas
+        // barras, com quantidades diferentes -- e por isso o numero de contratos
+        // girados cresce enquanto a contagem de operacoes fica igual.
+        assertTrue(dobrado.contractsTurned() > liso.contractsTurned(),
+                "dobrando girou " + dobrado.contractsTurned() + " contratos contra "
+                        + liso.contractsTurned() + " sem dobrar");
+
+        // E A SEQUENCIA SEGUE A REGRA: depois de uma perda o lote seguinte e o
+        // dobro, depois de um ganho volta a um. Refeito por fora.
+        int esperado = 1;
+        int conferidos = 0;
+
+        for (Trade trade : dobrado.trades()) {
+            Fill entrada = trade.fills().get(0);
+
+            assertEquals(esperado, entrada.quantity(),
+                    "a operacao da barra " + entrada.bar() + " abriu com "
+                            + entrada.quantity() + " e nao com " + esperado);
+
+            conferidos++;
+
+            // O pregao e um so nesta fixture, entao a sequencia nao e zerada por
+            // virada de dia.
+            esperado = trade.gross() < 0 ? Math.min(esperado * 2, 1 << 4) : 1;
+        }
+
+        assertTrue(conferidos > 3, "so " + conferidos + " operacoes, poucas para provar");
+
+        // E A SEQUENCIA MORRE COM O PREGAO.
+        //
+        // DUAS FIXTURES FALHARAM ANTES DESTA, e as duas pelo mesmo motivo: a
+        // regra so aparece quando um pregao TERMINA PERDENDO. Com um dia so nao
+        // ha virada; com o V de dois dias, o dia 1 acaba ganhando (a compra
+        // pega a subida final), entao a contagem ja estava zerada e carrega-la
+        // para o dia seguinte nao mudava nada.
+        //
+        // Quinze pregoes de ruido resolvem por forca bruta: algum deles termina
+        // no vermelho, e ai o dia seguinte tem de comecar do lote base.
+        Minutos muitos = new Minutos(ruido(6_000, 3), 400);
+
+        MomentumCross comDobra = new MomentumCross(SP, RAPIDO, 1,
+                MomentumCross.REWARD, MomentumCross.SLIP, RangeGate.Mode.OFF,
+                new MomentumCross.Doubling(true, 4));
+
+        comDobra.sourcedFrom(muitos);
+
+        Result varios = new Backtest(Costs.NONE, 1).run(muitos, muitos, comDobra, null);
+
+        int dia = -1;
+        int viradas = 0;
+        boolean perdeuNoDiaAnterior = false;
+        boolean algumDiaTerminouPerdendo = false;
+        double ultimo = 0;
+
+        for (Trade trade : varios.trades()) {
+            Fill entrada = trade.fills().get(0);
+            int agora = entrada.bar() / 400;
+
+            if (agora != dia) {
+                if (dia >= 0) {
+                    perdeuNoDiaAnterior = ultimo < 0;
+                    algumDiaTerminouPerdendo |= perdeuNoDiaAnterior;
+                }
+
+                dia = agora;
+
+                assertEquals(1, entrada.quantity(),
+                        "o pregao " + agora + " comecou com " + entrada.quantity()
+                                + " contratos: a sequencia da dobra atravessou a noite");
+
+                if (perdeuNoDiaAnterior) {
+                    viradas++;
+                }
+            }
+
+            ultimo = trade.gross();
+        }
+
+        assertTrue(algumDiaTerminouPerdendo,
+                "nenhum pregao terminou perdendo, entao a regra da noite nao foi exercida");
+        assertTrue(viradas > 0, "nenhuma virada veio depois de um dia no vermelho");
+    }
+
+    @Test
     @DisplayName("COM A PORTA LIGADA so entra a favor dos dois ranges")
     void gatedItOnlyEntersWithBothRanges() {
         // Um pregao de verdade nao cabe numa onda de seno: a porta precisa de um
@@ -447,9 +546,9 @@ class MomentumCrossTest {
         Minutos minutos = new Minutos(ruido(6_000, 3), 400);
 
         MomentumCross comPorta = new MomentumCross(SP, RAPIDO, 1,
-                MomentumCross.REWARD, MomentumCross.SLIP, true);
+                MomentumCross.REWARD, MomentumCross.SLIP, RangeGate.Mode.BOTH);
         MomentumCross semPorta = new MomentumCross(SP, RAPIDO, 1,
-                MomentumCross.REWARD, MomentumCross.SLIP, false);
+                MomentumCross.REWARD, MomentumCross.SLIP, RangeGate.Mode.OFF);
 
         comPorta.sourcedFrom(minutos);
         semPorta.sourcedFrom(minutos);
