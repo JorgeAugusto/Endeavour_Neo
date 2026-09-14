@@ -381,88 +381,28 @@ public final class RelativeStrength implements Overlay {
     }
 
     /**
+     * The numbers, from the ONE place they are worked out.
+     *
+     * <p>This method held the arithmetic, and a strategy that wants to filter
+     * on an IFR could not reach it: {@code domain} may not import {@code ui}.
+     * Writing it a second time down there is how the chart and the run come to
+     * disagree about whether the market was oversold, each looking right on its
+     * own. So it moved, and this calls it.</p>
+     *
+     * <p>What stayed here is everything about DRAWING -- colours, widths, the
+     * levels, which scale to read at. None of that is arithmetic.</p>
+     *
      * @param bars whatever scale is being read
      * @param into one value per bar of it
      */
     private void computeOver(PriceSeries bars, double[] into) {
-        int size = bars.size();
+        // BY NAME, because the two enums are deliberately the same two words:
+        // see Rsi.Smoothing, which says why it is not imported from here.
+        double[] made = new br.com.jorge.reis.endeavourneo.domain.indicator.Rsi(period,
+                br.com.jorge.reis.endeavourneo.domain.indicator.Rsi.Smoothing
+                        .valueOf(smoothing.name())).over(bars);
 
-        Arrays.fill(into, Double.NaN);
-
-        if (size <= period) {
-            // Not enough closes for even one window. Every bar is unknown,
-            // which is what NaN says and what the pane skips over.
-            return;
-        }
-
-        double[] rises = new double[size];
-        double[] falls = new double[size];
-
-        for (int i = 1; i < size; i++) {
-            double change = bars.closeAt(i) - bars.closeAt(i - 1);
-
-            rises[i] = Math.max(change, 0.0);
-            falls[i] = Math.max(-change, 0.0);
-        }
-
-        // The seed is the plain mean of the first window, for BOTH kinds. That
-        // is how Wilder starts too: his smoothing needs a previous value, and
-        // the first one has to come from somewhere.
-        double up = 0.0;
-        double down = 0.0;
-
-        for (int i = 1; i <= period; i++) {
-            up += rises[i];
-            down += falls[i];
-        }
-
-        up /= period;
-        down /= period;
-
-        double carried = 50.0;
-
-        into[period] = carried = reading(up, down, carried);
-
-        for (int i = period + 1; i < size; i++) {
-            if (smoothing == Smoothing.CLASSIC) {
-                // Every bar ever seen still counts, a little, and none ever
-                // leaves the window because there is no window.
-                up = (up * (period - 1) + rises[i]) / period;
-                down = (down * (period - 1) + falls[i]) / period;
-            } else {
-                up = mean(rises, i);
-                down = mean(falls, i);
-            }
-
-            into[i] = carried = reading(up, down, carried);
-        }
+        System.arraycopy(made, 0, into, 0, Math.min(made.length, into.length));
     }
 
-    /** @return the plain mean of the last {@code period} entries ending at {@code i} */
-    private double mean(double[] of, int i) {
-        double total = 0.0;
-
-        for (int back = 0; back < period; back++) {
-            total += of[i - back];
-        }
-
-        return total / period;
-    }
-
-    /**
-     * @param up the average rise
-     * @param down the average fall
-     * @param carried the last real reading, for a window where nothing moved
-     * @return the indicator between nought and a hundred
-     */
-    private static double reading(double up, double down, double carried) {
-        if (down <= 0.0) {
-            // Nothing fell. A hundred is the definition working, not failing --
-            // unless nothing rose either, in which case nothing happened at all
-            // and the honest answer is the one from before.
-            return up <= 0.0 ? carried : 100.0;
-        }
-
-        return 100.0 - 100.0 / (1.0 + up / down);
-    }
 }

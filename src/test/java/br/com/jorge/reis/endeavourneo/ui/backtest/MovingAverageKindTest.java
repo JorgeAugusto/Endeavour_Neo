@@ -132,7 +132,7 @@ class MovingAverageKindTest {
 
         assertEquals(java.util.Set.copyOf(nomes).size(), nomes.size(),
                 "duas estrategias dividem o mesmo nome na lista: " + nomes);
-        assertEquals(6, StrategyKind.available().size(),
+        assertEquals(7, StrategyKind.available().size(),
                 "a lista de estrategias mudou de tamanho e este teste nao soube");
     }
 }
