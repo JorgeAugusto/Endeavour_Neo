@@ -1,6 +1,99 @@
 # Endeavour Neo
 
-A desktop application shell in Swing, laid out like an IDE.
+A charting and backtesting terminal for the Brazilian mini-index (WIN), written
+in Java 17 and Swing, with no runtime dependency other than an optional look and
+feel.
+
+It exists to answer one question honestly: **did this rule ever make money, and
+how would anybody know?** So the engine is built around the execution rules of
+the platform the strategies actually run on — an order decided at a close never
+executes at that close, a stop that gaps is a stop that did not fill, and a
+cover order is one OCO of several legs where each leg can fill. Every number the
+report shows is reachable from those rules, and the ones that rest on an
+assumption say so.
+
+## The chart
+
+![The chart with seven indicators on the price and three studies under it](docs/img/01-grafico.png)
+
+Two windows of the same series side by side — which is the point of a terminal
+and not of an IDE: the same instrument at two zoom levels, compared. On the
+left, seven indicators on the price (three moving averages, Bollinger bands,
+tops and bottoms, candle patterns and a linear regression channel) and three
+studies under it (RSI, slow stochastic, and the PMO ported from the author's own
+Profit indicator).
+
+Indicators are inserted from the chart's own menu, reordered by dragging, and the
+arrangement is **remembered as a named layout** — so a chart reopens the way it
+was left rather than as a blank price.
+
+## The backtest
+
+![The backtest: chart with the trades, the operations table, the equity curve and the statistics](docs/img/03-backtest-resultado.png)
+
+The whole measurement on one screen: the trades on the price, every operation in
+a table, the equity curve, and the statistics beside them.
+
+The strategy in this picture **loses 221.183 points**, and that is what the
+picture is meant to show. A backtest screen that only ever illustrates a winner
+teaches its reader nothing; this one is built so a losing result is as legible as
+a winning one. Note the last block, **HONESTIDADE**: the cost actually charged
+per round trip, how many bars were ambiguous — a bar where the stop and the
+target were both reachable and the engine had to pick — whether the run ended
+still holding a position, and how far the result sits from simply buying and
+holding. Those are the numbers that decide whether the ones above them mean
+anything.
+
+Strategies available: moving-average crossing, range breakout, pattern breakout,
+channel fade, the TNO momentum crossing, a two-range pattern setup, and the
+IFR2. Each brings its own settings screen, so the toolbar never has to learn
+what a period is.
+
+## Series and segments
+
+![The series window: 1.494 sessions, and the segments defined over them](docs/img/05-series.png)
+
+One stored series of one-minute bars is the source for everything, and a run's
+scale is a fold of it. A series can be cut into named **segments** — a training
+stretch, a blind stretch — and a series can be locked so that it only ever opens
+as a segment. That lock is the defence against looking at test data without
+noticing, which is the cheapest way to fool yourself and the hardest to detect
+afterwards.
+
+### Remaking these pictures
+
+They are not taken by hand, so they can be remade when a screen changes instead
+of quietly ageing into a lie about what the program looks like:
+
+```
+mvn -o test-compile
+java "-Dendeavourneo.home=<a throwaway folder>" \
+     -cp "target/classes;target/test-classes;<flatlaf jar>" \
+     br.com.jorge.reis.endeavourneo.tools.Prints
+```
+
+Point `endeavourneo.home` somewhere disposable: opening and closing charts
+replaces the remembered workspace, and a screenshot tool that rearranges the
+windows of whoever runs it is not one anybody runs twice.
+
+## Running
+
+From an IDE: `br.com.jorge.reis.endeavourneo.Launcher`.
+Pass `--light`, `--dark` or `--night` to pick a theme; the choice is remembered.
+
+```
+mvn compile
+```
+
+Market data is **not** in the repository. Put a series under `data/`, or point
+the application at a folder of your own.
+
+---
+
+# The shell
+
+Everything below is about the frame the terminal sits in, which was built first
+and on purpose: an IDE-shaped window, in Swing, with no plugin framework.
 
 ```
 +- Menu -----------------------------------------------+
@@ -12,15 +105,6 @@ A desktop application shell in Swing, laid out like an IDE.
 +-----------+------------------------------------------+
 | Status bar                                           |
 +------------------------------------------------------+
-```
-
-## Running
-
-From an IDE: `br.com.jorge.reis.endeavourneo.Launcher`.
-Pass `--light`, `--dark` or `--night` to pick a theme; the choice is remembered.
-
-```
-mvn compile
 ```
 
 ## Why Swing and not Eclipse RCP
@@ -109,18 +193,29 @@ letter differs per language: *File* wants F, *Arquivo* wants A.
 ## Layout
 
 ```
-Launcher.java   the composition root: wires the layers and starts the window
-platform/       Appearance, Theme, Messages, JobService, Progress
-ui/shell/       MainWindow, Navigator, Console, StatusBar
-ui/settings/    SettingsDialog, SettingsPage, AppearancePage
+Launcher.java      the composition root: wires the layers and starts the window
+domain/market/     series, folds, sessions, segments
+domain/indicator/  the arithmetic: averages, RSI, stochastic, PMO, pivots
+domain/trading/    the engine: orders, broker, costs, trades, strategies
+platform/          Appearance, Theme, Messages, JobService, SeriesCatalog
+ui/shell/          MainWindow, Navigator, Console, StatusBar
+ui/chart/          canvas, overlays, studies, layouts
+ui/backtest/       the backtest screen and each strategy's own settings page
+ui/replay/         bar-by-bar replay
+ui/settings/       SettingsDialog, SettingsPage
 ```
 
-**Dependencies point inward.** `platform` never imports `ui` — services must be
-usable with no screen at all, which is what lets the same code run from a
-command-line tool. `LayerBoundaryTest` fails the build if that stops being true,
-with no exemptions: the one class that legitimately touches every layer is
-`Launcher`, and it sits at the root rather than inside a layer for exactly that
-reason.
+**Dependencies point inward.** `domain` never imports `ui`, and `platform` never
+imports `ui` — services must be usable with no screen at all, which is what lets
+the same code run from a command-line tool. That rule is also why an indicator
+the chart drew has to move into `domain/indicator` before a strategy can read
+it: two implementations of one indicator drift, and the drift is invisible —
+the chart says the market was oversold and the run says it was not, and both
+pictures look right on their own.
+
+`LayerBoundaryTest` fails the build if that stops being true, with no exemptions:
+the one class that legitimately touches every layer is `Launcher`, and it sits at
+the root rather than inside a layer for exactly that reason.
 
 Adding a settings page means writing one `SettingsPage` and registering it in
 `MainWindow.openPreferences`. The dialog itself never changes.
