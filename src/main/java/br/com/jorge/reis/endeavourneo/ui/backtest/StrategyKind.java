@@ -58,6 +58,7 @@ interface StrategyKind {
         return List.of(new MovingAverageKind(), new RangeBreakoutKind(),
                 new PatternBreakoutKind(), new ChannelFadeKind(),
                 new MomentumCrossKind(), new AlignedPatternsKind(),
-                new RsiSnapbackKind());
+                new RsiSnapbackKind(),
+                new LevelFadeKind());
     }
 }
