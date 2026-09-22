@@ -59,6 +59,7 @@ interface StrategyKind {
                 new PatternBreakoutKind(), new ChannelFadeKind(),
                 new MomentumCrossKind(), new AlignedPatternsKind(),
                 new RsiSnapbackKind(),
-                new LevelFadeKind());
+                new LevelFadeKind(),
+                new JevAdviceKind());
     }
 }
