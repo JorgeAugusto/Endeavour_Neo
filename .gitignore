@@ -80,3 +80,7 @@ target/hook-classes/
 
 # lixo do shell
 *.stackdump
+
+# saidas das varreduras do Jev: grandes, reconstruiveis e locais
+estados*.jsonl
+decisoes*.csv
