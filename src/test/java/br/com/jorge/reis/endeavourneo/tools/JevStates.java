@@ -126,8 +126,30 @@ public final class JevStates {
                 written * 900.0 * 42.0 / 1e9);
     }
 
+    /**
+     * Extra fields another exporter wants inside the same state object.
+     *
+     * <p>Exists so that a second exporter can ADD to the state without
+     * reimplementing the walk or the context. That matters more than it looks:
+     * comparing two state designs is only meaningful if the decision MOMENTS
+     * and the shared fields are identical, and the cheapest way to guarantee
+     * that is for both to come out of this one loop.</p>
+     */
+    @FunctionalInterface
+    interface Extras {
+
+        /** @return the fields, without braces, or null to skip this bar */
+        String at(PriceSeries bars, int bar, int dayStart);
+    }
+
     /** @return how many states were written */
     static int write(PriceSeries bars, ZoneId zone, int every, Path out) throws IOException {
+        return write(bars, zone, every, out, null);
+    }
+
+    /** @see #write(PriceSeries, ZoneId, int, Path) */
+    static int write(PriceSeries bars, ZoneId zone, int every, Path out, Extras extras)
+            throws IOException {
         Vwap.Lines vwap = Vwap.standard().over(bars, zone);
 
         int written = 0;
@@ -171,6 +193,16 @@ public final class JevStates {
                     continue;
                 }
 
+                if (extras != null) {
+                    String more = extras.at(bars, bar, dayStart);
+
+                    if (more == null) {
+                        continue;
+                    }
+
+                    line = line.substring(0, line.length() - 1) + "," + more + "}";
+                }
+
                 file.write(line);
                 file.newLine();
 
@@ -190,7 +222,7 @@ public final class JevStates {
      * escaping — and if that ever stops being true, this is where it breaks
      * loudly rather than quietly producing broken JSON.</p>
      */
-    private static String describe(PriceSeries bars, Vwap.Lines vwap, int bar,
+    static String describe(PriceSeries bars, Vwap.Lines vwap, int bar,
                                    int dayStart, double dayHigh, double dayLow,
                                    LocalTime clock) {
 

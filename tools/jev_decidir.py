@@ -62,22 +62,40 @@ INSTRUCAO_ALTA = (
 )
 
 
-def perguntar(estado, chave, modelo):
+# A SEGUNDA FORMULACAO. A primeira pergunta "que posicao tomar", que e um
+# julgamento; esta pergunta pelo EVENTO que de fato esta sendo operado, com
+# alvo e stop explicitos. Duas vantagens que a primeira nao tem: a resposta e
+# diretamente acionavel -- com alvo 300, stop 200 e custo 6,5 o ponto de
+# equilibrio e p > 0,413 -- e ela e CALIBRAVEL, porque "isso acontece 60% das
+# vezes" tem uma frequencia observada para comparar. Lucro depende de haver
+# sinal; calibracao nao.
+SOBE = ('A partir do preco atual, e dentro do MESMO pregao, o preco vai SUBIR '
+        '300 pontos ANTES de cair 200 pontos?')
+
+CAI = ('A partir do preco atual, e dentro do MESMO pregao, o preco vai CAIR '
+       '300 pontos ANTES de subir 200 pontos?')
+
+# Acima disto uma ponta paga alvo 300 contra stop 200 com custo de 6,5:
+# 500p - 200 - 6,5 > 0.
+EQUILIBRIO = 0.413
+
+
+def perguntas(qual):
+    if qual == 'movimento':
+        return {'sobe': {'type': 'noul', 'instructions': SOBE},
+                'cai': {'type': 'noul', 'instructions': CAI}}
+
+    return {'lado': {'type': 'choice', 'instructions': INSTRUCAO_LADO,
+                     'criteria': OPCOES_LADO},
+            'alta': {'type': 'noul', 'instructions': INSTRUCAO_ALTA}}
+
+
+def perguntar(estado, chave, modelo, qual='lado'):
     """Um pedido, com as duas perguntas juntas. Devolve (tempo, lado, alta, confianca)."""
     corpo = json.dumps({
         'model': modelo,
         'state': estado,
-        'questions': {
-            'lado': {
-                'type': 'choice',
-                'instructions': INSTRUCAO_LADO,
-                'criteria': OPCOES_LADO,
-            },
-            'alta': {
-                'type': 'noul',
-                'instructions': INSTRUCAO_ALTA,
-            },
-        },
+        'questions': perguntas(qual),
     }).encode('utf-8')
 
     pedido = urllib.request.Request(
@@ -96,14 +114,28 @@ def perguntar(estado, chave, modelo):
         return ('ERRO', estado['tempo'], 0, str(erro)[:300])
 
     respostas = lido.get('answers', {})
-    escolha = respostas.get('lado', {})
+    usados = lido.get('usage', {}).get('input_tokens', 0)
 
+    if qual == 'movimento':
+        sobe = respostas.get('sobe', {}).get('noul', 0.0)
+        cai = respostas.get('cai', {}).get('noul', 0.0)
+
+        # O LADO SAI DA COMPARACAO, e so quando a ponta escolhida paga. Abaixo
+        # do equilibrio nenhuma das duas cobre alvo, stop e custo, e a resposta
+        # honesta e nao operar.
+        melhor = max(sobe, cai)
+        lado = 0 if melhor < EQUILIBRIO else (1 if sobe >= cai else -1)
+
+        # "alta" guarda a probabilidade de subir 300 antes de cair 200, que e a
+        # coluna que a calibracao vai conferir contra a frequencia observada.
+        return ('OK', estado['tempo'], lado, sobe, melhor, usados)
+
+    escolha = respostas.get('lado', {})
     lado = {'comprar': 1, 'vender': -1}.get(escolha.get('choice'), 0)
 
     return ('OK', estado['tempo'], lado,
             respostas.get('alta', {}).get('noul', 0.5),
-            escolha.get('confidence', 0.0),
-            lido.get('usage', {}).get('input_tokens', 0))
+            escolha.get('confidence', 0.0), usados)
 
 
 def ja_feitos(caminho):
@@ -135,6 +167,7 @@ def main():
     analisador.add_argument('--paralelas', type=int, default=12)
     analisador.add_argument('--limite', type=int, default=0)
     analisador.add_argument('--modelo', default='jev-latest')
+    analisador.add_argument('--pergunta', default='lado', choices=['lado', 'movimento'])
     argumentos = analisador.parse_args()
 
     chave = os.environ.get('TYPESAFE_API_KEY')
@@ -169,12 +202,13 @@ def main():
         escritor = csv.writer(saida, delimiter=';', lineterminator='\n')
 
         if novo:
-            escritor.writerow(['# jev', argumentos.modelo])
+            escritor.writerow(['# jev', argumentos.modelo, argumentos.pergunta])
             escritor.writerow(['tempo', 'lado', 'alta', 'confianca'])
 
         with ThreadPoolExecutor(max_workers=argumentos.paralelas) as piscina:
             for i, r in enumerate(piscina.map(
-                    lambda e: perguntar(e, chave, argumentos.modelo), faltam), 1):
+                    lambda e: perguntar(e, chave, argumentos.modelo,
+                                        argumentos.pergunta), faltam), 1):
 
                 if r[0] == 'ERRO':
                     erros += 1
